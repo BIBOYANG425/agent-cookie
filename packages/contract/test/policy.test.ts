@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedBases, autoFields, canRead, canWrite, purposeFields, readDecision } from "../src/policy.js";
+import { allowedBases, autoFields, canRead, canWrite, purposeFields, purposesFor, readDecision, readMode } from "../src/policy.js";
 import { FIELDS } from "../src/types.js";
 
 describe("policy (plan v0.3 §5)", () => {
@@ -45,5 +45,16 @@ describe("policy (plan v0.3 §5)", () => {
     for (const f of FIELDS) expect(canWrite("personal", f)).toBe(true);
     expect(allowedBases("shoe")).toEqual(["observed"]);
     expect(allowedBases("personal")).toEqual(["observed", "stated"]);
+  });
+});
+
+describe("retail (UCP store proxies, 2026-10-17)", () => {
+  it("has exactly the shoe policy", () => {
+    for (const f of FIELDS) {
+      expect(readMode("retail", f)).toBe(readMode("shoe", f));
+      expect(canWrite("retail", f)).toBe(canWrite("shoe", f));
+      expect(purposesFor("retail", f)).toEqual(purposesFor("shoe", f));
+    }
+    expect(allowedBases("retail")).toEqual(allowedBases("shoe"));
   });
 });

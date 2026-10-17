@@ -2,6 +2,7 @@
 // never a field name or a value the caller may not know (A05), and NOT_FOUND is byte-identical everywhere (A08).
 import type { Context, Hono } from "hono";
 import { WorkspaceError, type Agent, type ErrorCode, type Role } from "@agent-cookie/contract";
+import { captureUnhandled } from "./telemetry.js";
 
 export interface AuthedAgent extends Agent {
   role: Role;
@@ -37,6 +38,7 @@ export function installErrorHandling(app: Hono<AppEnv>): void {
   app.onError((err) => {
     if (err instanceof WorkspaceError) return json(err.toBody(), err.status);
     console.error("[workspace] unhandled error:", err);
+    captureUnhandled(err);
     return json({ error: { code: "UPSTREAM_ERROR", message: "internal error" } }, 500);
   });
   app.notFound(() => json({ error: { code: "NOT_FOUND", message: MESSAGES.NOT_FOUND } }, 404));

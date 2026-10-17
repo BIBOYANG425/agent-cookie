@@ -2,6 +2,6 @@
   { "agentId": "personal-photon", "name": "Photon line (iMessage) · Sample", "category": "personal", "capabilities": [], "createdAt": "2026-10-01T00:00:00.000Z" },
   { "agentId": "personal-desktop", "name": "Claude Desktop · Sample", "category": "personal", "capabilities": [], "createdAt": "2026-10-01T00:00:00.000Z" },
   { "agentId": "shoe-acme", "name": "ACME Shoes (commerce blueprint) · Sample", "category": "shoe", "capabilities": ["trail_shoes"], "chatEndpoint": "http://127.0.0.1:8000/chat", "createdAt": "2026-10-01T00:00:00.000Z" },
-  { "agentId": "ucp:shoebacca.com", "name": "Shoebacca (UCP proxy) · Sample", "category": "shoe", "capabilities": ["trail_shoes"], "domain": "shoebacca.com", "createdAt": "2026-10-01T00:00:00.000Z" },
-  { "agentId": "ucp:marathonsports.com", "name": "Marathon Sports (UCP proxy) · Sample", "category": "shoe", "capabilities": ["trail_shoes"], "domain": "marathonsports.com", "createdAt": "2026-10-01T00:00:00.000Z" }
+  { "agentId": "ucp:shoebacca.com", "name": "Shoebacca (UCP proxy) · Sample", "category": "retail", "capabilities": [], "domain": "shoebacca.com", "createdAt": "2026-10-01T00:00:00.000Z" },
+  { "agentId": "ucp:marathonsports.com", "name": "Marathon Sports (UCP proxy) · Sample", "category": "retail", "capabilities": [], "domain": "marathonsports.com", "createdAt": "2026-10-01T00:00:00.000Z" }
 ]

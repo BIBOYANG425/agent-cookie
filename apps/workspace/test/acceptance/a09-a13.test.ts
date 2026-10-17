@@ -29,7 +29,6 @@ beforeEach(async () => {
 
 const T = { timeout: 45_000 };
 const SELLERS = PINNED.sellers;
-const OTHER_SELLERS = CATALOG_SELLERS.filter((d) => !SELLERS.includes(d));
 
 async function postIntent(who: Api, body: Record<string, unknown>, headers?: Record<string, string>) {
   return who.post("/personal/intents", body, headers);
@@ -42,70 +41,81 @@ function projection(c: Json) {
     .sort((a, b) => a.field.localeCompare(b.field));
 }
 
-describe("A09 意图匹配", T, () => {
-  it("trail_shoes with the recording's parameters yields exactly the two pinned offers (seller, variant, cents, USD, source fixture)", async () => {
-    const r = await postIntent(personal, { ...PINNED.intent, text: "找一双越野跑鞋 · Sample" });
-    expect(r.status).toBe(201);
-    expect(typeof r.body.intentId).toBe("string");
-    expect(String(r.body.expiresAt)).toMatch(ISO);
-    expect(typeof r.body.introduced).toBe("number");
-    expect(r.body.introduced).toBeGreaterThanOrEqual(2);
+describe("A09 意图匹配（性质断言：不断言店名或价格）", T, () => {
+  const SENTENCE = "找一双越野跑鞋，120 美元以内 · Sample";
 
+  async function quotesFor(body: Record<string, unknown>) {
+    const r = await postIntent(personal, body);
+    expect(r.status).toBe(201);
     const q = await getQuotes(personal, r.body.intentId, 10_000);
+    return { r, q, ucp: (q.quotes as Json[]).filter((x) => x.seller) };
+  }
+
+  it("the user's sentence drives the search: ≤ 2 distinct sellers, USD, within the stated budget, recorded source, no invented ETA", async () => {
+    const { r, q, ucp } = await quotesFor({ text: SENTENCE, public: { budget: "120" } });
+    expect(String(r.body.expiresAt)).toMatch(ISO);
     expect(q.intentId).toBe(r.body.intentId);
-    expect(q.complete).toBe(true);
-    expect(q.quotes).toHaveLength(2);
-    expect(q.quotes.map((x: Json) => x.seller).sort()).toEqual(SELLERS);
-    expect(q.quotes.map((x: Json) => x.variantId).sort()).toEqual(PINNED.variantIds);
-    for (const quote of q.quotes) {
-      const pinned = PINNED.offers.find((o) => o.seller === quote.seller)!;
+    expect(ucp.length).toBeGreaterThanOrEqual(1);
+    expect(ucp.length).toBeLessThanOrEqual(2);
+    expect(new Set(ucp.map((x) => x.seller)).size).toBe(ucp.length);
+    for (const quote of ucp) {
       expect(quote.intentId).toBe(r.body.intentId);
       expect(quote.agentId).toBe(ucpAgent(quote.seller));
-      expect(quote.variantId).toBe(pinned.variantId);
       expect(Number.isInteger(quote.price)).toBe(true);
-      expect(quote.price).toBe(pinned.price);
+      expect(quote.price).toBeLessThanOrEqual(12_000);
       expect(quote.currency).toBe("USD");
       expect(quote.etaDate).toBeNull();
       expect(quote.source).toBe("fixture");
-      expect(typeof quote.text).toBe("string");
+      expect(CATALOG_SELLERS).toContain(quote.seller);
     }
-    for (const other of OTHER_SELLERS) expect(JSON.stringify(q)).not.toContain(other);
   });
 
-  it("only those two proxies get a session and a grant; no other recorded seller does", async () => {
-    const r = await postIntent(personal, PINNED.intent);
-    expect(r.status).toBe(201);
-    await getQuotes(personal, r.body.intentId, 10_000);
-    const gs = await grants(personal);
-    const proxies = gs.filter((g) => String(g.agentId).startsWith("ucp:"));
-    expect(proxies.map((g) => g.agentId).sort()).toEqual(SELLERS.map(ucpAgent));
-    const text = JSON.stringify(gs);
-    for (const other of OTHER_SELLERS) expect(text).not.toContain(other);
+  it("public.count sets how many sellers (1–5); anything else is 422", async () => {
+    for (const n of [1, 3]) {
+      const { ucp } = await quotesFor({ text: SENTENCE, public: { budget: "120", count: String(n) } });
+      expect(ucp.length).toBeLessThanOrEqual(n);
+      expect(new Set(ucp.map((x) => x.seller)).size).toBe(ucp.length);
+    }
+    for (const bad of ["0", "9", "two"]) {
+      expectError(await postIntent(personal, { text: SENTENCE, public: { count: bad } }), 422, "MISSING_FIELD");
+    }
+  });
+
+  it("only the quoted sellers get a proxy session and a grant; no other catalog seller does", async () => {
+    const { ucp } = await quotesFor({ text: SENTENCE, public: { budget: "120" } });
+    const proxies = (await grants(personal)).filter((g) => String(g.agentId).startsWith("ucp:"));
+    expect(proxies.map((g) => g.agentId).sort()).toEqual(ucp.map((x) => ucpAgent(x.seller)).sort());
     for (const g of proxies) {
       expect(g.status).toBe("live");
-      expect(typeof g.sessionId).toBe("string");
       expect(g.remainingMs).toBeGreaterThan(0);
       expect(g.remainingMs).toBeLessThanOrEqual(600_000);
       for (const f of g.fields) expect(SHOE_AUTO_FIELDS as readonly string[]).toContain(f);
     }
   });
 
-  it("the card's own EU 42 at the demo budget reaches the same two pinned sellers (no override needed)", async () => {
-    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: String(PINNED.budget) } });
-    expect(r.status).toBe(201);
-    const q = await getQuotes(personal, r.body.intentId, 10_000);
-    expect(q.quotes.map((x: Json) => x.seller).sort()).toEqual(SELLERS);
-    for (const quote of q.quotes) expect(PINNED.variantIds).toContain(quote.variantId);
+  it("a stated budget excludes: a budget below every recorded price yields no UCP quote", async () => {
+    const { ucp } = await quotesFor({ text: SENTENCE, public: { budget: "1" } });
+    expect(ucp).toEqual([]);
   });
 
-  it("strict size: an intent for US 9 (= EU 42.5) never quotes or introduces the pinned US 8.5 (= EU 42) variants", async () => {
-    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: String(PINNED.budget), shoe_size: "US 9" } });
-    expect(r.status).toBe(201);
-    const q = await getQuotes(personal, r.body.intentId, 3000);
-    for (const quote of q.quotes) {
-      expect(PINNED.variantIds).not.toContain(quote.variantId);
-      expect(quote.currency).toBe("USD");
+  it("size is soft: a size no recorded variant has still gets quotes, each telling the user what the store has", async () => {
+    const { ucp } = await quotesFor({ text: SENTENCE, public: { budget: "120", size: "47" } });
+    expect(ucp.length).toBeGreaterThanOrEqual(1);
+    for (const quote of ucp) {
+      expect(typeof quote.sizeNote).toBe("string");
+      expect(quote.sizeNote).toContain("47");
     }
+  });
+
+  it("the card's size alone matches the recorded variants: no sizeNote", async () => {
+    const { ucp } = await quotesFor({ text: SENTENCE, public: { budget: "120" } });
+    for (const quote of ucp) expect(quote.sizeNote).toBeUndefined();
+  });
+
+  it("text is required: blank text and no text are 422 (a legacy kind-only request is still accepted during the transition)", async () => {
+    expectError(await postIntent(personal, { public: { budget: "120" } }), 422, "MISSING_FIELD");
+    expectError(await postIntent(personal, { text: "   " }), 422, "MISSING_FIELD");
+    expect((await postIntent(personal, { kind: "trail_shoes", public: { budget: "120" } })).status).toBe(201);
   });
 
   it("ACME (chatEndpoint) is introduced through Tier 0: one tier0 receipt, auto field names only, its pairwise session", async () => {

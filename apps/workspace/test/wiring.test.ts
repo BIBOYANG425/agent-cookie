@@ -21,11 +21,11 @@ describe("size options as the recorded catalog writes them (lane D's shared matc
     expect(sizeMatches(["US 4 / EU 36"], "EU 36")).toBe(true);
     expect(sizeMatches(["UK 7"], "41")).toBe(false);
   });
-  it("prefers pinned variants that pass the filters, never ones that do not", () => {
+  it("prefers pinned variants that pass the hard filters, never ones that do not", () => {
     const offers = [offer("a.com", "va", "8.5"), offer("b.com", "vb", "8.5"), offer("c.com", "vc", "8.5"), offer("d.com", "vd", "8.5", 99999)];
-    const q = { shoeSize: "42", maxPriceCents: 12000, shipsTo: "US" };
-    expect(pickSellers(offers, q, 2, ["vc"]).map((o) => o.sellerDomain)).toEqual(["c.com", "a.com"]);
-    expect(pickSellers(offers, q, 2, ["vd"]).map((o) => o.sellerDomain)).toEqual(["a.com", "b.com"]);
+    const q = { size: "42", maxPriceCents: 12000, shipsTo: "US" };
+    expect(pickSellers(offers, q, 2, ["vc"]).map((p) => p.offer.sellerDomain)).toEqual(["c.com", "a.com"]);
+    expect(pickSellers(offers, q, 2, ["vd"]).map((p) => p.offer.sellerDomain)).toEqual(["a.com", "b.com"]);
   });
 });
 

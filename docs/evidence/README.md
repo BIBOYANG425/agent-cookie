@@ -20,3 +20,10 @@ A15 必须有原版首条回复中的 42 码、实际投递回执与运行前后
 - [双店与 UCP 取证说明](two-storefronts-and-ucp.md) 与 [早期脚手架](scaffold-verification.md) 保留原始上下文，不替代 A15/A16。
 
 P0 = A01–A12、A17、A18、A22；P1 = A13–A16、A19–A21。各执行者提交真实文件、时间、commit、命令和判定理由。Sample 数据明确标 `Sample`，录制回放标 `Recorded run` 并注明数据模式。去掉钥匙、支付 token、完整地址和手机号；保留字段名、方法、状态与必要关联。用户已有 `docs/media/agent-cookie-demo.mp4` 尚未核验，不将其列为通过证据。
+
+## A 线补充（2026-10-17）
+
+| 项目 | 证据说明 | 当前状态 |
+| --- | --- | --- |
+| [Live UCP 冒烟](live-ucp-smoke.md) | 两家真实报价 → accept → handoff；live 下 Sample 地址不发给真实店家 | 未完成：Shopify 主机被网络策略拒绝（CONNECT 403），没有真实报价；Sample 地址规则由单元测试覆盖 |
+| [T8 Sentry tracing + logs](T8-sentry.md) | 每个请求一条 trace、每次 UCP 调用一个子 span、活动与 UCP 日志 | 离线验证通过；sentry.io 被拒，缺 Sentry 后台截图 |
