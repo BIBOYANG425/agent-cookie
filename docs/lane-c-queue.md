@@ -12,6 +12,6 @@
 - [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现 — 1abcbfa（13 项离线协议测试通过） BLOCKED: 完整 Tier 2 HTTP 缺 note 删除/枚举/clear、持久 generation/条件写入及卡字段映射；已交可验证的六方法内存参考和 TODO(contract)。
 - [x] C12 skills/add-agent-cookie/SKILL.md — 8a331bc（front matter/引用检查通过；A16真实接入及录屏仍待办）
 - [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
-- [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试
+- [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试 — 3b16d3c（11 规范 + 1 支撑检查通过，11 todo） BLOCKED: 真实 adapters/贡献 ID/D 接线与客户端、模型、UCP 失败路径录屏未到；auto 读取缺回执已报 A，P0 未全绿。
 - [ ] C15 README：agent 名、启动命令、环境变量表
 - [ ] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度
