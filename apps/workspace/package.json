@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@agent-cookie/auth": "workspace:*",
     "@agent-cookie/contract": "workspace:*",
     "@agent-cookie/memory-repo": "workspace:*",
     "@agent-cookie/rules": "workspace:*",

@@ -94,6 +94,9 @@ importers:
 
   apps/workspace:
     dependencies:
+      '@agent-cookie/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../../packages/contract
