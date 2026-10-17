@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createUcp, UcpError } from "../src/index.js";
+import { createLiveRunner } from "../src/internal.js";
 import type { UcpRunner } from "../src/index.js";
 
 type JsonRecord = Record<string, any>;
@@ -221,8 +222,18 @@ describe("UcpApi complete", () => {
   });
 
   it("maps error envelopes and runner throws to failed without throwing", async () => {
-    await expect(completeApi({ code: "UPSTREAM_ERROR", message: "unavailable" }))
-      .resolves.toEqual({ status: "failed", messages: [] });
+    const availabilityWarning = { type: "warning", content: "Still available in store" };
+    await expect(completeApi({
+      code: "INSUFFICIENT_PERMISSIONS",
+      message: "A valid JWT is required.",
+      messages: [availabilityWarning],
+    })).resolves.toEqual({
+      status: "failed",
+      messages: [
+        availabilityWarning,
+        { type: "error", code: "INSUFFICIENT_PERMISSIONS", content: "A valid JWT is required." },
+      ],
+    });
     const warning = { type: "warning", content: "Try again" };
     const api = createUcp({
       mode: "live",
@@ -236,8 +247,32 @@ describe("UcpApi complete", () => {
       .resolves.toEqual({
         status: "failed",
         continueUrl: "https://shop.example/continue",
-        messages: [warning],
+        messages: [
+          warning,
+          { type: "error", code: "UPSTREAM_ERROR", content: "CLI failed" },
+        ],
       });
+  });
+});
+
+describe("live profile initialization", () => {
+  it("retries after a failed profile init", async () => {
+    let profileAttempts = 0;
+    const runner = createLiveRunner({}, async (args) => {
+      if (args[0] === "profile") {
+        profileAttempts += 1;
+        if (profileAttempts === 1) throw new Error("temporary profile init failure");
+        return {
+          stdout: JSON.stringify({ name: "agent", created: false, activated: false }),
+          stderr: "",
+        };
+      }
+      return { stdout: JSON.stringify({ result: { ok: true } }), stderr: "" };
+    });
+
+    await expect(runner(["catalog", "search"])).rejects.toThrow("temporary profile init failure");
+    await expect(runner(["catalog", "search"])).resolves.toEqual({ result: { ok: true } });
+    expect(profileAttempts).toBe(2);
   });
 });
 
@@ -337,8 +372,22 @@ describe("fixture mode", () => {
         },
       });
       expect(destination.messages[0]?.code).toBe("buyer_identity_email_is_invalid");
-      await expect(api.complete({ seller: offer.seller, checkoutId: checkout.checkoutId }))
-        .resolves.toEqual({ status: "failed", messages: [] });
+      const result = await api.complete({ seller: offer.seller, checkoutId: checkout.checkoutId });
+      if (offer.seller === "marathonsports.myshopify.com") {
+        const completeError = loadFixture("checkout-complete.marathonsports.myshopify.com.json");
+        expect(destination.continueUrl).toBe(checkout.continueUrl);
+        expect(result).toEqual({
+          status: "failed",
+          continueUrl: checkout.continueUrl,
+          messages: [{
+            type: "error",
+            code: completeError.code,
+            content: completeError.message,
+          }],
+        });
+      } else {
+        expect(result.status).toBe("failed");
+      }
     }
   });
 });

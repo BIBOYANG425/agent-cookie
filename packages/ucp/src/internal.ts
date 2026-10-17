@@ -116,11 +116,14 @@ function execUcp(args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: stri
   });
 }
 
-export function createLiveRunner(env: NodeJS.ProcessEnv = process.env): UcpRunner {
+export function createLiveRunner(
+  env: NodeJS.ProcessEnv = process.env,
+  execute: typeof execUcp = execUcp,
+): UcpRunner {
   return async (args) => {
     if (!profileInitPromise) {
       profileInitPromise = (async () => {
-        const { stdout, stderr } = await execUcp(
+        const { stdout, stderr } = await execute(
           ["profile", "init", "--name", "agent", "--format", "json"],
           env,
         );
@@ -136,10 +139,13 @@ export function createLiveRunner(env: NodeJS.ProcessEnv = process.env): UcpRunne
         if (!isRecord(profile) || profile.name !== "agent" || profile.code || profile.error) {
           throw new UcpError("UCP profile init failed", scrubFixture({ profile, stderr }));
         }
-      })();
+      })().catch((error: unknown) => {
+        profileInitPromise = undefined;
+        throw error;
+      });
     }
     await profileInitPromise;
-    const { stdout, stderr } = await execUcp(args, env);
+    const { stdout, stderr } = await execute(args, env);
     return parseJsonEnvelope(stdout, stderr);
   };
 }
@@ -214,6 +220,22 @@ function continueUrlFrom(value: unknown): string | undefined {
     ?? stringValue(valueAt(checkout, "continue_url", "continueUrl", "url"));
 }
 
+function isBareOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname === "/" && parsed.search === "";
+  } catch {
+    return false;
+  }
+}
+
+function preferredContinueUrl(
+  candidate: string | undefined,
+  cached: string | undefined,
+): string | undefined {
+  return candidate && !isBareOrigin(candidate) ? candidate : cached;
+}
+
 function parsePossibleJson(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const stdout = value.stdout;
@@ -228,8 +250,33 @@ function parsePossibleJson(value: unknown): unknown {
 }
 
 function messagesFromFailure(error: unknown): UcpMessage[] {
-  if (error instanceof UcpError) return messagesFrom(parsePossibleJson(error.detail));
-  return [];
+  const response = error instanceof UcpError ? parsePossibleJson(error.detail) : undefined;
+  const messages = messagesFrom(response);
+  const envelope = record(response);
+  if (
+    envelope
+    && !Object.prototype.hasOwnProperty.call(envelope, "result")
+    && stringValue(envelope.code)
+    && stringValue(envelope.message)
+  ) {
+    return [
+      ...messages,
+      {
+        type: "error",
+        code: envelope.code as string,
+        content: envelope.message as string,
+      },
+    ];
+  }
+  const errorMessage = error instanceof UcpError
+    && error.message === "UCP request failed"
+    && error.detail instanceof Error
+    ? error.detail.message
+    : error instanceof Error ? error.message : "UCP request failed";
+  return [
+    ...messages,
+    { type: "error", code: "UPSTREAM_ERROR", content: errorMessage },
+  ];
 }
 
 function continueUrlFromFailure(error: unknown): string | undefined {
@@ -469,6 +516,7 @@ export function createUcpInternal(options: InternalOptions = {}): InternalClient
     ? options.run ?? createLiveRunner(env)
     : undefined;
   const checkoutMetadata = new Map<string, JsonRecord>();
+  const checkoutContinueUrls = new Map<string, string>();
   const cartMetadata = new Map<string, JsonRecord>();
   const searchResults: JsonRecord[] = [];
 
@@ -562,6 +610,7 @@ export function createUcpInternal(options: InternalOptions = {}): InternalClient
       const checkoutId = extractResourceId(result, "checkout");
       checkoutMetadata.set(checkoutId, result);
       const continueUrl = continueUrlFrom(result);
+      if (continueUrl) checkoutContinueUrls.set(checkoutId, continueUrl);
       return {
         checkoutId,
         ...(continueUrl ? { continueUrl } : {}),
@@ -586,7 +635,14 @@ export function createUcpInternal(options: InternalOptions = {}): InternalClient
       ];
       const envelope = await call("checkout-update", seller, args);
       const result = record(envelope.result)!;
-      const continueUrl = continueUrlFrom(result);
+      const responseUrl = continueUrlFrom(result);
+      if (responseUrl && !isBareOrigin(responseUrl)) {
+        checkoutContinueUrls.set(checkoutId, responseUrl);
+      }
+      const continueUrl = preferredContinueUrl(
+        responseUrl,
+        checkoutContinueUrls.get(checkoutId),
+      );
       return {
         ...(continueUrl ? { continueUrl } : {}),
         messages: messagesFrom(result),
@@ -612,7 +668,10 @@ export function createUcpInternal(options: InternalOptions = {}): InternalClient
         const result = record(envelope.result)!;
         const status = stringValue(valueAt(result, "status"))
           ?? stringValue(valueAt(record(result.checkout), "status"));
-        const continueUrl = continueUrlFrom(result);
+        const continueUrl = preferredContinueUrl(
+          continueUrlFrom(result),
+          checkoutContinueUrls.get(checkoutId),
+        );
         const messages = messagesFrom(result);
         if (status === "completed") {
           return {
@@ -630,9 +689,13 @@ export function createUcpInternal(options: InternalOptions = {}): InternalClient
           messages,
         };
       } catch (error) {
+        const continueUrl = preferredContinueUrl(
+          continueUrlFromFailure(error),
+          checkoutContinueUrls.get(checkoutId),
+        );
         return {
           status: "failed",
-          ...(continueUrlFromFailure(error) ? { continueUrl: continueUrlFromFailure(error) } : {}),
+          ...(continueUrl ? { continueUrl } : {}),
           messages: messagesFromFailure(error),
         };
       }
