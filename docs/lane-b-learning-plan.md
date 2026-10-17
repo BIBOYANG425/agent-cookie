@@ -11,7 +11,7 @@
 ## 可勾选任务（每项验证、提交、勾选后继续）
 
 - [x] L0：完成并保存已有通用购物 SDK/MCP/Photon 修改和隔离测试，区分旧实机证据。
-- [ ] L1：packages/learn 的局部类型、白名单注入、机主/敏感内容规则、zod 值和证据校验。
+- [x] L1：packages/learn 的局部类型、白名单注入、机主/敏感内容规则、zod 值和证据校验。
 - [ ] L2：规则 → 可选 Jev 类型判定 → 指定 Haiku 结构化抽取；无 Jev 降级、超时、取消、离线回放。
 - [ ] L3：SDK observe/getLearning/setLearning 和明确配置的 HTTP 桩测试；不把未冻结提案当生产接口。
 - [ ] L4：Spectrum app.messages → adapter.toEvent → 非阻塞有界内存队列；仅机主直聊，去重/超时/失败不影响回复。
@@ -111,3 +111,5 @@ H14不稳启用 `explicit-only`：只保留规则识别本人稳定陈述且Haik
 - [Jev API](https://api.typesafe.ai/redoc)：typed questions/answers，真实账号验证前用可注入桩。
 - [Haiku 4.5定价](https://platform.claude.com/docs/en/models/haiku-4-5/overview)；[结构化输出](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)。
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)：只示例UserPromptSubmit当前prompt，不读取transcript，不改全局配置。
+
+L1 验证：26 项离线边界测试、typecheck/build 通过。模型为注入桩，未调用真实服务。
