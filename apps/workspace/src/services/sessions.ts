@@ -7,7 +7,7 @@ import {
 import type { Channel, GrantRow, IntentRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
-import { laneD } from "../laneD.js";
+import { isJarLocked } from "../laneD.js";
 import type { CardService } from "./card.js";
 import type { Ctx } from "./context.js";
 
@@ -90,10 +90,17 @@ export class SessionService {
       .filter((f, i, all) => all.indexOf(f) === i && has(f) && f !== "payment_method");
     const h: Handshake = { v: 1, sessionId: session.sessionId, jar: this.ctx.config.jarUrl, lang: values.lang ?? "", tone: values.tone ?? "",
       length: values.length ?? "", available, expiresAt: grant.expiresAt };
-    if (laneD.signHandshake) {
-      const { sig, kid } = await laneD.signHandshake(h);
-      h.sig = sig;
-      h.kid = kid;
+    if (this.ctx.laneD.signHandshake) {
+      try {
+        const { sig, kid } = await this.ctx.laneD.signHandshake(h);
+        h.sig = sig;
+        h.kid = kid;
+      } catch (err) {
+        // A locked jar must not stop an introduction (lane D is P1): the handshake goes out unsigned and the
+        // merchant decides. Any other signing failure is a real error.
+        if (!isJarLocked(err)) throw err;
+        this.ctx.log({ event: "handshake.sign", actor: "workspace", object: session.sessionId, result: "unsigned", reason: "JAR_LOCKED" });
+      }
     }
     return h;
   }

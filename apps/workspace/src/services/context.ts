@@ -7,6 +7,7 @@ import type { Clock } from "../clock.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db.js";
 import { canonicalJson, sha256Hex } from "../ids.js";
+import type { LaneDHooks } from "../laneD.js";
 import type { Delivery } from "./delivery.js";
 
 export interface Ctx {
@@ -22,6 +23,7 @@ export interface Ctx {
   repo: () => MemoryRepo;
   log: Log;
   delivery: Delivery;
+  laneD: LaneDHooks;
 }
 
 export function writeMeta(ctx: Ctx, author: string, payload: unknown): WriteMeta {

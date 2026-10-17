@@ -13,7 +13,6 @@ import { WorkspaceError } from "@agent-cookie/contract";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { createDeps } from "../src/deps.js";
-import { laneD } from "../src/laneD.js";
 import { Delivery } from "../src/services/delivery.js";
 import { callbackServer, harness, KEYS, SAMPLE_FIXTURES_DIR } from "./harness.js";
 
@@ -197,16 +196,17 @@ describe("intent public guard is word-based", () => {
 });
 
 describe("robustness", () => {
-  it("a failure while preparing an intent (lane D JAR_LOCKED) leaves no intent, session or grant behind", async () => {
+  it("a failure while preparing an intent (handshake signing error) leaves no intent, session or grant behind", async () => {
     const h = await harness();
-    laneD.signHandshake = async () => { throw new WorkspaceError("JAR_LOCKED"); };
+    // JAR_LOCKED falls back to an unsigned handshake (lane-d.test.ts); any other signing failure aborts the intent.
+    h.deps.laneD.signHandshake = async () => { throw new WorkspaceError("UPSTREAM_ERROR"); };
     try {
       const r = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } }, { "idempotency-key": "jar" });
-      expect(r.body.error.code).toBe("JAR_LOCKED");
+      expect(r.body.error.code).toBe("UPSTREAM_ERROR");
       expect((await h.get("/personal/grants", KEYS.personal)).body.grants).toEqual([]);
       expect(h.deps.store.db.prepare("SELECT COUNT(*) AS n FROM intents").get()).toEqual({ n: 0 });
     } finally {
-      delete laneD.signHandshake;
+      delete h.deps.laneD.signHandshake;
     }
     const retry = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } }, { "idempotency-key": "jar" });
     expect(retry.status).toBe(201);

@@ -27,7 +27,7 @@ function readJson<T>(dir: string, file: string, dflt: T): T {
   return JSON.parse(readFileSync(p, "utf8")) as T;
 }
 
-export function loadFixtures(dir: string): Fixtures {
+export function loadFixtures(dir: string, ucpDir?: string): Fixtures {
   const users = readJson<SeedUser[]>(dir, FIXTURE_FILES.users, []);
   if (users.length === 0) throw new Error(`no users in ${resolve(dir, FIXTURE_FILES.users)}`);
   const agents = readJson<Agent[]>(dir, FIXTURE_FILES.agents, []);
@@ -41,7 +41,7 @@ export function loadFixtures(dir: string): Fixtures {
     contributions.push({ id: "seed-shipping-address-01", userId: users[0]!.userId, agentId: personal.agentId, field: "shipping_address",
       value: address.value, basis: "stated", createdAt: new Date((last || Date.parse("2026-10-17T00:00:00.000Z")) + 1000).toISOString() });
   }
-  const pinned = readJson<PinnedOffers | null>(resolve(dir, FIXTURE_FILES.ucp), "pinned.json", null);
+  const pinned = readJson<PinnedOffers | null>(ucpDir ?? resolve(dir, FIXTURE_FILES.ucp), "pinned.json", null);
   return {
     users,
     agents,

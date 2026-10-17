@@ -7,7 +7,8 @@ import type { Deps } from "./deps.js";
 import { fail, installErrorHandling, json, optStr, query, readJson, str, type AppEnv } from "./http.js";
 import { hashKey, mintKey, newId } from "./ids.js";
 import { idempotency } from "./idempotency.js";
-import { laneD } from "./laneD.js";
+import { isJarLocked } from "./laneD.js";
+import { requestSpan } from "./telemetry.js";
 import { theUser } from "./services/context.js";
 
 const CATEGORIES: Category[] = ["personal", "shoe"];
@@ -70,6 +71,14 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   const { store, clock, config } = deps;
   const app = new Hono<AppEnv>();
   installErrorHandling(app);
+
+  // Sentry tracing (no-op without SENTRY_DSN): one transaction per request, named by route template, never by path.
+  app.use("*", async (c, next) => {
+    await requestSpan(c.req.method, async (rename) => {
+      await next();
+      rename(c.req.routePath === "/*" ? "unmatched" : c.req.routePath, c.res.status);
+    });
+  });
 
   // Every request but the reset itself passes the reset barrier.
   app.use("*", async (c, next) => {
@@ -282,14 +291,21 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   }
 
   // ---- lane D (P1) plug points
+  // The unlock app's HMAC handoff token is the credential here (lane D's handleUnlock verifies it).
   app.post("/personal/unlock", async (c) => {
-    if (!laneD.handleUnlock) fail("NOT_FOUND");
-    return laneD.handleUnlock(c.req.raw);
+    if (!deps.laneD.handleUnlock) fail("NOT_FOUND");
+    return deps.laneD.handleUnlock(c.req.raw);
   });
+  // Public, but only for sessions that exist: keys are derived per session, and arbitrary ids must not grow the key file.
   app.get("/.well-known/agent-cookie-jwks.json", async (c) => {
     const sessionId = c.req.query("sessionId");
-    if (!laneD.jwks || !sessionId) return json({ keys: [] });
-    return json(await laneD.jwks(sessionId));
+    if (!deps.laneD.jwks || !sessionId || !store.session(sessionId)) return json({ keys: [] });
+    try {
+      return json(await deps.laneD.jwks(sessionId));
+    } catch (err) {
+      if (isJarLocked(err)) return json({ keys: [] });
+      throw err;
+    }
   });
 
   return app;

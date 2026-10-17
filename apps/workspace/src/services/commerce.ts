@@ -273,16 +273,25 @@ export class CommerceService {
     const stopped = (messages: UcpMessage[], status?: string) =>
       status === "canceled" || messages.some((m) => m.type === "error" && m.severity === "unrecoverable");
     const done = (r: AcceptResult): AcceptResult => (receipts.length > 0 ? { ...r, receipts } : r);
+    // Warnings (low stock, sold-out notices) from any step reach the user verbatim, even when a later step does not
+    // repeat them (plan T4: 售罄 warning 原样转给用户). Info messages are per-step state and are not carried.
+    const warnings: UcpMessage[] = [];
+    const heard = (ms: UcpMessage[]) => {
+      for (const m of ms) if (m.type === "warning" && m.content && !warnings.some((w) => w.content === m.content)) warnings.push(m);
+    };
+    const say = (ms: UcpMessage[]) => messageText([...warnings.filter((w) => !ms.some((m) => m.content === w.content)), ...ms]);
     try {
       if (!q.variantId) throw new UpstreamError("quote has no variant");
       const cart = await ucp.createCart({ sellerDomain: proxy.domain!, variantId: q.variantId });
       cartUrl = cart.continueUrl;
+      heard(cart.messages);
       if (stopped(cart.messages)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(cart.messages) ?? "The merchant refused the cart." }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(cart.messages) ?? "The merchant refused the cart." }));
       }
       co = await ucp.createCheckout(cart);
+      heard(co.messages);
       if (stopped(co.messages, co.status)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       // fixtures/README: a Sample address is never sent to a real store. In live mode, hand off before reading it.
       const onCard = this.card.values(this.ctx.store.session(q.sessionId)!.userId).shipping_address;
@@ -300,8 +309,9 @@ export class CommerceService {
           : { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "No shipping address and no merchant page to finish on." });
       }
       co = await ucp.setDestination(co, parseAddress(address));
+      heard(co.messages);
       if (stopped(co.messages, co.status)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       try {
         co = await ucp.complete(co);
@@ -310,7 +320,8 @@ export class CommerceService {
         // That is the escalation case: the user pays on the merchant's page (handoff), not a failure.
         const u = err instanceof UpstreamError ? err.continueUrl ?? url() : undefined;
         if (err instanceof UpstreamError && u && needsBuyer(err.message)) {
-          const result: AcceptResult = { status: "handoff", quoteId: q.id, continueUrl: u, message: publicUpstreamMessage(err.message) };
+          const result: AcceptResult = { status: "handoff", quoteId: q.id, continueUrl: u,
+            message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" ") };
           await this.lastOrder(proxy, q);
           return done(result);
         }
@@ -319,12 +330,13 @@ export class CommerceService {
     } catch (err) {
       if (err instanceof UpstreamError) {
         const u = err.continueUrl ?? url();
-        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: publicUpstreamMessage(err.message), ...(u ? { continueUrl: u } : {}) });
+        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR",
+          message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" "), ...(u ? { continueUrl: u } : {}) });
       }
       if (err instanceof WorkspaceError) return done({ status: "blocked", quoteId: q.id, code: err.code, message: err.message });
       throw err;
     }
-    const message = messageText(co.messages);
+    const message = say(co.messages);
     let result: AcceptResult;
     if (stopped(co.messages, co.status)) {
       result = withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: message ?? `checkout ${co.status}` });

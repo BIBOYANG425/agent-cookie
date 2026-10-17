@@ -32,6 +32,15 @@ export function roleOf(category: Category): Role {
   return category === "personal" ? "personal" : "merchant";
 }
 
+/**
+ * Capability a merchant lists (Agent.capabilities) when it verifies Visa Trusted Agent Protocol signatures. The
+ * workspace then signs every outbound request to it (introduce/accepted callbacks, Tier 0 chat) with the session's
+ * pairwise jar key (lane D, packages/auth): tag "agent-browser-auth" for browsing/quoting, "agent-payer-auth" for
+ * accept/checkout, in the RFC 9421 Signature-Input / Signature headers. keyId = the session's handshake kid.
+ */
+export const TAP_CAPABILITY = "tap";
+export type TapTag = "agent-browser-auth" | "agent-payer-auth";
+
 export interface Agent {
   agentId: string;
   name: string;

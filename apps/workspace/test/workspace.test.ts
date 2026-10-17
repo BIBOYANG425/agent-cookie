@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FIELDS, SESSION_ID_VECTORS } from "@agent-cookie/contract";
 import { InMemoryRepo } from "./stubs/memory-repo.js";
+import type { UcpStubOutcome } from "./stubs/ucp.js";
 import { callbackServer, harness, KEYS, SAMPLE_FIXTURES_DIR } from "./harness.js";
 
 const FIELD_NAMES = new RegExp(FIELDS.join("|"));
@@ -206,7 +207,7 @@ describe("A12 重置复演 / A13 幂等", () => {
 });
 
 describe("A18 UCP 失败路径", () => {
-  const acceptShoebacca = async (outcome: "requires_escalation" | "completed" | "sold_out" | "error") => {
+  const acceptShoebacca = async (outcome: UcpStubOutcome) => {
     const h = await harness({ outcome });
     const { intentId } = await h.intent();
     const q = (await h.get(`/personal/intents/${intentId}/quotes?wait=0`, KEYS.personal)).body.quotes.find((x: any) => x.seller === "shoebacca.com");
@@ -228,6 +229,14 @@ describe("A18 UCP 失败路径", () => {
     expect(sold.message).toMatch(/sold out/);
     expect(sold.continueUrl).toBeTruthy();
     expect((await acceptShoebacca("error")).r).toMatchObject({ status: "failed", code: "UPSTREAM_ERROR" });
+  });
+  it("a warning from an earlier step (cart) reaches the user verbatim alongside the escalation", async () => {
+    const r = (await acceptShoebacca("low_stock_warning")).r;
+    expect(r.status).toBe("handoff");
+    expect(r.continueUrl).toMatch(/^https:\/\//);
+    expect(r.message).toContain("Sample: only 1 left in this size; it may sell out before you pay.");
+    expect(r.message).toContain("The merchant needs the buyer to review and pay on its page.");
+    expect(r.message).not.toContain("Shipping address required.");
   });
   it("accepting twice returns the stored result; another user's quote id → 404", async () => {
     const { h, r } = await acceptShoebacca("requires_escalation");
