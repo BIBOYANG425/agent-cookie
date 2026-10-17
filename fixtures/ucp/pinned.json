@@ -1,21 +1,23 @@
 {
-  "recordedAt": "2026-10-17T20:09:37.577Z",
-  "size": "9",
-  "budget": 200,
+  "recordedAt": "2026-10-17T21:05:24.890Z",
+  "size": "42",
+  "budget": 120,
   "offers": [
     {
-      "variantId": "gid://shopify/ProductVariant/42550028075069",
+      "variantId": "gid://shopify/ProductVariant/41360206004285",
       "seller": "marathonsports.myshopify.com",
-      "title": "Brooks Men's Cascadia 19",
-      "price": 10495,
-      "size": "9 US"
+      "title": "Brooks Men's Cascadia 18",
+      "price": 10995,
+      "size": "8.5",
+      "nativeCheckout": false
     },
     {
-      "variantId": "gid://shopify/ProductVariant/42418551193643",
-      "seller": "capra-run.myshopify.com",
-      "title": "Brooks Ghost Trail Gravel Running Shoes - Men's",
-      "price": 13600,
-      "size": "9"
+      "variantId": "gid://shopify/ProductVariant/49155489988835",
+      "seller": "black-flag-outfitters-clothing.myshopify.com",
+      "title": "Keen Men's Wander Trail Running Shoe",
+      "price": 11200,
+      "size": "8.5",
+      "nativeCheckout": false
     }
   ]
 }

@@ -104,3 +104,8 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | A16 | A → C/D | 录制与卡对不上：卡是 EU 42、演示预算 120；严格换算 EU 42 = US 8.5（按 B22/C 的要求不把 US 9 当 42）。现录制下只有 `shoebacca-prod.myshopify.com` 一家合格，且它没有 cart/checkout 录制。请补录两家 US 8.5 / EU 42、≤ $120 的在库变体，带完整 cart → checkout create → update → complete 信封，并写进 `pinned.json`。A18 的售罄 / requires_escalation 录制也还缺（C 的 README 已注明）。在此之前验收里的 A09 用录制自己的参数（`pinned.json` 的 US 9 / $200，经 intent public 覆盖）。 | 待 C/D |
 | A17 | A → 人/B | 录制里两家店的 `checkout complete` 都是 `INSUFFICIENT_PERMISSIONS`（需要买家 JWT）。按 UCP 文档 AUTH_REQUIRED 的做法，工作台把它报成 `handoff`，带店家的 continueUrl 和"请在店家页面登录并付款"，不报成功、不假装下单；这就是演示里"付款链接"那一步。其他上游错误仍是 `failed`。 | 已实现，请确认 |
 | A18 | A → B | 回调商家的报价若没给 `checkoutUrl`，accept 返回 `handoff` 但不带 continueUrl（B 的 SDK 已兼容）；商家报价里的 `checkoutUrl` 必须是 https。在 live 模式下卡上是 Sample 地址时不发给真实店家，直接 handoff。 | 已实现 |
+
+2026-10-17（续），D 线：B22 修复与 EU 42 fixture 重新录制（lane-d-b22）。以下只追加。
+- [D→A] `apps/workspace/src/ucp-filter.ts` 请删除本地 `parseSize` 和 EU↔US 表，改从 `@agent-cookie/ucp` 导入 `{ sizeMatches, parseSize }`，统一支持 `9 US` 等标签；EU 42 对应 US 8.5，EU 42.5 对应 US 9，不能把 US 9 当作 EU 42。
+- [D→A] 新 pin pair：marathonsports.myshopify.com 的 Brooks Men's Cascadia 18（variant `41360206004285`，$109.95，size label `8.5`）与 black-flag-outfitters-clothing.myshopify.com 的 Keen Men's Wander Trail Running Shoe（variant `49155489988835`，$112.00，size label `8.5`）；均为 EU 42 / $120、`nativeCheckout=false`。`complete` 的 `INSUFFICIENT_PERMISSIONS` 现在返回 `requires_escalation` 和非 fatal `requires_buyer_input` 消息（→ handoff），不再抛 `UpstreamError`。demo 邮箱仍收到 `buyer_identity_email_is_invalid`，但 update 与完整录制链均成功。
+- [D→B] B22 的 EU/US 尺码匹配、EU 42 两卖家 fixture 链和错误路径脱敏已在 `lane-d-b22` 修复。
