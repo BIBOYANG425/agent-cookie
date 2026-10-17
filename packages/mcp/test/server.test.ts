@@ -94,3 +94,23 @@ describe('workspace configuration', () => {
     }
   });
 });
+
+describe('observation tool',()=>{
+  it('exposes only text, not claimed identity or source ids',async()=>{
+    const observe=vi.fn(async()=>({accepted:true}));const client=await connect(async()=>sampleCard,{observe});
+    const tool=(await client.listTools()).tools.find(t=>t.name==='observe')!;
+    expect(Object.keys(tool.inputSchema.properties!)).toEqual(['text']);
+    await client.callTool({name:'observe',arguments:{text:'我一直喜欢黑色衣服。',userId:'other'}});
+    expect(observe).toHaveBeenCalledWith('我一直喜欢黑色衣服。');
+  });
+  it('drops sensitive and quoted speech without calling backend',async()=>{
+    const observe=vi.fn();const client=await connect(async()=>sampleCard,{observe});
+    for(const text of ['我有哮喘，最近药费很贵；我喜欢蓝色。','他说我喜欢红色。']){
+      const r=await client.callTool({name:'observe',arguments:{text}});expect(JSON.stringify(r)).toContain('false');
+    }expect(observe).not.toHaveBeenCalled();
+  });
+  it('requires host conversation configuration to enable the proposal',()=>{
+    expect(()=>readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'proposal-v1'})).toThrow();
+    expect(readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'proposal-v1',AGENT_COOKIE_LEARNING_CONVERSATION_ID:'host-session'}).learning).toBeDefined();
+  });
+});
