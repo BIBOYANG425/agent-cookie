@@ -1,0 +1,9 @@
+{
+  "source": "CUA Chrome screenshots of the actual Devin session, encoded in captured frame order and actual time intervals; no audio",
+  "scope": "Execution excerpt only, not a complete uninterrupted A16 recording",
+  "sessionUrl": "https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb",
+  "frameCount": 192,
+  "startedAt": "2026-10-17T21:55:50.415000+00:00",
+  "endedAt": "2026-10-17T21:56:04.832000+00:00",
+  "sha256": "c9286aaf110819e47f019490b1afe04fbb18a2feb4d9739fc55ae577564ec878"
+}

@@ -1,0 +1,24 @@
+{
+  "sourceArchive": "a16-evidence (1).tar.gz (second download, outside repository)",
+  "sourceArchiveSha256": "494cc8b5e146d7beefb0a2826f485d22e965e875cb22e20a0c54a2cedf25e859",
+  "sourceMember": "evidence/50-screen/recording/a16-raw-realtime.mp4",
+  "session": "https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb",
+  "scope": "Real-time terminal capture of live HTTP validation; not entire clean-clone coding run",
+  "videoSha256": "81f152e8921e3abbb8e6c1794e4a0b04c870a7155ed372549fe1b66a731af35c",
+  "probe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1600,
+        "height": 1200,
+        "nb_frames": "556"
+      }
+    ],
+    "format": {
+      "duration": "55.600000",
+      "size": "1963200"
+    }
+  }
+}

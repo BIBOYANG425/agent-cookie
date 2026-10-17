@@ -1,0 +1,152 @@
+{
+ "results": [
+  [
+   "/me role personal",
+   true,
+   "{\"agentId\": \"sample-personal-photon\", \"category\": \"personal\", \"role\": \"personal\"}"
+  ],
+  [
+   "/me role merchant",
+   true,
+   "{\"agentId\": \"sample-acme\", \"category\": \"shoe\", \"role\": \"merchant\"}"
+  ],
+  [
+   "intent created",
+   true,
+   "-> 201"
+  ],
+  [
+   "live sample-acme grant",
+   true,
+   "fields=['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadline']"
+  ],
+  [
+   "authorized fields read",
+   true,
+   "{\"lang\": \"zh\", \"tone\": \"\\u7b80\\u77ed\", \"shoe_size\": \"42\", \"budget\": \"120\"}"
+  ],
+  [
+   "note PUT",
+   true,
+   "{\"key\": \"fit_history\", \"updatedAt\": \"2026-10-17T22:00:24.262Z\", \"expiresAt\": \"2027-10-17T22:00:24.262Z\"}"
+  ],
+  [
+   "note read back equals write",
+   true,
+   "{\"key\":\"fit_history\",\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758Z\",\"source_session_id\":\"07d464c737d4\"}"
+  ],
+  [
+   "unwritten note -> None (404)",
+   true,
+   ""
+  ],
+  [
+   "filtered write refused before HTTP",
+   true,
+   ""
+  ],
+  [
+   "card-field note key refused before HTTP",
+   true,
+   ""
+  ],
+  [
+   "second merchant registered",
+   true,
+   "-> 201"
+  ],
+  [
+   "other merchant cannot use acme's session",
+   true,
+   "-> 404 NOT_FOUND"
+  ],
+  [
+   "other merchant note read -> 404",
+   true,
+   ""
+  ],
+  [
+   "unbound demo-user refused (no HTTP, no seed mapping)",
+   true,
+   ""
+  ],
+  [
+   "retail session for bound subject (workspace consulted)",
+   true,
+   "-> 200"
+  ],
+  [
+   "retail session for unbound demo-user stays local",
+   true,
+   "-> 200"
+  ],
+  [
+   "retail /api/memory -> 501 C11 (no local store)",
+   true,
+   "-> 501"
+  ],
+  [
+   "retail memory purge -> 501 C11 (no fake clear)",
+   true,
+   "-> 501"
+  ],
+  [
+   "grant revoked",
+   true,
+   "-> 200"
+  ],
+  [
+   "fields after revoke",
+   true,
+   "-> 403 GRANT_REVOKED"
+  ],
+  [
+   "note read after revoke",
+   true,
+   "-> 403 GRANT_REVOKED"
+  ],
+  [
+   "note write after revoke",
+   true,
+   "-> 403 GRANT_REVOKED"
+  ],
+  [
+   "retail chat for revoked subject -> 403 before model",
+   true,
+   "-> 403 {\"detail\":{\"code\":\"GRANT_REVOKED\",\"source\":\"agent-cookie\"}}"
+  ],
+  [
+   "retail session for revoked subject -> 403",
+   true,
+   "-> 403"
+  ],
+  [
+   "fields readable again after new grant",
+   true,
+   "{\"lang\": \"zh\", \"tone\": \"\\u7b80\\u77ed\", \"shoe_size\": \"42\", \"budget\": \"120\"}"
+  ],
+  [
+   "note survives re-authorization",
+   true,
+   ""
+  ],
+  [
+   "fields after grant expiry",
+   true,
+   "-> 403 GRANT_EXPIRED"
+  ],
+  [
+   "note read after grant expiry",
+   true,
+   "-> 403 GRANT_EXPIRED"
+  ],
+  [
+   "tier2 startup fails with ContractUnavailable",
+   true,
+   "demo_common.agent_cookie.ContractUnavailable: Agent Cookie merchant HTTP cannot back a MemoryStore (C11, P1 BLOCKED); missing: note enumeration (get_facts and search_facts over every key); note deletion (delete_fact); per-merchant clear (clear); durable purge generation with a conditional write (purge_generation)"
+  ]
+ ],
+ "passed": 29,
+ "failed": [],
+ "a16_core": true
+}

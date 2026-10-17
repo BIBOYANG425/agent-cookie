@@ -1,0 +1,75 @@
+{
+  "observedAt": "2026-10-17T21:48:24.410Z",
+  "workspace": "http://127.0.0.1:4318",
+  "mode": "Sample; recorded UCP fixtures",
+  "sdkMethods": [
+    "getMyCard",
+    "createIntent",
+    "getActivity",
+    "getReceipts"
+  ],
+  "request": {
+    "method": "POST",
+    "path": "/personal/intents",
+    "body": {
+      "kind": "trail_shoes",
+      "public": {
+        "budget": "120"
+      }
+    }
+  },
+  "cardCheck": {
+    "source": "sample",
+    "sample": true,
+    "shoe_size": {
+      "field": "shoe_size",
+      "value": "42",
+      "sources": [
+        "sample-personal-photon"
+      ],
+      "confidence": "medium",
+      "updatedAt": "2026-10-17T16:00:02.000Z",
+      "lastSupportedAt": "2026-10-17T16:00:02.000Z",
+      "changedRecently": false
+    }
+  },
+  "intent": {
+    "intentId": "i_b25vzz61",
+    "sample": true
+  },
+  "tier0Receipts": [
+    {
+      "id": "r_z3jje37d",
+      "sessionId": "g0mte20j",
+      "agentId": "sample-acme",
+      "fields": [
+        "lang",
+        "tone",
+        "shoe_size",
+        "budget"
+      ],
+      "purpose": "tier0",
+      "createdAt": "2026-10-17T21:48:24.464Z"
+    }
+  ],
+  "activity": [
+    {
+      "id": "10",
+      "at": "2026-10-17T21:48:24.826Z",
+      "event": "tier0.deliver",
+      "actor": "workspace",
+      "object": "sample-acme",
+      "result": "failed",
+      "reason": "attempts=1 status=401"
+    },
+    {
+      "id": "2",
+      "at": "2026-10-17T21:48:24.472Z",
+      "event": "intent.create",
+      "actor": "sample-personal-photon",
+      "object": "i_b25vzz61",
+      "result": "ok",
+      "reason": "trail_shoes"
+    }
+  ]
+}

@@ -1,4 +1,6 @@
-# C 线交接 · 2026-10-17
+# C 线第一阶段交接 · 2026-10-17（历史）
+
+> 以下保留第一阶段记录，不代表当前交付状态。最新进度见 [队列](lane-c-queue.md)、[运行 README](README.md) 与 [证据索引](evidence/README.md)。C14 已改为手动证据，C11 保持 P1 BLOCKED；自动项由 A 线维护。
 
 分支：`lane-c`。本次只写 C 线目录；没有修改 `docs/plan.md`、根配置或其他线源码。原有未跟踪 `docs/media/agent-cookie-demo.mp4` 未改、未作为本次证据、未提交。
 

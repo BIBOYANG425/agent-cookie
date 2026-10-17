@@ -1,0 +1,41 @@
+{
+  "recordedAtUtc": "2026-10-17T21:51:02.791248+00:00",
+  "python": "3.11.15",
+  "node": "v22.23.3",
+  "pythonPackages": {
+    "anthropic": "0.122.0",
+    "fastapi": "0.141.1",
+    "uvicorn": "0.52.3",
+    "httpx": "0.28.1",
+    "python-dotenv": "1.2.2",
+    "shopping-agent-runtime": "0.1.0.dev0",
+    "commerce-common": "0.1.0.dev0"
+  },
+  "editableModulePaths": {
+    "commerce_common": "/private/tmp/agent-cookie-commerce-agents/commerce-common/commerce_common/__init__.py",
+    "shopping_agent": "/private/tmp/agent-cookie-commerce-agents/shopping-agent/core/shopping_agent/__init__.py",
+    "shopping_agent_runtime": "/private/tmp/agent-cookie-commerce-agents/shopping-agent/runtime-messages-api/shopping_agent_runtime/__init__.py",
+    "merchant_agent": "/private/tmp/agent-cookie-commerce-agents/merchant-agent/core/merchant_agent/__init__.py",
+    "merchant_agent_runtime": "/private/tmp/agent-cookie-commerce-agents/merchant-agent/runtime-messages-api/merchant_agent_runtime/__init__.py"
+  },
+  "processesKept": {
+    "a15Workspace": {
+      "port": 4318,
+      "sessionId": 36132,
+      "pid": 19717
+    },
+    "upstreamLauncher": {
+      "ports": [
+        8000,
+        3000
+      ],
+      "sessionId": 64906,
+      "apiPid": 20472,
+      "frontendPid": 20479
+    }
+  },
+  "existingUserPortsNotStopped": [
+    4310,
+    5173
+  ]
+}

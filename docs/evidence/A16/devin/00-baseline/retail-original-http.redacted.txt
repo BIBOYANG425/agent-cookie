@@ -1,0 +1,9 @@
+$ curl -s localhost:8000/api/health
+{"ok":true,"store":"ACME","products":87,"skills":["customer-care","memory-personalization","planning-goals","purchase-research","search-discovery"],"model":"claude-sonnet-5"}
+$ curl -s -X POST localhost:8000/api/session -H content-type:application/json -d {"user_id":"demo-user"}
+{"session_id":"[REDACTED_SESSION_TOKEN]","user_id":"demo-user","name":"Priya","tier":"ACME Subscription member"}
+$ curl -sN -X POST localhost:8000/api/chat -H "X-Session-Id: <sid>" -d {"message":"hello"}
+event: error
+data: {"message": "No Anthropic API credentials are configured, so chat can't run. Set ANTHROPIC_API_KEY in examples/retail/.env or the repo-root .env and restart; everything except chat works without one."}
+
+

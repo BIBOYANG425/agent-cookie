@@ -1,0 +1,18 @@
+{
+  "README.md": "a7432c852989df26a785aa312159d5f300d1db3706a9a81bedfa9f0d34ef1f72",
+  "after.json": "1a3be3cd2fd89ef80b16aa8142412411ac7103dac6759668df9b10bdd33bcb59",
+  "attempt.mjs": "5f9d402a29a98c29d1e609674a1391d1878a4135551cc9fc734cbd6485a61fd9",
+  "baseline.json": "de29cc72e523859a838f2bedba92887489e3d4ce43929672696606f3dc4618a8",
+  "capture-tier0.mjs": "adf7767f950321d681d0f4cb151c55738ca1c95798bd548b284f4bb9d20e5e06",
+  "checks.json": "73eeba31f17808d9f822de0fcc3fac8b3ac18db795ce20a0f32a23e1b95aa349",
+  "correct-protocol-probe.json": "d756e3f2a7a5fdfcccadb1cb4db1932dd2376588aef05ce184cb80aa7db5aaef",
+  "original-storefront-credential-error.jpg": "5c187d9cb3543b23c26b1c92515136c24c3664a7179b368dbcfd3a9f8a14b5e4",
+  "original-storefront.jpg": "888a1da3da75a1dcc775a8840fd354ff38942bc1a0fc78bb6c12993ac66c0683",
+  "probe-storefront.py": "a51648335ce0eb85f9c18cec761690f117094fce90a9d528e9928f3e12011a4c",
+  "runtime-refs.json": "37f52b1920c53bb5dd1e7a3050179a4ad3ece22d0a4dc51c440b29bb524b98c2",
+  "runtime.json": "8eb5f2a79513f62d3d1ca517b3985cbb3e4e3165cd767650fcf66d9d22b799d1",
+  "start-workspace.sh": "73a74dbb0513a2ab2c6b5918b0a29e05f2f28607ab6e75e5b219edddad13d132",
+  "tier0-wire.jsonl": "93989ca94c5e734a8316c867d33e673ee571be541ea402bb2afd4fa21d6d9f09",
+  "upstream.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "workspace-attempt.json": "056196c845f7530b9e666269fd844105cf961034bcda001a25842391c83c5dd9"
+}

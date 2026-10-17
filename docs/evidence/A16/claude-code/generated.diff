@@ -1,0 +1,898 @@
+diff --git a/examples/retail/api/main.py b/examples/retail/api/main.py
+index 77af8db..c943ccb 100644
+--- a/examples/retail/api/main.py
++++ b/examples/retail/api/main.py
+@@ -7,7 +7,9 @@ merchant router under /api/merchant, and the retail-only routes below.
+     uvicorn retail.api.main:app --app-dir examples --reload --port 8000
+ 
+ Memory here is file-backed (``data/.memory-store.json``, gitignored) and seeded once per
+-user, so what a shopper asks the store to remember, or to forget, survives a restart.
++user, so what a shopper asks the store to remember, or to forget, survives a restart. With
++``AGENT_COOKIE_URL`` and ``AGENT_COOKIE_KEY`` set, the storefront runs as an Agent Cookie
++merchant instead (``agent_cookie``): no local memory store and no seed.
+ """
+ 
+ from __future__ import annotations
+@@ -25,6 +27,7 @@ from demo_common import (
+ from shopping_agent import ProductDetails
+ from shopping_agent_runtime import ShoppingAgent
+ 
++from . import agent_cookie as ac
+ from .agent_config import build_shopping_config
+ from .merchant import create_merchant_router
+ from .mock_retail import DATA_DIR, MockRetail
+@@ -33,11 +36,13 @@ load_demo_env(DATA_DIR.parent)
+ PRODUCT_IMAGES = DATA_DIR.parent / "storefront-web" / "public" / "products"
+ 
+ backend = MockRetail()
++agent_cookie = ac.AgentCookie.from_env()
+ agent = ShoppingAgent(
+-    backend=backend,
++    backend=ac.AgentCookiePreferences(backend, agent_cookie) if agent_cookie else backend,
+     skills_dir=REPO_ROOT / "shopping-agent" / "skills",
+     config=build_shopping_config(),
+-    memory_store=JsonFileMemoryStore(DATA_DIR / ".memory-store.json"),
++    memory_store=None if agent_cookie else JsonFileMemoryStore(DATA_DIR / ".memory-store.json"),
++    **({"executor_class": ac.executor_for(agent_cookie)} if agent_cookie else {}),
+ )
+ 
+ 
+@@ -54,12 +59,14 @@ host = build_storefront_host(
+     example_root=DATA_DIR.parent,
+     backend=backend,
+     agent=agent,
+-    memory_seeder=MemorySeeder(
+-        DATA_DIR / "memory-seed.json", marker=DATA_DIR / ".memory-seeded.json"
+-    ),
++    memory_seeder=ac.NoMemorySeed()
++    if agent_cookie
++    else MemorySeeder(DATA_DIR / "memory-seed.json", marker=DATA_DIR / ".memory-seeded.json"),
+     product_detail=product_detail,
+ )
+ app = host.app
++if agent_cookie:
++    ac.install(host, agent_cookie)
+ app.include_router(create_merchant_router(backend, InMemoryMemoryStore()), prefix="/api/merchant")
+ # The merchant portal shows the storefront's listing photos, so the API serves them to both apps.
+ app.mount("/products", StaticFiles(directory=PRODUCT_IMAGES, check_dir=False), name="products")
+diff --git a/examples/retail/api/agent_cookie.py b/examples/retail/api/agent_cookie.py
+new file mode 100644
+index 0000000..a0b596b
+--- /dev/null
++++ b/examples/retail/api/agent_cookie.py
+@@ -0,0 +1,476 @@
++# Copyright 2026 Anthropic PBC
++# SPDX-License-Identifier: Apache-2.0
++
++"""Agent Cookie for the retail storefront, over the workspace's merchant HTTP:
++``GET /me``, ``GET /agent/handshake``, ``GET /agent/fields``, and ``GET``/``PUT
++/agent/notes/{key}``, each with ``?sessionId=`` and the merchant's Bearer key.
++
++Off unless the host sets ``AGENT_COOKIE_URL`` and ``AGENT_COOKIE_KEY``
++(:meth:`AgentCookie.from_env`). When on:
++
++- a storefront session is bound to a pairwise session id only by
++  ``POST /api/agent-cookie/session``, after the workspace confirms the id belongs to this
++  merchant; the model never names a subject;
++- every chat turn is refused before the model runs unless the workspace confirms the
++  session's grant (revoked and expired grants answer 403, an unreachable workspace 502);
++- ``get_preferences`` answers a bound session from the workspace on every call: the three
++  style values from the handshake and the category's auto fields from ``/agent/fields``,
++  nothing cached and no local fallback;
++- ``save_memory`` and ``recall_memories`` keep relationship facts under the host's
++  ``AGENT_COOKIE_NOTE_KEYS`` as this merchant's own notes, after the deployment's fence and
++  write filter; identity-card field names are never note keys.
++
++The merchant HTTP has no note listing, deletion, clear, or purge generation, so the
++six-method ``MemoryStore`` is not built (:class:`AgentCookieMemoryStore` raises), post-turn
++extraction and the fixture seed are off, and the memory routes answer 501.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import re
++import secrets
++from collections.abc import Iterable, Mapping
++from contextlib import asynccontextmanager
++from datetime import datetime
++from pathlib import Path
++from typing import Any
++
++import httpx
++from fastapi import HTTPException
++from fastapi.responses import JSONResponse
++from pydantic import BaseModel, Field
++
++from commerce_common.memory import MemoryWriteRejected, match_facts, memory_fact_payload
++from commerce_common.streaming import ToolOutcome
++from commerce_common.turn import session_tag
++from commerce_common.types import MemoryCategory, MemoryFact
++from demo_common import MemorySeeder
++from shopping_agent import ShoppingSessionContext, UserPreferences
++from shopping_agent.executor import ShoppingToolExecutor
++
++CONTRACT_GAP = (
++    "TODO(contract): the Agent Cookie merchant HTTP has no note listing, deletion, clear, or "
++    "purge generation, so these memory operations are not available"
++)
++
++# packages/contract types.ts FIELDS: the identity card's fields, never a note key.
++CARD_FIELDS = frozenset(
++    {
++        "lang",
++        "tone",
++        "length",
++        "shoe_size",
++        "budget",
++        "deadline",
++        "shipping_address",
++        "payment_method",
++    }
++)
++# packages/contract policy.ts AUTO, for the merchant categories this host can run as.
++AUTO_FIELDS: Mapping[str, tuple[str, ...]] = {
++    "shoe": ("lang", "tone", "length", "shoe_size", "budget", "deadline"),
++}
++# Delivered as values in every handshake; the rest are names there and read by field.
++STYLE_FIELDS = ("lang", "tone", "length")
++# apps/workspace notes.ts KEY.
++NOTE_KEY = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
++NOTE_FORMAT = 1
++
++NOT_A_NOTE_TEXT = (
++    "Not saved: this store keeps only {keys} for customers who came through Agent Cookie."
++)
++
++
++class ContractUnavailable(RuntimeError):
++    """The operation needs merchant HTTP the Agent Cookie contract does not define."""
++
++
++class WorkspaceError(Exception):
++    """The workspace refused a call; ``code`` is its error code (GRANT_REVOKED, ...)."""
++
++    def __init__(self, code: str, status: int) -> None:
++        super().__init__(code)
++        self.code = code
++        self.status = status
++
++
++class WorkspaceUnreachable(WorkspaceError):
++    """No answer from the workspace (timeout, refused connection)."""
++
++    def __init__(self) -> None:
++        super().__init__("WORKSPACE_UNREACHABLE", 502)
++
++
++class AgentCookieMemoryStore:
++    """The six-method ``MemoryStore`` over Agent Cookie. It cannot be built: the merchant
++    HTTP lists no notes and has no delete, clear, or purge generation."""
++
++    def __init__(self, *_: Any, **__: Any) -> None:
++        raise ContractUnavailable(CONTRACT_GAP)
++
++
++class WorkspaceClient:
++    """The merchant calls this host makes. One client per process; :meth:`aclose` on
++    shutdown. No retries: none of these calls is declared idempotent by the contract."""
++
++    def __init__(
++        self,
++        base_url: str,
++        key: str,
++        *,
++        timeout: float = 5.0,
++        transport: httpx.AsyncBaseTransport | None = None,
++    ) -> None:
++        self._http = httpx.AsyncClient(
++            base_url=base_url,
++            headers={"Authorization": f"Bearer {key}"},
++            timeout=timeout,
++            transport=transport,
++        )
++
++    async def _call(
++        self,
++        method: str,
++        path: str,
++        *,
++        params: dict[str, str] | None = None,
++        body: dict[str, Any] | None = None,
++        missing_ok: bool = False,
++    ) -> dict[str, Any] | None:
++        try:
++            response = await self._http.request(method, path, params=params, json=body)
++        except httpx.HTTPError as error:
++            raise WorkspaceUnreachable() from error
++        if response.status_code == 404 and missing_ok:
++            return None
++        if response.is_error:
++            raise WorkspaceError(_error_code(response), response.status_code)
++        return response.json()
++
++    async def me(self) -> dict[str, Any]:
++        return await self._call("GET", "/me") or {}
++
++    async def handshake(self, session_id: str) -> dict[str, Any]:
++        return await self._call("GET", "/agent/handshake", params={"sessionId": session_id}) or {}
++
++    async def fields(self, session_id: str, names: Iterable[str]) -> dict[str, str]:
++        params = {"sessionId": session_id, "fields": ",".join(names)}
++        answer = await self._call("GET", "/agent/fields", params=params) or {}
++        return dict(answer.get("fields") or {})
++
++    async def read_note(self, session_id: str, key: str) -> dict[str, Any] | None:
++        """The note, or None for a key this merchant has not written for the session."""
++        return await self._call(
++            "GET", f"/agent/notes/{key}", params={"sessionId": session_id}, missing_ok=True
++        )
++
++    async def write_note(self, session_id: str, key: str, value: str) -> dict[str, Any]:
++        path = f"/agent/notes/{key}"
++        return (
++            await self._call("PUT", path, params={"sessionId": session_id}, body={"value": value})
++            or {}
++        )
++
++    async def aclose(self) -> None:
++        await self._http.aclose()
++
++
++def _error_code(response: httpx.Response) -> str:
++    try:
++        return str(response.json()["error"]["code"])
++    except (ValueError, KeyError, TypeError):
++        return f"HTTP_{response.status_code}"
++
++
++class AgentCookie:
++    """The bindings and the reads and writes made for bound storefront sessions. A binding
++    maps a storefront session id to a pairwise session id and is made only by
++    :meth:`bind`, after the workspace confirms the pairwise id."""
++
++    def __init__(self, client: WorkspaceClient, *, note_keys: Iterable[str]) -> None:
++        keys = tuple(dict.fromkeys(key.strip() for key in note_keys if key.strip()))
++        for key in keys:
++            if not NOTE_KEY.match(key) or key in CARD_FIELDS:
++                raise ValueError(f"{key!r} cannot be an Agent Cookie note key")
++        self.client = client
++        self.note_keys = keys
++        self.category: str | None = None
++        self._pairwise: dict[str, str] = {}
++
++    @classmethod
++    def from_env(cls, env: Mapping[str, str] = os.environ) -> AgentCookie | None:
++        url, key = env.get("AGENT_COOKIE_URL"), env.get("AGENT_COOKIE_KEY")
++        if not url or not key:
++            return None
++        note_keys = env.get("AGENT_COOKIE_NOTE_KEYS", "").split(",")
++        return cls(WorkspaceClient(url, key), note_keys=note_keys)
++
++    async def start(self) -> None:
++        """Check the key is a merchant's of a category this host knows; startup fails otherwise."""
++        me = await self.client.me()
++        if me.get("role") != "merchant" or me.get("category") not in AUTO_FIELDS:
++            raise ContractUnavailable("AGENT_COOKIE_KEY is not a merchant key of a known category")
++        self.category = str(me["category"])
++
++    async def verify(self, pairwise_id: str) -> dict[str, Any]:
++        """The handshake for a pairwise id; raises when it is not this merchant's live session."""
++        return await self.client.handshake(pairwise_id)
++
++    def bind(self, storefront_session_id: str, pairwise_id: str) -> None:
++        self._pairwise[storefront_session_id] = pairwise_id
++
++    def pairwise_for(self, storefront_session_id: str) -> str | None:
++        return self._pairwise.get(storefront_session_id)
++
++    async def authorize(self, storefront_session_id: str) -> dict[str, Any] | None:
++        """The current handshake for a bound session, None for an unbound one."""
++        pairwise = self.pairwise_for(storefront_session_id)
++        return None if pairwise is None else await self.client.handshake(pairwise)
++
++    async def field_values(self, storefront_session_id: str) -> dict[str, str]:
++        """The style values and the auto fields the handshake lists, read now."""
++        pairwise = self._require(storefront_session_id)
++        handshake = await self.client.handshake(pairwise)
++        values = {name: str(handshake[name]) for name in STYLE_FIELDS if handshake.get(name)}
++        auto = AUTO_FIELDS.get(self.category or "", ())
++        wanted = [
++            name
++            for name in handshake.get("available") or []
++            if name in auto and name not in STYLE_FIELDS
++        ]
++        if wanted:
++            values |= await self.client.fields(pairwise, wanted)
++        return values
++
++    async def save_note(self, storefront_session_id: str, fact: MemoryFact) -> None:
++        """Write one validated relationship fact as this merchant's note."""
++        if fact.key not in self.note_keys:
++            raise ValueError(fact.key)
++        payload = {
++            "v": NOTE_FORMAT,
++            "value": fact.value,
++            "category": fact.category.value,
++            "source_session": fact.source_session_id,
++        }
++        await self.client.write_note(
++            self._require(storefront_session_id), fact.key, json.dumps(payload)
++        )
++
++    async def notes(self, storefront_session_id: str) -> list[MemoryFact]:
++        """This merchant's notes for the session, one GET per allowed key."""
++        pairwise = self._require(storefront_session_id)
++        facts = []
++        for key in self.note_keys:
++            note = await self.client.read_note(pairwise, key)
++            if note is not None and (fact := _note_fact(key, note)) is not None:
++                facts.append(fact)
++        return facts
++
++    def _require(self, storefront_session_id: str) -> str:
++        pairwise = self.pairwise_for(storefront_session_id)
++        if pairwise is None:
++            raise WorkspaceError("NOT_BOUND", 403)
++        return pairwise
++
++    async def aclose(self) -> None:
++        await self.client.aclose()
++
++
++def _note_fact(key: str, note: Mapping[str, Any]) -> MemoryFact | None:
++    """A note this host wrote, as a fact; None for a value in another format."""
++    try:
++        payload = json.loads(str(note.get("value", "")))
++        if payload.get("v") != NOTE_FORMAT:
++            return None
++        return MemoryFact(
++            key=key,
++            value=str(payload["value"]),
++            category=MemoryCategory(payload.get("category") or "context"),
++            updated_at=datetime.fromisoformat(str(note["updatedAt"]).replace("Z", "+00:00")),
++            source_session_id=payload.get("source_session"),
++        )
++    except (ValueError, KeyError, TypeError, AttributeError):
++        return None
++
++
++class AgentCookiePreferences:
++    """The storefront backend with ``get_preferences`` answering a bound session from the
++    workspace; every other attribute is the backend's own. An error propagates: the turn's
++    prefetch then goes ahead without preferences rather than with stale ones."""
++
++    def __init__(self, backend: Any, agent_cookie: AgentCookie) -> None:
++        self._backend = backend
++        self._agent_cookie = agent_cookie
++
++    def __getattr__(self, name: str) -> Any:
++        return getattr(self._backend, name)
++
++    async def get_preferences(self, session: ShoppingSessionContext) -> UserPreferences:
++        if self._agent_cookie.pairwise_for(session.session_id) is None:
++            return await self._backend.get_preferences(session)
++        values = await self._agent_cookie.field_values(session.session_id)
++        return UserPreferences(
++            user_id=session.user_id,
++            preferences={"source": "Agent Cookie, this session's grant", **values},
++        )
++
++
++def executor_for(agent_cookie: AgentCookie) -> type[ShoppingToolExecutor]:
++    """The executor whose memory tools use Agent Cookie notes for bound sessions."""
++
++    class AgentCookieExecutor(ShoppingToolExecutor):
++        async def _save_memory(self, tool_input: dict[str, Any]) -> ToolOutcome:
++            session_id = self._session.session_id
++            if agent_cookie.pairwise_for(session_id) is None:
++                return await super()._save_memory(tool_input)
++            try:
++                fact = self._memory.validate(
++                    str(tool_input.get("key", "")),
++                    str(tool_input.get("value", "")),
++                    str(tool_input.get("category", "context")),
++                    source_session_id=session_tag(session_id),
++                )
++            except MemoryWriteRejected as rejected:
++                return ToolOutcome.error(str(rejected))
++            if not fact.key or not fact.value:
++                return ToolOutcome.error("Nothing to save.")
++            if fact.key not in agent_cookie.note_keys:
++                keys = ", ".join(agent_cookie.note_keys) or "no facts"
++                return ToolOutcome.error(NOT_A_NOTE_TEXT.format(keys=keys))
++            try:
++                await agent_cookie.save_note(session_id, fact)
++            except WorkspaceError as error:
++                return ToolOutcome.error(f"Not saved: Agent Cookie answered {error.code}.")
++            return ToolOutcome(f"Saved: {fact.key}.")
++
++        async def _recall_memories(self, tool_input: dict[str, Any]) -> ToolOutcome:
++            session_id = self._session.session_id
++            if agent_cookie.pairwise_for(session_id) is None:
++                return await super()._recall_memories(tool_input)
++            topic = self.fence.sanitize_text(str(tool_input.get("topic", "")), 100)
++            try:
++                facts = match_facts(await agent_cookie.notes(session_id), topic)
++            except WorkspaceError as error:
++                return ToolOutcome.error(f"Nothing recalled: Agent Cookie answered {error.code}.")
++            payload = [memory_fact_payload(fact) for fact in facts]
++            return self._fenced({"topic": topic, "facts": payload or "none matched"})
++
++    return AgentCookieExecutor
++
++
++class NoMemorySeed(MemorySeeder):
++    """The fixture seed never reaches a store in Agent Cookie mode."""
++
++    def __init__(self) -> None:
++        super().__init__(Path(os.devnull))
++
++    async def seed_at_boot(self, store: Any) -> None:
++        return None
++
++    async def reseed(self, store: Any, user_id: str) -> None:
++        raise ContractUnavailable(CONTRACT_GAP)
++
++
++class AgentCookieSessionRequest(BaseModel):
++    session_id: str = Field(min_length=1, max_length=64)
++
++
++def _refusal(error: WorkspaceError) -> JSONResponse:
++    return JSONResponse({"detail": error.code}, status_code=error.status)
++
++
++class _Gate:
++    """ASGI middleware: the authorization check before each chat turn, and 501 for the
++    memory operations the contract lacks."""
++
++    def __init__(self, app: Any, agent_cookie: AgentCookie) -> None:
++        self.app = app
++        self.agent_cookie = agent_cookie
++
++    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
++        if scope["type"] != "http":
++            await self.app(scope, receive, send)
++            return
++        path, method = scope["path"], scope["method"]
++        if path == "/api/memory":
++            await JSONResponse({"detail": CONTRACT_GAP}, status_code=501)(scope, receive, send)
++            return
++        if path == "/api/reset" and method == "POST":
++            messages, body = await _buffer(receive)
++            if _asks_memory(body):
++                await JSONResponse({"detail": CONTRACT_GAP}, status_code=501)(scope, receive, send)
++                return
++            receive = _replay(messages, receive)
++        if path == "/api/chat" and method == "POST":
++            headers = {name.decode().lower(): value.decode() for name, value in scope["headers"]}
++            try:
++                await self.agent_cookie.authorize(headers.get("x-session-id", ""))
++            except WorkspaceError as error:
++                await _refusal(error)(scope, receive, send)
++                return
++        await self.app(scope, receive, send)
++
++
++async def _buffer(receive: Any) -> tuple[list[dict[str, Any]], bytes]:
++    messages, body, more = [], b"", True
++    while more:
++        message = await receive()
++        messages.append(message)
++        body += message.get("body", b"")
++        more = message.get("more_body", False)
++    return messages, body
++
++
++def _replay(messages: list[dict[str, Any]], receive: Any) -> Any:
++    async def replayed() -> dict[str, Any]:
++        return messages.pop(0) if messages else await receive()
++
++    return replayed
++
++
++def _asks_memory(body: bytes) -> bool:
++    try:
++        request = json.loads(body or b"{}")
++    except ValueError:
++        return False
++    return isinstance(request, dict) and bool(
++        request.get("clear_memory") or request.get("purge_memory")
++    )
++
++
++def install(host: Any, agent_cookie: AgentCookie) -> None:
++    """Mount the binding route and the gate on a storefront host, check the key at startup,
++    and close the client at shutdown."""
++    app = host.app
++
++    @app.post("/api/agent-cookie/session")
++    async def start_agent_cookie_session(request: AgentCookieSessionRequest) -> dict:
++        try:
++            handshake = await agent_cookie.verify(request.session_id)
++        except WorkspaceError as error:
++            raise HTTPException(status_code=error.status, detail=error.code) from None
++        # A subject of its own: never a demo profile, never shared between customers.
++        record = host.sessions.start(f"agent-cookie-{secrets.token_hex(8)}")
++        agent_cookie.bind(record.session_id, request.session_id)
++        return {
++            "session_id": record.session_id,
++            "user_id": record.user_id,
++            "available": handshake.get("available") or [],
++            "expires_at": handshake.get("expiresAt"),
++        }
++
++    app.add_middleware(_Gate, agent_cookie=agent_cookie)
++    inner = app.router.lifespan_context
++
++    @asynccontextmanager
++    async def lifespan(target: Any):
++        await agent_cookie.start()
++        try:
++            async with inner(target):
++                yield
++        finally:
++            await agent_cookie.aclose()
++
++    app.router.lifespan_context = lifespan
+diff --git a/examples/retail/api/tests/test_agent_cookie.py b/examples/retail/api/tests/test_agent_cookie.py
+new file mode 100644
+index 0000000..8a96f18
+--- /dev/null
++++ b/examples/retail/api/tests/test_agent_cookie.py
+@@ -0,0 +1,353 @@
++# Copyright 2026 Anthropic PBC
++# SPDX-License-Identifier: Apache-2.0
++
++"""Agent Cookie mode against a fake of the workspace's merchant routes: bindings, the
++per-turn authorization check, field reads, note writes through the deployment's filter,
++and the operations the contract lacks failing loudly."""
++
++from __future__ import annotations
++
++import json
++from datetime import datetime
++
++import httpx
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++from commerce_common.skills import SkillRegistry
++from demo_common.sessions import SessionStore
++from retail.api import agent_cookie as ac
++from retail.api.mock_retail import MockRetail
++from shopping_agent import (
++    PageContext,
++    ShoppingAgentConfig,
++    ShoppingSessionContext,
++    ShoppingSessionState,
++)
++from shopping_agent.executor import build_memory
++
++NOTE_KEYS = ("fit_notes", "gift_recipients")
++
++
++class FakeWorkspace:
++    """The merchant routes as apps/workspace answers them: a key names an agent, a pairwise
++    session belongs to one agent, notes are keyed by (agent, session, key), and every call
++    checks the grant first."""
++
++    def __init__(self) -> None:
++        self.keys = {"key-a": "ag_a", "key-b": "ag_b"}
++        self.owner = {"pw-a1": "ag_a", "pw-a2": "ag_a", "pw-b1": "ag_b"}
++        self.grants = dict.fromkeys(self.owner, "live")
++        self.card = {
++            "lang": "en",
++            "tone": "brief",
++            "length": "short",
++            "shoe_size": "42",
++            "budget": "120",
++            "shipping_address": "Sample address",
++        }
++        self.notes: dict[tuple[str, str, str], str] = {}
++        self.note_limit = 2048
++        self.requests: list[httpx.Request] = []
++        self.down = False
++
++    def transport(self) -> httpx.MockTransport:
++        return httpx.MockTransport(self.handle)
++
++    def handle(self, request: httpx.Request) -> httpx.Response:
++        self.requests.append(request)
++        if self.down:
++            raise httpx.ConnectTimeout("no answer", request=request)
++        agent = self.keys.get(request.headers.get("authorization", "").removeprefix("Bearer "))
++        if agent is None:
++            return _error("AUTH_REQUIRED", 401)
++        path = request.url.path
++        if path == "/me":
++            return httpx.Response(
++                200, json={"agentId": agent, "category": "shoe", "role": "merchant"}
++            )
++        session = request.url.params.get("sessionId", "")
++        if self.owner.get(session) != agent:
++            return _error("NOT_FOUND", 404)
++        if self.grants[session] != "live":
++            return _error(self.grants[session], 403)
++        if path == "/agent/handshake":
++            available = ["lang", "tone", "length", "shoe_size", "budget", "shipping_address"]
++            style = {name: self.card[name] for name in ("lang", "tone", "length")}
++            return httpx.Response(
++                200, json={"v": 1, "sessionId": session, **style, "available": available}
++            )
++        if path == "/agent/fields":
++            names = request.url.params["fields"].split(",")
++            if "shipping_address" in names:
++                return _error("PURPOSE_MISMATCH", 403)
++            return httpx.Response(200, json={"fields": {name: self.card[name] for name in names}})
++        key = path.removeprefix("/agent/notes/")
++        if request.method == "PUT":
++            value = json.loads(request.content)["value"]
++            mine = {k: v for (a, s, k), v in self.notes.items() if (a, s) == (agent, session)}
++            mine[key] = value
++            if len(json.dumps(list(mine.items())).encode()) > self.note_limit:
++                return _error("MISSING_FIELD", 422)
++            self.notes[(agent, session, key)] = value
++            return httpx.Response(200, json={"key": key, "updatedAt": "2026-10-17T12:00:00.000Z"})
++        if (agent, session, key) not in self.notes:
++            return _error("NOT_FOUND", 404)
++        value = self.notes[(agent, session, key)]
++        return httpx.Response(
++            200, json={"key": key, "value": value, "updatedAt": "2026-10-17T12:00:00.000Z"}
++        )
++
++    def calls(self, path_prefix: str) -> int:
++        return sum(1 for request in self.requests if request.url.path.startswith(path_prefix))
++
++
++def _error(code: str, status: int) -> httpx.Response:
++    return httpx.Response(status, json={"error": {"code": code, "message": code}})
++
++
++@pytest.fixture
++def workspace() -> FakeWorkspace:
++    return FakeWorkspace()
++
++
++async def connected(workspace: FakeWorkspace, key: str = "key-a") -> ac.AgentCookie:
++    client = ac.WorkspaceClient("http://workspace.test", key, transport=workspace.transport())
++    agent_cookie = ac.AgentCookie(client, note_keys=NOTE_KEYS)
++    await agent_cookie.start()
++    return agent_cookie
++
++
++def executor(agent_cookie: ac.AgentCookie, session_id: str):
++    config = ShoppingAgentConfig()
++    backend = ac.AgentCookiePreferences(MockRetail(), agent_cookie)
++    return ac.executor_for(agent_cookie)(
++        backend=backend,
++        config=config,
++        skills=SkillRegistry([]),
++        session=ShoppingSessionContext(
++            session_id=session_id, user_id="agent-cookie-x", page=PageContext(), now=datetime.now()
++        ),
++        state=ShoppingSessionState(),
++        memory=build_memory(config, None),
++    )
++
++
++async def test_the_full_memory_store_cannot_be_built():
++    with pytest.raises(ac.ContractUnavailable, match="TODO\\(contract\\)"):
++        ac.AgentCookieMemoryStore()
++
++
++def test_off_without_both_settings():
++    assert ac.AgentCookie.from_env({}) is None
++    assert ac.AgentCookie.from_env({"AGENT_COOKIE_URL": "http://127.0.0.1:4310"}) is None
++
++
++@pytest.mark.parametrize("key", ["shoe_size", "shipping_address", "bad key"])
++def test_card_fields_and_malformed_keys_are_never_note_keys(key):
++    with pytest.raises(ValueError):
++        ac.AgentCookie(ac.WorkspaceClient("http://w.test", "k"), note_keys=[key])
++
++
++async def test_fields_are_read_from_the_workspace_on_every_call(workspace):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    first = await agent_cookie.field_values("store-1")
++    assert first == {
++        "lang": "en",
++        "tone": "brief",
++        "length": "short",
++        "shoe_size": "42",
++        "budget": "120",
++    }
++    workspace.card["shoe_size"] = "43"
++    assert (await agent_cookie.field_values("store-1"))["shoe_size"] == "43"
++    assert workspace.calls("/agent/handshake") == 2
++    # Purpose fields stay unread even when the handshake lists them.
++    fields_requests = [r for r in workspace.requests if r.url.path == "/agent/fields"]
++    assert all("shipping_address" not in r.url.params["fields"] for r in fields_requests)
++
++
++@pytest.mark.parametrize("ended", ["GRANT_REVOKED", "GRANT_EXPIRED"])
++async def test_an_ended_grant_refuses_reads_and_writes_without_a_fallback(workspace, ended):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    tools = executor(agent_cookie, "store-1")
++    saved = await tools.execute("save_memory", {"key": "fit_notes", "value": "runs narrow"})
++    assert not saved.is_error
++    workspace.grants["pw-a1"] = ended
++    with pytest.raises(ac.WorkspaceError) as refused:
++        await agent_cookie.field_values("store-1")
++    assert refused.value.code == ended
++    preferences = await tools.execute("get_preferences", {})
++    assert preferences.is_error and "42" not in preferences.result_text
++    recalled = await tools.execute("recall_memories", {"topic": "fit"})
++    assert recalled.is_error and ended in recalled.result_text
++    assert "runs narrow" not in recalled.result_text
++    saved = await tools.execute("save_memory", {"key": "fit_notes", "value": "wide toe box"})
++    assert saved.is_error and ended in saved.result_text
++
++
++async def test_notes_round_trip_with_provenance(workspace):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    tools = executor(agent_cookie, "store-1")
++    saved = await tools.execute(
++        "save_memory", {"key": "gift_recipients", "value": "buys trail shoes for a sibling"}
++    )
++    assert saved.result_text == "Saved: gift_recipients."
++    recalled = await tools.execute("recall_memories", {"topic": "sibling"})
++    assert "buys trail shoes for a sibling" in recalled.result_text
++    assert "source_session" in recalled.result_text
++    facts = await agent_cookie.notes("store-1")
++    assert [fact.key for fact in facts] == ["gift_recipients"]
++    assert facts[0].updated_at is not None
++
++
++async def test_an_unknown_note_reads_as_absent(workspace):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    assert await agent_cookie.notes("store-1") == []
++    recalled = await executor(agent_cookie, "store-1").execute("recall_memories", {"topic": ""})
++    assert not recalled.is_error and "none matched" in recalled.result_text
++
++
++async def test_subjects_and_merchants_stay_apart(workspace):
++    store_a = await connected(workspace, "key-a")
++    store_b = await connected(workspace, "key-b")
++    store_a.bind("s-a1", "pw-a1")
++    store_a.bind("s-a2", "pw-a2")
++    await executor(store_a, "s-a1").execute(
++        "save_memory", {"key": "fit_notes", "value": "half size up in trail shoes"}
++    )
++    assert await store_a.notes("s-a2") == []
++    # Another merchant presenting the same pairwise id is not its owner: the workspace
++    # answers it as it answers a missing note, and refuses the binding outright.
++    with pytest.raises(ac.WorkspaceError) as refused:
++        await store_b.verify("pw-a1")
++    assert refused.value.code == "NOT_FOUND"
++    store_b.bind("s-b", "pw-a1")
++    assert await store_b.notes("s-b") == []
++    assert workspace.notes.keys() == {("ag_a", "pw-a1", "fit_notes")}
++
++
++@pytest.mark.parametrize(
++    "tool_input",
++    [
++        {"key": "fit_notes", "value": "reach me at someone@example.com"},
++        {"key": "fit_notes", "value": "card 4111 1111 1111 1111"},
++        {"key": "shoe_size", "value": "42"},
++        {"key": "favourite_colour", "value": "green"},
++    ],
++)
++async def test_refused_writes_never_reach_the_workspace(workspace, tool_input):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    outcome = await executor(agent_cookie, "store-1").execute("save_memory", tool_input)
++    assert outcome.is_error
++    assert workspace.calls("/agent/notes") == 0
++
++
++async def test_the_note_limit_is_reported_not_swallowed(workspace):
++    workspace.note_limit = 120
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    outcome = await executor(agent_cookie, "store-1").execute(
++        "save_memory", {"key": "fit_notes", "value": "prefers a roomy toe box " * 4}
++    )
++    assert outcome.is_error and "MISSING_FIELD" in outcome.result_text
++    assert workspace.notes == {}
++
++
++async def test_an_unreachable_workspace_is_an_error(workspace):
++    agent_cookie = await connected(workspace)
++    agent_cookie.bind("store-1", "pw-a1")
++    workspace.down = True
++    outcome = await executor(agent_cookie, "store-1").execute(
++        "save_memory", {"key": "fit_notes", "value": "runs narrow"}
++    )
++    assert outcome.is_error and "WORKSPACE_UNREACHABLE" in outcome.result_text
++    with pytest.raises(ac.WorkspaceUnreachable):
++        await agent_cookie.field_values("store-1")
++
++
++async def test_an_unbound_session_keeps_the_original_paths(workspace):
++    agent_cookie = await connected(workspace)
++    tools = executor(agent_cookie, "not-bound")
++    saved = await tools.execute("save_memory", {"key": "fit_notes", "value": "runs narrow"})
++    assert saved.result_text == "Memory is not enabled for this deployment."
++    assert workspace.calls("/agent/") == 0
++
++
++async def test_extraction_and_seed_are_off():
++    memory = build_memory(ShoppingAgentConfig(), None)
++    assert not memory.enabled
++    assert await memory.extract(None, "agent-cookie-x", "s", "transcript") == []  # type: ignore[arg-type]
++    seed = ac.NoMemorySeed()
++    await seed.seed_at_boot(None)
++    with pytest.raises(ac.ContractUnavailable):
++        await seed.reseed(None, "agent-cookie-x")
++
++
++def host_with(workspace: FakeWorkspace, key: str = "key-a"):
++    """A storefront host's shape: an app with chat, memory, and reset routes behind the gate."""
++
++    class Host:
++        app = FastAPI()
++        sessions = SessionStore(ShoppingSessionState)
++
++    host = Host()
++    turns: list[str] = []
++
++    @host.app.post("/api/chat")
++    async def chat() -> dict:
++        turns.append("model ran")
++        return {"ok": True}
++
++    @host.app.api_route("/api/memory", methods=["GET", "PATCH", "DELETE"])
++    async def memory() -> dict:
++        raise AssertionError("memory routes must not reach a store")
++
++    @host.app.post("/api/reset")
++    async def reset(request: dict) -> dict:
++        return {"ok": True, "received": request}
++
++    client = ac.WorkspaceClient("http://workspace.test", key, transport=workspace.transport())
++    agent_cookie = ac.AgentCookie(client, note_keys=NOTE_KEYS)
++    ac.install(host, agent_cookie)
++    return host, agent_cookie, turns
++
++
++def test_binding_gate_and_refused_memory_routes(workspace):
++    host, agent_cookie, turns = host_with(workspace)
++    with TestClient(host.app) as client:
++        assert (
++            client.post("/api/agent-cookie/session", json={"session_id": "pw-b1"}).status_code
++            == 404
++        )
++        started = client.post("/api/agent-cookie/session", json={"session_id": "pw-a1"})
++        assert started.status_code == 200
++        body = started.json()
++        assert body["user_id"].startswith("agent-cookie-") and body["user_id"] != "demo-user"
++        assert "shoe_size" in body["available"] and "42" not in json.dumps(body)
++        headers = {"X-Session-Id": body["session_id"]}
++
++        assert client.post("/api/chat", headers=headers).status_code == 200
++        workspace.grants["pw-a1"] = "GRANT_REVOKED"
++        refused = client.post("/api/chat", headers=headers)
++        assert (refused.status_code, refused.json()["detail"]) == (403, "GRANT_REVOKED")
++        assert turns == ["model ran"]
++
++        for method in ("GET", "PATCH", "DELETE"):
++            assert client.request(method, "/api/memory", headers=headers).status_code == 501
++        assert client.post("/api/reset", json={"purge_memory": True}).status_code == 501
++        kept = client.post("/api/reset", json={"clear_memory": False})
++        assert kept.json() == {"ok": True, "received": {"clear_memory": False}}
++    assert agent_cookie.client._http.is_closed
++
++
++def test_startup_fails_without_a_merchant_key(workspace):
++    host, _, _ = host_with(workspace, "key-unknown")
++    with pytest.raises(ac.WorkspaceError), TestClient(host.app):
++        pass
