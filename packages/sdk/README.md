@@ -56,3 +56,7 @@ The SDK preserves the backend's `source` metadata and marks cards or quote lists
 `test/console-bridge-integration.test.ts` exercises all eight C console routes over a temporary loopback HTTP listener, through the real SDK and A's isolated in-memory SQLite app. It validates wire envelopes, actual revocation/reset results, and that the SDK methods were invoked. It never resets the current phone/Desktop demo database.
 
 Tests cover authentication, revocation/reset, caller cancellation, redirect/timeout handling, redaction, malformed responses, unsafe handoff URLs, idempotency headers and result preservation. The fake workspace adds actual HTTP shopping tests. Merchant APIs, registration and creating contributions are still outside this client slice.
+
+## Conversation learning (B proposal, opt-in)
+
+`observe(input, idempotencyKey, options?)`, `getLearning(options?)`, `setLearning({enabled?, forgetKeys?}, options?)` are implemented behind an explicit `WorkspaceConfig.learning` binding. `PROPOSED_LEARNING_BINDING` is for isolated stubs until A publishes compatible endpoints; the default client refuses without making a request. Do not enable it on the old running workspace. Bodies and response types are exported from `learning.ts`. Text is transient transport input, never a durable queue, log or jar transcript. The authenticated backend determines owner identity, source deduplication, whitelist, two-conversation promotion and deletion generations. A successful observe acknowledgement means queued, not learned.
