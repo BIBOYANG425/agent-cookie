@@ -1,5 +1,7 @@
 {
   "recordedAt": "2026-10-17T21:05:24.890Z",
+  "testOnly": true,
+  "note": "Test fixture only; not used to pick offers in live mode.",
   "size": "42",
   "budget": 120,
   "offers": [

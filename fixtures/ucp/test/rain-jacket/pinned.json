@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-17T22:19:08.222Z",
+  "query": "rain jacket",
+  "budget": 150,
+  "testOnly": true,
+  "note": "Test fixture only; not used to pick offers in live mode.",
+  "offers": [
+    {
+      "variantId": "gid://shopify/ProductVariant/42741656518905",
+      "seller": "grundens.myshopify.com",
+      "title": "Neptune Jacket",
+      "price": 10999,
+      "nativeCheckout": false
+    },
+    {
+      "variantId": "gid://shopify/ProductVariant/40345093832762",
+      "seller": "zero-foxtrot.myshopify.com",
+      "title": "Packable Zero Rain Shell",
+      "price": 10999,
+      "nativeCheckout": false
+    }
+  ]
+}

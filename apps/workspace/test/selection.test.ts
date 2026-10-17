@@ -70,6 +70,17 @@ describe("size is soft, the stated budget is hard", () => {
     expect(picked[0]!.sizeNote).toBeUndefined();
     expect(picked[1]!.sizeNote).toBeDefined();
   });
+  it("ranks a size match before no-size and mismatch offers", () => {
+    const offers = [
+      offer("mismatch.com", "US 9", 5000),
+      offer("no-size.com", null, 5000),
+      offer("match.com", "EU 42", 5000),
+    ];
+    const picked = pickSellers(offers, { shipsTo: "US", size: "42" }, 3);
+    expect(picked.map(({ offer: pickedOffer }) => pickedOffer.sellerDomain))
+      .toEqual(["match.com", "no-size.com", "mismatch.com"]);
+    expect(picked[1]!.sizeNote).toBeUndefined();
+  });
   it("unsized products carry no note (size does not apply)", () => {
     expect(pickSellers([offer("a.com", null, 2000)], { shipsTo: "US", size: "42" }, 1)[0]!.sizeNote).toBeUndefined();
   });
