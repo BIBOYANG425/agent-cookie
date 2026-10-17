@@ -54,3 +54,9 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | A11 | A → C | 控制台用 owner 钥匙：`GET /personal/card`、`/personal/receipts`、`/personal/grants`、`POST /personal/grants/:id/revoke`、`POST /personal/contributions/:id/revoke`、`GET /owner/activity`、`POST /demo/reset` 都接受 owner。`apps/workspace/test/acceptance/` 是一套只打 HTTP 的 A01–A22 测试（独立于实现写成），C 可以整份搬进 `tests/acceptance` 当起点。 | 待 C |
 | A12 | A → C | Tier 0 投递形状：`POST <chatEndpoint>` JSON `{ "session_id": "<sessionId>", "message": "<前缀>\n<意图原话>" }`，前缀见 `packages/contract/src/tier0.ts`。请在 `examples/blueprint` 放适配器把它转成 ACME 的聊天请求，或告诉 A ACME 的真实请求形状。 | 待 C 回复 |
 | A13 | A → 人 | 三处与 plan 字面不同的决定，请确认或否决：①`POST /agents/register` 的 personal 类别需 owner 钥匙（plan 写"任何人（本机）"）；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED（plan："表里没有的组合一律 deny"），不是 422；③已过期的商家对自己的 session 提交报价得 403 GRANT_EXPIRED（与读取一致），未被介绍的才是 404。 | 待人 |
+
+2026-10-17，D 线：`packages/ucp` 已按契约 `UcpModule` 实现（lane-d-contract）。以下只追加。
+- [D→A] `apps/workspace/src/adapters.ts`：live/fixture 都改用 `import { createUcp } from "@agent-cookie/ucp"`，`createUcp({ mode: config.ucpMode, fixturesDir: <fixtures>/ucp })`；不传 `bin` 时用包内固定的 ucp-cli 0.9.1。真店 `checkout complete` 返回 403 INSUFFICIENT_PERMISSIONS（需 JWT，CLI 0.9.1 不支持），会抛带 continueUrl 的 UpstreamError。
+- [D→A] `ucp-filter.ts` `parseSize` 不认后缀式 "9 US"（Marathon Sports 的真实标签），也不认 "UK"；请支持 `<num> US|EU` 后缀，UK 解析后不匹配。
+- [D→A] `--business` 用裸域名（`marathonsports.myshopify.com`）实测可用，契约注释里的 `https://` 前缀不需要。`UcpOffer.shipsTo` 来自请求过滤条件，目录无逐变体字段。
+- [D→A] `apps/workspace/src/laneD.ts`：`Object.assign(laneD, createLaneDHooks({ jar, secret, ttlMs }))`（`@agent-cookie/auth`），`authorizePayment` 用 `@agent-cookie/pay` 的授权函数。
