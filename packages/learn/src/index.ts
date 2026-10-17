@@ -127,3 +127,4 @@ export function createLearner(options: {
 }
 
 export { createHaikuExtractor, createJevClassifier, HAIKU_MODEL } from "./models.js";
+export { createLearningTelemetry, type PipelineMetric } from './telemetry.js';

@@ -17,7 +17,7 @@
 - [x] L4：Spectrum app.messages → adapter.toEvent → 非阻塞有界内存队列；仅机主直聊，去重/超时/失败不影响回复。
 - [x] L5：Photon 暂停/恢复/忘记控制及每日结论摘要；先阻断在途任务，后台确认才报告删除成功。
 - [x] L6：MCP observe、个人 SKILL、Claude Code UserPromptSubmit README 示例；不改全局配置、不读 transcript。
-- [ ] L7：@photon-ai/otel 只记管道阶段/状态/计数/耗时，离线 exporter 验证无正文和私密值。
+- [x] L7：@photon-ai/otel 只记管道阶段/状态/计数/耗时，离线 exporter 验证无正文和私密值。
 - [ ] L8：隔离桩全链路及敏感/群聊/撤销竞态/每日摘要回归，保存证据、更新 A/C 请求并推 lane-b。
 - [ ] L9：A/C 接口到位后联调；本机真实模型/Sentry 凭据到位后才做真实验收，不能用桩冒充。
 
@@ -123,3 +123,5 @@ L4 验证：5项采集/队列测试与Photon typecheck通过；Spectrum app.mess
 L5 验证：12项采集/控制测试及Photon typecheck/build通过；Spectrum云入口编译通过但未启用。日常偏好不发购物intent；删除确认要求generation前进；摘要只在正常回复中附加，无主动定时短信。
 
 L6 验证：MCP协议11项测试和typecheck/build通过。observe不接受模型身份/来源参数；hooks仅README例子，未写任何全局配置或读取transcript。
+
+L7 验证：learn共35项测试及typecheck/build通过；实际Photon OTel向本机OTLP接收器导出了trace/log，金丝雀正文/电话/邮箱/偏好值/字段key均未出现。Sentry外部接收尚未配置。

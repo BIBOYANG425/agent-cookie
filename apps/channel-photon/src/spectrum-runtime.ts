@@ -6,6 +6,7 @@ import {createLearningControls,respondWithLearning,type LearningLocalState} from
 import {openState,ChannelFailure} from './state.js';
 import {readConfig} from './config.js';
 import {publicFailure} from './agent.js';
+import {createLearningTelemetry} from '@agent-cookie/learn';
 
 /** Explicit cloud migration entry; never started alongside the existing Socket.IO loop. */
 export async function serveSpectrum(env:NodeJS.ProcessEnv){
@@ -19,7 +20,10 @@ export async function serveSpectrum(env:NodeJS.ProcessEnv){
   const binding=createHash('sha256').update(JSON.stringify([config.projectId,config.testSender,config.agentHandle,base])).digest('hex');
   const store=await openState(resolve(env.AGENT_COOKIE_CHANNEL_STATE??'.runtime/channel-state.json'),binding);
   let app:{stop():Promise<void>}|undefined;
-  const sink=createObservationSink({observe:(input,key,options)=>workspace.observe(input,key,options)});
+  const telemetry=createLearningTelemetry({endpoint:env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT,
+    ...(env.AGENT_COOKIE_LEARNING_OTLP_TOKEN?{headers:{Authorization:`Bearer ${env.AGENT_COOKIE_LEARNING_OTLP_TOKEN}`}}:{})});
+  const sink=createObservationSink({observe:(input,key,options)=>workspace.observe(input,key,options),
+    metric:(status,depth)=>telemetry.metric({stage:'capture',status,count:depth,durationMs:0})});
   sink.pause();
   try{
     if(Object.values(store.state.messages).some(m=>m.phase!=='sent'))throw new ChannelFailure('PENDING_LEGACY_OUTBOX');
@@ -57,5 +61,5 @@ export async function serveSpectrum(env:NodeJS.ProcessEnv){
         row.phase='sent';delete row.text;await store.save();
       });
     }finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
-  }finally{sink.pause();await app?.stop();await store.close();}
+  }finally{sink.pause();try{await app?.stop();}finally{await telemetry.shutdown();await store.close();}}
 }
