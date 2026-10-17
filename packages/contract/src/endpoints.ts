@@ -20,7 +20,7 @@ export interface Endpoint {
 }
 
 export const ENDPOINTS: Endpoint[] = [
-  { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once" },
+  { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once. Merchants self-register; category personal needs the owner key (A13, confirmed)" },
   { method: "GET", path: "/me", caller: "keyed", summary: "agentId, category, role for the presented key" },
 
   { method: "POST", path: "/personal/intents", caller: "personal", idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
@@ -34,8 +34,8 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/personal/contributions/:id/revoke", caller: "personal", summary: "Revoke one contribution and recompute the card" },
 
   { method: "GET", path: "/agent/handshake", caller: "merchant", summary: "?sessionId= → Handshake (field names only)" },
-  { method: "GET", path: "/agent/fields", caller: "merchant", summary: "?sessionId=&fields=a,b&purpose= → 200 values | 403 SCOPE_DENIED | 403 PURPOSE_MISMATCH; purpose releases write a receipt" },
-  { method: "POST", path: "/agent/quotes", caller: "merchant", idempotent: true, summary: "Submit a quote for an intent" },
+  { method: "GET", path: "/agent/fields", caller: "merchant", summary: "?sessionId=&fields=a,b&purpose= → 200 values | 403 SCOPE_DENIED (incl. names outside the field table, A13) | 403 PURPOSE_MISMATCH; purpose releases write a receipt" },
+  { method: "POST", path: "/agent/quotes", caller: "merchant", idempotent: true, summary: "Submit a quote for an intent; not introduced → 404, own grant expired/revoked → 403 GRANT_EXPIRED/GRANT_REVOKED (A13)" },
   { method: "POST", path: "/agent/contributions", caller: "merchant", summary: "Filtered by canWrite; recomputes card" },
   { method: "PUT", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → write own note (≤ 2 KB)" },
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },

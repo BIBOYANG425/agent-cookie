@@ -3,7 +3,7 @@
 ## Scope and upstream
 
 - Integrated `origin/lane-a` **fbf864d** into **lane-b**, including A's real adapters (`96a508c`) and shared UCP size matching (`927efa1`).
-- `origin/lane-c` remained **77b797d**, already present in B. Upstream main was **20730e9**. No B work was merged or pushed to main.
+- `origin/lane-c` remained **77b797d**, already present in B. Final remote refresh found A **5929600** and main **8c1a869** (teammates merged PRs #9/#10). Adapter/console/rules/memory/fixtures implementation did not change. A's additional **5f26e61** contract clarification was separately merged into lane-b; it changes summaries/comments only and confirms the already-tested login-required handoff behavior. D's new P1 TAP package changes were inspected but are outside this adapter integration. No B work was merged or pushed to main.
 - A/C/D implementation files remain byte-for-byte equal to the integrated upstream. B changed SDK, Photon, workspace-fake, B tests, generated root dependency links, and integration evidence/requests only.
 
 ## What now runs

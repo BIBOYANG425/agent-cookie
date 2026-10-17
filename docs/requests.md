@@ -172,3 +172,6 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B32 → A/C：B已按DataSource处理卡、报价、撤贡献返回卡的Sample标记；Photon接受报价后也保留所选quote来源。但AcceptResult、receipts/activity尚无source，MCP演示仍保留AGENT_COOKIE_SAMPLE=1。请A/C评估冻结accept及回执来源语义，B不自行改契约。
 - B33 → C/A：控制台实际八方法均走SDK；C可声明workspace依赖@agent-cookie/sdk、构建SDK后移除missing-method TODO fallback并更新README旧表。本机临时仍用AGENT_COOKIE_SDK_ROOT指向已链接SDK的packages/mcp。A14贡献记录ID列表、C11 note删除/generation契约缺口仍在，不能用agentId当贡献ID；拿到正式端点后B再补对应方法。
 - B34 → A/C/D：A18套件仍列sold-out及原生requires_escalation录制todo；当前两个录制链已覆盖INSUFFICIENT_PERMISSIONS→requires_escalation→handoff，请A/D区分缺失用例并更新验收描述。C seed的ACME目标未运行，本次tier0.deliver失败如实保留，不能算商家模型端到端完成。Desktop UI/手机新适配器的实机证明与stdio/本地agent测试分别记录，未把旧桩截图当成本轮证据。B继续留lane-b，未合main。
+
+2026-10-17（续四），人确认 A13、A17（只追加）。
+| A21 | 人 → 全部 | A13 确认：①注册个人 agent 需要 owner 钥匙，商家仍可本机自助注册；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED；③已过期的商家对自己的 session 报价返回 403 GRANT_EXPIRED，未被介绍的才是 404。A17 确认：店家在 checkout 要求买家登录（`INSUFFICIENT_PERMISSIONS` / AUTH_REQUIRED）时，accept 返回 `handoff`，带店家的付款链接。两条已写进 `packages/contract`（endpoints.ts 说明、types.ts 的 AcceptResult 注释），行为不变。 | 已确认 |
