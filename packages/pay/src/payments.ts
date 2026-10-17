@@ -28,6 +28,9 @@ export interface InternalAuthorization extends PaymentAuthorization {
 export interface PaymentStore {
   get(id: string): InternalAuthorization | undefined;
   put(record: InternalAuthorization): void;
+  findByQuote(quoteId: string): InternalAuthorization | undefined;
+  reserveQuote(quoteId: string, id: string): boolean;
+  releaseQuote(quoteId: string): void;
 }
 
 const publicAuthorization = (record: InternalAuthorization): PaymentAuthorization => ({
@@ -59,7 +62,6 @@ export function createPayments({
   usePayment: (input: { authorizationId: string; agentId: string }) => Promise<PaymentAuthorization>;
   get: (id: string) => PaymentAuthorization | undefined;
 } {
-  const quoteAuthorizationIds = new Map<string, string>();
   const authorizePayment: AuthorizePayment = async ({ sessionId, quoteId, amount, currency }) => {
     const context = await getContext({ sessionId, quoteId });
     if (!context) throw new LaneError("NOT_FOUND");
@@ -69,10 +71,9 @@ export function createPayments({
     if (currency !== "USD") throw new LaneError("SCOPE_DENIED");
     if (amount > context.budget) throw new LaneError("OVER_BUDGET");
 
-    if (quoteAuthorizationIds.has(quoteId)) throw new LaneError("AUTHORIZATION_USED");
-
+    if (store.findByQuote(quoteId)) throw new LaneError("AUTHORIZATION_USED");
     const id = newId();
-    quoteAuthorizationIds.set(quoteId, id);
+    if (!store.reserveQuote(quoteId, id)) throw new LaneError("AUTHORIZATION_USED");
     let authorization: { providerRef: string; status: "authorized" | "declined" };
     try {
       authorization = await provider.authorize({
@@ -82,7 +83,7 @@ export function createPayments({
         idempotencyKey: id,
       });
     } catch {
-      quoteAuthorizationIds.delete(quoteId);
+      store.releaseQuote(quoteId);
       throw new LaneError("UPSTREAM_ERROR");
     }
     const record: InternalAuthorization = {
@@ -148,6 +149,7 @@ export function createPayments({
 
 class MapPaymentStore implements PaymentStore {
   private readonly records = new Map<string, InternalAuthorization>();
+  private readonly quoteReservations = new Map<string, string>();
 
   get(id: string): InternalAuthorization | undefined {
     return this.records.get(id);
@@ -155,5 +157,19 @@ class MapPaymentStore implements PaymentStore {
 
   put(record: InternalAuthorization): void {
     this.records.set(record.id, record);
+  }
+
+  findByQuote(quoteId: string): InternalAuthorization | undefined {
+    return Array.from(this.records.values()).find((record) => record.quoteId === quoteId);
+  }
+
+  reserveQuote(quoteId: string, id: string): boolean {
+    if (this.quoteReservations.has(quoteId) || this.findByQuote(quoteId)) return false;
+    this.quoteReservations.set(quoteId, id);
+    return true;
+  }
+
+  releaseQuote(quoteId: string): void {
+    this.quoteReservations.delete(quoteId);
   }
 }

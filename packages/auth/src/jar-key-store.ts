@@ -8,7 +8,7 @@ import {
   sign as cryptoSign,
   createHash,
 } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Handshake, SignHandshake } from "./contract.js";
 import { LaneError } from "./contract.js";
@@ -37,6 +37,37 @@ export interface PublicJwk {
   kid: string;
   alg: "EdDSA";
   use: "sig";
+}
+
+interface PublicKeysFile {
+  v: 1;
+  keys: Record<string, PublicJwk>;
+}
+
+function isPublicJwk(value: unknown): value is PublicJwk {
+  if (!value || typeof value !== "object") return false;
+  const jwk = value as Partial<PublicJwk>;
+  return jwk.kty === "OKP"
+    && jwk.crv === "Ed25519"
+    && typeof jwk.x === "string"
+    && typeof jwk.kid === "string"
+    && jwk.alg === "EdDSA"
+    && jwk.use === "sig";
+}
+
+function readPublicKeys(path: string): Map<string, PublicJwk> {
+  if (!existsSync(path)) return new Map();
+  const contents = JSON.parse(readFileSync(path, "utf8")) as Partial<PublicKeysFile>;
+  if (
+    contents.v !== fileVersion
+    || !contents.keys
+    || typeof contents.keys !== "object"
+    || Array.isArray(contents.keys)
+    || Object.values(contents.keys).some((key) => !isPublicJwk(key))
+  ) {
+    throw new Error("Invalid public key cache");
+  }
+  return new Map(Object.entries(contents.keys) as [string, PublicJwk][]);
 }
 
 function encryptSeed(seed: Buffer, kek: Buffer): EncryptedSeed {
@@ -106,7 +137,8 @@ function toPublicJwk(publicKey: ReturnType<typeof createPublicKey>): PublicJwk {
 export class JarKeyStore {
   private seed?: Buffer;
   private unlockedUntil = 0;
-  private readonly publicKeys = new Map<string, PublicJwk>();
+  private readonly publicKeys: Map<string, PublicJwk>;
+  private readonly publicKeysPath: string;
   private readonly now: () => number;
 
   private constructor(
@@ -114,8 +146,11 @@ export class JarKeyStore {
     private readonly kek: Buffer,
     private readonly encryptedSeed: EncryptedSeed,
     now?: () => number,
+    publicKeys = new Map<string, PublicJwk>(),
   ) {
     this.now = now ?? Date.now;
+    this.publicKeys = publicKeys;
+    this.publicKeysPath = `${path}.pub.json`;
   }
 
   static open({ path, kek, now }: JarKeyStoreOptions): JarKeyStore {
@@ -136,7 +171,13 @@ export class JarKeyStore {
       seed.fill(0);
       writeFileSync(path, `${JSON.stringify(encryptedSeed)}\n`, { mode: 0o600 });
     }
-    return new JarKeyStore(path, key, encryptedSeed, now);
+    return new JarKeyStore(
+      path,
+      key,
+      encryptedSeed,
+      now,
+      readPublicKeys(`${path}.pub.json`),
+    );
   }
 
   unlock(ttlMs: number): { unlockedUntil: number } {
@@ -166,6 +207,7 @@ export class JarKeyStore {
     const privateKey = derivePrivateKey(this.seed, handshake.sessionId);
     const publicJwk = toPublicJwk(createPublicKey(privateKey));
     this.publicKeys.set(handshake.sessionId, publicJwk);
+    this.persistPublicKeys();
     const sig = cryptoSign(null, Buffer.from(canonicalHandshake(handshake)), privateKey)
       .toString("base64url");
     return { sig, kid: publicJwk.kid };
@@ -182,10 +224,20 @@ export class JarKeyStore {
       createPublicKey(derivePrivateKey(this.seed, sessionId)),
     );
     this.publicKeys.set(sessionId, publicJwk);
+    this.persistPublicKeys();
     return { ...publicJwk };
   }
 
   jwks(sessionId: string): { keys: PublicJwk[] } {
     return { keys: [this.publicJwk(sessionId)] };
+  }
+
+  private persistPublicKeys(): void {
+    const contents: PublicKeysFile = {
+      v: fileVersion,
+      keys: Object.fromEntries(this.publicKeys),
+    };
+    writeFileSync(this.publicKeysPath, `${JSON.stringify(contents)}\n`, { mode: 0o600 });
+    chmodSync(this.publicKeysPath, 0o600);
   }
 }

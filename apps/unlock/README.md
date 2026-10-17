@@ -7,6 +7,7 @@ Local Hono passkey page for registering the jar owner's credential and unlocking
 - `PORT` (default `4312`), `UNLOCK_RP_ID` (default `localhost`), `UNLOCK_ORIGIN` (default `http://localhost:4312`)
 - `UNLOCK_TTL_MS` (default `900000`), `UNLOCK_DATA_DIR` (default `apps/unlock/.data`)
 - `UNLOCK_ALLOW_REGISTER` (`1` permits additional registrations)
+- `UNLOCK_DEV` (`1` enables the standalone `/dev/sign` demo route)
 - `AGENT_COOKIE_URL`, `AGENT_COOKIE_KEY`, and `AGENT_COOKIE_UNLOCK_SECRET` for workspace handoff
 - `AGENT_COOKIE_JAR_KEK`: optional base64url-encoded 32-byte key for standalone mode; otherwise a local KEK is generated in the data directory
 

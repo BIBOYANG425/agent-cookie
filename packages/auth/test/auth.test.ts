@@ -106,6 +106,23 @@ describe("JarKeyStore and merchant verification", () => {
     });
   });
 
+  it("serves persisted public keys while locked after reopening", async () => {
+    await withStore(async (path, kek) => {
+      const first = JarKeyStore.open({ path, kek });
+      first.unlock(60_000);
+      const original = handshake("persisted-session");
+      const signed = { ...original, ...(await first.signHandshake(original)) };
+      first.lock();
+
+      const reopened = JarKeyStore.open({ path, kek });
+      expect(reopened.isUnlocked()).toBe(false);
+      const jwks = reopened.jwks(original.sessionId);
+      expect(reopened.isUnlocked()).toBe(false);
+      expect(jwks.keys[0].kid).toBe(signed.kid);
+      expect(verifyHandshake(signed, jwks)).toEqual({ ok: true, kid: signed.kid });
+    });
+  });
+
   it("requires an unlocked jar and expires according to its injected clock", async () => {
     await withStore(async (path, kek) => {
       let now = 100;

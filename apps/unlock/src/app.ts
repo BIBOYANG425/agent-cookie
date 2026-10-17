@@ -9,6 +9,7 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import {
   createUnlockToken,
   JarKeyStore,
@@ -39,6 +40,7 @@ export interface UnlockConfig {
   ttlMs: number;
   dataDir: string;
   allowRegister: boolean;
+  dev: boolean;
   agentCookieUrl?: string;
   agentCookieKey?: string;
   unlockSecret?: Uint8Array;
@@ -66,6 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): UnlockConfig {
     ttlMs: parseEnvInteger(env.UNLOCK_TTL_MS, 900_000),
     dataDir: env.UNLOCK_DATA_DIR || "apps/unlock/.data",
     allowRegister: env.UNLOCK_ALLOW_REGISTER === "1",
+    dev: env.UNLOCK_DEV === "1",
     agentCookieUrl: env.AGENT_COOKIE_URL || undefined,
     agentCookieKey: env.AGENT_COOKIE_KEY || undefined,
     unlockSecret: env.AGENT_COOKIE_UNLOCK_SECRET
@@ -386,16 +389,18 @@ export function createApp(config: UnlockConfig, deps: UnlockDependencies = {}): 
   });
 
   if (!config.agentCookieUrl) {
-    app.post("/dev/sign", async (c) => {
-      try {
-        const body = await c.req.json<{ handshake: Handshake }>();
-        const signature = await jar!.signHandshake(body.handshake);
-        return c.json({ ...body.handshake, ...signature });
-      } catch (error) {
-        if (error instanceof LaneError) return c.json(error.toBody(), error.status as 403);
-        return c.json({ error: { code: "AUTH_REQUIRED", message: "Invalid handshake" } }, 400);
-      }
-    });
+    if (config.dev) {
+      app.post("/dev/sign", async (c) => {
+        try {
+          const body = await c.req.json<{ handshake: Handshake }>();
+          const signature = await jar!.signHandshake(body.handshake);
+          return c.json({ ...body.handshake, ...signature });
+        } catch (error) {
+          if (error instanceof LaneError) return c.json(error.toBody(), error.status as 403);
+          return c.json({ error: { code: "AUTH_REQUIRED", message: "Invalid handshake" } }, 400);
+        }
+      });
+    }
     app.get("/.well-known/agent-cookie-jwks.json", (c) => {
       const sessionId = c.req.query("sessionId");
       if (!sessionId) {
@@ -412,6 +417,14 @@ export function createApp(config: UnlockConfig, deps: UnlockDependencies = {}): 
 
   app.onError((error, c) => {
     if (error instanceof LaneError) return c.json(error.toBody(), error.status as 403);
+    if (
+      error instanceof SyntaxError
+      || (error instanceof HTTPException && error.status === 400)
+    ) {
+      return c.json({
+        error: { code: "AUTH_REQUIRED", message: "Invalid request body" },
+      }, 400);
+    }
     return c.json({ error: { code: "UPSTREAM_ERROR", message: "Request failed" } }, 502);
   });
   return app;

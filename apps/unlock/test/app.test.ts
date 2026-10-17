@@ -16,6 +16,7 @@ const configFor = (dataDir: string, overrides: Partial<UnlockConfig> = {}): Unlo
   ttlMs: 60_000,
   dataDir,
   allowRegister: false,
+  dev: false,
   jarKek: Buffer.alloc(32, 1),
   ...overrides,
 });
@@ -97,10 +98,25 @@ describe("unlock app", () => {
     });
   });
 
+  it("returns a client error for malformed JSON bodies", async () => {
+    await withDirectory(async (directory) => {
+      const app = createApp(configFor(directory));
+      const response = await app.request("/webauthn/authenticate/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "not json",
+      });
+      expect(response.status).toBe(400);
+      expect(await responseJson(response)).toEqual({
+        error: { code: "AUTH_REQUIRED", message: "Invalid request body" },
+      });
+    });
+  });
+
   it("unlocks standalone jar, signs a handshake, and serves its pairwise JWKS", async () => {
     await withDirectory(async (directory) => {
       storeCredential(directory);
-      const app = createApp(configFor(directory), {
+      const app = createApp(configFor(directory, { dev: true }), {
         now: () => 1_000,
         verifyAuthenticationResponse: async () => ({
           verified: true,
@@ -141,9 +157,17 @@ describe("unlock app", () => {
       });
       expect(signedResponse.status).toBe(200);
       const signed = await responseJson(signedResponse) as Handshake;
-      const jwksResponse = await app.request(
+      const noDevApp = createApp(configFor(directory));
+      const hiddenSignRoute = await noDevApp.request("/dev/sign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ handshake }),
+      });
+      expect(hiddenSignRoute.status).toBe(404);
+      const jwksResponse = await noDevApp.request(
         `/.well-known/agent-cookie-jwks.json?sessionId=${encodeURIComponent(handshake.sessionId)}`,
       );
+      expect(jwksResponse.status).toBe(200);
       const jwks = await responseJson(jwksResponse) as { keys: any[] };
       expect(signInWithAgentCookie({ handshake: signed, jwks })).toMatchObject({ status: "new" });
     });
