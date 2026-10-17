@@ -8,7 +8,8 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "tap:interop": "pnpm --filter @agent-cookie/ucp exec tsx ../auth/src/tap-interop.ts"
   },
   "dependencies": {
     "@agent-cookie/contract": "workspace:*"

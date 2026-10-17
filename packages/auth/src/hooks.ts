@@ -19,6 +19,7 @@ export function createLaneDHooks({ jar, secret, ttlMs, now }: LaneDHooksOptions)
   const seenNonces = new Set<string>();
   return {
     signHandshake: (handshake: Parameters<typeof jar.signHandshake>[0]) => jar.signHandshake(handshake),
+    signTapRequest: (options: Parameters<typeof jar.signTapRequest>[0]) => jar.signTapRequest(options),
     handleUnlock: async (req: Request): Promise<Response> => {
       let body: unknown;
       try {
