@@ -33,10 +33,10 @@ Commands were run from the named Visa repository directories; the Agent Cookie c
 
 ```sh
 # agent-registry/
-/Users/devin/repos/trusted-agent-protocol/.venv/bin/python main.py
+../.venv/bin/python main.py
 
 # merchant-backend/
-/Users/devin/repos/trusted-agent-protocol/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # cdn-proxy/
 npx -y -p node@22 -p pnpm@9.12.0 -c 'node --version && PORT=3001 npm start'
@@ -46,17 +46,17 @@ npx -y -p node@22 -p pnpm@9.12.0 -c 'node --version && npm install --no-package-
 npx -y -p node@22 -p pnpm@9.12.0 -c 'node --version && npm run dev -- --host 127.0.0.1'
 
 # agent-cookie-tap/
-npx -y -p node@22 -p pnpm@9.12.0 -c 'node --version && pnpm --filter @agent-cookie/auth tap:interop'
+pnpm --filter @agent-cookie/auth tap:interop
 ```
 
 The interop command registers an ephemeral key at `POST http://localhost:9002/agents/register`, then performs all four requests through `http://localhost:3001`. The local Visa services were left running:
 
-| Service | Port | Shell ID |
-| --- | ---: | --- |
-| Agent registry | 9002 | `7149bc` |
-| CDN proxy | 3001 | `4d3694` |
-| Merchant backend | 8000 | `9b60cf` |
-| Merchant frontend | 3000 | `bdf009` |
+| Service | Port |
+| --- | ---: |
+| Agent registry | 9002 |
+| CDN proxy | 3001 |
+| Merchant backend | 8000 |
+| Merchant frontend | 3000 |
 
 The frontend was also started because the proxy forwards `/product/` requests to `localhost:3000`; the backend on port 8000 serves `/api` and is not the destination of the signed path. An initial attempt without the frontend logged `ECONNREFUSED` for port 3000 and did not return an HTTP status. With Visa's sample frontend running, the valid signed request returned 200.
 
