@@ -1,0 +1,42 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { UcpApi } from "@agent-cookie/contract";
+import { createApp } from "../src/app.js";
+import { loadConfig, SAMPLE_FIXTURES_DIR, type UcpStubOutcome } from "../src/config.js";
+import { createDeps, type Deps } from "../src/deps.js";
+
+const devKeys = JSON.parse(readFileSync(resolve(SAMPLE_FIXTURES_DIR, "dev-keys.json"), "utf8")) as Record<string, { agentId: string }>;
+const keyOf = (agentId: string) => Object.entries(devKeys).find(([, v]) => v.agentId === agentId)![0];
+export const KEYS = { personal: keyOf("personal-photon"), desktop: keyOf("personal-desktop"), owner: keyOf("owner"), acme: keyOf("shoe-acme") };
+
+export interface Res { status: number; body: any; text: string }
+
+export async function harness(opts: { outcome?: UcpStubOutcome; ucp?: UcpApi; env?: Record<string, string> } = {}) {
+  const config = loadConfig({ PORT: "4310", SQLITE_PATH: ":memory:", FIXTURES_DIR: SAMPLE_FIXTURES_DIR, AGENT_COOKIE_DEMO: "1", AGENT_COOKIE_TEST: "1",
+    CALLBACK_TIMEOUT_MS: "200", CALLBACK_RETRIES: "1", UCP_STUB_COMPLETE: opts.outcome ?? "requires_escalation", ...opts.env });
+  const deps: Deps = await createDeps(config, opts.ucp ? { ucp: opts.ucp } : {});
+  const app = createApp(deps);
+  const call = async (method: string, path: string, key?: string, body?: unknown, headers: Record<string, string> = {}): Promise<Res> => {
+    const h: Record<string, string> = { ...headers };
+    if (key) h.authorization = `Bearer ${key}`;
+    if (body !== undefined) h["content-type"] = "application/json";
+    const res = await app.request(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await res.text();
+    let parsed: unknown = undefined;
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
+    return { status: res.status, body: parsed, text };
+  };
+  const get = (p: string, k?: string) => call("GET", p, k);
+  const post = (p: string, k?: string, b?: unknown, h?: Record<string, string>) => call("POST", p, k, b ?? {}, h);
+  const put = (p: string, k?: string, b?: unknown) => call("PUT", p, k, b ?? {});
+  const registerMerchant = async (extra: Record<string, unknown> = {}) => {
+    const r = await post("/agents/register", undefined, { name: "Test Merchant · Sample", category: "shoe", capabilities: ["trail_shoes"],
+      callbackUrl: "http://127.0.0.1:9/cb", ...extra });
+    return r.body as { agentId: string; key: string };
+  };
+  const intent = async (key = KEYS.personal, body: Record<string, unknown> = { kind: "trail_shoes", public: { budget: "120" }, text: "帮我找双越野跑鞋，120 以内" }) =>
+    (await post("/personal/intents", key, body)).body as { intentId: string; introduced: number };
+  const sessionOf = async (agentId: string, key = KEYS.personal) =>
+    ((await get("/personal/grants", key)).body.grants as Array<{ agentId: string; sessionId: string; id: string }>).find((g) => g.agentId === agentId)!;
+  return { deps, app, get, post, put, registerMerchant, intent, sessionOf };
+}

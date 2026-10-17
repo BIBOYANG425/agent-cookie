@@ -12,6 +12,7 @@
     "record": "tsx src/record.ts"
   },
   "dependencies": {
+    "@agent-cookie/contract": "workspace:*",
     "@shopify/ucp-cli": "0.9.1"
   },
   "devDependencies": {
