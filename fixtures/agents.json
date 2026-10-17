@@ -1,0 +1,24 @@
+[
+  {
+    "agentId": "sample-personal-photon",
+    "name": "Sample · Photon personal agent",
+    "category": "personal",
+    "capabilities": [],
+    "createdAt": "2026-10-17T16:00:00.000Z"
+  },
+  {
+    "agentId": "sample-personal-desktop",
+    "name": "Sample · Claude Desktop personal agent",
+    "category": "personal",
+    "capabilities": [],
+    "createdAt": "2026-10-17T16:00:00.000Z"
+  },
+  {
+    "agentId": "sample-acme",
+    "name": "Sample · ACME shoe agent",
+    "category": "shoe",
+    "capabilities": ["trail_shoes"],
+    "chatEndpoint": "http://127.0.0.1:8000/api/chat",
+    "createdAt": "2026-10-17T16:00:00.000Z"
+  }
+]

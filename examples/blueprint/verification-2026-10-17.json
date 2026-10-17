@@ -1,0 +1,71 @@
+{
+  "checked_at": "2026-10-17T19:42:02.746523+00:00",
+  "clone": "/private/tmp/agent-cookie-commerce-agents",
+  "upstream_commit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+  "upstream_worktree_clean": true,
+  "memory_hook": {
+    "path": "examples/retail/api/main.py",
+    "line": 40
+  },
+  "memory_store_methods": [
+    "get_facts",
+    "upsert_facts",
+    "search_facts",
+    "delete_fact",
+    "clear",
+    "purge_generation"
+  ],
+  "node": "v24.8.0",
+  "python": "Python 3.11.15",
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "store": "ACME",
+      "products": 87,
+      "skills": [
+        "customer-care",
+        "memory-personalization",
+        "planning-goals",
+        "purchase-research",
+        "search-discovery"
+      ],
+      "model": "claude-sonnet-5"
+    }
+  },
+  "storefront": {
+    "status": 200,
+    "content_type": "text/html",
+    "contains_acme": true
+  },
+  "products": {
+    "status": 200,
+    "returned": 1
+  },
+  "chat_without_session": {
+    "status": 401,
+    "body": {
+      "detail": "Start a session first (POST /api/session)"
+    }
+  },
+  "session": {
+    "status": 200,
+    "created": true,
+    "sample": true
+  },
+  "chat": {
+    "status": 200,
+    "content_type": "text/event-stream",
+    "event_types": [
+      "error"
+    ],
+    "errors": [
+      {
+        "message": "No Anthropic API credentials are configured, so chat can't run. Set ANTHROPIC_API_KEY in examples/retail/.env or the repo-root .env and restart; everything except chat works without one."
+      }
+    ],
+    "completed": false
+  },
+  "a15": "not verified",
+  "a16": "not verified"
+}

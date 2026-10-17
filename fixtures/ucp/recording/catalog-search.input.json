@@ -1,0 +1,20 @@
+{
+  "query": "trail running shoes",
+  "context": {
+    "intent": "Find in-stock trail running shoes at or below USD 120",
+    "address_country": "US",
+    "currency": "USD"
+  },
+  "filters": {
+    "price": {
+      "max": 12000
+    },
+    "available": true,
+    "ships_to": {
+      "country": "US"
+    }
+  },
+  "pagination": {
+    "limit": 30
+  }
+}

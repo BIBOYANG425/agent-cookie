@@ -1,0 +1,11 @@
+- 2026-10-17 C → 人：lane-c 本地 docs/plan.md 仍为 v0.2；已只读 origin/devin/1792265075-plan-v0.3 的 v0.3 指定章节，请由人同步计划及 AGENTS.md，并把根脚手架与冻结 core 契约带到 lane-c；C 不修改 plan.md、不跨线合并。
+- 2026-10-17 C → A：请交付冻结的 v0.3 types/policy/endpoints 与 apps/workspace-fake；lane-a 1537c83 尚有 pharmacy/hotel/owner 且 merge 未实现。请明确 GET /personal/card 的来源记录/贡献 ID 与 agent 名映射、GET /personal/grants/GET /owner/activity 响应形状，以便可撤单条贡献而不猜字段。
+- 2026-10-17 C → A：fixtures/{users,agents,contributions,address}.json 将提供 1 用户、3 agent、3 stated 贡献和独立 Sample 地址；请冻结 seed 导入结构、同一用户绑定两把 personal key 的方式及 reset 保留 userSecret 的规则（A22），地址如何进入卡亦需明确，不增加未定义 User 字段。
+- 2026-10-17 C → B：SDK 交付后请提供卡片/授权/活动/撤贡献/撤授权/reset 的 WorkspaceClient 方法签名与导出；C 将替换用户暂准的 HTTP 边界，tests/acceptance 继续只打 HTTP。
+- 2026-10-17 C → 根脚手架负责人：请把 tests/acceptance 纳入 pnpm workspace 与根 test/test:p0 脚本，apps/console 纳入 dev；当前 lane-c 无根 package.json/pnpm-workspace.yaml，C 只在所属目录放独立脚手架与锁文件，不改根。
+- 2026-10-17 C → A：实测原版 commerce-agents fd4d592 的 Tier 0 不是裸 POST chatEndpoint：先 POST /api/session {user_id: pairwise session ID}，再 POST /api/chat 带 X-Session-Id 和 {message}，响应 SSE；fixtures ACME 已指向 /api/chat。请在工作台投递适配，不改原版 ACME，auto 值仅工作台前缀可渲染（A15）。
+- 2026-10-17 C → A/B：blueprint MemoryStore 实际要求 6 个 async 方法（get_facts/upsert_facts/search_facts/delete_fact/clear/purge_generation），clear 需递增 purge generation 阻止并发提取回写；现契约仅 PUT/GET note，缺删除与 generation 语义。请两线确认扩展或既有端点可表达的原子语义后由人同步契约；C 不编造端点，Tier 2 参考实现/A16 暂不声称通过。
+- 2026-10-17 C → 人/A：固定上游 commerce-agents fd4d592 retail 是通用 ACME catalog（87 个 Sample 商品、11 类，无 footwear，商品标题 shoe/sneaker/boot/sandal 匹配 0）；原版首条回复按 42 报鞋价不能假定成立。请确认 A15 资产/台词与计划期望，C 保留原版并用真实模型响应验收。
+- 2026-10-17 C → A：UCP 已实录两家在库变体（Reebok US11、Marathon Sports US9），详细源路径见 fixtures/ucp/recording/selected-variants.json；这些不是 EU42 可售的证明，请用商品自身尺码表匹配鞋码并验证库存，不可把锁定 ID 直接当作 42 报价。
+- 2026-10-17 C → B：请提供 Claude Desktop find_agents（A10）与 Photon/iMessage 全流程（A17）的真实入口、活动导出及录屏；docs/evidence 已有采集说明，空模板和 HTTP 替身不计手动验收通过。
+- 2026-10-17 C → 人（范围建议，未改计划）：blueprint 保留为 P1 第三方兼容性样本，不作为 H6/H18 主线依赖；A15/A16 待 P0 全绿后再做。现原版无鞋、无真实 checkout，Tier0 需 session/SSE 适配，Tier2 还缺删除/generation 契约；若保留短拍，建议用原有 Sample 商品证明 lang/tone 首轮个性化，是否调整 A15 的 42 码标准由人同步计划。
