@@ -199,6 +199,6 @@ export async function restoreSeed(root: string, userId: string): Promise<void> {
   const marker = await assertRepository(root, userId, false);
   const git = gitAt(root);
   await git.raw(['reset', '--hard', marker.seedCommit]);
-  await git.raw(['clean', '-fd']);
+  await git.raw(['clean', '-fdx']);
   for (const directory of DIRECTORIES) await mkdir(join(root, directory), { recursive: true, mode: 0o700 });
 }

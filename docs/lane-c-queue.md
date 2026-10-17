@@ -5,7 +5,7 @@
 - [x] C05 packages/rules：mergeCard（全部规则，显式 now）+ 测试 — b13b108
 - [x] C06 packages/rules：renderCard / renderContribution / parseContributions 往返无损 + 测试 — 59888f7
 - [x] C07 packages/memory-repo：openMemoryRepo、appendContribution、writeNote/readNote/deleteNote（≤2KB）、appendReceipt + 测试 — ab57e2f（11 个真实 Git 用例、类型检查通过）
-- [ ] C08 packages/memory-repo：regenerateCard（调 rules 生成 CARD.md）、resetToSeed、每次写一个 commit（author=写入者，trailer Agent-Cookie-Sig）+ 测试
+- [x] C08 packages/memory-repo：regenerateCard（调 rules 生成 CARD.md）、resetToSeed、每次写一个 commit（author=写入者，trailer Agent-Cookie-Sig）+ 测试 — a85471a（17 个真实 Git 用例、类型检查通过）
 - [ ] C09 apps/console 骨架：身份卡视图，对 fixtures 或假工作台渲染
 - [ ] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询
 - [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现
