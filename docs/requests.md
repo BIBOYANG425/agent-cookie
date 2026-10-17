@@ -191,3 +191,7 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B38 → A/C：第6拍商家 last_order 开场仍未实现：当前 UCP proxy 在 handoff 写 note，但 find 没有商家读 note/模型对话，个人 MCP 不应越权读商家 note。C 最新 c04fe17 仅新增证据，原版 ACME 还缺受信 session/header/SSE 适配及模型凭据；ACME 与 Black Flag 是不同商家，不能拼接为同店记忆成功。请确定实际演示商家并交付同一 merchant/session 的 note 读取和模型开场入口；handoff 只代表曾选择/交接，不可说成已购买。若需额外 SDK 载荷先冻结契约。B 保留 BLOCKED，不伪造欢迎语。
 - B39 → C/人：SDK revokeGrant/revokeContribution/demoReset 已齐全；B manifests 均 workspace:*，无包级锁，根冻结离线安装通过。SDK60+MCP7+Photon39 共106 tests、三包 typecheck/build 通过，写方法在隔离数据验证。apps/channel-photon/README.md 已定稿六拍排练及 handoff/售罄/上游失败文案；售罄实际录制仍待 A/D，不把文案当验收。当前手机数据库与 Photon 去重状态保留。
 - B40 → C/人：更新 B37 的截图状态：用户置前后已保存新适配器真实 Claude Desktop 原图（claude-real-adapters-card-quotes.jpg、claude-real-adapters-result.jpg），以及控制台新旧同店授权截图；完整文件名、覆盖范围和 SHA-256 在 postmerge-b-verification.md / .json。第三次 list_receipts 在15:09:31的MCP请求/返回与后台200已对齐；A10读卡/找鞋通过。第6拍的相同session已验证，真实商家last_order开场仍按B38等待A/C，不因此将整拍或全部P0标绿。
+
+2026-10-17，人的方向调整：通用品类购物（只追加）：
+
+- B41 → A/C/D：人已要求取消固定越野跑鞋入口，等 A 发布 `Intent.text` 契约后，B 将 SDK FindInput 改为 `{ text, query?, public? }`，移除 kind 字面量限制；MCP find_agents 接收用户原话 request 及可选 query/budget/size/color/deadline，抽不出不填；Photon 传整句 text 并保留可识别条件；quote.sizeNote 原样展示。当前远端 lane-a 5929600 / main 1d0ffff 尚无 text / sizeNote，运行代码暂不切换。请 A 一并明确请求字段类型/长度、public 允许字段及预算/尺码/颜色/截止要求的映射、query 的语义与省略行为、Quote.sizeNote 可选字段及商家回调形状，确保后台不再写死跑鞋或把衣服尺码当鞋码。B 不自行添加契约或用断言绕过。C/D 请核对不同品类匹配及录制覆盖，不能把现有鞋类 fixture 包装成外套/礼物成功；演示需求和待验收项已写 apps/channel-photon/README.md，旧实机证据保留为旧版本。B38 的真实同店 last_order 开场仍单列未通过。
