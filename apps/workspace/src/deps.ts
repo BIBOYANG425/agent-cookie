@@ -6,13 +6,15 @@ import { loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
 import type { Config } from "./config.js";
 import { Store } from "./db.js";
+import { fail } from "./http.js";
 import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
-import { wireLaneD } from "./laneD-wire.js";
-import { ensureOwnerKey, loadFixtures, seedStore, type Fixtures } from "./seed.js";
+import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
+import { createLaneD, type LaneDHooks } from "./laneD.js";
+import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
 import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
@@ -28,6 +30,8 @@ export interface Deps {
   repo: MemoryRepo;
   log: Log;
   delivery: Delivery;
+  /** Lane D hooks (empty when AGENT_COOKIE_JAR_KEK / AGENT_COOKIE_UNLOCK_SECRET are not set). Mutable for tests. */
+  laneD: LaneDHooks;
   fixtures: Fixtures;
   card: CardService;
   sessions: SessionService;
@@ -38,24 +42,31 @@ export interface Deps {
   gate: Gate;
   /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
   reset(): Promise<string>;
-  close(): void;
+  /** Waits for in-flight deliveries (they log their result), then closes SQLite. */
+  close(): Promise<void>;
 }
 
 /** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
-export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi }
+export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
-  const store = new Store(config.sqlitePath);
+  const gate = new Gate();
+  const store = new Store(config.sqlitePath, { busyTimeoutMs: config.sqliteBusyTimeoutMs });
+  // A request overtaken by a reset must not write anything (gate.ts); it hears "not found", like any vanished object.
+  store.setWriteGuard(() => { if (gate.stale()) fail("NOT_FOUND"); });
   const clock = new Clock();
-  const log = activityLogger(store, clock);
-  const fixtures = loadFixtures(config.fixturesDir);
+  const log = activityLogger(store, clock, () => gate.stale());
+  const fixtures = loadFixtures(config.fixturesDir, config.ucpFixturesDir);
   const rules = overrides.rules ?? loadRules();
   const ucp = overrides.ucp ?? loadUcp(config);
   const repo = await (overrides.memoryRepoApi ?? loadMemoryRepoApi()).openMemoryRepo({
     path: config.memoryRepoPath, seedDir: resolve(config.fixturesDir, FIXTURE_FILES.memory), userId: fixtures.users[0]!.userId, rules,
   });
-  const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log);
-  const ctx: Ctx = { config, store, clock, rules, ucp, repo: () => repo, log, delivery };
+  const laneD: LaneDHooks = overrides.laneD ?? createLaneD(config, clock);
+  const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log, laneD);
+  // Services call UCP through the Sentry wrapper (a span per call); deps.ucp stays the raw adapter for tests.
+  const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), config, store, clock, rules, ucp: tracedUcp(ucp, config.ucpMode),
+    repo: () => repo, log, delivery, laneD };
   const card = new CardService(ctx);
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
@@ -63,6 +74,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
+  else upgradeSeed(store, fixtures, config, clock.nowIso());
   await reconcileRepo(ctx);
   // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
   if (!config.demo && !config.test) {
@@ -71,10 +83,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   }
   card.get(fixtures.users[0]!.userId);
 
-  const unwireLaneD = wireLaneD(config);
-  const gate = new Gate();
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, fixtures, card, sessions, fields, notes, commerce, gate,
+    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, gate,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
@@ -86,10 +96,11 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       card.get(fixtures.users[0]!.userId);
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
-    }),
-    close() {
+    }, config.resetWaitMs),
+    async close() {
+      await delivery.settle();
       store.close();
-      unwireLaneD?.();
+      laneD.lock?.();
     },
   };
 }
