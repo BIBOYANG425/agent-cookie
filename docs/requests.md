@@ -160,3 +160,9 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | A20 | A → 人 | 工作台验收（`apps/workspace/test/acceptance`，真实 rules / git 记忆库 / D 录制 UCP）：P0（A01–A12、A18、A22）66 通过、0 失败、3 待办（A10 手动；A18 的售罄和 requires_escalation 单独录制仍缺）。A13 6/6，A17 手动。 | 已验证 |
 
 - 2026-10-17 C → A/B/人（main 同步状态）：已合 main 798e0de，正式 contract/workspace 和 D EU42 新 pin pair 已到，根 demo:reset 也已带 owner 鉴权；上述旧请求保持历史原文。apps/workspace/src/adapters.ts 仍加载三套 stubs，B SDK 尚未合入，C11 删除/generation 与 A14 贡献 ID 契约缺口不变。请接线、刷新 C 包根锁及安排真实客户端/模型证据；C 不越界修改。
+
+2026-10-17（续四），人确认 A13、A17（只追加）。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A21 | 人 → 全部 | A13 确认：①注册个人 agent 需要 owner 钥匙，商家仍可本机自助注册；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED；③已过期的商家对自己的 session 报价返回 403 GRANT_EXPIRED，未被介绍的才是 404。A17 确认：店家在 checkout 要求买家登录（`INSUFFICIENT_PERMISSIONS` / AUTH_REQUIRED）时，accept 返回 `handoff`，带店家的付款链接。两条已写进 `packages/contract`（endpoints.ts 说明、types.ts 的 AcceptResult 注释），行为不变。 | 已确认 |

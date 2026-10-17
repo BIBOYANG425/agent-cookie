@@ -154,7 +154,9 @@ export interface Quote {
 /**
  * Response of POST /personal/quotes/:id/accept.
  *  ordered  = checkout completed; `orderId` set.
- *  handoff  = UCP `requires_escalation`: the user pays on the merchant's page; `continueUrl` is mandatory.
+ *  handoff  = UCP `requires_escalation`, or the store refusing to complete without the buyer signed in
+ *             (INSUFFICIENT_PERMISSIONS / AUTH_REQUIRED; A17, confirmed): the user pays on the merchant's page;
+ *             `continueUrl` is mandatory for UCP quotes.
  *             This is the DEFAULT outcome — UCP stores mostly report native_checkout=false, so "can pay for
  *             you" is never promised.
  *  blocked  = policy refused a step (e.g. shipping_address → PURPOSE_MISMATCH); `code` set, nothing ordered.
