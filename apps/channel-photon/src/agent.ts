@@ -18,9 +18,9 @@ export async function respond(text: string, messageId: string, conversation: Con
     if (!quote) return '请先让我找鞋，看到报价后再选择。';
     const result = await workspace.accept(quote.id, operationKey('accept', quote.id));
     const prefix = result.sample ? '[Sample 演示] ' : '';
-    if (result.status === 'handoff') return `${prefix}已准备好所选商品的交接链接：\n${result.continueUrl}\n${result.message ?? ''}\n尚未付款，也未确认订单。${result.sample ? '演示链接不可用于购物。' : '请打开链接核实库存、配送和最终金额。'}`;
+    if (result.status === 'handoff') return `${prefix}${result.continueUrl ? `已准备好所选商品的交接链接：\n${result.continueUrl}` : '商家需要继续处理，后台未提供交接链接。'}\n${result.message ?? ''}\n尚未付款，也未确认订单。${result.sample ? '此结果仅供演示。' : result.continueUrl ? '请打开链接核实库存、配送和最终金额。' : ''}`;
     if (result.status === 'ordered') return `${prefix}后台确认订单：${result.orderId}\n${result.message ?? ''}`;
-    return `${prefix}${result.status === 'blocked' ? '暂时不能继续' : '本次操作失败'}：${result.message ?? result.code ?? '请检查后台状态。'}`;
+    return `${prefix}${result.status === 'blocked' ? '暂时不能继续' : '本次操作失败'}：${result.message ?? result.code ?? '请检查后台状态。'}${result.continueUrl ? `\n后台提供的后续处理链接：${result.continueUrl}\n未确认订单或付款。${result.sample ? '此结果仅供演示。' : ''}` : ''}`;
   }
   if (/^(?:身份卡|我的资料|读卡|查看身份卡|card)$/i.test(input)) {
     const card = await workspace.getMyCard();

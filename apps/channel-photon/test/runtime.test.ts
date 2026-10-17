@@ -66,3 +66,16 @@ it('stores cursor/outbox privately and rejects wrong-account reuse or concurrent
   await expect(openState(path,'another-binding')).rejects.toMatchObject({code:'STATE_BINDING_MISMATCH'});
   const reopened=await openState(path,'sample-binding');expect(reopened.state.cursor).toBe(17);await reopened.close();
 });
+
+it.each(['ordered','handoff','blocked','failed'] as const)('renders actual %s outcomes without inventing a link or losing a failure handoff',async status=>{
+  const client=await workspace();
+  const offers=await client.find({kind:'trail_shoes',public:{}},'render');
+  vi.spyOn(client,'accept').mockResolvedValue({status,quoteId:offers.quotes[0].id,sample:true,message:'Sample buyer review',
+    ...(status==='ordered'?{orderId:'sample-order'}:{}),...(status==='failed'?{continueUrl:'https://example.com/review'}:{})});
+  const text=await respond('要第一双','selection',{offers},client);
+  expect(text).toContain('Sample');expect(text).not.toContain('undefined');
+  if(status==='ordered')expect(text).toContain('sample-order');
+  else expect(text).not.toContain('后台确认订单');
+  if(status==='handoff')expect(text).toContain('未提供交接链接');
+  if(status==='failed')expect(text).toContain('https://example.com/review');
+});

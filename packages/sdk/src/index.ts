@@ -8,6 +8,8 @@ export type CheckoutResult = AcceptResult & { sample: boolean };
 export interface WorkspaceConfig {
   baseUrl: string;
   key: string;
+  /** Explicitly label local demo/stub data when the backend omits Sample metadata. */
+  sample?: boolean;
 }
 
 // These are the GET /me wire fields from plan v0.3, not a second domain model.
@@ -51,7 +53,10 @@ export function workspaceConfigFromEnv(env: Record<string, string | undefined>):
       || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
     throw new Error('AGENT_COOKIE_URL must be a loopback HTTP origin without credentials.');
   }
-  return { baseUrl: url.origin, key };
+  if (env.AGENT_COOKIE_SAMPLE !== undefined && !['0', '1'].includes(env.AGENT_COOKIE_SAMPLE)) {
+    throw new Error('AGENT_COOKIE_SAMPLE must be 0 or 1.');
+  }
+  return { baseUrl: url.origin, key, ...(env.AGENT_COOKIE_SAMPLE === '1' ? { sample: true } : {}) };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -65,7 +70,8 @@ export class WorkspaceClient {
   #timeoutMs: number;
 
   constructor(options: WorkspaceConfig & { fetch?: typeof fetch; timeoutMs?: number }) {
-    this.#config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: options.baseUrl, AGENT_COOKIE_KEY: options.key });
+    this.#config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: options.baseUrl, AGENT_COOKIE_KEY: options.key,
+      AGENT_COOKIE_SAMPLE: options.sample ? '1' : undefined });
     this.#fetch = options.fetch ?? globalThis.fetch;
     this.#timeoutMs = options.timeoutMs ?? 25_000;
     if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs < 1 || this.#timeoutMs > 120_000) {
@@ -104,7 +110,7 @@ export class WorkspaceClient {
       }
       throw new Error('The workspace rejected the request with an unrecognized error.');
     }
-    return payload;
+    return this.#config.sample && isObject(payload) ? { ...payload, sample: true } : payload;
   }
 
   async getMe(): Promise<WorkspaceIdentity> {
@@ -150,7 +156,6 @@ export class WorkspaceClient {
   async accept(quoteId: string, idempotencyKey: string): Promise<CheckoutResult> {
     const payload = await this.#request(`/personal/quotes/${encodeURIComponent(quoteId)}/accept`, {}, idempotencyKey);
     if (!isObject(payload) || !['ordered','handoff','blocked','failed'].includes(String(payload.status)) || payload.quoteId !== quoteId
-      || (payload.status === 'handoff' && !safeLink(payload.continueUrl))
       || (payload.status === 'ordered' && (typeof payload.orderId !== 'string' || !payload.orderId))
       || (payload.continueUrl !== undefined && !safeLink(payload.continueUrl))
       || (payload.receipts !== undefined && (!Array.isArray(payload.receipts) || !payload.receipts.every(validReceipt)))) throw new Error('Invalid checkout response.');
@@ -166,12 +171,15 @@ export class WorkspaceClient {
   /** Requires an owner key; never expose this method as a personal MCP tool. */
   async getActivity(): Promise<{ activity: ActivityEvent[]; sample: boolean }> {
     const payload = await this.#request('/owner/activity');
-    if (!isObject(payload) || !Array.isArray(payload.activity) || !payload.activity.every(row => isObject(row)
+    // A's SQLite backend returns `events`; the B-local fake used `activity`.
+    const rows = isObject(payload) ? payload.events ?? payload.activity : undefined;
+    if (!isObject(payload) || (payload.events !== undefined && payload.activity !== undefined)
+      || !Array.isArray(rows) || !rows.every(row => isObject(row)
       && ['id', 'at', 'event', 'actor', 'object', 'result', 'reason'].every(k => typeof row[k] === 'string'))) {
       throw new Error('Invalid activity response.');
     }
     // Only return contract fields, even if an upstream includes extra properties.
-    return { activity: payload.activity.map(row => ({ id: row.id, at: row.at, event: row.event,
+    return { activity: rows.map(row => ({ id: row.id, at: row.at, event: row.event,
       actor: row.actor, object: row.object, result: row.result, reason: row.reason })), sample: payload.sample === true };
   }
 }

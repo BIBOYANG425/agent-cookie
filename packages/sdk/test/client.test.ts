@@ -111,6 +111,11 @@ describe('shopping response boundaries', () => {
 });
 
 describe('owner activity export', () => {
+  it('accepts the SQLite workspace events envelope', async () => {
+    const row={id:'a',at:'2026-10-17T20:00:00Z',event:'GET /personal/card',actor:'personal',object:'',result:'200',reason:''};
+    const client=new WorkspaceClient({...config,fetch:async()=>Response.json({events:[row]})});
+    expect(await client.getActivity()).toEqual({activity:[row],sample:false});
+  });
   it('returns only contract event fields and preserves authorization failures', async () => {
     const row={id:'event',at:'2026-10-17T20:00:00Z',event:'intent.created',actor:'sample-personal',object:'intent',result:'ok',reason:'Sample'};
     const fetcher=vi.fn<typeof fetch>()
@@ -121,8 +126,32 @@ describe('owner activity export', () => {
     expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4310/owner/activity');
     await expect(client.getActivity()).rejects.toMatchObject({status:403,code:'SCOPE_DENIED'});
   });
-  it.each([{}, {activity:[null]}, {activity:[{id:'event'}]}])('rejects malformed activity instead of exporting it',async payload=>{
+  it.each([{}, {activity:[null]}, {activity:[{id:'event'}]}, {events:[],activity:[]}])('rejects malformed activity instead of exporting it',async payload=>{
     const client=new WorkspaceClient({...config,fetch:async()=>Response.json(payload)});
     await expect(client.getActivity()).rejects.toThrow('Invalid activity response');
   });
+});
+
+it('labels demo data explicitly even when the SQLite backend has no sample property',async()=>{
+  const configFromEnv=workspaceConfigFromEnv({AGENT_COOKIE_KEY:config.key,AGENT_COOKIE_SAMPLE:'1'});
+  expect(configFromEnv.sample).toBe(true);
+  expect(()=>workspaceConfigFromEnv({AGENT_COOKIE_KEY:config.key,AGENT_COOKIE_SAMPLE:'yes'})).toThrow('AGENT_COOKIE_SAMPLE');
+  const fetcher=vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json({card:[],candidates:[]}))
+    .mockResolvedValueOnce(Response.json({intentId:'i'}))
+    .mockResolvedValueOnce(Response.json({quotes:[]}))
+    .mockResolvedValueOnce(Response.json({status:'handoff',quoteId:'q',message:'Merchant notified; no link available.'}))
+    .mockResolvedValueOnce(Response.json({receipts:[]}));
+  const client=new WorkspaceClient({...configFromEnv,fetch:fetcher});
+  expect(await client.getMyCard()).toMatchObject({sample:true});
+  expect(await client.find({kind:'trail_shoes',public:{}},'find')).toMatchObject({sample:true});
+  expect(await client.accept('q','accept')).toMatchObject({status:'handoff',sample:true});
+  expect(await client.getReceipts()).toMatchObject({sample:true});
+});
+
+it.each(['ordered','handoff','blocked','failed'] as const)('preserves contract AcceptResult %s',async status=>{
+  const payload={quoteId:'q',status,...(status==='ordered'?{orderId:'sample-order'}:{}),message:'Sample result',
+    ...(status==='failed'?{code:'UPSTREAM_ERROR',continueUrl:'https://example.com/review'}:{})};
+  const client=new WorkspaceClient({...config,sample:true,fetch:async()=>Response.json(payload)});
+  expect(await client.accept('q','accept')).toEqual({...payload,sample:true});
 });
