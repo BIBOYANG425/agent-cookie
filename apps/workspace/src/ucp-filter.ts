@@ -17,12 +17,13 @@ function num(s: string): string | undefined {
   return Number.isFinite(n) && n > 0 ? String(n) : undefined;
 }
 
-/** "42", "EU 42", "US 8.5", "M 8.5", "Men's 8.5", "8.5" → Size. Bare numbers ≥ 30 are EU, below are US. */
-export function parseSize(raw: string): Size | undefined {
-  const t = raw.trim().toLowerCase().replace(/\s+/g, " ");
-  let m = /^(?:eu|eur)\s?(\d{2}(?:\.\d)?)$/.exec(t);
+/** One size token: "EU 42", "42 EU", "US 9", "9 US", "M 9", "Men's 9", "US Men 9", "Size 9", "9", "42" (bare ≥ 30 is EU). UK and women's sizes are not parsed. */
+function parseOne(part: string): Size | undefined {
+  const t = part.trim().toLowerCase().replace(/\s+/g, " ").replace(/^size /, "");
+  if (t === "" || /women|wmn|\bw\b|\buk\b|\bcm\b|\bjp\b/.test(t)) return undefined;
+  let m = /^(?:eu|eur)\s?(\d{2}(?:\.\d)?)$/.exec(t) ?? /^(\d{2}(?:\.\d)?)\s?(?:eu|eur)$/.exec(t);
   if (m) return num(m[1]!) ? { system: "EU", value: num(m[1]!)! } : undefined;
-  m = /^(?:us|us m|m|men'?s|mens)\s?(\d{1,2}(?:\.5)?)$/.exec(t);
+  m = /^(?:us(?: m| men'?s?| mens)?|m|men'?s|mens)\s?(\d{1,2}(?:\.5)?)$/.exec(t) ?? /^(\d{1,2}(?:\.5)?)\s?(?:us|us m|m)$/.exec(t);
   if (m) return num(m[1]!) ? { system: "US", value: num(m[1]!)! } : undefined;
   m = /^(\d{1,2}(?:\.\d)?)$/.exec(t);
   if (m) {
@@ -33,19 +34,25 @@ export function parseSize(raw: string): Size | undefined {
   return undefined;
 }
 
+/** Every size a variant option states: "US 4 / EU 36", "7.5 (42)", "US Women 6 - US Men 4" → each part on its own. */
+export function parseSizes(raw: string): Size[] {
+  return raw.split(/\/|,|;|\||\s-\s|\(|\)/).map(parseOne).filter((x): x is Size => x !== undefined);
+}
+
+export function parseSize(raw: string): Size | undefined {
+  return parseSizes(raw)[0];
+}
+
 function toSystem(s: Size, system: "EU" | "US"): string | undefined {
   if (s.system === system) return s.value;
   return system === "US" ? EU_TO_US_MEN[s.value] : US_TO_EU_MEN[s.value];
 }
 
+/** Strict: EU 42 matches US 8.5 or EU 42, never US 9 (lanes B/C: a recorded US 9 must not be quoted as EU 42). */
 export function sizeMatches(options: readonly string[], cardSize: string): boolean {
   const want = parseSize(cardSize);
   if (!want) return false;
-  return options.some((o) => {
-    const have = parseSize(o);
-    if (!have) return false;
-    return toSystem(want, have.system) === have.value;
-  });
+  return options.some((o) => parseSizes(o).some((have) => toSystem(want, have.system) === have.value));
 }
 
 /** "120", "$120", "120 USD", "120 以内", "1,200", "119.99" → cents; a range "100-160" / "100 到 160" → its upper bound. */
@@ -70,11 +77,15 @@ export function isEligible(o: UcpOffer, q: EligibilityInput): boolean {
   return Boolean(o.sellerDomain && o.variantId);
 }
 
-/** First `n` eligible offers with distinct sellers, in catalog order (A09: only these get sessions). */
-export function pickSellers(offers: readonly UcpOffer[], q: EligibilityInput, n = 2): UcpOffer[] {
+/**
+ * First `n` eligible offers with distinct sellers (A09: only these get sessions). Pinned rehearsal variants that pass
+ * every filter come first, in pinned order; then catalog order. Pinning never bypasses a filter.
+ */
+export function pickSellers(offers: readonly UcpOffer[], q: EligibilityInput, n = 2, preferVariantIds: readonly string[] = []): UcpOffer[] {
   const out: UcpOffer[] = [];
   const seen = new Set<string>();
-  for (const o of offers) {
+  const pinned = preferVariantIds.map((id) => offers.find((o) => o.variantId === id)).filter((o): o is UcpOffer => o !== undefined);
+  for (const o of [...pinned, ...offers]) {
     if (out.length >= n) break;
     if (seen.has(o.sellerDomain) || !isEligible(o, q)) continue;
     seen.add(o.sellerDomain);

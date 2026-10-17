@@ -20,7 +20,11 @@ export class CardService {
 
   get(userId: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
-    const card = this.ctx.rules.mergeCard(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    const merged = this.ctx.rules.mergeCard(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
+    const seed = this.ctx.store.seedContributions(userId);
+    const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
+    const card: Card = { ...merged, source: sample ? "sample" : "live" };
     this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
     return card;
   }

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UcpApi, UcpCheckout } from "@agent-cookie/contract";
-import { SAMPLE_FIXTURES_DIR } from "../src/config.js";
 import { containsCardNumber } from "../src/guards.js";
-import { StubUcp } from "../src/stubs/ucp.js";
+import { stubMemoryRepoApi } from "./stubs/memory-repo.js";
+import { StubUcp } from "./stubs/ucp.js";
 import { parseBudgetCents } from "../src/ucp-filter.js";
 import { existsSync } from "node:fs";
 import { WorkspaceError } from "@agent-cookie/contract";
@@ -15,9 +15,9 @@ import { loadConfig } from "../src/config.js";
 import { createDeps } from "../src/deps.js";
 import { laneD } from "../src/laneD.js";
 import { Delivery } from "../src/services/delivery.js";
-import { callbackServer, harness, KEYS } from "./harness.js";
+import { callbackServer, harness, KEYS, SAMPLE_FIXTURES_DIR } from "./harness.js";
 
-const shoebaccaQuote = async (h: Awaited<ReturnType<typeof harness>>, key = KEYS.personal) => {
+const shoebaccaQuote = async (h: Awaited<ReturnType<typeof harness>>, key: string = KEYS.personal) => {
   const { intentId } = await h.intent(key);
   const quotes = (await h.get(`/personal/intents/${intentId}/quotes?wait=0`, key)).body.quotes;
   return { intentId, quote: quotes.find((q: any) => q.seller === "shoebacca.com") };
@@ -243,10 +243,11 @@ describe("robustness", () => {
   it("restarting a file database without demo/test removes the Sample keys and mints an owner key", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ws-file-"));
     const env = { PORT: "4310", SQLITE_PATH: join(dir, "ws.sqlite"), FIXTURES_DIR: SAMPLE_FIXTURES_DIR, AGENT_COOKIE_DATA_DIR: dir };
-    const first = await createDeps(loadConfig({ ...env, AGENT_COOKIE_TEST: "1" }));
+    const stubs = { ucp: StubUcp.fromFile(join(SAMPLE_FIXTURES_DIR, "ucp-offers.json"), "requires_escalation"), memoryRepoApi: stubMemoryRepoApi(() => []) };
+    const first = await createDeps(loadConfig({ ...env, AGENT_COOKIE_TEST: "1" }), stubs);
     expect((await createApp(first).request("/me", { headers: { authorization: `Bearer ${KEYS.owner}` } })).status).toBe(200);
     first.close();
-    const second = await createDeps(loadConfig(env));
+    const second = await createDeps(loadConfig(env), stubs);
     expect((await createApp(second).request("/me", { headers: { authorization: `Bearer ${KEYS.owner}` } })).status).toBe(401);
     expect(existsSync(join(dir, "owner.key"))).toBe(true);
     second.close();

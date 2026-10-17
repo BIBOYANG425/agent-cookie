@@ -30,7 +30,21 @@ export function toQuote(q: QuoteRow): Quote {
   if (q.seller !== undefined) out.seller = q.seller;
   if (q.variantId !== undefined) out.variantId = q.variantId;
   if (q.checkoutUrl !== undefined) out.checkoutUrl = q.checkoutUrl;
+  out.source = q.source ?? "live";
   return out;
+}
+
+/** Upstream error text reaches the user; local paths and file-system errors from a fixture replay never do (B22). */
+export function publicUpstreamMessage(message: string): string {
+  if (/ENOENT|EACCES|no such file/i.test(message)) return "The store's response for this step is not available.";
+  if (needsBuyer(message)) return "The store needs you to sign in and pay on its own page.";
+  // Absolute file paths (not URLs: a path right after "//" or ":" is part of a link and stays).
+  return message.replace(/(?<![:/\w.])\/(?:home|tmp|usr|var|Users|private|opt|etc|root)\/[^\s'"()\[\]]*/g, "<path>").slice(0, 300);
+}
+
+/** UCP's AUTH_REQUIRED family: the store will only finish with the buyer present — hand off to its page (UCP REFERENCE). */
+function needsBuyer(message: string): boolean {
+  return /INSUFFICIENT_PERMISSIONS|AUTH_REQUIRED|AuthenticationRequired|requires? (?:buyer )?authentication|JWT is required/i.test(message);
 }
 
 function dollars(cents: number): string {
@@ -43,7 +57,8 @@ function messageText(messages: UcpMessage[]): string | undefined {
 }
 
 export class CommerceService {
-  constructor(private ctx: Ctx, private card: CardService, private sessions: SessionService, private fields: FieldService, private notes: NoteService) {}
+  constructor(private ctx: Ctx, private card: CardService, private sessions: SessionService, private fields: FieldService, private notes: NoteService,
+    private pinned: readonly string[] = []) {}
 
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
@@ -90,7 +105,7 @@ export class CommerceService {
         ucpNote = { result: "failed", reason: err instanceof WorkspaceError ? err.code : "error" };
       }
       if (offers) {
-        const picked = pickSellers(offers, { shoeSize: values.shoe_size, maxPriceCents, shipsTo: "US" });
+        const picked = pickSellers(offers, { shoeSize: values.shoe_size, maxPriceCents, shipsTo: "US" }, 2, this.pinned);
         ucpNote = { result: "ok", reason: `offers=${offers.length} picked=${picked.length}` };
         for (const offer of picked) {
           const existing = store.agentByDomain(offer.sellerDomain);
@@ -100,7 +115,8 @@ export class CommerceService {
           const title = `${offer.productTitle}${offer.variantTitle ? ` · ${offer.variantTitle}` : ""}`;
           const quote: QuoteRow = { id: newId("q"), intentId: intent.id, agentId: proxy.agentId, sessionId: x.session.sessionId,
             text: `${title} · ${dollars(offer.priceCents)} · ${offer.sellerName}`, price: offer.priceCents, currency: "USD",
-            etaDate: offer.etaDate ?? null, title, seller: offer.sellerDomain, variantId: offer.variantId, status: "open", createdAt: clock.nowIso() };
+            etaDate: offer.etaDate ?? null, title, seller: offer.sellerDomain, variantId: offer.variantId, status: "open", createdAt: clock.nowIso(),
+            source: this.ctx.config.ucpMode === "live" ? "live" : "fixture" };
           const url = offer.checkoutUrl ?? offer.url;
           if (url) quote.checkoutUrl = url;
           plans.push({ ...x, quote, ...(existing ? {} : { newAgent: proxy }) });
@@ -159,7 +175,7 @@ export class CommerceService {
     this.sessions.access(agent, session.sessionId, { intentId: intent.id });
     if (Date.parse(intent.expiresAt) <= this.ctx.clock.now()) fail("GRANT_EXPIRED");
     const q: QuoteRow = { id: newId("q"), intentId: intent.id, agentId: agent.agentId, sessionId: session.sessionId, text: input.text,
-      price: input.price, currency: "USD", etaDate: input.etaDate, status: "open", createdAt: this.ctx.clock.nowIso() };
+      price: input.price, currency: "USD", etaDate: input.etaDate, status: "open", createdAt: this.ctx.clock.nowIso(), source: "live" };
     if (input.etaText) q.etaText = input.etaText;
     if (input.title) q.title = input.title;
     if (input.checkoutUrl) q.checkoutUrl = input.checkoutUrl;
@@ -261,6 +277,13 @@ export class CommerceService {
       if (stopped(co.messages, co.status)) {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
       }
+      // fixtures/README: a Sample address is never sent to a real store. In live mode, hand off before reading it.
+      const onCard = this.card.values(this.ctx.store.session(q.sessionId)!.userId).shipping_address;
+      if (this.ctx.config.ucpMode === "live" && onCard && /\bsample\b/i.test(onCard)) {
+        return done(url()
+          ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "The card holds a Sample address, so none was sent. Enter a real address on the merchant's page." }
+          : { status: "blocked", quoteId: q.id, code: "MISSING_FIELD", message: "The card holds a Sample address, so none was sent." });
+      }
       const read = await this.fields.read(proxy, q.sessionId, ["shipping_address"], "checkout");
       if (read.receipt) receipts.push(read.receipt);
       const address = read.fields.shipping_address;
@@ -273,11 +296,23 @@ export class CommerceService {
       if (stopped(co.messages, co.status)) {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
       }
-      co = await ucp.complete(co);
+      try {
+        co = await ucp.complete(co);
+      } catch (err) {
+        // The checkout exists with the destination set; the store only refuses to finalize without the buyer.
+        // That is the escalation case: the user pays on the merchant's page (handoff), not a failure.
+        const u = err instanceof UpstreamError ? err.continueUrl ?? url() : undefined;
+        if (err instanceof UpstreamError && u && needsBuyer(err.message)) {
+          const result: AcceptResult = { status: "handoff", quoteId: q.id, continueUrl: u, message: publicUpstreamMessage(err.message) };
+          await this.lastOrder(proxy, q);
+          return done(result);
+        }
+        throw err;
+      }
     } catch (err) {
       if (err instanceof UpstreamError) {
         const u = err.continueUrl ?? url();
-        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: err.message, ...(u ? { continueUrl: u } : {}) });
+        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: publicUpstreamMessage(err.message), ...(u ? { continueUrl: u } : {}) });
       }
       if (err instanceof WorkspaceError) return done({ status: "blocked", quoteId: q.id, code: err.code, message: err.message });
       throw err;
@@ -298,14 +333,17 @@ export class CommerceService {
     } else {
       result = { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: message ?? `checkout ended as ${co.status}` };
     }
-    if (result.status === "ordered" || result.status === "handoff") {
-      try {
-        await this.notes.write(proxy, q.sessionId, "last_order", q.title ?? q.text);
-      } catch (err) {
-        this.ctx.log({ event: "note.write", actor: proxy.agentId, object: q.sessionId, result: "failed", reason: err instanceof WorkspaceError ? err.code : "error" });
-      }
-    }
+    if (result.status === "ordered" || result.status === "handoff") await this.lastOrder(proxy, q);
     return done(result);
+  }
+
+  /** The proxy's own cookie note: what this returning customer ordered last (demo beat 2:05). */
+  private async lastOrder(proxy: AuthedAgent, q: QuoteRow): Promise<void> {
+    try {
+      await this.notes.write(proxy, q.sessionId, "last_order", q.title ?? q.text);
+    } catch (err) {
+      this.ctx.log({ event: "note.write", actor: proxy.agentId, object: q.sessionId, result: "failed", reason: err instanceof WorkspaceError ? err.code : "error" });
+    }
   }
 
 }

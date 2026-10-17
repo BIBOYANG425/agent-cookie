@@ -1,4 +1,4 @@
-// In-memory stub of MemoryRepoApi until packages/memory-repo (lane C) lands. No git: it keeps the same records
+// Unit-test stub of MemoryRepoApi (the workspace runs lane C's @agent-cookie/memory-repo). No git: it keeps the same records
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
   NOTE_MAX_BYTES, WorkspaceError,

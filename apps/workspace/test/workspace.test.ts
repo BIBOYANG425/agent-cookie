@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FIELDS, SESSION_ID_VECTORS } from "@agent-cookie/contract";
-import { InMemoryRepo } from "../src/stubs/memory-repo.js";
-import { callbackServer, harness, KEYS } from "./harness.js";
+import { InMemoryRepo } from "./stubs/memory-repo.js";
+import { callbackServer, harness, KEYS, SAMPLE_FIXTURES_DIR } from "./harness.js";
 
 const FIELD_NAMES = new RegExp(FIELDS.join("|"));
 

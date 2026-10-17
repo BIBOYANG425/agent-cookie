@@ -1,6 +1,6 @@
 // Wires the store, clock, the three plug-in packages (stubs today) and the services.
 import { resolve } from "node:path";
-import { FIXTURE_FILES, type MemoryRepo, type RulesApi, type UcpApi } from "@agent-cookie/contract";
+import { FIXTURE_FILES, isField, type Contribution, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi } from "@agent-cookie/contract";
 import { activityLogger, type Log } from "./activity.js";
 import { loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
@@ -13,6 +13,7 @@ import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
 import { Delivery } from "./services/delivery.js";
+import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
 import { NoteService } from "./services/notes.js";
 import { SessionService } from "./services/sessions.js";
@@ -39,14 +40,17 @@ export interface Deps {
   close(): void;
 }
 
-export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {}): Promise<Deps> {
+/** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
+export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi }
+
+export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
   const store = new Store(config.sqlitePath);
   const clock = new Clock();
   const log = activityLogger(store, clock);
   const fixtures = loadFixtures(config.fixturesDir);
-  const rules = loadRules();
+  const rules = overrides.rules ?? loadRules();
   const ucp = overrides.ucp ?? loadUcp(config);
-  const repo = await loadMemoryRepoApi(() => fixtures.contributions).openMemoryRepo({
+  const repo = await (overrides.memoryRepoApi ?? loadMemoryRepoApi()).openMemoryRepo({
     path: config.memoryRepoPath, seedDir: resolve(config.fixturesDir, FIXTURE_FILES.memory), userId: fixtures.users[0]!.userId, rules,
   });
   const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log);
@@ -55,9 +59,10 @@ export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);
-  const commerce = new CommerceService(ctx, card, sessions, fields, notes);
+  const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
+  await reconcileRepo(ctx);
   // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
   if (!config.demo && !config.test) {
     for (const key of Object.keys(fixtures.devKeys)) store.deleteKey(hashKey(key));
@@ -75,6 +80,7 @@ export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {
       const now = clock.nowIso();
       seedStore(store, fixtures, config, now);
       await repo.resetToSeed();
+      await reconcileRepo(ctx);
       card.get(fixtures.users[0]!.userId);
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
@@ -83,4 +89,35 @@ export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {
       store.close();
     },
   };
+}
+
+/**
+ * Bring the git memory repo up to what SQLite serves: any contribution the repo lacks (the seeded address is not in
+ * lane C's fixtures/memory commit; a failed write-through) is appended, revocations are replayed, and CARD.md is
+ * regenerated once if anything changed. Runs after open and after resetToSeed.
+ */
+async function reconcileRepo(ctx: Ctx): Promise<void> {
+  const user = ctx.store.firstUser();
+  if (!user) return;
+  await persist(ctx, "reconcile", "workspace", async (repo) => {
+    const inRepo = new Map((await repo.listContributions()).map((c) => [c.id, c]));
+    let changed = false;
+    for (const c of ctx.store.contributionsForUser(user.userId)) {
+      if (!isField(c.field)) continue;
+      const have = inRepo.get(c.id);
+      if (!have) {
+        const { revokedAt: _r, ...live } = c as Contribution;
+        await repo.appendContribution(live, writeMeta(ctx, c.agentId, live));
+        changed = true;
+      }
+      if (c.revokedAt && !have?.revokedAt) {
+        await repo.revokeContribution(c.id, c.revokedAt, writeMeta(ctx, "workspace", { id: c.id, at: c.revokedAt }));
+        changed = true;
+      }
+    }
+    if (changed) {
+      await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.personalAgentIds() },
+        writeMeta(ctx, "workspace", { regenerate: ctx.clock.nowIso() }));
+    }
+  });
 }

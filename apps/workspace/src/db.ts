@@ -4,7 +4,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type {
-  ActivityEvent, Agent, Basis, Card, Category, Contribution, Field, Grant, Intent, Note, Quote, Receipt, Role, Session,
+  ActivityEvent, Agent, Basis, Card, Category, Contribution, DataSource, Field, Grant, Intent, Note, Quote, Receipt, Role, Session,
   AcceptResult,
 } from "@agent-cookie/contract";
 
@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS intent_sessions (intent_id TEXT NOT NULL, session_id 
   PRIMARY KEY (intent_id, session_id));
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL,
   price INTEGER NOT NULL, currency TEXT NOT NULL, eta_date TEXT, eta_text TEXT, title TEXT, seller TEXT, variant_id TEXT, checkout_url TEXT,
-  status TEXT NOT NULL, created_at TEXT NOT NULL, accepted_at TEXT, result TEXT, seq INTEGER NOT NULL);
+  status TEXT NOT NULL, created_at TEXT NOT NULL, accepted_at TEXT, result TEXT, seq INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'live');
 CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL,
-  basis TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL);
+  basis TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, origin TEXT NOT NULL DEFAULT 'live');
 CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, computed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
   updated_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY (agent_id, user_id, key));
@@ -82,7 +82,7 @@ function toIntent(r: Row): IntentRow {
 function toQuote(r: Row): QuoteRow {
   const q: QuoteRow = { id: String(r.id), intentId: String(r.intent_id), agentId: String(r.agent_id), sessionId: String(r.session_id),
     text: String(r.text), price: Number(r.price), currency: "USD", etaDate: s(r.eta_date) ?? null, status: r.status as QuoteStatus,
-    createdAt: String(r.created_at) };
+    createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource };
   for (const [k, col] of [["etaText", "eta_text"], ["title", "title"], ["seller", "seller"], ["variantId", "variant_id"],
     ["checkoutUrl", "checkout_url"], ["acceptedAt", "accepted_at"]] as const) {
     const v = s(r[col]);
@@ -259,10 +259,10 @@ export class Store {
   // ---- quotes
   insertQuote(q: QuoteRow): void {
     this.db.prepare(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
-      checkout_url, status, created_at, accepted_at, result, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      checkout_url, status, created_at, accepted_at, result, seq, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
         q.seller ?? null, q.variantId ?? null, q.checkoutUrl ?? null, q.status, q.createdAt, q.acceptedAt ?? null,
-        q.result ? JSON.stringify(q.result) : null, this.next());
+        q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live");
   }
   quote(id: string): QuoteRow | undefined {
     const r = this.db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as Row | undefined;
@@ -289,9 +289,13 @@ export class Store {
   }
 
   // ---- contributions and the card cache
-  insertContribution(c: StoredContribution): void {
-    this.db.prepare(`INSERT INTO contributions (id, user_id, agent_id, field, value, basis, created_at, revoked_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(c.id, c.userId, c.agentId, c.field, c.value, c.basis, c.createdAt, c.revokedAt ?? null, this.next());
+  insertContribution(c: StoredContribution, origin: "seed" | "live" = "live"): void {
+    this.db.prepare(`INSERT INTO contributions (id, user_id, agent_id, field, value, basis, created_at, revoked_at, seq, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(c.id, c.userId, c.agentId, c.field, c.value, c.basis, c.createdAt, c.revokedAt ?? null, this.next(), origin);
+  }
+  /** Non-revoked Sample seed contributions of the user (card provenance, B20). */
+  seedContributions(userId: string): StoredContribution[] {
+    return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? AND origin = 'seed' AND revoked_at IS NULL ORDER BY seq").all(userId) as Row[]).map(toContribution);
   }
   contribution(id: string): StoredContribution | undefined {
     const r = this.db.prepare("SELECT * FROM contributions WHERE id = ?").get(id) as Row | undefined;

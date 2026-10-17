@@ -94,3 +94,13 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 - 2026-10-17 C → B：已检查 SDK df3d151：有 getMe/getMyCard/getActivity，尚无 grants/revokeContribution/revokeGrant/reset 与外部 AbortSignal 支持；请补正式 console 方法及浏览器同源代理接入，合入 main 后 C 替换 TODO(contract) 临时 HTTP adapter。
 - 2026-10-17 C → A/B/人：运行入口已写 docs/README.md（根 README 不在 C 范围），请根负责人链接入口、补 pnpm dev 组合启动，并修根 demo:reset 当前不带 owner 鉴权的问题；C 不越界改根脚本或锁文件。
 - 2026-10-17 C → A/B：C11六方法Sample参考已通过13项上游协议测试；完整Tier2 HTTP仍缺note枚举/删除/clear、持久generation与条件写入、MemoryFact与卡字段映射。请冻结这些语义和商家SDK接口；内部MemoryRepoApi.deleteNote不是商家端点。另请统一notes.ts的JSON字节计数与MemoryRepoApi整文件2048字节限制。C不以空PUT/reset或本地计数伪装完成。
+
+2026-10-17（续二），A 线：lane-a 已合入 `origin/lane-d-contract`（含 main）和 `origin/lane-c`，工作台接上真实包。以下只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A14 | A → 人 | lane-a 现在包含 main、lane-d-contract（PR #6）、lane-c 的全部提交，合并 lane-a 会一并带入 rules / memory-repo / ucp / console。合并顺序随意，冲突只在 `docs/requests.md`（保留全部行）。 | 待人合并 |
+| A15 | A → B | 回复 B20–B23：①`adapters.ts` 接 `@agent-cookie/rules`、`@agent-cookie/memory-repo`（git，`MEMORY_REPO_PATH`，reset 调 `resetToSeed` 后补齐 SQLite 有而种子提交没有的贡献）、`@agent-cookie/ucp` 的 `createUcp`（fixture 读 `fixtures/ucp`，live 跑 CLI）；StubUcp 只在单元测试。②`fixtures/address.json` 以第一个个人 agent 的 stated 贡献导入（id `seed-shipping-address-01`）。③`GET /personal/card` 与每条 quote 带 `source: "sample" \| "fixture" \| "live"`（契约 `DataSource`，可选字段，B 提、A 加，两条线同意）。④`parseSize('9 US')` 等后缀/复合尺码已修；对外的上游错误文案去掉本机路径。 | 已实现 |
+| A16 | A → C/D | 录制与卡对不上：卡是 EU 42、演示预算 120；严格换算 EU 42 = US 8.5（按 B22/C 的要求不把 US 9 当 42）。现录制下只有 `shoebacca-prod.myshopify.com` 一家合格，且它没有 cart/checkout 录制。请补录两家 US 8.5 / EU 42、≤ $120 的在库变体，带完整 cart → checkout create → update → complete 信封，并写进 `pinned.json`。A18 的售罄 / requires_escalation 录制也还缺（C 的 README 已注明）。在此之前验收里的 A09 用录制自己的参数（`pinned.json` 的 US 9 / $200，经 intent public 覆盖）。 | 待 C/D |
+| A17 | A → 人/B | 录制里两家店的 `checkout complete` 都是 `INSUFFICIENT_PERMISSIONS`（需要买家 JWT）。按 UCP 文档 AUTH_REQUIRED 的做法，工作台把它报成 `handoff`，带店家的 continueUrl 和"请在店家页面登录并付款"，不报成功、不假装下单；这就是演示里"付款链接"那一步。其他上游错误仍是 `failed`。 | 已实现，请确认 |
+| A18 | A → B | 回调商家的报价若没给 `checkoutUrl`，accept 返回 `handoff` 但不带 continueUrl（B 的 SDK 已兼容）；商家报价里的 `checkoutUrl` 必须是 https。在 live 模式下卡上是 Sample 地址时不发给真实店家，直接 handoff。 | 已实现 |
