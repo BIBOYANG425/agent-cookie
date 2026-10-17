@@ -61,7 +61,7 @@ createWorkspaceLearner(options): LearnApi;
 
 A 的白名单有10个pref字段；B使用正式白名单的安全子集，不学price_band和recipient，避免财务/关系推断。转交真实stated/observed/inferred及≤200字snippet，B不写卡。
 
-当前真实闭环仍受B44阻塞：A原文队列落SQLite、stated降级、同agent不同conversation被去重、缺持久代际和原子forget。C 688754d 已对齐嵌套evidence和作者身份，且intent投影不再把text/query/public持久化Git；B45/B46已在B复验通过。SDK观察默认关闭（learning:true显式开启）；MCP/Spectrum需workspace-v1开关，只在修复后的兼容后台启用。忘记暂按实际contributionId撤销、回读并保持暂停，明确不能确认历史证据彻底删除。
+当前真实闭环仍受B44/B49阻塞：A原文队列落SQLite、stated降级、同agent不同conversation被去重、缺原子forget。A e381b15已加入持久epoch，隔离验证确认暂停后恢复会丢弃迟到结果；这部分旧阻塞解除，但不能据此声称历史删除完成。C 688754d 已对齐嵌套evidence，且intent投影不再把text/query/public持久化Git。原B46同agent路径保持通过；新A把IntentRecord.agentId保留为原发起者后，另一同机主agent接受报价的历史写入再次出现SCOPE_DENIED，见B49。A的卡合并包装又把不同conversation证据计数与writer agent数量混用。SDK观察默认关闭（learning:true显式开启）；MCP/Spectrum需workspace-v1开关，只在修复后的兼容后台启用。忘记暂按实际contributionId撤销、回读并保持暂停，明确不能确认历史证据彻底删除。
 
 SDK与A真实HTTP状态/观察投递/解析调用已可隔离验证，模型使用合成响应；不把它当两来源晋升或实机学习成功。默认adapters.loadLearn仍是A空桩，A需自行import本包。
 
@@ -128,3 +128,5 @@ L8 验证（16:10 PDT）：learn43、Photon69、MCP13、fake6、SDK78通过；SD
 人的追问 OpenRouter：已增加 `createHaikuExtractor({provider:'openrouter',apiKey})` 可选入口，规则/zod/权限边界不变。OpenRouter使用 `anthropic/claude-haiku-4.5` 别名（不能声称是精确dated snapshot）。首次本地鉴权200；原Anthropic直连与ZDR不兼容返回404，已按官方ZDR端点表改为同模型的 `amazon-bedrock/us`，保留结构化输出、拒绝收集与ZDR、无fallback。修正后合成输入请求403，未取得有效模型输出，已停止真实重试。参考 packages/learn/README.md。
 
 L9 部分进展（16:43 PDT）：接入C688754d至lane-b的e9112cf；SDK79/rules52/memory29/console35共195项通过，learn43项通过；SDK/learn/MCP/Photon/rules/memory/console七包类型检查通过。新增控制台→真实SDK→隔离A的学习状态/记录/暂停/恢复覆盖，十一种SDK方法均实际调用，修改后该聚焦测试及SDK/learn类型检查再通过。learn构建通过。OpenRouter key已本地保存且鉴权有效，提取仍被上游403阻止。A隐私/晋升/删除接线、真实Spectrum及外部Sentry未验收；L9保持未勾选。详见 docs/evidence/2026-10-17-learning-c-alignment.md。
+
+L9 新进展（A e381b15 / C688754d）：A新代码经0fbf12d合入B，SDK79项和SDK/learn/MCP/Photon/workspace五包类型检查通过。新增可复跑的六场景验收探针，使用真实A SQLite/C rules与Git、注入合成抽取器：暂停恢复迟到结果1项通过，明确陈述上卡、两对话短间隔/31天间隔晋升、原话不落盘、跨个人agent接受后历史写入5项未满足人的要求。探针失败会返回退出码1，不纳入“全部通过”的单测统计。结果与定位见 docs/evidence/2026-10-17-learning-a-alignment.md / .json 和B49。人已选择先完成本地联调、模型稍后处理；保持无真实模型调用、不热接手机采集。Jev仅完成备选评估，尚未切换或真实调用。
