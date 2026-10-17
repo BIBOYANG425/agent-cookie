@@ -16,10 +16,10 @@
 
 | 线 | 拥有的目录（只改这些） |
 |---|---|
-| A · 核心与工作台（Claude Code） | `packages/core` `apps/workspace` |
-| B · 通道与个人 agent（Codex 1） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
-| C · 演示面与验收（Codex 2） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` |
-| D · 登录与支付（Devin，P1） | `packages/auth` `packages/pay` `apps/unlock` |
+| A · 核心与工作台（Claude Code，Bo 的会话） | `packages/core` `apps/workspace` |
+| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
+| C · 演示面与验收（Codex B，Bo 的） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` |
+| D · 登录与支付（Devin，Bo 的，P1） | `packages/auth` `packages/pay` `apps/unlock` |
 
 规则：
 - 只改自己线的目录。需要别的目录改动，写进 `docs/requests.md` 一行，由人转达（这个文件所有线都可以追加，只追加不改）。`docs/plan.md` 只有人改。
