@@ -1,6 +1,14 @@
 # `@agent-cookie/auth`
 
-Jar key storage, pairwise handshake signing and verification, and short-lived unlock-token helpers. Each merchant session gets a stable Ed25519 key derived from the encrypted jar master seed.
+Jar key storage, pairwise handshake and TAP signing, verification, and short-lived unlock-token helpers. Each merchant session gets a stable Ed25519 key derived from the encrypted jar master seed.
+
+## Trusted Agent Protocol
+
+`JarKeyStore.signTapRequest` signs the TAP `@authority` and `@path` components with the same per-session Ed25519 key used for handshakes. Its `keyId` is therefore the handshake `kid` for that session, and differs across sessions. The method returns the `Signature-Input` value and the RFC 9421 `Signature` header value; the defaults are a UUID nonce, the current Unix time, and a 480-second lifetime.
+
+Use `tapRegistryKey(jar.publicJwk(sessionId))` to publish a session's registry entry. It returns the raw 32-byte Ed25519 public key in standard base64 with Visa's `ed25519` algorithm identifier. `verifyTapRequest` provides merchant-side verification with a 60-second future skew check and replay protection.
+
+For an interoperability run against the local Visa reference services, start its agent registry, CDN proxy, merchant frontend (port 3000), and merchant backend, then run `pnpm --filter @agent-cookie/auth tap:interop`. The proxy forwards protected `/product/` requests to the frontend.
 
 ## Environment
 

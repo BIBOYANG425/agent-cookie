@@ -5,6 +5,7 @@ import {
   createPublicKey,
   hkdfSync,
   randomBytes,
+  randomUUID,
   sign as cryptoSign,
   createHash,
 } from "node:crypto";
@@ -12,6 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname } from "node:path";
 import type { Handshake, SignHandshake } from "./contract.js";
 import { LaneError } from "./contract.js";
+import { formatTapSignatureInput, tapSignatureBase, type TapTag } from "./tap.js";
 
 const pkcs8Ed25519Prefix = Buffer.from("302e020100300506032b657004220420", "hex");
 const keySalt = Buffer.from("agent-cookie");
@@ -37,6 +39,22 @@ export interface PublicJwk {
   kid: string;
   alg: "EdDSA";
   use: "sig";
+}
+
+export interface SignTapRequestOptions {
+  sessionId: string;
+  authority: string;
+  path: string;
+  tag: TapTag;
+  nonce?: string;
+  createdSec?: number;
+  ttlSec?: number;
+}
+
+export interface SignedTapRequest {
+  signatureInput: string;
+  signature: string;
+  keyId: string;
 }
 
 interface PublicKeysFile {
@@ -211,6 +229,41 @@ export class JarKeyStore {
     const sig = cryptoSign(null, Buffer.from(canonicalHandshake(handshake)), privateKey)
       .toString("base64url");
     return { sig, kid: publicJwk.kid };
+  };
+
+  readonly signTapRequest = async ({
+    sessionId,
+    authority,
+    path,
+    tag,
+    nonce = randomUUID(),
+    createdSec = Math.floor(this.now() / 1000),
+    ttlSec = 480,
+  }: SignTapRequestOptions): Promise<SignedTapRequest> => {
+    if (!this.isUnlocked() || !this.seed) throw new LaneError("JAR_LOCKED");
+    if (!Number.isSafeInteger(createdSec) || !Number.isSafeInteger(ttlSec) || ttlSec <= 0) {
+      throw new RangeError("createdSec and ttlSec must be safe integers; ttlSec must be positive");
+    }
+    const expiresSec = createdSec + ttlSec;
+    if (!Number.isSafeInteger(expiresSec)) throw new RangeError("expiresSec must be a safe integer");
+    if (!nonce || /[\r\n"]/u.test(nonce)) throw new TypeError("nonce must be a non-empty header-safe string");
+
+    const privateKey = derivePrivateKey(this.seed, sessionId);
+    const publicJwk = toPublicJwk(createPublicKey(privateKey));
+    this.publicKeys.set(sessionId, publicJwk);
+    this.persistPublicKeys();
+
+    const signatureInput = formatTapSignatureInput({
+      created: createdSec,
+      expires: expiresSec,
+      keyId: publicJwk.kid,
+      algorithm: "ed25519",
+      nonce,
+      tag,
+    });
+    const signatureBase = tapSignatureBase({ authority, path, signatureInput });
+    const signature = `sig2=:${cryptoSign(null, Buffer.from(signatureBase, "utf8"), privateKey).toString("base64")}:`;
+    return { signatureInput, signature, keyId: publicJwk.kid };
   };
 
   publicJwk(sessionId: string): PublicJwk {

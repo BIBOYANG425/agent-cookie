@@ -166,3 +166,6 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | ID | 发起 → 接收 | 请求与依据 | 状态 |
 | --- | --- | --- | --- |
 | A21 | 人 → 全部 | A13 确认：①注册个人 agent 需要 owner 钥匙，商家仍可本机自助注册；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED；③已过期的商家对自己的 session 报价返回 403 GRANT_EXPIRED，未被介绍的才是 404。A17 确认：店家在 checkout 要求买家登录（`INSUFFICIENT_PERMISSIONS` / AUTH_REQUIRED）时，accept 返回 `handoff`，带店家的付款链接。两条已写进 `packages/contract`（endpoints.ts 说明、types.ts 的 AcceptResult 注释），行为不变。 | 已确认 |
+
+2026-10-17（续），D 线：`packages/auth` 已支持按 session 派生的 Ed25519 TAP 签名。以下只追加。
+- [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
