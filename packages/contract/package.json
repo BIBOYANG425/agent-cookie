@@ -1,5 +1,5 @@
 {
-  "name": "@agent-cookie/core",
+  "name": "@agent-cookie/contract",
   "version": "0.1.0",
   "private": true,
   "type": "module",

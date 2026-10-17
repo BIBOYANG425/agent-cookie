@@ -1,4 +1,4 @@
-// Tier 0 text prefix — docs/plan.md v0.3 §1 "接入阶梯".
+// Tier 0 text prefix (wire format) — docs/plan.md v0.3 §1 "接入阶梯".
 // The only place a field VALUE is written into a message: auto fields of the merchant's category only.
 // Purpose fields are listed by name with their purposes and never carry a value. Every delivery writes a receipt.
 import { autoFields, purposeFields, purposesFor } from "./policy.js";

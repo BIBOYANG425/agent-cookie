@@ -13,9 +13,9 @@ import {
   renderNoteFile,
   renderPolicyYaml,
   renderReceipt,
-} from "../src/render.js";
-import { autoFields } from "../src/policy.js";
-import type { Card, Contribution, Note, Receipt } from "../src/types.js";
+} from "../src/stubs/render.js";
+import { autoFields } from "@agent-cookie/contract";
+import type { Card, Contribution, Note, Receipt } from "@agent-cookie/contract";
 
 const USER = "u_sample";
 const AGENT = "ucp:shoebacca.com";

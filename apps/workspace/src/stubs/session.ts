@@ -1,8 +1,8 @@
-// Pairwise session IDs — docs/plan.md v0.3 §4 T0 and §5.
+// STUB of RulesApi.deriveSessionId (owned by lane C, packages/rules) — delete when @agent-cookie/rules is wired.
+// Pairwise session IDs — docs/plan.md v0.3 §4 T0 and §5; must match SESSION_ID_VECTORS in the contract.
 // sessionId = base32(HMAC-SHA256(userSecret, merchantKey)).slice(0, 8)
 // merchantKey = agent.domain ?? agent.agentId, so a UCP proxy keeps the same ID across reset and re-registration.
 import { createHmac } from "node:crypto";
-import type { Agent } from "./types.js";
 
 /** Crockford base32, lowercase: 0-9 a-z without i, l, o, u. */
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -21,10 +21,6 @@ export function base32(bytes: Uint8Array): string {
   }
   if (bits > 0) out += ALPHABET[(acc << (5 - bits)) & 31];
   return out;
-}
-
-export function merchantKeyFor(agent: Pick<Agent, "agentId" | "domain">): string {
-  return agent.domain ?? agent.agentId;
 }
 
 export function deriveSessionId(userSecret: string, merchantKey: string): string {
