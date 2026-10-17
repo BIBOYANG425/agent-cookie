@@ -8,9 +8,10 @@
 - [x] C08 packages/memory-repo：regenerateCard（调 rules 生成 CARD.md）、resetToSeed、每次写一个 commit（author=写入者，trailer Agent-Cookie-Sig）+ 测试 — a85471a（17 个真实 Git 用例、类型检查通过）
 - [x] C09 apps/console 骨架：身份卡视图，对 fixtures 或假工作台渲染 — 947b760（浏览器验证与截图）
 - [x] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询 — d58babb（12 测试、类型/构建检查、浏览器实连通过）
-- [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现
-- [ ] C12 skills/add-agent-cookie/SKILL.md
-- [ ] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明
-- [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试
-- [ ] C15 README：agent 名、启动命令、环境变量表
-- [ ] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度
+- [x] C10b 控制台 SDK 方法清单、服务端 owner key 与真实 4310 连接验证 — 811e5fc、043e8a9（17 测试、类型/构建检查；实际 SDK 读取及 HTTP 撤销/reset 验证通过）
+- [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现 — 1abcbfa（13 项离线协议测试通过） BLOCKED: 完整 Tier 2 HTTP 缺 note 删除/枚举/clear、持久 generation/条件写入及卡字段映射；已交可验证的六方法内存参考和 TODO(contract)。
+- [x] C12 skills/add-agent-cookie/SKILL.md — 8a331bc（front matter/引用检查通过；A16真实接入及录屏仍待办）
+- [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
+- [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试 — 3b16d3c（11 规范 + 1 支撑检查通过，11 todo） BLOCKED: 真实 adapters/贡献 ID/D 接线与客户端、模型、UCP 失败路径录屏未到；auto 读取缺回执已报 A，P0 未全绿。
+- [x] C15 README：agent 名、启动命令、环境变量表 — 6327cb1（本地链接/agent 名核对通过，已同步 main 798e0de 状态）
+- [x] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度 — d94557e（真实窄屏截图、44px 按钮与键盘/空状态证据；C10b 浏览器复核受工具策略限制）

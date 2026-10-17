@@ -1,0 +1,74 @@
+{
+  "at": "2026-10-17T21:08:47.460Z",
+  "node": "v22.23.3",
+  "workspace": "origin/lane-a bd9d6e3 unmodified isolated Sample/stubs",
+  "sdk": "origin/lane-b fd1b8d4 built package",
+  "sdkRoot": "/private/tmp/agent-cookie-c10b-runtime-rq8escjo",
+  "target": "127.0.0.1:4310",
+  "console": "127.0.0.1:5173",
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/card",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/receipts",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/owner/activity",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/grants",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/personal/grants/g_styy8wmk/revoke",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/grants",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/personal/contributions/c_0001/revoke",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/demo/reset",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/card",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/grants",
+      "status": 200
+    }
+  ],
+  "cardFields": 5,
+  "sample": true,
+  "grantsCreated": 3,
+  "grantRevoked": true,
+  "contributionRevokeAcknowledged": true,
+  "resetRestored": true,
+  "crossOriginStatus": 403,
+  "keyAbsentFromResponsesAndBundle": true
+}

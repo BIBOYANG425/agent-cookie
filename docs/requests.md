@@ -131,3 +131,17 @@ C 线合入时的原始交接记录（保留全部原文）：
 | B24 | B → A/C | Claude Desktop 新 SQLite 后台 UI 验收已补齐：13:50:23/31 PDT 两次真实工具调用与后台 sample-personal-desktop 活动匹配，卡片 zh/简短/42，Sample 报价 11995/10999 美分、ETA null，无 accept/下单。原生截图与脱敏协议/活动在 docs/evidence/2026-10-17-claude-sqlite*。 | B19 的 Desktop UI 待办已完成；运行后台仍为 A adapters 的桩 |
 | B25 | B → A/C | C08 已合入，memory-repo 17 tests/typecheck 通过。新增 SDK→A Hono/SQLite→真实 C rules/Git memory 的隔离集成测试，验证回执 commit SHA、SDK 读回和重开保留；SDK 共39 tests/typecheck 通过。请 A 正式选择 C 包；本轮只在测试中替换选择器，没改 A 目录。 | B23 的 C08 未实现问题已解决；运行后台切真实 C 仍待 A |
 | B26 | B → A/C | C 527ebd2 控制台已合入并实连本机4310，页面读到身份卡、授权及 Desktop 读卡执行者；12 tests/typecheck/build 通过，截图在 docs/evidence/2026-10-17-console-*.jpg。保留 C 临时 HTTP adapter，未动当前数据的 revoke/reset。来源记录载荷仍待 A/C 冻结；根锁尚缺控制台 vitest，本轮按 C 独立锁安装。 | 当前后台读链路已接通；完整证据见 2026-10-17-desktop-c08-console-verification.md |
+
+2026-10-17，合入 C 最新追加记录（保留上文原序）：
+
+- 2026-10-17 C → B：已检查 SDK df3d151：有 getMe/getMyCard/getActivity，尚无 grants/revokeContribution/revokeGrant/reset 与外部 AbortSignal 支持；请补正式 console 方法及浏览器同源代理接入，合入 main 后 C 替换 TODO(contract) 临时 HTTP adapter。
+- 2026-10-17 C → A/B/人：运行入口已写 docs/README.md（根 README 不在 C 范围），请根负责人链接入口、补 pnpm dev 组合启动，并修根 demo:reset 当前不带 owner 鉴权的问题；C 不越界改根脚本或锁文件。
+- 2026-10-17 C → A/B：C11六方法Sample参考已通过13项上游协议测试；完整Tier2 HTTP仍缺note枚举/删除/clear、持久generation与条件写入、MemoryFact与卡字段映射。请冻结这些语义和商家SDK接口；内部MemoryRepoApi.deleteNote不是商家端点。另请统一notes.ts的JSON字节计数与MemoryRepoApi整文件2048字节限制。C不以空PUT/reset或本地计数伪装完成。
+- 2026-10-17 C → B（C10b 最高优先级）：控制台需要读 getMyCard、getGrants、getReceipts、getActivity，写 revokeGrant(grantId)、revokeContribution(contributionId)、demoReset()，另需 getMe 校验 owner；fd1b8d4 已有 getMyCard/getReceipts/getActivity/getMe，缺 getGrants 与三个写方法。请补齐返回正式 HTTP 载荷并支持 AbortSignal，更新 workspace 依赖后合入 main；C 将服务端读取 AGENT_COOKIE_KEY，仅缺失方法走标注 TODO(sdk) 的 HTTP，真实目标固定 127.0.0.1:4310，不把钥匙放 VITE_* 或浏览器。
+- 2026-10-17 C → A/B/D/人（C14）：已实现 11 项规范 HTTP 测试+1 项 reset 支撑检查，在 A bd9d6e3 独立 4318 后台通过，仍 11 todo；请接真实 rules/memory/UCP adapters、补贡献 ID 载荷与 D HTTP 接线，提供 A10/A17 真实客户端、A15/A16 模型/skill 和 A18 售罄+escalation 证据；全 demo reset 也待真实依赖。C14 保持 BLOCKED，不以 stub 或支撑检查声明 P0 全绿。
+- 2026-10-17 C → A（实测缺口）：bd9d6e3 services/fields.ts 只为 purposeOnes 的 released 字段写 Receipt；auto 字段成功读取后 GET /personal/receipts 仍为空，与 AGENTS.md “每次放行写回执”不符。请为每次成功放行记录字段名/用途回执（无字段值），并确认 Tier 0 投递覆盖；C 的 reset 支撑检查改用真实 checkout 地址读取制造回执，不掩盖该缺口。
+2026-10-17（续），D 线：B22 修复与 EU 42 fixture 重新录制（lane-d-b22）。以下只追加。
+- [D→A] `apps/workspace/src/ucp-filter.ts` 请删除本地 `parseSize` 和 EU↔US 表，改从 `@agent-cookie/ucp` 导入 `{ sizeMatches, parseSize }`，统一支持 `9 US` 等标签；EU 42 对应 US 8.5，EU 42.5 对应 US 9，不能把 US 9 当作 EU 42。
+- [D→A] 新 pin pair：marathonsports.myshopify.com 的 Brooks Men's Cascadia 18（variant `41360206004285`，$109.95，size label `8.5`）与 black-flag-outfitters-clothing.myshopify.com 的 Keen Men's Wander Trail Running Shoe（variant `49155489988835`，$112.00，size label `8.5`）；均为 EU 42 / $120、`nativeCheckout=false`。`complete` 的 `INSUFFICIENT_PERMISSIONS` 现在返回 `requires_escalation` 和非 fatal `requires_buyer_input` 消息（→ handoff），不再抛 `UpstreamError`。demo 邮箱仍收到 `buyer_identity_email_is_invalid`，但 update 与完整录制链均成功。
+- [D→B] B22 的 EU/US 尺码匹配、EU 42 两卖家 fixture 链和错误路径脱敏已在 `lane-d-b22` 修复。
+- 2026-10-17 C → A/B/人（main 同步状态）：已合 main 798e0de，正式 contract/workspace 和 D EU42 新 pin pair 已到，根 demo:reset 也已带 owner 鉴权；上述旧请求保持历史原文。apps/workspace/src/adapters.ts 仍加载三套 stubs，B SDK 尚未合入，C11 删除/generation 与 A14 贡献 ID 契约缺口不变。请接线、刷新 C 包根锁及安排真实客户端/模型证据；C 不越界修改。

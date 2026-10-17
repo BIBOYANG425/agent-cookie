@@ -2,6 +2,10 @@
 
 状态：**未执行；证据待采集。** HTTP 验收仍为 `it.todo`，本模板不表示通过。
 
+C13 的配置交付已核对：`fixtures/agents.json` 中 `sample-acme` 的类别为 `shoe`，能力为 `trail_shoes`，`chatEndpoint=http://127.0.0.1:8000/api/chat`。该地址匹配固定上游 fd4d592 的实际路由；投递方须先调用 `/api/session` 建立上游会话，再带 `X-Session-Id` 发送 JSON 并完整处理 SSE，详见 [blueprint README](../../examples/blueprint/README.md)。前缀由工作台按策略生成，fixture 不预置字段值消息。
+
+用户已选择 blueprint 原有通用商品；原版没有鞋类。原 A15 的“首条回复包含 42 码”标准尚未由人修改，不能把通用商品路线标为此项通过。真实模型凭据、前缀投递/回执和连续录屏也仍缺，均已作为跨线需求记录。
+
 本模板保留 v0.3 的 A15 标准。当前演示已改为[双 Sample storefront + live UCP](two-storefronts-and-ucp.md)：两店使用共用接入实现和独立身份，其真实 LLM 回复不等于本项的“原版零接入”。仅有前缀投递也不足以证明新路线的工作台读取、撤销或 note 隔离。此处编号、标题和标准不随演示路线重命名，不把新路线结果记为 A15 通过。
 
 通过标准：原版 ACME 鞋店收到带文本前缀的第一条消息后，首条回复包含 42 码，且未改它任何代码。

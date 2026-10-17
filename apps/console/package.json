@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0 <23" },
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc --noEmit && vite build",
@@ -20,6 +22,8 @@
     "@types/react-dom": "19.3.0",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "vitest": "2.1.9"
-  }
+    "vitest": "2.1.9",
+    "@types/node": "22.20.5"
+  },
+  "packageManager": "pnpm@10.32.1"
 }

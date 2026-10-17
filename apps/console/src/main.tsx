@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import agents from '../../../fixtures/agents.json';
 import { createLiveAdapter, createSampleAdapter } from './adapters';
@@ -13,25 +13,11 @@ const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN',
 const focusCard = () => document.getElementById('card-title')?.focus({ preventScroll: true });
 
 function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (next: ConsoleAdapter) => void }) {
-  function connect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const input = event.currentTarget.elements.namedItem('ownerKey') as HTMLInputElement;
-    const key = input.value.trim();
-    if (!key) return;
-    input.value = '';
-    change(createLiveAdapter(key));
-  }
   return <details className="connection">
     <summary>{adapter.mode === 'sample' ? '连接本机工作台' : '连接设置'}</summary>
-    <p>目标：<code>127.0.0.1:4310</code>。钥匙只用于当前页面，刷新或断开后需重新输入。</p>
-    <form onSubmit={connect}>
-      <label htmlFor="owner-key">Owner 钥匙</label>
-      <div className="connection-input">
-        <input id="owner-key" name="ownerKey" type="password" autoComplete="off" spellCheck={false} required placeholder="手动输入 owner 钥匙" aria-describedby="key-help" />
-        <button className="primary" type="submit">连接</button>
-      </div>
-      <p id="key-help" className="muted">连接后，撤销与重置会发送给这个本机工作台。</p>
-    </form>
+    <p>目标：<code>127.0.0.1:4310</code>。使用本机控制台服务配置的 owner 钥匙，页面无需输入。</p>
+    <button className="primary" type="button" onClick={() => change(createLiveAdapter())}>连接</button>
+    <p className="muted">连接后，撤销与重置会发送给这个本机工作台。</p>
     {adapter.mode === 'live' && <button type="button" onClick={() => change(createSampleAdapter())}>断开并返回 Sample</button>}
   </details>;
 }
@@ -47,7 +33,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
   const data = state.data;
   const blocked = !!state.pending || !data || !!state.error;
   const name = (id: string) => sample ? agents.find((agent) => agent.agentId === id)?.name ?? id : id;
-  const connectionState = sample ? 'Sample · 未连接工作台' : state.loading ? '工作台 · 连接中' : state.error ? '工作台 · 需核对' : data ? '工作台 · 已连接' : '工作台 · 未连接';
+  const connectionState = sample ? 'Sample · 未连接工作台' : state.loading ? '工作台 · 连接中' : state.error ? '工作台 · 需核对' : data ? `${data.sample ? 'Sample ' : ''}工作台 · 已连接` : '工作台 · 未连接';
 
   return <>
     <a className="skip-link" href="#card-title">跳到身份卡</a>
@@ -59,9 +45,9 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
     </header>
     <main>
       <div className="intro"><div><p className="context">你的 agent，从这里认识你</p><h1>我的 Agent Cookie</h1></div><p className="intro-note">信息有来处，授权有期限。<br />你随时可以收回。</p></div>
-      <aside className="mode-notice"><strong>{sample ? 'Sample' : '本机工作台'}</strong><p>{sample
+      <aside className="mode-notice"><strong>{sample ? 'Sample' : data?.sample ? 'Sample · 本机工作台' : '本机工作台'}</strong><p>{sample
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
-        : '正在使用你输入的 owner 钥匙。撤销将立即提交；重置仅在工作台开启演示模式时可用。'}</p></aside>
+        : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
       <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
@@ -117,7 +103,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
             <div className="activity-detail"><dl><div><dt>执行者</dt><dd>{event.actor}</dd></div><div><dt>对象</dt><dd>{event.object || '无'}</dd></div><div><dt>原因</dt><dd>{event.reason || '没有额外原因说明。'}</dd></div></dl></div>
           </details></li>)}</ol>}
       </section>
-      <footer className="page-footer"><span>{sample ? 'Sample 数据 · 不代表真实用户' : '本机工作台 · 断开后清除页面钥匙'}</span><span>身份信息由 agent 记录，工作台按规则合并。</span></footer>
+      <footer className="page-footer"><span>{sample ? 'Sample 数据 · 不代表真实用户' : '本机工作台 · 钥匙由本机服务保管'}</span><span>身份信息由 agent 记录，工作台按规则合并。</span></footer>
     </main>
   </>;
 }

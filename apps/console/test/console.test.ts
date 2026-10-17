@@ -53,18 +53,18 @@ describe('live HTTP boundary', () => {
     const fetcher = async (path: string, options: RequestInit) => {
       calls.push({ path, options });
       if (path.endsWith('/me')) return json({ agentId: 'owner', category: 'personal', role: 'owner' });
-      if (path.endsWith('/personal/card')) return json(empty.card);
+      if (path.endsWith('/personal/card')) return json({ ...empty.card, sample: true });
       if (path.endsWith('/personal/grants')) return json({ grants: [] });
       if (path.endsWith('/owner/activity')) return json({ events: [] });
       throw new Error('Unexpected endpoint');
     };
-    const live = createLiveAdapter('test-only-key', fetcher, () => at);
-    expect(await live.load()).toEqual(empty);
+    const live = createLiveAdapter(fetcher, () => at);
+    expect(await live.load()).toEqual({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
       '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
     ]);
     for (const call of calls) {
-      expect(call.options.headers).toEqual({ Authorization: 'Bearer test-only-key' });
+      expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });
       expect(call.options.redirect).toBe('error');
       expect(call.options.credentials).toBe('omit');
       expect(call.options.cache).toBe('no-store');
@@ -80,23 +80,23 @@ describe('live HTTP boundary', () => {
       if (path.includes('/contributions/')) return json({ ok: true, card: empty.card });
       return json({ ok: true, revokedAt: new Date(at).toISOString() });
     };
-    const live = createLiveAdapter('test-only-key', fetcher);
+    const live = createLiveAdapter(fetcher);
     await live.revokeContribution('id/with space');
     await live.revokeGrant('grant-a');
     await live.reset();
     expect(calls).toEqual(['/workspace-api/personal/contributions/id%2Fwith%20space/revoke',
       '/workspace-api/personal/grants/grant-a/revoke', '/workspace-api/demo/reset']);
-    const malformed = createLiveAdapter('test-only-key', async () => json({ ok: false }));
+    const malformed = createLiveAdapter(async () => json({ ok: false }));
     await expect(malformed.reset()).rejects.toThrow('响应格式');
   });
 
   it('rejects non-owner connections, malformed payloads and HTTP failures without echoing keys', async () => {
-    const personal = createLiveAdapter('secret-key', async () => json({ role: 'personal' }));
+    const personal = createLiveAdapter(async () => json({ role: 'personal' }));
     await expect(personal.load()).rejects.toThrow('owner');
-    const bad = createLiveAdapter('secret-key', async (path) => path.endsWith('/me')
+    const bad = createLiveAdapter(async (path) => path.endsWith('/me')
       ? json({ role: 'owner' }) : json({ items: [] }));
     await expect(bad.load()).rejects.toThrow('响应格式');
-    const denied = createLiveAdapter('secret-key', async () => json({ error: { code: 'AUTH_REQUIRED', message: 'secret-key' } }, 401));
+    const denied = createLiveAdapter(async () => json({ error: { code: 'AUTH_REQUIRED', message: 'secret-key' } }, 401));
     await expect(denied.reset()).rejects.toThrow('AUTH_REQUIRED');
     await expect(denied.reset()).rejects.not.toThrow('secret-key');
   });

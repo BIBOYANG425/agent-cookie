@@ -4,7 +4,7 @@
 
 当前方向已更新为 [一条真实 UCP 链路 + 两个独立 Sample shopping agent](../../docs/two-storefront-demo.md)。两家复用同一接入实现，独立持有工作台凭据、pairwise session 和 notes；现场 coding agent 安装环节后置。下方单店启动记录是原版基线，不能作为双店工作台集成通过的证据。
 
-已完成的独立协议组件与最小接入路径见 [INTEGRATION.md](INTEGRATION.md)。上游 session/SSE transport 已有离线测试；工作台授权和 note 适配仍待契约，未计入真实验收。
+已完成的独立协议组件与最小接入路径见 [INTEGRATION.md](INTEGRATION.md)。上游 session/SSE transport 已有离线测试；A 的正式契约 `bd9d6e3` 已随 main `798e0de` 合入。真实授权与 note wiring 尚未完成；完整 HTTP MemoryStore 仍缺删除、generation/CAS 等契约，未计入真实验收。
 
 双实例已有 [启动说明](dual/USAGE.md) 和 [实测记录](dual/RUN-2026-10-17.md)：两边 health、页面、catalog 通过，跨实例聊天 token 被拒绝。当前仍是原版 ACME 页面，Sample A/B 标签只在启动器与说明中；最终演示还需在页面明确标注。此阶段没有工作台 pairwise ID 或 notes，不能算 A08 通过。
 
@@ -59,7 +59,7 @@ X-Session-Id: <上一步返回的 session_id>
 
 响应是 `text/event-stream`。每帧为 `event: <type>` 与 `data: <JSON payload>`，实现见 `commerce-common/commerce_common/streaming.py:164`；`data` 不含包裹的 `type` 字段。需消费完整流，区分 `error` 与 `turn_complete`。直接投递 `{type:"introduce", ...}`、只发送文本 body、或缺少 `X-Session-Id` 均不符合上游协议。A 线需负责建立/保存这个会话映射与流式响应处理；本目录没有新增工作台端点。
 
-Tier 0 前缀规则仍有版本差异：本地计划 v0.2 只列字段名；远端 v0.3 允许策略表中的 auto 字段值且要求回执。两者都不能向消息塞入完整身份卡；先等冻结契约确认再实施前缀发送。
+本地计划已更新到 v0.3。A 的正式 `packages/contract/src/tier0.ts` 定义 Tier 0 前缀：仅包含该类别策略允许的 auto 字段值，purpose 字段永不带入，并要求由工作台记录放行回执。不能向消息塞入完整身份卡；本目录的 transport 本身不执行授权或生成回执。
 
 ## MemoryStore 实地发现
 
@@ -75,7 +75,7 @@ Tier 0 前缀规则仍有版本差异：本地计划 v0.2 只列字段名；远�
 | `shopping-agent/core/shopping_agent/executor.py:103` | `memory_subject` 使用 `session.user_id` |
 | `shopping-agent/runtime-messages-api/shopping_agent_runtime/orchestrator.py:279` | post-turn 提取写入 `session.user_id`；`:292` 起读取 preferences 与 memory |
 | `commerce-common/commerce_common/memory.py:183` | `validate_fact` 保留 fence、写过滤、上限与来源 session tag |
-| `commerce-common/commerce_common/memory.py:521` | 提取前后比较 purge generation，删除后不应重新写入旧提取结果 |
+| `commerce-common/commerce_common/memory.py:521` | 提取前后比较 purge generation；可发现模型调用期间的 clear，但检查与写入不是跨进程原子操作 |
 
 六个方法是 `get_facts(subject_id)`、`upsert_facts(subject_id, facts)`、`search_facts(subject_id, query)`、`delete_fact(subject_id, key)`、`clear(subject_id)`、`purge_generation(subject_id)`。`clear` 不只是删 note，还要增加 purge generation。MemoryFact 有 `key`（≤64）、`value`（≤200）、`category`、`updated_at`、`source_session_id`（session tag，不能是原始聊天 token），见 `commerce-common/commerce_common/types.py:34`。
 
@@ -83,4 +83,6 @@ Tier 0 前缀规则仍有版本差异：本地计划 v0.2 只列字段名；远�
 
 ## 验证范围
 
-实地命令与结果存于 [运行记录](RUN-2026-10-17.md)。代码检查、服务启动、模型聊天、Tier 0、Tier 2、干净克隆 skill 运行与录屏是不同证据；只有实际完成的项目才标通过。当前没有 `AgentCookieMemoryStore` 参考实现，A15/A16 也未通过。冻结契约和 fake workspace 未交付时，只推进脚手架和接口分析。
+实地命令与结果存于 [运行记录](RUN-2026-10-17.md)，原记录和时间保持不变。代码检查、服务启动、模型聊天、Tier 0、Tier 2、干净克隆 skill 运行与录屏是不同证据；只有实际完成的项目才标通过。
+
+现有 [AgentCookieMemoryStore 内存参考](../../fixtures/expected/README.md) 实现六个方法并运行确定性离线测试，只用于验收参考，不复制到第三方仓库，也没有接到当前双店服务。它只处理本商家白名单关系 context，不复制共享卡、不伪造 observed；未接通的 HTTP port 在启动和调用时明确报错。A15/A16、真实工作台 MemoryStore、干净克隆 skill 运行及录屏仍未通过。

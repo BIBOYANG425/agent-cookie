@@ -74,15 +74,14 @@ const validEvent = (row: unknown): boolean => object(row) && date(row.at)
   && ['id', 'event', 'actor', 'object', 'result', 'reason'].every((key) => string(row[key]));
 const malformed = () => new Error('工作台响应格式与已核对契约不一致。');
 
-// TODO(contract): replace with B's WorkspaceClient once merged.
-// Verified against bd9d6e3 apps/workspace/src/app.ts; no guessed contribution-list endpoint.
-// The proxy has one fixed loopback upstream. The key exists only in this closure.
-export function createLiveAdapter(key: string, fetcher: Fetcher = fetch, now: () => number = Date.now): ConsoleAdapter {
+// The same-origin server bridge owns @agent-cookie/sdk and AGENT_COOKIE_KEY.
+// No owner credentials enter browser JavaScript. Missing SDK methods live in server/workspace.ts.
+export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = Date.now): ConsoleAdapter {
   const request = async (path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<unknown> => {
     let response: Response;
     try {
       const timeout = AbortSignal.timeout(8000);
-      response = await fetcher(`/workspace-api${path}`, { method, headers: { Authorization: `Bearer ${key}` },
+      response = await fetcher(`/workspace-api${path}`, { method, headers: { 'X-Agent-Cookie-Console': '1' },
         credentials: 'omit', cache: 'no-store', redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     } catch { throw new Error('无法连接本机工作台，或请求已超时。'); }
     let body: unknown;
@@ -90,6 +89,8 @@ export function createLiveAdapter(key: string, fetcher: Fetcher = fetch, now: ()
     if (!response.ok) {
       const code = object(body) && object(body.error) && string(body.error.code) && /^[A-Z_]{1,40}$/u.test(body.error.code)
         ? body.error.code : 'REQUEST_FAILED';
+      if (code === 'CONSOLE_KEY_MISSING') throw new Error('请在本机控制台服务设置 AGENT_COOKIE_KEY 后重新连接。');
+      if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('本机控制台服务需要 owner 钥匙，请核对 AGENT_COOKIE_KEY。');
       // Server messages may contain secrets or field values; show only the error code.
       throw new Error(`工作台拒绝请求：${response.status} ${code}`);
     }
@@ -107,7 +108,8 @@ export function createLiveAdapter(key: string, fetcher: Fetcher = fetch, now: ()
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now() };
+        events: activityBody.events as ActivityEvent[], receivedAt: now(),
+        ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {
       const body = await request(`/personal/contributions/${encodeURIComponent(id)}/revoke`, 'POST', signal);
