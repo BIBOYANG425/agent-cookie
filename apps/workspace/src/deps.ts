@@ -89,7 +89,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   }
   card.get(fixtures.users[0]!.userId);
   // Quiet conversations are learned from on a timer (the threshold path runs as observations arrive).
-  const learnTimer = setInterval(() => { void gate.run(() => learning.flushDue()).catch(() => undefined); }, config.learnTickMs);
+  const learnTimer = setInterval(() => learning.tick((fn) => gate.run(fn)), config.learnTickMs);
   learnTimer.unref();
 
   return {
@@ -103,6 +103,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       await repo.resetToSeed();
       await reconcileRepo(ctx);
       card.get(fixtures.users[0]!.userId);
+      // Queued conversation text was just deleted: do not leave a copy of it in the WAL.
+      store.checkpoint();
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
     }, config.resetWaitMs),

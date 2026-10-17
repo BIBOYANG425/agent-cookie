@@ -122,11 +122,15 @@ describe("learned preferences in ranking (pref.brand / pref.color rank, pref.avo
       }
     }
   });
-  it("terms split on commas, 、, slashes and 'and'/和; matching is whole-word for Latin terms", () => {
+  it("terms split on punctuation only (and/和 are parts of names); matching is whole-word for Latin terms", () => {
     expect(terms("Brooks, Hoka")).toEqual(["brooks", "hoka"]);
-    expect(terms("Brooks、Hoka 和 Altra")).toEqual(["brooks", "hoka", "altra"]);
-    expect(terms("red and blue / green")).toEqual(["red", "blue", "green"]);
+    expect(terms("Brooks、Hoka；Altra")).toEqual(["brooks", "hoka", "altra"]);
+    expect(terms("red / blue|green")).toEqual(["red", "blue", "green"]);
+    expect(terms("Dolce and Gabbana, 和服")).toEqual(["dolce and gabbana", "和服"]);
     expect(terms(undefined)).toEqual([]);
+    // a Latin term next to CJK letters, and typographic apostrophes, still match (SEMA3)
+    expect(mentions(offer("z.example", "US 9", 1000, { productTitle: "Nike跑鞋 黑色" }), "nike")).toBe(true);
+    expect(mentions(offer("z.example", "US 9", 1000, { productTitle: "Men\u2019s Trail" }), "men's trail")).toBe(true);
     const o = offer("x.example", "US 9", 1000, { productTitle: "Shredder Trail", variantTitle: "Redwood / US 9" });
     expect(mentions(o, "red")).toBe(false);
     expect(mentions(o, "redwood")).toBe(true);

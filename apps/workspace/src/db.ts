@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS settings (user_id TEXT NOT NULL, key TEXT NOT NULL, v
 CREATE TABLE IF NOT EXISTS observation_batches (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, user_id TEXT NOT NULL, channel TEXT NOT NULL,
   turns_seen INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (agent_id, conversation_id));
 CREATE TABLE IF NOT EXISTS observation_turns (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS observation_turns_conv ON observation_turns (agent_id, conversation_id, seq);
+CREATE INDEX IF NOT EXISTS observation_batches_user ON observation_batches (user_id, first_at);
 CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, computed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
   updated_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY (agent_id, user_id, key));
@@ -152,7 +154,7 @@ export class Store {
     if (path !== ":memory:") this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
     this.migrate();
-    for (const t of ["grants", "quotes", "contributions", "receipts"]) {
+    for (const t of ["grants", "quotes", "contributions", "receipts", "observation_turns"]) {
       const m = this.db.prepare(`SELECT COALESCE(MAX(seq), 0) AS m FROM ${t}`).get() as { m: number };
       this.seq = Math.max(this.seq, m.m);
     }
@@ -260,13 +262,31 @@ export class Store {
       return batches.length;
     });
   }
-  /** After deleting observed text: move the overwritten pages out of the WAL so no copy of the text stays on disk. */
-  checkpoint(): void {
+  /**
+   * After deleting observed text: move the overwritten pages out of the WAL and truncate it, so no copy of the text
+   * stays on disk. Never waits for another connection (busy_timeout 0 for this call): if one holds the database, it
+   * returns false and the caller retries on its next tick.
+   */
+  checkpoint(): boolean {
+    const busyMs = Number(this.db.pragma("busy_timeout", { simple: true }));
     try {
-      this.db.pragma("wal_checkpoint(TRUNCATE)");
+      this.db.pragma("busy_timeout = 0");
+      const [r] = this.db.pragma("wal_checkpoint(TRUNCATE)") as Array<{ busy: number; log: number; checkpointed: number }>;
+      return !r || r.busy === 0;
     } catch {
-      // ":memory:" or a busy reader: the next checkpoint catches up
+      return false;
+    } finally {
+      this.db.pragma(`busy_timeout = ${busyMs}`);
     }
+  }
+  /** How many conversations of this user are waiting (queue bound). */
+  observationBatchCount(userId: string): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM observation_batches WHERE user_id = ?").get(userId) as Row).n);
+  }
+  /** The user's oldest waiting conversation. */
+  oldestObservationBatch(userId: string): ObservationBatchRow | undefined {
+    const r = this.db.prepare("SELECT * FROM observation_batches WHERE user_id = ? ORDER BY first_at, rowid LIMIT 1").get(userId) as Row | undefined;
+    return r && toBatch(r);
   }
 
   /** The user's intents, newest first. */
@@ -440,7 +460,8 @@ export class Store {
     return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? ORDER BY seq").all(userId) as Row[]).map(toContribution);
   }
   revokeContribution(id: string, at: string): void {
-    this.exec("UPDATE contributions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", at, id);
+    // The evidence (the user's words) goes with it: a revoked value needs no reason to be kept.
+    this.exec("UPDATE contributions SET revoked_at = ?, evidence = NULL WHERE id = ? AND revoked_at IS NULL", at, id);
   }
   saveCard(userId: string, card: Card, at: string): void {
     this.exec("INSERT OR REPLACE INTO cards (user_id, card, computed_at) VALUES (?, ?, ?)", userId, JSON.stringify(card), at);

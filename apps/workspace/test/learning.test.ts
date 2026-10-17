@@ -3,6 +3,7 @@
 // database files themselves) once processed; paused discards; a pref reaches the card only with two distinct sources;
 // a new card field shows up in the next handshake; learning never breaks the request that triggered it.
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
+import Database from "better-sqlite3";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -15,15 +16,20 @@ class FakeLearn implements LearnApi {
   readonly conversationCalls: Array<{ turns: ObservationTurn[]; context?: { conversationId: string; channel: string } }> = [];
   onExtract: (i: LearnIntentInput) => ContributionCandidate[] = () => [];
   onConversation: (turns: ObservationTurn[]) => ContributionCandidate[] = () => [];
+  /** When set, every call waits for it before answering (a slow or hung learner). */
+  hold?: Promise<void>;
   async extract(i: LearnIntentInput) {
     this.extractCalls.push(structuredClone(i));
+    if (this.hold) await this.hold;
     return this.onExtract(i);
   }
   async extractFromConversation(turns: ObservationTurn[], context?: { conversationId: string; channel: string }) {
     this.conversationCalls.push({ turns: structuredClone(turns), ...(context ? { context } : {}) });
+    if (this.hold) await this.hold;
     return this.onConversation(turns);
   }
 }
+const deferred = () => { let open!: () => void; const p = new Promise<void>((r) => { open = r; }); return { p, open }; };
 
 type H = Awaited<ReturnType<typeof harness>>;
 const at = "2026-10-17T12:00:00.000Z";
@@ -347,3 +353,286 @@ describe("reset", () => {
     expect(h.deps.store.db.prepare("SELECT (SELECT COUNT(*) FROM observation_turns) + (SELECT COUNT(*) FROM observation_batches) AS n").get()).toEqual({ n: 0 });
   });
 });
+
+// Regression tests for the review of this change (one per confirmed finding; ids as in the review).
+describe("review fixes", () => {
+  const brooks = (snippet?: string): ContributionCandidate[] => [{ field: "pref.brand", value: "Brooks", ...(snippet ? { evidence: { snippet } } : {}) }];
+  async function twoSourceBrooks(learn: FakeLearn, h: H) {
+    learn.onConversation = () => brooks();
+    await observe(h, "p1", [turn("user", "Brooks")]);
+    await observe(h, "d1", [turn("user", "Brooks")], KEYS.desktop);
+    await quiet(h);
+    expect(await cardValue(h, "pref.brand")).toBe("Brooks");
+  }
+  const rows = (h: H, field: string) => h.deps.store.contributionsForUser("u_sample").filter((c) => c.field === field);
+
+  it("PRIV1/SEMA1: one source never displaces a value two sources agreed on; it waits as a candidate", async () => {
+    const learn = new FakeLearn();
+    const h = await harness({ learn });
+    await twoSourceBrooks(learn, h);
+    learn.onConversation = () => [{ field: "pref.brand", value: "Hoka" }];
+    await observe(h, "p2", [turn("user", "Hoka")]);
+    await quiet(h);
+    expect(await cardValue(h, "pref.brand")).toBe("Brooks");
+    const l = (await learned(h)).learned;
+    expect(l).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: "Brooks", status: "card" }), expect.objectContaining({ value: "Hoka", status: "candidate", sources: ["personal-photon"] })]));
+    // a value the user states goes on the card at once, as for every field
+    await h.post("/personal/contributions", KEYS.personal, { field: "pref.brand", value: "Altra" });
+    expect(await cardValue(h, "pref.brand")).toBe("Altra");
+  });
+
+  it("CONC1/PRIV2/ABUS5/SEMA6: a pause while the learner is answering drops its answer, even if learning is resumed before it lands", async () => {
+    const learn = new FakeLearn();
+    learn.onExtract = () => [{ field: "pref.color", value: "blue" }];
+    const h = await harness({ learn });
+    for (const resume of [false, true]) {
+      await h.put("/personal/learning", KEYS.personal, { paused: false });
+      const d = deferred();
+      learn.hold = d.p;
+      expect((await h.post("/personal/intents", KEYS.personal, { text: "blue shoes" })).status).toBe(201);
+      await new Promise((r) => setTimeout(r, 20));
+      await h.put("/personal/learning", KEYS.personal, { paused: true });
+      if (resume) await h.put("/personal/learning", KEYS.personal, { paused: false });
+      d.open();
+      await h.deps.learning.settle();
+      expect(learn.extractCalls).toHaveLength(resume ? 2 : 1); // the learner was really asked both times
+      expect(rows(h, "pref.color")).toEqual([]);
+    }
+    expect((await activity(h)).filter((e) => e.event === "learn.apply" && e.result === "dropped")).toHaveLength(2);
+  });
+
+  it("CONC3: another agent accepting the quote of an intent is not a second source for what was said in it", async () => {
+    const learn = new FakeLearn();
+    learn.onExtract = () => brooks();
+    const h = await harness({ learn });
+    const r = await h.post("/personal/intents", KEYS.personal, { text: "Brooks trail shoes" });
+    const quotes = (await h.get(`/personal/intents/${r.body.intentId}/quotes?wait=0`, KEYS.personal)).body.quotes;
+    await h.post(`/personal/quotes/${quotes[0].id}/accept`, KEYS.desktop);
+    await h.deps.learning.settle();
+    expect(learn.extractCalls).toHaveLength(2);
+    expect(rows(h, "pref.brand").map((c) => c.agentId)).toEqual(["personal-photon"]);
+    expect(await cardValue(h, "pref.brand")).toBeUndefined();
+  });
+
+  it("PRIV3: a snippet must name the learned value (any other quote of the conversation is not kept)", async () => {
+    const learn = new FakeLearn();
+    learn.onConversation = () => [{ field: "pref.color", value: "blue", evidence: { snippet: "my doctor said" } }];
+    const h = await harness({ learn });
+    await observe(h, "c", [turn("user", "my doctor said I should walk more. I like blue")]);
+    await quiet(h);
+    expect(rows(h, "pref.color")[0]!.evidence).toEqual({ conversationId: "c" });
+  });
+
+  it("PRIV4/ABUS9: a pref value is short and holds no contact, address or payment data — stated or learned", async () => {
+    const learn = new FakeLearn();
+    learn.onConversation = () => [{ field: "pref.recipient", value: "my wife at 12 Oak St" }, { field: "pref.style", value: "x".repeat(81) }];
+    const h = await harness({ learn });
+    for (const value of ["my wife at 12 Oak Street", "x".repeat(81), "mail a@b.co", "４１１１ １１１１ １１１１ １１１１"]) {
+      expect((await h.post("/personal/contributions", KEYS.personal, { field: "pref.recipient", value })).status).toBe(422);
+    }
+    await observe(h, "c", [turn("user", "for my wife")]);
+    await quiet(h);
+    expect([...rows(h, "pref.recipient"), ...rows(h, "pref.style")]).toEqual([]);
+  });
+
+  it("PRIV5/SEMA5/ABUS4: values differing only in case or spacing are one value — they add up, and a revoked one stays revoked", async () => {
+    const learn = new FakeLearn();
+    const h = await harness({ learn });
+    learn.onConversation = () => [{ field: "pref.brand", value: "Brooks" }];
+    await observe(h, "a", [turn("user", "Brooks")]);
+    await quiet(h);
+    learn.onConversation = () => [{ field: "pref.brand", value: " BROOKS " }];
+    await observe(h, "b", [turn("user", "brooks")], KEYS.desktop);
+    await quiet(h);
+    expect(await cardValue(h, "pref.brand")).toBe("Brooks");
+    learn.onConversation = () => [{ field: "pref.avoid", value: "Nike" }];
+    await observe(h, "c", [turn("user", "no Nike")]);
+    await quiet(h);
+    await h.post(`/personal/contributions/${rows(h, "pref.avoid")[0]!.id}/revoke`, KEYS.personal);
+    learn.onConversation = () => [{ field: "pref.avoid", value: "nike" }];
+    await observe(h, "d", [turn("user", "no nike")], KEYS.desktop);
+    await quiet(h);
+    expect(rows(h, "pref.avoid").filter((c) => !c.revokedAt)).toEqual([]);
+  });
+
+  it("PRIV6: a conversationId that is a phone number or email is refused", async () => {
+    const h = await harness();
+    for (const conversationId of ["+1 415 555 0100", "someone@example.com"]) {
+      expect((await observe(h, conversationId, [turn("user", "hi")])).status).toBe(422);
+    }
+  });
+
+  it("PRIV7: revoking a learned value drops its evidence", async () => {
+    const learn = new FakeLearn();
+    learn.onConversation = () => [{ field: "pref.color", value: "blue", evidence: { snippet: "I like blue" } }];
+    const h = await harness({ learn });
+    await observe(h, "c", [turn("user", "I like blue")]);
+    await quiet(h);
+    const id = rows(h, "pref.color")[0]!.id;
+    expect(h.deps.store.contribution(id)!.evidence?.snippet).toBe("I like blue");
+    await h.post(`/personal/contributions/${id}/revoke`, KEYS.personal);
+    expect(h.deps.store.contribution(id)!.evidence).toBeUndefined();
+  });
+
+  it("PRIV8: queued text deleted by /demo/reset leaves no copy in the database files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ws-reset-"));
+    const path = join(dir, "ws.sqlite");
+    const h = await harness({ env: { SQLITE_PATH: path, AGENT_COOKIE_DATA_DIR: dir } });
+    const M = "QX7RESETMARKER";
+    await observe(h, "c", [turn("user", `${M} hello`)]);
+    expect((await h.post("/demo/reset", KEYS.owner)).status).toBe(200);
+    for (const f of [path, `${path}-wal`].filter(existsSync)) expect(readFileSync(f).includes(Buffer.from(M))).toBe(false);
+    await h.deps.close();
+  });
+
+  it("CONC2/CROS4/ABUS3: a learner that never answers is abandoned after LEARN_TIMEOUT_MS; settle and close return", async () => {
+    const learn = new FakeLearn();
+    learn.hold = new Promise(() => undefined);
+    const h = await harness({ learn, env: { LEARN_TIMEOUT_MS: "100" } });
+    await h.post("/personal/intents", KEYS.personal, { text: "anything" });
+    await observe(h, "c", [turn("user", "hello")]);
+    await quiet(h);
+    expect((await activity(h)).filter((e) => e.result === "failed" && e.reason === "LearnerTimeout").map((e) => e.event).sort())
+      .toEqual(["learn.conversation", "learn.intent"]);
+    await h.deps.close();
+  });
+
+  it("SEMA2: an inferred guess does not block a later observation, and an old record is refreshed (the 365-day expiry)", async () => {
+    const learn = new FakeLearn();
+    const h = await harness({ learn });
+    learn.onConversation = () => [{ field: "pref.fit", value: "wide", basis: "inferred" }];
+    await observe(h, "a", [turn("user", "wide")]);
+    await quiet(h);
+    learn.onConversation = () => [{ field: "pref.fit", value: "wide" }];
+    await observe(h, "b", [turn("user", "wide")]);
+    await quiet(h);
+    expect(rows(h, "pref.fit").map((c) => c.basis)).toEqual(["inferred", "observed"]);
+    await observe(h, "c", [turn("user", "wide")]);
+    await quiet(h);
+    expect(rows(h, "pref.fit")).toHaveLength(2); // fresh duplicate skipped
+    offset += 31 * 86_400_000;
+    await observe(h, "d", [turn("user", "wide")]);
+    await quiet(h);
+    expect(rows(h, "pref.fit")).toHaveLength(3); // a month later it is refreshed
+  });
+
+  it("SEMA7: a blocked accept is not a choice", async () => {
+    const learn = new FakeLearn();
+    const h = await harness({ learn });
+    const r = await h.post("/personal/intents", KEYS.personal, { text: "trail shoes" });
+    const quotes = (await h.get(`/personal/intents/${r.body.intentId}/quotes?wait=0`, KEYS.personal)).body.quotes;
+    const grant = (await h.get("/personal/grants", KEYS.personal)).body.grants.find((g: { agentId: string }) => g.agentId === quotes[0].agentId);
+    await h.post(`/personal/grants/${grant.id}/revoke`, KEYS.personal);
+    expect((await h.post(`/personal/quotes/${quotes[0].id}/accept`, KEYS.personal)).body.status).toBe("blocked");
+    await h.deps.learning.settle();
+    expect(learn.extractCalls.filter((c) => c.chosenQuote)).toEqual([]);
+  });
+
+  it("SEMA8: a learned avoid does not exclude what this request asks for by name", async () => {
+    const h = await harness();
+    await h.post("/personal/contributions", KEYS.personal, { field: "pref.avoid", value: "Altra" });
+    const titles = async (text: string) => {
+      const r = await h.post("/personal/intents", KEYS.personal, { text, public: { count: "5" } });
+      return ((await h.get(`/personal/intents/${r.body.intentId}/quotes?wait=0`, KEYS.personal)).body.quotes as Array<{ title?: string }>).map((q) => q.title ?? "");
+    };
+    expect((await titles("trail shoes")).some((t) => /Altra/.test(t))).toBe(false);
+    expect((await titles("Altra trail shoes")).some((t) => /Altra/.test(t))).toBe(true);
+  });
+
+  it("CONC7: a checkpoint never waits for another connection; the text leaves the WAL on a later tick", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ws-ckpt-"));
+    const path = join(dir, "ws.sqlite");
+    const learn = new FakeLearn();
+    const h = await harness({ learn, env: { SQLITE_PATH: path, AGENT_COOKIE_DATA_DIR: dir } });
+    const M = "QX7CKPTMARKER";
+    await observe(h, "c", [turn("user", `${M} hi`)]);
+    const reader = new Database(path);
+    reader.prepare("BEGIN").run();
+    reader.prepare("SELECT COUNT(*) FROM observation_turns").get(); // holds a snapshot that includes the WAL frames
+    const t0 = Date.now();
+    await quiet(h); // takes the batch; the checkpoint cannot complete while the reader holds its snapshot
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(learn.conversationCalls).toHaveLength(1);
+    expect(h.deps.store.checkpoint()).toBe(false); // really blocked, and returned at once
+    expect(Date.now() - t0).toBeLessThan(2000);
+    reader.prepare("COMMIT").run();
+    reader.close();
+    await h.deps.learning.flushDue(); // the owed checkpoint runs now
+    expect(h.deps.store.checkpoint()).toBe(true);
+    for (const f of [path, `${path}-wal`].filter(existsSync)) expect(readFileSync(f).includes(Buffer.from(M))).toBe(false);
+    await h.deps.close();
+  });
+
+  it("CROS2: queued turns keep their order across a restart", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ws-restart-"));
+    const env = { SQLITE_PATH: join(dir, "ws.sqlite"), AGENT_COOKIE_DATA_DIR: dir };
+    const first = await harness({ env });
+    await observe(first, "c", [turn("user", "one"), turn("user", "two")]);
+    await first.deps.close();
+    const learn = new FakeLearn();
+    const second = await harness({ learn, env });
+    await observe(second, "c", [turn("user", "three")]);
+    await quiet(second);
+    expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["one", "two", "three"]);
+    await second.deps.close();
+  });
+
+  it("CROS3: a brand or color stated in this request is what that intent's merchants read", async () => {
+    const h = await harness();
+    await h.post("/personal/contributions", KEYS.personal, { field: "pref.color", value: "black" });
+    const m = await h.registerMerchant({ category: "retail", capabilities: ["gifts"], callbackUrl: "http://127.0.0.1:9/cb" });
+    await h.post("/personal/intents", KEYS.personal, { text: "a teal scarf", kind: "gifts", public: { color: "teal" } });
+    const s = await h.sessionOf(m.agentId);
+    expect((await h.get(`/agent/fields?sessionId=${s.sessionId}&fields=pref.color`, m.key)).body.fields).toEqual({ "pref.color": "teal" });
+  });
+
+  it("ABUS1: a full-width or dotted card number typed into a chat is not stored", async () => {
+    const h = await harness();
+    await observe(h, "c", [turn("user", "４１１１ １１１１ １１１１ １１１１"), turn("user", "4111.1111.1111.1111"), turn("user", "ok")]);
+    expect((h.deps.store.db.prepare("SELECT text FROM observation_turns").all() as Array<{ text: string }>).map((x) => x.text)).toEqual(["ok"]);
+  });
+
+  it("ABUS6: a candidate whose field changes between reads cannot slip past the whitelist", async () => {
+    const learn = new FakeLearn();
+    let reads = 0;
+    // passes the type, field and whitelist checks (three reads), then turns into a purpose field
+    learn.onConversation = () => [{ get field() { return reads++ < 3 ? "pref.brand" : "shipping_address"; }, value: "Brooks" } as ContributionCandidate];
+    const h = await harness({ learn });
+    await observe(h, "c", [turn("user", "Brooks")]);
+    await quiet(h);
+    expect(rows(h, "shipping_address").filter((c) => c.agentId === "personal-photon" && c.value === "Brooks")).toEqual([]);
+  });
+
+  it("ABUS8: a merchant's attempt to write pref.* is not shown as learned", async () => {
+    const h = await harness();
+    const m = await h.registerMerchant({ category: "retail", capabilities: ["gifts"], callbackUrl: "http://127.0.0.1:9/cb" });
+    await h.post("/personal/intents", KEYS.personal, { text: "a gift", kind: "gifts" });
+    const s = await h.sessionOf(m.agentId);
+    await h.post("/agent/contributions", m.key, { sessionId: s.sessionId, field: "pref.brand", value: "MerchantBrand", basis: "observed" });
+    expect((await learned(h)).learned).toEqual([]);
+  });
+
+  it("CONC4: the same agent learning the same value from an intent and a conversation at once writes it once", async () => {
+    const learn = new FakeLearn();
+    learn.onExtract = () => [{ field: "pref.color", value: "blue" }];
+    learn.onConversation = () => [{ field: "pref.color", value: "blue" }];
+    const h = await harness({ learn });
+    await observe(h, "c", [turn("user", "blue")]);
+    offset += 301_000;
+    await h.post("/test/clock", undefined, { offsetMs: offset });
+    // both learner calls answer in the same tick, so both writes would start from the same snapshot
+    const d = deferred();
+    learn.hold = d.p;
+    await h.post("/personal/intents", KEYS.personal, { text: "blue shoes" });
+    const flushing = h.deps.learning.flushDue();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(learn.extractCalls).toHaveLength(1);
+    expect(learn.conversationCalls).toHaveLength(1);
+    d.open();
+    await flushing;
+    await h.deps.learning.settle();
+    expect(rows(h, "pref.color")).toHaveLength(1);
+  });
+});
+

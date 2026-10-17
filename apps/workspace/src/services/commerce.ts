@@ -114,8 +114,10 @@ export class CommerceService {
       if (size) conditions.size = size;
       if (card.lang) conditions.lang = card.lang;
       // Learned preferences on the card: brand and color rank (this request's own brand/color win); avoid excludes.
+      // A learned "avoid" never overrides what the user asks for now: a term this request names is not avoided this time.
+      const asked = `${input.text ?? ""} ${input.query ?? ""} ${Object.values(input.public).join(" ")}`.normalize("NFKC").toLowerCase();
       const prefs = { brand: terms(input.public.brand ?? card["pref.brand"]), color: terms(input.public.color ?? card["pref.color"]),
-        avoid: terms(card["pref.avoid"]) };
+        avoid: terms(card["pref.avoid"]).filter((t) => !asked.includes(t)) };
       if (prefs.brand.length || prefs.color.length || prefs.avoid.length) conditions.prefs = prefs;
       let offers: UcpOffer[] | undefined;
       try {
@@ -234,8 +236,9 @@ export class CommerceService {
     if (running) return running;
     if (q.result) return q.result;
     const run = this.decide(personal, intent, q).then((result) => {
-      // The user's choice is the strongest signal there is: learn from it once, whatever the checkout's outcome.
-      this.learning?.afterIntent(personal, userId, intent, this.ctx.store.quote(q.id) ?? q);
+      // The user's choice is the strongest signal there is: learn from it once, whatever the checkout's outcome —
+      // unless policy blocked it (revoked merchant, expired offer): then nothing was chosen.
+      if (result.status !== "blocked") this.learning?.afterIntent(personal, userId, intent, this.ctx.store.quote(q.id) ?? q);
       return result;
     }).finally(() => this.inflight.delete(q.id));
     this.inflight.set(q.id, run);

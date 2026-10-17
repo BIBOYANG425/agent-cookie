@@ -50,6 +50,14 @@ export const FIELDS = [
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
+/**
+ * A pref.* value is short text (at most PREF_VALUE_MAX characters) without contact, payment or street-address data,
+ * whoever writes it: retail merchants read these with the handshake. Learned values that compare equal ignoring case
+ * and spacing are the same value. A learned value reaches the card only with two distinct sources; one source never
+ * displaces a value two sources agreed on (a value the user stated is the exception, as for every field).
+ */
+export const PREF_VALUE_MAX = 80;
+
 export function isPrefField(x: unknown): x is PrefField {
   return typeof x === "string" && (PREF_FIELDS as readonly string[]).includes(x);
 }
