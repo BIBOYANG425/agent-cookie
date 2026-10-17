@@ -2,6 +2,7 @@
 // same 404 (A08). ≤ 2 KB per merchant; a key unused for 12 months expires.
 import { NOTE_MAX_BYTES, NOTE_TTL_DAYS, type Note } from "@agent-cookie/contract";
 import type { NoteRow } from "../db.js";
+import { containsCardNumber } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
 import type { SessionService } from "./sessions.js";
@@ -14,6 +15,7 @@ export class NoteService {
 
   async write(agent: AuthedAgent, sessionId: string, key: string, value: string): Promise<Note> {
     if (!KEY.test(key)) fail("MISSING_FIELD", "invalid note key");
+    if (containsCardNumber(value)) fail("MISSING_FIELD", "card numbers are never stored");
     const { session } = this.sessions.access(agent, sessionId);
     const now = this.ctx.clock.nowIso();
     this.ctx.store.deleteExpiredNotes(now);

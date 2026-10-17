@@ -6,7 +6,9 @@ import { loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
 import type { Config } from "./config.js";
 import { Store } from "./db.js";
-import { loadFixtures, seedStore, type Fixtures } from "./seed.js";
+import { Gate } from "./gate.js";
+import { hashKey } from "./ids.js";
+import { ensureOwnerKey, loadFixtures, seedStore, type Fixtures } from "./seed.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
@@ -30,6 +32,8 @@ export interface Deps {
   fields: FieldService;
   notes: NoteService;
   commerce: CommerceService;
+  /** Requests enter it; reset takes it exclusively. */
+  gate: Gate;
   /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
   reset(): Promise<string>;
   close(): void;
@@ -54,11 +58,17 @@ export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {
   const commerce = new CommerceService(ctx, card, sessions, fields, notes);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
+  // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
+  if (!config.demo && !config.test) {
+    for (const key of Object.keys(fixtures.devKeys)) store.deleteKey(hashKey(key));
+    ensureOwnerKey(store, config, clock.nowIso());
+  }
   card.get(fixtures.users[0]!.userId);
 
+  const gate = new Gate();
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, fixtures, card, sessions, fields, notes, commerce,
-    async reset() {
+    config, store, clock, rules, ucp, repo, log, delivery, fixtures, card, sessions, fields, notes, commerce, gate,
+    reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
       store.clearAll();
@@ -68,7 +78,7 @@ export async function createDeps(config: Config, overrides: { ucp?: UcpApi } = {
       card.get(fixtures.users[0]!.userId);
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
-    },
+    }),
     close() {
       store.close();
     },

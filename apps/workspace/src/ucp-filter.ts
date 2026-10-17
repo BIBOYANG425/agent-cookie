@@ -48,12 +48,13 @@ export function sizeMatches(options: readonly string[], cardSize: string): boole
   });
 }
 
-/** "120", "$120", "120 USD", "119.99" → cents. Undefined when no number is present. */
+/** "120", "$120", "120 USD", "120 以内", "1,200", "119.99" → cents; a range "100-160" / "100 到 160" → its upper bound. */
 export function parseBudgetCents(v: string | undefined): number | undefined {
   if (!v) return undefined;
-  const m = /(\d+(?:\.\d{1,2})?)/.exec(v.replace(/,/g, ""));
-  if (!m) return undefined;
-  const cents = Math.round(Number(m[1]) * 100);
+  const nums = [...v.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(/\d+(?:\.\d{1,2})?/g)].map((m) => Number(m[0]));
+  if (nums.length === 0) return undefined;
+  const max = nums.length >= 2 && /\d\s*(?:-|–|~|到|至|to)\s*\$?\d/i.test(v) ? Math.max(nums[0]!, nums[1]!) : nums[0]!;
+  const cents = Math.round(max * 100);
   return Number.isSafeInteger(cents) && cents > 0 ? cents : undefined;
 }
 

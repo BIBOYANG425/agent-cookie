@@ -1,7 +1,7 @@
 // GET /agent/fields. Policy (readDecision) → purpose grounding → values → receipt. All-or-nothing; denials never
 // name fields (A05). The declared purpose is a parameter: a purpose field is released only when the user has
 // accepted this merchant's quote under the intent this grant was issued for.
-import { isField, readDecision, readMode, UpstreamError, type Field, type Receipt } from "@agent-cookie/contract";
+import { isField, readDecision, readMode, type Field, type Receipt } from "@agent-cookie/contract";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import type { CardService } from "./card.js";
@@ -14,7 +14,7 @@ export class FieldService {
   constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {}
 
   async read(agent: AuthedAgent, sessionId: string, names: string[], purpose?: string): Promise<FieldRead> {
-    const { session, grant } = this.sessions.access(agent, sessionId);
+    const { session, grant, live } = this.sessions.access(agent, sessionId);
     const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
     if (wanted.length === 0) fail("MISSING_FIELD", "missing fields");
     if (wanted.length > 32) fail("MISSING_FIELD", "too many fields");
@@ -29,14 +29,20 @@ export class FieldService {
     const decisions = fields.map((f) => readDecision(agent.category, f, purpose));
     if (decisions.includes("SCOPE_DENIED")) deny("SCOPE_DENIED");
     if (decisions.includes("PURPOSE_MISMATCH")) deny("PURPOSE_MISMATCH");
-    // Auto fields must also be inside the grant (they are, by construction; checked anyway).
+    // Auto fields must be inside a live grant (they are, by construction; checked anyway).
+    const autoOnes = fields.filter((f) => readMode(agent.category, f) === "auto");
     const purposeOnes = fields.filter((f) => readMode(agent.category, f) === "purpose");
-    if (fields.some((f) => readMode(agent.category, f) === "auto" && !grant.fields.includes(f))) deny("SCOPE_DENIED");
-    if (purposeOnes.length > 0 && !(grant.intentId && this.ctx.store.hasAcceptedQuote(grant.intentId, sessionId, agent.agentId))) deny("PURPOSE_MISMATCH");
-    // payment_method is a provider token reference; what is released is an authorization (lane D), never the token.
-    if (purposeOnes.includes("payment_method")) throw new UpstreamError("payment provider not configured");
+    if (autoOnes.some((f) => !live.some((g) => g.fields.includes(f)))) deny("SCOPE_DENIED");
+    // Policy is necessary, not sufficient: a purpose field needs a live grant widened for exactly this purpose,
+    // which only exists after the user accepted this merchant's quote (CommerceService.accept).
+    let source = grant;
+    if (purposeOnes.length > 0) {
+      const widened = live.find((g) => g.purpose === purpose && purposeOnes.every((f) => g.fields.includes(f)));
+      if (!widened) deny("PURPOSE_MISMATCH");
+      source = widened!;
+    }
 
-    const values = this.card.values(session.userId, grant.intentId);
+    const values = this.card.values(session.userId, source.intentId);
     const out: Partial<Record<Field, string>> = {};
     for (const f of fields) if (values[f] !== undefined) out[f] = values[f];
 

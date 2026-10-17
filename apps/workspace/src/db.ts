@@ -182,6 +182,9 @@ export class Store {
     const r = this.db.prepare("SELECT * FROM keys WHERE key_hash = ?").get(keyHash) as Row | undefined;
     return r && { keyHash: String(r.key_hash), agentId: String(r.agent_id), role: r.role as Role, createdAt: String(r.created_at) };
   }
+  deleteKey(keyHash: string): void {
+    this.db.prepare("DELETE FROM keys WHERE key_hash = ?").run(keyHash);
+  }
   hasOwnerKey(): boolean {
     return this.db.prepare("SELECT 1 FROM keys WHERE role = 'owner' LIMIT 1").get() !== undefined;
   }
@@ -214,6 +217,13 @@ export class Store {
   newestGrant(sessionId: string): GrantRow | undefined {
     const r = this.db.prepare("SELECT * FROM grants WHERE session_id = ? ORDER BY seq DESC LIMIT 1").get(sessionId) as Row | undefined;
     return r && toGrant(r);
+  }
+  /** Every grant of the session, newest first. */
+  grantsForSession(sessionId: string): GrantRow[] {
+    return (this.db.prepare("SELECT * FROM grants WHERE session_id = ? ORDER BY seq DESC").all(sessionId) as Row[]).map(toGrant);
+  }
+  revokeGrant(id: string, at: string): void {
+    this.db.prepare("UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(at, id);
   }
   /** Revokes every not-yet-revoked grant of the session. */
   revokeSessionGrants(sessionId: string, at: string): void {

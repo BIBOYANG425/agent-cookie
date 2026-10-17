@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FIELDS, SESSION_ID_VECTORS } from "@agent-cookie/contract";
 import { InMemoryRepo } from "../src/stubs/memory-repo.js";
-import { harness, KEYS } from "./harness.js";
+import { callbackServer, harness, KEYS } from "./harness.js";
 
 const FIELD_NAMES = new RegExp(FIELDS.join("|"));
 
@@ -76,8 +76,9 @@ describe("A04 握手只有字段名", () => {
 describe("A05 按用途读字段", () => {
   it("auto allowed; purpose field only after the user accepted this merchant's quote; denials name no field", async () => {
     const h = await harness();
+    const cb = await callbackServer();
     const m = await h.registerMerchant({ callbackUrl: undefined, chatEndpoint: undefined });
-    const m2 = await h.registerMerchant();
+    const m2 = await h.registerMerchant({ callbackUrl: cb.url });
     const { intentId } = await h.intent();
     const s = await h.sessionOf(m2.agentId);
     const q = `/agent/fields?sessionId=${s.sessionId}`;
@@ -98,7 +99,9 @@ describe("A05 按用途读字段", () => {
     expect((await h.get(`${q}&fields=shipping_address&purpose=browsing`, m2.key)).body.error.code).toBe("PURPOSE_MISMATCH");
     const receipts = (await h.get("/personal/receipts", KEYS.owner)).body.receipts;
     expect(receipts[0]).toMatchObject({ agentId: m2.agentId, fields: ["shipping_address"], purpose: "checkout" });
+    expect(cb.bodies).toEqual(expect.arrayContaining([expect.objectContaining({ type: "accepted", quoteId: quote.body.id })]));
     expect(m.agentId).toBeTruthy();
+    cb.close();
   });
 });
 

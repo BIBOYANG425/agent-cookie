@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import type { UcpApi } from "@agent-cookie/contract";
 import { createApp } from "../src/app.js";
@@ -10,6 +12,21 @@ const keyOf = (agentId: string) => Object.entries(devKeys).find(([, v]) => v.age
 export const KEYS = { personal: keyOf("personal-photon"), desktop: keyOf("personal-desktop"), owner: keyOf("owner"), acme: keyOf("shoe-acme") };
 
 export interface Res { status: number; body: any; text: string }
+
+/** A callback receiver that answers 200 and records bodies. */
+export async function callbackServer(): Promise<{ url: string; bodies: unknown[]; close(): void }> {
+  const bodies: unknown[] = [];
+  const server = createServer((req, res) => {
+    let data = "";
+    req.on("data", (c) => (data += c));
+    req.on("end", () => {
+      try { bodies.push(JSON.parse(data)); } catch { bodies.push(data); }
+      res.writeHead(200, { "content-type": "application/json" }).end("{}");
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/cb`, bodies, close: () => server.close() };
+}
 
 export async function harness(opts: { outcome?: UcpStubOutcome; ucp?: UcpApi; env?: Record<string, string> } = {}) {
   const config = loadConfig({ PORT: "4310", SQLITE_PATH: ":memory:", FIXTURES_DIR: SAMPLE_FIXTURES_DIR, AGENT_COOKIE_DEMO: "1", AGENT_COOKIE_TEST: "1",

@@ -36,6 +36,11 @@ export function seedStore(store: Store, f: Fixtures, config: Config, now: string
       for (const [key, who] of Object.entries(f.devKeys)) store.insertKey({ keyHash: hashKey(key), agentId: who.agentId, role: who.role, createdAt: now });
     }
   });
+  ensureOwnerKey(store, config, now);
+}
+
+/** Outside demo/test mode there is always exactly one way in for the console: a minted owner key in <dataDir>/owner.key. */
+export function ensureOwnerKey(store: Store, config: Config, now: string): void {
   if (!config.demo && !config.test && !store.hasOwnerKey()) {
     const key = mintKey();
     mkdirSync(config.dataDir, { recursive: true });
