@@ -330,10 +330,10 @@ sequenceDiagram
 
 | 线 | 跑在 | 拥有的目录（只改这些） | 任务 | 第一个出口 |
 |----|----|----|----|----|
-| A · 核心与工作台 | Claude Code | `packages/core` `apps/workspace` `packages/sdk` `packages/cli` | T0 → T1 → T3（含 ucp 调用）→ T5 → T7 的 A 项 | H2 core 测试过；H6 curl 走完握手、读字段、被拒 |
-| B · 通道与个人 agent | Codex 1 | `packages/mcp` `apps/channel-photon` `skills/agent-cookie` | T2 → Photon 线 → Claude Desktop 配置 → SKILL.md | H6 Claude Desktop 调到 get_my_card；H10 iMessage 一句话收到两双真鞋 |
-| C · 演示面与验收 | Codex 2 | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` | T6 控制台 → T4 的 ACME 项 → 验收测试 → README、视频 | H6 控制台渲染 fixtures 身份卡；H10 ACME 零接入报价 |
-| D · 登录与支付（P1） | Devin | `packages/auth` `packages/pay` `apps/unlock` | TD1 jar 密钥与 passkey 解锁 → TD2 商家验签登录 → TD3 支付 token 按用途单次放行 | H8 passkey 解锁 jar 并签一条握手；H14 商家验签通过；H18 一次限额单次的测试扣款 |
+| A · 核心与工作台 | Claude Code（Bo） | `packages/core` `apps/workspace` `packages/sdk` `packages/cli` | T0 → T1 → T3（含 ucp 调用）→ T5 → T7 的 A 项 | H2 core 测试过；H6 curl 走完握手、读字段、被拒 |
+| B · 通道与个人 agent | Codex A（Cyrus） | `packages/mcp` `apps/channel-photon` `skills/agent-cookie` | T2 → Photon 线 → Claude Desktop 配置 → SKILL.md | H6 Claude Desktop 调到 get_my_card；H10 iMessage 一句话收到两双真鞋 |
+| C · 演示面与验收 | Codex B（Bo） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` | T6 控制台 → T4 的 ACME 项 → 验收测试 → README、视频 | H6 控制台渲染 fixtures 身份卡；H10 ACME 零接入报价 |
+| D · 登录与支付（P1） | Devin（Bo） | `packages/auth` `packages/pay` `apps/unlock` | TD1 jar 密钥与 passkey 解锁 → TD2 商家验签登录 → TD3 支付 token 按用途单次放行 | H8 passkey 解锁 jar 并签一条握手；H14 商家验签通过；H18 一次限额单次的测试扣款 |
 
 - **H0–1 只有 A 线写业务代码**：types、policy、端点清单、错误码，提交。B、C 只做脚手架和 fixtures。A 线 H1 顺手提供一个读 fixtures 的 10 行假工作台，B、C 用它开工，H6 换真的。
 - 四条线只通过 `packages/sdk` 调工作台；谁也不直接碰 SQLite 和 git 记忆库；`tests/acceptance` 只打 HTTP。D 线对工作台的唯一接口是两个纯函数（`signHandshake`、`authorizePayment`）和一个端点（`POST /personal/unlock`），由 A 线在契约里预留，D 线实现。
