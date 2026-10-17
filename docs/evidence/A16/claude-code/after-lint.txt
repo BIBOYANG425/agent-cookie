@@ -1,0 +1,9 @@
+All checks passed!
+ruff check exit=0
+215 files already formatted
+ruff format exit=0
+  ✓ shopping-agent: 7 custom tool descriptions match the registry
+  ✓ merchant-agent: 4 custom tool descriptions match the registry
+
+check.py: clean
+check.py exit=0

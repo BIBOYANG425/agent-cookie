@@ -1,0 +1,173 @@
+##### A. who am I (personal, merchant)
+>>> GET http://127.0.0.1:4310/me
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"agentId":"sample-personal-photon","category":"personal","role":"personal"}
+
+>>> GET http://127.0.0.1:4310/me
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"agentId":"sample-acme","category":"shoe","role":"merchant"}
+
+##### B. personal agent posts a Sample intent; workspace introduces sample-acme
+>>> POST http://127.0.0.1:4310/personal/intents
+>>> headers {"authorization": "Bearer <redacted>", "idempotency-key": "c627bcd8-82ea-44c3-acd5-d31a74235820", "content-type": "application/json"}
+>>> body {"kind":"trail_shoes","public":{"budget":"120"},"text":"A16 Devin run: trail shoes"}
+<<< 201 {"intentId":"i_56v3t377","expiresAt":"2026-10-17T22:10:24.152Z","introduced":3}
+
+>>> GET http://127.0.0.1:4310/personal/grants
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"grants":[{"id":"g_wr1yy0by","sessionId":"jrrg7b6g","agentId":"ucp:black-flag-outfitters-clothing.myshopify.com","agentName":"Black Flag Outfitters (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T22:00:24.157Z","expiresAt":"2026-10-17T22:10:24.157Z","remainingMs":599910,"status":"live"},{"id":"g_vtgecxjz","sessionId":"nzkw4v4a","agentId":"ucp:marathonsports.myshopify.com","agentName":"Marathon Sports (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T22:00:24.156Z","expiresAt":"2026-10-17T22:10:24.156Z","remainingMs":599909,"status":"live"},{"id":"g_9psgtfa1","sessionId":"g0mte20j","agentId":"sample-acme","agentName":"Sample · ACME shoe agent","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T22:00:24.152Z","expiresAt":"2026-10-17T22:10:24.152Z","remainingMs":599905,"status":"live"},{"id":"g_smvdecag","sessionId":"jrrg7b6g","agentId":"ucp:black-flag-outfitters-clothing.myshopify.com","agentName":"Black Flag Outfitters (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:54.542Z","expiresAt":"2026-10-17T22:08:54.542Z","remainingMs":510295,"status":"live"},{"id":"g_z8vnvesa","sessionId":"nzkw4v4a","agentId":"ucp:marathonsports.myshopify.com","agentName":"Marathon Sports (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:54.542Z","expiresAt":"2026-10-17T22:08:54.542Z","remainingMs":510295,"status":"live"},{"id":"g_0jqst14c","sessionId":"g0mte20j","agentId":"sample-acme","agentName":"Sample · ACME shoe agent","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:54.538Z","expiresAt":"2026-10-17T22:08:54.538Z","remainingMs":510291,"status":"live"},{"id":"g_zm3yeyqa","sessionId":"jrrg7b6g","agentId":"ucp:black-flag-outfitters-clothing.myshopify.com","agentName":"Black Flag Outfitters (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:53.147Z","expiresAt":"2026-10-17T22:08:53.147Z","remainingMs":508900,"status":"live"},{"id":"g_3s6nhxhn","sessionId":"nzkw4v4a","agentId":"ucp:marathonsports.myshopify.com","agentName":"Marathon Sports (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:53.146Z","expiresAt":"2026-10-17T22:08:53.146Z","remainingMs":508899,"status":"live"},{"id":"g_vkzgf5en","sessionId":"g0mte20j","agentId":"sample-acme","agentName":"Sample · ACME shoe agent","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:53.142Z","expiresAt":"2026-10-17T22:08:53.142Z","remainingMs":0,"status":"revoked","revokedAt":"2026-10-17T21:58:54.361Z"},{"id":"g_n9g2wm3g","sessionId":"jrrg7b6g","agentId":"ucp:black-flag-outfitters-clothing.myshopify.com","agentName":"Black Flag Outfitters (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:48.186Z","expiresAt":"2026-10-17T22:08:48.186Z","remainingMs":503939,"status":"live"},{"id":"g_97s65t52","sessionId":"nzkw4v4a","agentId":"ucp:marathonsports.myshopify.com","agentName":"Marathon Sports (UCP proxy)","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:48.185Z","expiresAt":"2026-10-17T22:08:48.185Z","remainingMs":503938,"status":"live"},{"id":"g_1vqcnja2","sessionId":"g0mte20j","agentId":"sample-acme","agentName":"Sample · ACME shoe agent","fields":["lang","tone","length","shoe_size","budget","deadline"],"purpose":"handshake","createdAt":"2026-10-17T21:58:48.180Z","expiresAt":"2026-10-17T22:08:48.180Z","r
+
+##### C. trusted host binds its subject to the workspace-issued pairwise session
+##### D. A16: generated adapter reads authorized fields over workspace HTTP
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:24.152Z"}
+
+>>> GET http://127.0.0.1:4310/agent/fields?sessionId=g0mte20j&fields=shoe_size%2Cbudget
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"sessionId":"g0mte20j","purpose":"","fields":{"shoe_size":"42","budget":"120"}}
+
+##### E. A16: write this merchant's note, then read it back over HTTP
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:24.152Z"}
+
+>>> PUT http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>", "content-type": "application/json"}
+>>> body {"value":"{\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758+00:00\",\"source_session\":\"07d464c737d4\"}"}
+<<< 200 {"key":"fit_history","updatedAt":"2026-10-17T22:00:24.262Z","expiresAt":"2027-10-17T22:00:24.262Z"}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:24.152Z"}
+
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"key":"fit_history","value":"{\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758+00:00\",\"source_session\":\"07d464c737d4\"}","updatedAt":"2026-10-17T22:00:24.262Z","expiresAt":"2027-10-17T22:00:24.355Z"}
+
+##### F. boundaries: unknown note, filter, other merchant, unbound subject
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:24.152Z"}
+
+>>> GET http://127.0.0.1:4310/agent/notes/last_exchange?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 404 {"error":{"code":"NOT_FOUND","message":"not found"}}
+
+>>> POST http://127.0.0.1:4310/agents/register
+>>> headers {"content-type": "application/json"}
+>>> body {"name":"A16 second shoe merchant","category":"shoe"}
+<<< 201 {"agentId":"ag_mc8pgnjp","key":"<redacted key>","category":"shoe","role":"merchant"}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 404 {"error":{"code":"NOT_FOUND","message":"not found"}}
+
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 404 {"error":{"code":"NOT_FOUND","message":"not found"}}
+
+##### G. host wiring: retail app with Agent Cookie preferences, memory off (C11)
+>>> GET http://127.0.0.1:8000/api/health
+>>> headers {}
+<<< transport error ConnectError
+
+>>> GET http://127.0.0.1:8000/api/health
+>>> headers {}
+<<< transport error ConnectError
+
+>>> GET http://127.0.0.1:8000/api/health
+>>> headers {}
+<<< transport error ConnectError
+
+>>> GET http://127.0.0.1:8000/api/health
+>>> headers {}
+<<< 200 {"ok":true,"store":"ACME","products":87,"skills":["customer-care","memory-personalization","planning-goals","purchase-research","search-discovery"],"model":"claude-sonnet-5"}
+
+>>> POST http://127.0.0.1:8000/api/session
+>>> headers {"content-type": "application/json"}
+>>> body {"user_id":"ac-sample-user"}
+<<< 200 {"session_id":"[REDACTED_SESSION_TOKEN]","user_id":"ac-sample-user","name":"Guest","tier":null}
+
+>>> POST http://127.0.0.1:8000/api/session
+>>> headers {"content-type": "application/json"}
+>>> body {"user_id":"demo-user"}
+<<< 200 {"session_id":"[REDACTED_SESSION_TOKEN]","user_id":"demo-user","name":"Priya","tier":"ACME Subscription member"}
+
+>>> GET http://127.0.0.1:8000/api/memory
+>>> headers {"x-session-id": "[REDACTED_SESSION_TOKEN]"}
+<<< 501 {"detail":"Agent Cookie merchant HTTP cannot back a MemoryStore (C11, P1 BLOCKED); missing: note enumeration (get_facts and search_facts over every key); note deletion (delete_fact); per-merchant clear (clear); durable purge generation with a conditional write (purge_generation)"}
+
+>>> POST http://127.0.0.1:8000/api/reset
+>>> headers {"x-session-id": "[REDACTED_SESSION_TOKEN]", "content-type": "application/json"}
+>>> body {"purge_memory":true}
+<<< 501 {"detail":"Agent Cookie merchant HTTP cannot back a MemoryStore (C11, P1 BLOCKED); missing: note enumeration (get_facts and search_facts over every key); note deletion (delete_fact); per-merchant clear (clear); durable purge generation with a conditional write (purge_generation)"}
+
+##### H. revoke the grant: every path fails closed, no local fallback
+>>> POST http://127.0.0.1:4310/personal/grants/g_0jqst14c/revoke
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"ok":true,"revokedAt":"2026-10-17T22:00:25.901Z"}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 403 {"error":{"code":"GRANT_REVOKED","message":"grant revoked"}}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 403 {"error":{"code":"GRANT_REVOKED","message":"grant revoked"}}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 403 {"error":{"code":"GRANT_REVOKED","message":"grant revoked"}}
+
+>>> POST http://127.0.0.1:8000/api/chat
+>>> headers {"x-session-id": "[REDACTED_SESSION_TOKEN]", "content-type": "application/json"}
+>>> body {"message":"hi"}
+<<< 403 {"detail":{"code":"GRANT_REVOKED","source":"agent-cookie"}}
+
+>>> POST http://127.0.0.1:8000/api/session
+>>> headers {"content-type": "application/json"}
+>>> body {"user_id":"ac-sample-user"}
+<<< 403 {"detail":{"code":"GRANT_REVOKED","source":"agent-cookie"}}
+
+##### I. re-authorize with a new intent, then expire it with the test clock
+>>> POST http://127.0.0.1:4310/personal/intents
+>>> headers {"authorization": "Bearer <redacted>", "idempotency-key": "322725b8-a872-4f13-b17f-e4c8d9d8a04a", "content-type": "application/json"}
+>>> body {"kind":"trail_shoes","public":{"budget":"120"},"text":"A16 re-authorize"}
+<<< 201 {"intentId":"i_5kekzdtp","expiresAt":"2026-10-17T22:10:26.076Z","introduced":3}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:26.076Z"}
+
+>>> GET http://127.0.0.1:4310/agent/fields?sessionId=g0mte20j&fields=shoe_size%2Cbudget
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"sessionId":"g0mte20j","purpose":"","fields":{"shoe_size":"42","budget":"120"}}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"v":1,"sessionId":"g0mte20j","jar":"http://127.0.0.1:4310","lang":"zh","tone":"简短","length":"","available":["lang","tone","length","shoe_size","budget","shipping_address"],"expiresAt":"2026-10-17T22:10:26.076Z"}
+
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"key":"fit_history","value":"{\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758+00:00\",\"source_session\":\"07d464c737d4\"}","updatedAt":"2026-10-17T22:00:24.262Z","expiresAt":"2027-10-17T22:00:26.175Z"}
+
+>>> POST http://127.0.0.1:4310/test/clock
+>>> headers {"content-type": "application/json"}
+>>> body {"offsetMs":660000}
+<<< 200 {"now":"2026-10-17T22:11:26.176Z","offsetMs":660000}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 403 {"error":{"code":"GRANT_EXPIRED","message":"grant expired"}}
+
+>>> GET http://127.0.0.1:4310/agent/handshake?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 403 {"error":{"code":"GRANT_EXPIRED","message":"grant expired"}}
+
+>>> POST http://127.0.0.1:4310/test/clock
+>>> headers {"content-type": "application/json"}
+>>> body {"offsetMs":0}
+<<< 200 {"now":"2026-10-17T22:00:26.179Z","offsetMs":0}
+
+##### J. C11: AGENT_COOKIE_MEMORY=tier2 refuses at startup

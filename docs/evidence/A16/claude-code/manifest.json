@@ -1,0 +1,29 @@
+{
+  "source": "/private/tmp/agent-cookie-a16-20261017/claude-code-results",
+  "workspaceCommit": "8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954",
+  "targetCommit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+  "verdict": "Scoped preferences/note integration verified; full A16/C11 BLOCKED",
+  "redactions": [
+    {
+      "file": "baseline-retail-run.txt",
+      "field": "upstream session_id credential",
+      "count": 1
+    }
+  ],
+  "excluded": "devdeps, workspace runtime and state, pid files, local credentials",
+  "sha256": {
+    "REPORT.md": "5b470f159c5267d0f9a94eed460e8d462a983397a6d8bca2ccf16c555c50c966",
+    "baseline-git.txt": "f1a0941da8a093eb49e3bdc10ba289833c9349866709468cf293abf98f8ce0cf",
+    "baseline-pytest.txt": "e05cfc01e43dfb1e022feff1c209ab87c0f48dd0a11a8f3b6814af4ca1770500",
+    "baseline-lint.txt": "d340b9739c9497d2ff8f2c4321d3e6c7ddcfeb64a4ee86c3ea8e6ea01a90c3a4",
+    "baseline-retail-run.txt": "0279616ee44ddd7b089d18c33f25b00e5756b5122831abfe29a5cd4e1e3e21c3",
+    "after-pytest.txt": "2cd389b546167e435c01032365512533f2ed17c9873f10d5218c1bc493ae354a",
+    "after-pytest-agent-cookie.txt": "a661883f350fa12544655ac6c6fc92a47faad657fef8db84894d42da823b0166",
+    "after-lint.txt": "66b7d86aebf3de7abd992a9f01623d5bcb018417eccca0a90ce1db0a17b08c60",
+    "after-git-status.txt": "2957e4650f741b50efcb4adc53a9aad59b2fcc632cf78fd5bdac0430f2863c03",
+    "live-e2e.jsonl": "833c26d7be019f01b43a74de58f4d2c028e1a51ed169c5ae9c252d12e2097abf",
+    "live-e2e-stdout.txt": "d75c1ad87f746b99eb88dab635d7941a01af97347b20ac614b055302775348c8",
+    "e2e_live.py": "8e459a86f6fd3d3ee212769f50c117c3f0cf16d6cb98cd42e89e1d7fe8910cfc",
+    "generated.diff": "419c7b8ecc7be869eb9c9ea1a9edb361ed6f47dfb535623da76b535938093c23"
+  }
+}

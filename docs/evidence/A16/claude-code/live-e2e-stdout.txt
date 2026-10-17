@@ -1,0 +1,86 @@
+INFO demo_common.host: No API key in the environment or .env files; the Anthropic SDK falls back to its own credential chain. If chat returns auth errors, set ANTHROPIC_API_KEY in a .env file (repo root or the example's directory).
+ERROR demo_common.host: chat turn failed
+Traceback (most recent call last):
+  File "/private/tmp/agent-cookie-a16-20261017/claude-code/examples/demo_common/host.py", line 172, in event_stream
+    async for event in agent.stream_turn(record.messages, session, record.state):
+  File "/private/tmp/agent-cookie-commerce-agents/shopping-agent/runtime-messages-api/shopping_agent_runtime/orchestrator.py", line 209, in stream_turn
+    async with self.client.messages.stream(**cast(Any, request)) as stream:
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/lib/streaming/_messages.py", line 317, in __aenter__
+    raw_stream = await self.__api_request
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_base_client.py", line 2276, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_base_client.py", line 1881, in request
+    response, prepared = await self._attempt_request(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_base_client.py", line 2034, in _attempt_request
+    request = self._build_request(options, retries_taken=retries_taken)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_base_client.py", line 539, in _build_request
+    headers = self._build_headers(options, retries_taken=retries_taken)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_base_client.py", line 469, in _build_headers
+    self._validate_headers(headers_dict, custom_headers)
+  File "/private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/anthropic/_client.py", line 813, in _validate_headers
+    raise TypeError(
+TypeError: "Could not resolve authentication method. Expected one of api_key, auth_token, or credentials to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+WARNING commerce_common.execution: tool get_preferences failed and is reported as unavailable
+Traceback (most recent call last):
+  File "/private/tmp/agent-cookie-commerce-agents/commerce-common/commerce_common/execution.py", line 216, in execute
+    return await self.dispatch(name, dict(tool_input or {}))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/commerce-common/commerce_common/execution.py", line 243, in dispatch
+    return await handler(tool_input)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-commerce-agents/shopping-agent/core/shopping_agent/executor.py", line 189, in _get_preferences
+    prefs = await self._backend.get_preferences(self._session)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-a16-20261017/claude-code/examples/retail/api/agent_cookie.py", line 313, in get_preferences
+    values = await self._agent_cookie.field_values(session.session_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-a16-20261017/claude-code/examples/retail/api/agent_cookie.py", line 235, in field_values
+    handshake = await self.client.handshake(pairwise)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-a16-20261017/claude-code/examples/retail/api/agent_cookie.py", line 156, in handshake
+    return await self._call("GET", "/agent/handshake", params={"sessionId": session_id}) or {}
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/agent-cookie-a16-20261017/claude-code/examples/retail/api/agent_cookie.py", line 149, in _call
+    raise WorkspaceError(_error_code(response), response.status_code)
+retail.api.agent_cookie.WorkspaceError: GRANT_REVOKED
+PASS register merchant a {"status": 201, "agentId": "ag_5ryeryv9", "category": "shoe"}
+PASS register merchant b {"status": 201, "agentId": "ag_gg365j15", "category": "shoe"}
+PASS personal intent {"status": 201, "body": {"intentId": "i_af8cjqnd", "expiresAt": "2026-10-17T22:10:38.450Z", "introduced": 2}}
+PASS introduce callbacks {"pairwise_a": "ghvnyffk", "pairwise_b": "dv8qbby9", "handshake_a_available": ["lang", "tone", "length", "shoe_size", "shipping_address"]}
+PASS retail in Agent Cookie mode {"memory_store": "None"}
+PASS startup GET /me {"category": "shoe"}
+PASS bind refuses merchant B's pairwise id {"status": 404, "body": {"detail": "NOT_FOUND"}}
+PASS bind storefront session {"status": 200, "user_id": "agent-cookie-da3ea56e20bd2b24", "available": ["lang", "tone", "length", "shoe_size", "shipping_address"]}
+PASS read authorized fields (prefetch seam) {"preferences": {"source": "Agent Cookie, this session's grant", "lang": "zh", "tone": "简短", "shoe_size": "42"}, "label": "Sample card data"}
+PASS get_preferences tool {"is_error": false, "result": "<storefront_data>\n{\"user_id\": \"agent-cookie-da3ea56e20bd2b24\", \"preferences\": {\"source\": \"Agent Cookie, this session's grant\", \"lang\": \"zh\", \"tone\": \"简短\", \"shoe_size\": \"42\"}}\n</storefront_data>"}
+PASS save_memory -> PUT note {"result": "Saved: fit_notes."}
+PASS recall_memories -> GET note {"result": "<storefront_data>\n{\"topic\": \"toe box\", \"facts\": [{\"key\": \"fit_notes\", \"value\": \"prefers a roomy toe box in trail shoes\", \"category\": \"context\", \"source_session\": \"ad6b08ca1d8d\"}]}\n</storefront_data>"}
+PASS direct GET own note (merchant A key) {"status": 200, "body": {"key": "fit_notes", "value": "{\"v\": 1, \"value\": \"prefers a roomy toe box in trail shoes\", \"category\": \"context\", \"source_session\": \"ad6b08ca1d8d\"}", "updatedAt": "2026-10-17T22:00:39.200Z", "expiresAt": "2027-10-17T22:00:39.379Z"}}
+PASS merchant B cannot read A's note {"status": 404, "body": {"error": {"code": "NOT_FOUND", "message": "not found"}}}
+PASS B's own session has no such note {"status": 404, "body": {"error": {"code": "NOT_FOUND", "message": "not found"}}}
+PASS refused write fit_notes {"result": "Not saved: memory holds preferences and standing rules, never account, card, or contact identifiers."}
+PASS refused write shoe_size {"result": "Not saved: this store keeps only fit_notes, gift_recipients for customers who came through Agent Cookie."}
+PASS refused write favourite_colour {"result": "Not saved: this store keeps only fit_notes, gift_recipients for customers who came through Agent Cookie."}
+PASS note unchanged after refused writes {"body": {"key": "fit_notes", "value": "{\"v\": 1, \"value\": \"prefers a roomy toe box in trail shoes\", \"category\": \"context\", \"source_session\": \"ad6b08ca1d8d\"}", "updatedAt": "2026-10-17T22:00:39.200Z", "expiresAt": "2027-10-17T22:00:39.382Z"}}
+PASS GET /api/memory -> 501 {"status": 501, "body": {"detail": "TODO(contract): the Agent Cookie merchant HTTP has no note listing, deletion, clear, or purge generation, so these memory operations are not available"}}
+PASS purge reset -> 501 {"status": 501}
+PASS chat with live grant passes gate (model unverified: no API key) {"status": 200, "body": "event: error\ndata: {\"message\": \"No Anthropic API credentials are configured, so chat can't run. Set ANTHROPIC_API_KEY in examples/retail/.env or the repo-root .env and restart; everything except chat works without one.\"}\n\n"}
+PASS grants listed {"grants": [{"id": "g_5ed3vfdh", "agentId": "ag_5ryeryv9", "fields": ["lang", "tone", "length", "shoe_size", "budget", "deadline"], "purpose": "handshake"}]}
+PASS revoke grant {"status": 200}
+PASS chat refused before the model after revoke {"status": 403, "body": {"detail": "GRANT_REVOKED"}}
+PASS get_preferences after revoke is an error {"result": "get_preferences is temporarily unavailable. Work with what you already have or let the customer know."}
+PASS save after revoke refused {"result": "Not saved: Agent Cookie answered GRANT_REVOKED."}
+PASS recall after revoke refused, no stale note {"result": "Nothing recalled: Agent Cookie answered GRANT_REVOKED."}
+PASS new grant: note readable again (same pairwise session) {"result": "<storefront_data>\n{\"topic\": \"toe\", \"facts\": [{\"key\": \"fit_notes\", \"value\": \"prefers a roomy toe box in trail shoes\", \"category\": \"context\", \"source_session\": \"ad6b08ca1d8d\"}]}\n</storefront_data>"}
+PASS test clock +11 min {"body": {"now": "2026-10-17T22:11:39.457Z", "offsetMs": 660000}}
+PASS chat refused after expiry {"status": 403, "body": {"detail": "GRANT_EXPIRED"}}
+PASS save after expiry refused {"result": "Not saved: Agent Cookie answered GRANT_EXPIRED."}
+PASS test clock reset {"body": {"now": "2026-10-17T22:00:39.461Z", "offsetMs": 0}}
+PASS client closed at shutdown {}
+{"total": 34, "failed": []}
+exit=0

@@ -6,8 +6,8 @@
 | --- | --- | --- |
 | A10 · Claude Desktop MCP（B） | [A10-real-client.md](A10-real-client.md) | 待 B 放入真实客户端截图 / 录屏与工作台活动；当前文件是证据模板 |
 | A15 · 原版 ACME Tier 0（C） | [A15/README.md](A15/README.md) | 已实际尝试，**BLOCKED / 未通过**：工作台前缀含 42 并写回执，原版返回 401；正确协议诊断又遇模型凭据缺失，没有首条 assistant 回复 |
-| A16 · Claude Code（C） | [A16/README.md](A16/README.md) | Claude Desktop Code 模式已在独立干净克隆执行 skill，结果收集中；不等于接入通过 |
-| A16 · Devin（C / Devin） | [交接说明](A16/devin-brief.md) | 用户明确授权后已发送；[Devin 独立会话](https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb)执行中，未通过 |
+| A16 · Claude Code（C） | [A16/README.md](A16/README.md) | 独立实跑完成；新增 21 项测试、34/34 HTTP 步骤通过。有限 preferences/note 接入已验证；完整 MemoryStore 与全程录像仍缺，A16 BLOCKED |
+| A16 · Devin（C / Devin） | [交接说明](A16/devin-brief.md) | 用户授权的[独立实跑](https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb)完成；新增 10 项测试、29/29 HTTP 检查通过。完整 MemoryStore 未实现，A16 BLOCKED |
 | A17 · iMessage 主流程（B） | [B 实际收发日志](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-imessage-real-adapters.json)、[B 联调报告](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-real-adapters-verification.md)、[原片待交项](A17-imessage.md) | PR #12 已交真实搜索 / 选择 / handoff 日志（三条 delivered、一次 accept 和 checkout 地址回执）；连续原片待 B，尚不标完整 A17 通过 |
 
 A15 必须有原版首条回复中的 42 码、实际投递回执与运行前后代码未改证明。错误截图不能代替成功回复。A16 必须各自从干净克隆开始，由 Claude Code 和 Devin 独立应用 skill，并实际读到授权字段、写回本商家 note；仅基线测试、生成 diff 或部分录制不构成通过。C11 缺 note 枚举、删除、clear 等完整生命周期契约，保持 **P1 BLOCKED**，详见 [requests](../requests.md)。

@@ -1,0 +1,38 @@
+== 2026-10-17T21:48:57Z baseline
+fd4d59224ab96b43c6dc6888207c67b3bd5a24cf
+       0
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+origin	https://github.com/anthropics/commerce-agents.git (fetch)
+origin	https://github.com/anthropics/commerce-agents.git (push)
+== main project (read-only)
+8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954
+lane-c
+ M docs/README.md
+ M docs/lane-c-queue.md
+ M docs/requests.md
+ M tests/acceptance/README.md
+?? docs/devpost-draft.md
+?? docs/evidence/A15/
+?? docs/evidence/A16/
+?? docs/media/
+?? docs/video-storyboard.md
+apis.ts
+endpoints.ts
+errors.ts
+fixtures.ts
+index.ts
+policy.ts
+tier0.ts
+types.ts
+     242 packages/contract/src/apis.ts
+      54 packages/contract/src/endpoints.ts
+      45 packages/contract/src/errors.ts
+      52 packages/contract/src/fixtures.ts
+      10 packages/contract/src/index.ts
+      76 packages/contract/src/policy.ts
+      47 packages/contract/src/tier0.ts
+     301 packages/contract/src/types.ts
+     827 total

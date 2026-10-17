@@ -1,6 +1,6 @@
 # A16 skill 生成的接入 · P1
 
-当前记录见 [A16/README.md](A16/README.md)。用户于 2026-10-17 恢复 Claude Code 与 Devin 两次独立实跑要求，原“现场安装推迟”说明已失效。Claude Desktop Code 模式正在干净克隆上执行；Devin 已在用户明确授权后启动[独立会话](https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb)。尚未取得完整通过证据。
+当前记录见 [A16/README.md](A16/README.md)。Claude Desktop Code 与获用户授权的 Devin 均已在独立干净克隆上完成实跑，分别通过 34/34、29/29 有限 HTTP 检查；完整 MemoryStore 仍受 C11 契约阻塞。已保留执行片段及 Devin 验证阶段原速录像，不声称全程生成录像或完整 A16 通过。
 
 通过标准：在干净的 blueprint 克隆上应用 `skills/add-agent-cookie`，生成的 MemoryStore 读到握手字段并写回 note；其余代码仅限必要 wiring 与相关测试。C11 的 P1 契约阻塞不能用空操作或本地 fallback 掩盖。
 
