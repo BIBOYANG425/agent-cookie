@@ -6,7 +6,7 @@ import {
   UpstreamError,
   type UcpApi, type UcpCart, type UcpCheckout, type UcpDestination, type UcpOffer, type UcpSearchQuery,
 } from "@agent-cookie/contract";
-export type UcpStubOutcome = "requires_escalation" | "completed" | "sold_out" | "error";
+export type UcpStubOutcome = "requires_escalation" | "completed" | "sold_out" | "error" | "low_stock_warning";
 
 export interface StubUcpCall { op: string; sellerDomain?: string; destination?: UcpDestination }
 
@@ -40,7 +40,10 @@ export class StubUcp implements UcpApi {
   async createCart(o: Pick<UcpOffer, "sellerDomain" | "variantId">): Promise<UcpCart> {
     this.calls.push({ op: "cart.create", sellerDomain: o.sellerDomain });
     const offer = this.offer(o.sellerDomain, o.variantId);
-    return { cartId: `stub-cart-${++this.n}`, sellerDomain: offer.sellerDomain, continueUrl: offer.checkoutUrl, messages: [] };
+    return { cartId: `stub-cart-${++this.n}`, sellerDomain: offer.sellerDomain, continueUrl: offer.checkoutUrl,
+      messages: this.outcome === "low_stock_warning"
+        ? [{ type: "warning", code: "low_inventory", content: "Sample: only 1 left in this size; it may sell out before you pay." }]
+        : [] };
   }
 
   async createCheckout(cart: UcpCart): Promise<UcpCheckout> {

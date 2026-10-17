@@ -1,0 +1,38 @@
+{
+  "recordedAtUtc": "2026-10-17T21:47:39.019926+00:00",
+  "upstreamCommit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+  "trackedStatus": "",
+  "fullPorcelainStatus": "",
+  "diffStat": "",
+  "sha256": {
+    "examples/retail/api/main.py": "5db438e963b5a00397e9aff2cd484a0fd5a7baef193e3e5d51baf302cbf1aac8",
+    "examples/retail/api/agent_config.py": "dd52cffff760380fe1f940748db8479b5f56d00bc629ba36b9d36b366358b88e",
+    "examples/demo_common/storefront.py": "ba1a85afc7ad653a4266694018880d2fd90cfff69ac1ae95e11c43313168621f",
+    "examples/demo_common/sessions.py": "d9791ccd98c1d48a16de9301c05baa51a95906d232cf3cdadb771ba4fa729c0d"
+  },
+  "workspaceCommit": "8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954",
+  "credentials": {
+    "environmentPresent": {
+      "ANTHROPIC_API_KEY": false,
+      "ANTHROPIC_AUTH_TOKEN": false,
+      "CLAUDE_CODE_OAUTH_TOKEN": false,
+      "CLAUDE_CODE_USE_BEDROCK": false,
+      "CLAUDE_CODE_USE_VERTEX": false
+    },
+    "upstreamRootEnvExists": false,
+    "retailEnvExists": false
+  },
+  "startupFirstAttempt": {
+    "result": "failed_missing_dependencies",
+    "missingPythonModules": [
+      "shopping_agent",
+      "shopping_agent_runtime",
+      "merchant_agent",
+      "merchant_agent_runtime",
+      "fastapi",
+      "uvicorn",
+      "dotenv"
+    ],
+    "frontendDependenciesPresent": false
+  }
+}

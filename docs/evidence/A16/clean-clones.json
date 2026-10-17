@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-10-17T21:46:59.964513+00:00",
+  "workspaceCommit": "8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954",
+  "clones": [
+    {
+      "agent": "claude-code",
+      "path": "/private/tmp/agent-cookie-a16-20261017/claude-code",
+      "commit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+      "status": "",
+      "origin": "https://github.com/anthropics/commerce-agents.git"
+    },
+    {
+      "agent": "devin",
+      "path": "/private/tmp/agent-cookie-a16-20261017/devin",
+      "commit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+      "status": "",
+      "origin": "https://github.com/anthropics/commerce-agents.git"
+    }
+  ]
+}

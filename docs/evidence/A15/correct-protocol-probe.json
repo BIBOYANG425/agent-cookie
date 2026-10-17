@@ -1,0 +1,54 @@
+{
+  "observedAtUtc": "2026-10-17T21:49:38.927825+00:00",
+  "scope": "Separate diagnostic using the correct original session/header/SSE protocol; NOT the workspace Tier 0 path and NOT A15 success.",
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "store": "ACME",
+      "products": 87,
+      "skills": [
+        "customer-care",
+        "memory-personalization",
+        "planning-goals",
+        "purchase-research",
+        "search-discovery"
+      ],
+      "model": "claude-sonnet-5"
+    }
+  },
+  "catalog": {
+    "status": 200,
+    "productCount": 87,
+    "footwearTitleMatches": 0
+  },
+  "session": {
+    "status": 200,
+    "subjectMatchesWorkspacePairwiseId": true,
+    "tokenRecorded": false
+  },
+  "chat": {
+    "method": "POST",
+    "path": "/api/chat",
+    "hasXSessionIdHeader": true,
+    "body": {
+      "message": "[agent-cookie] session g0mte20j · lang zh · tone 简短 · shoe_size 42 · budget 120 · on request: shipping_address(checkout)",
+      "page": {
+        "page_type": "home"
+      }
+    },
+    "status": 200,
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "event": "error",
+        "data": {
+          "message": "No Anthropic API credentials are configured, so chat can't run. Set ANTHROPIC_API_KEY in examples/retail/.env or the repo-root .env and restart; everything except chat works without one."
+        }
+      }
+    ],
+    "firstAssistantReply": null,
+    "firstAssistantReplyContains42": false,
+    "hasTurnComplete": false
+  }
+}

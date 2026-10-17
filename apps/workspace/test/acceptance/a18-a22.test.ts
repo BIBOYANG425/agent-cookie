@@ -2,7 +2,7 @@
 // seed, git memory repo, lane D's adapter replaying fixtures/ucp recordings).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  AGENTS, api, deriveSessionId, grants, introduce, KEYS, merchant, PINNED, pinnedIntent, receipts, reset, SEED,
+  AGENTS, api, deriveSessionId, getQuotes, grants, introduce, KEYS, loadScenario, merchant, PINNED, pinnedIntent, receipts, reset, SEED,
   SHOE_AUTO_FIELDS, startCallbackServer, startWorkspace, ucpAgent, type Api, type CallbackServer, type Json,
   type Workspace,
 } from "./helpers.js";
@@ -73,9 +73,55 @@ describe("A18 UCP 失败路径（录制：complete → requires_escalation / INS
     });
   }
 
-  it.todo("sold-out warning: no recorded sold-out response in fixtures/ucp yet (see fixtures/ucp/README.md); needs a real failure recording");
-  it.todo("requires_escalation → handoff with continue_url: no recorded requires_escalation response in fixtures/ucp yet");
 });
+
+// The two remaining A18 cases run only on lane D's real failure recordings (fixtures/ucp/scenarios/<name>/, see
+// loadScenario). Until a recording exists the case is a todo; it is never simulated.
+const SCENARIOS = [
+  { name: "sold-out", todo: "sold-out warning: no recorded sold-out response yet (fixtures/ucp/scenarios/sold-out/)" },
+  { name: "requires-escalation", todo: "requires_escalation → handoff with continue_url: no recorded response yet (fixtures/ucp/scenarios/requires-escalation/)" },
+] as const;
+
+for (const sc of SCENARIOS) {
+  const scenario = loadScenario(sc.name);
+  if (!scenario) {
+    describe(`A18 ${sc.name}（录制）`, () => { it.todo(sc.todo); });
+    continue;
+  }
+  describe(`A18 ${sc.name}（录制 ${scenario.dir.split("/fixtures/")[1]}）`, T, () => {
+    let sws: Workspace;
+    beforeAll(async () => { sws = await startWorkspace({ AGENT_COOKIE_UCP_FIXTURES: scenario.dir }); }, 60_000);
+    afterAll(async () => { await sws?.stop(); });
+
+    for (const offer of scenario.pinned.offers) {
+      it(`accepting ${offer.seller}: the recorded ${sc.name} reaches the user as it is, with a continue URL, never as success`, async () => {
+        const personal = api(sws.url, KEYS.personal);
+        const r = await personal.post("/personal/intents", scenario.intent);
+        expect(r.status).toBe(201);
+        const quotes = await getQuotes(personal, r.body.intentId, 10_000);
+        const quote = quotes.quotes.find((x: Json) => x.seller === offer.seller && x.variantId === offer.variantId);
+        expect(quote, `no quote for the recorded variant at ${offer.seller}`).toBeDefined();
+
+        const a = await personal.post(`/personal/quotes/${quote.id}/accept`);
+        expect(a.status).toBe(200);
+        expectNotSuccess(a.body);
+        expect(a.body.continueUrl).toMatch(/^https:\/\//);
+        expect(typeof a.body.message).toBe("string");
+        for (const leak of LOCAL_LEAKS) expect(a.text, `accept body leaks ${leak}`).not.toContain(leak);
+        for (const n of SEED.addressNeedles) expect(a.text).not.toContain(n);
+        if (sc.name === "requires-escalation") {
+          expect(a.body.status).toBe("handoff");
+        } else {
+          expect(["failed", "handoff"]).toContain(a.body.status);
+          // the recorded warning/error text is passed through verbatim
+          const told = scenario.messages.filter((m) => m.type === "warning" || m.type === "error");
+          expect(told.length, "sold-out recording has no warning/error message").toBeGreaterThan(0);
+          for (const m of told) expect(a.body.message).toContain(m.content);
+        }
+      });
+    }
+  });
+}
 
 describe("A22 回头客", T, () => {
   let photon: Api;

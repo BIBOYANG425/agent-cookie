@@ -1,0 +1,8 @@
+cmd: pytest -q -p no:cacheprovider (full suite, after change)
+tests/test_consumption_paths.py::test_mcp_server_lists_the_manifests_tools_under_registry_contracts[shopping]
+  /private/tmp/agent-cookie-commerce-agents/.venv/lib/python3.11/site-packages/pydantic_settings/sources/utils.py:47: IncompleteFieldDefinitionWarning: Field 'lifespan' has an incomplete definition: its annotation contains an unresolved forward reference, so settings sources may fail to correctly resolve its value. Call `model_rebuild()` on the model where the field is defined, once all the referenced types are defined.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1125 passed, 1 skipped, 1 warning in 5.02s
+exit=0

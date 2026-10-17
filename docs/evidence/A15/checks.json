@@ -1,0 +1,15 @@
+{
+  "actualPrefixContainsShoeSize42": true,
+  "actualPrefixPurposeNamePresent": true,
+  "sampleAddressValueAbsent": true,
+  "paymentMethodValueAbsent": true,
+  "xSessionIdMissingFromWorkspaceDelivery": true,
+  "workspaceDeliveryStatus": 401,
+  "correctProtocolChatEventTypes": [
+    "error"
+  ],
+  "firstAssistantReply": null,
+  "firstAssistantReplyScreenshotAvailable": false,
+  "continuousRecordingAvailable": false,
+  "verdict": "BLOCKED / NOT PASSED"
+}

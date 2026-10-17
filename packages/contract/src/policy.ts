@@ -7,18 +7,21 @@ export type ReadMode = "auto" | "purpose" | "deny";
 const AUTO: Record<Category, Field[]> = {
   personal: [...FIELDS],
   shoe: ["lang", "tone", "length", "shoe_size", "budget", "deadline"],
+  retail: ["lang", "tone", "length", "shoe_size", "budget", "deadline"],
 };
 
 /** Readable only when the declared purpose matches. payment_method is purpose=payment for every merchant category (lane D). */
 const PURPOSE: Record<Category, Partial<Record<Field, string[]>>> = {
   personal: {},
   shoe: { shipping_address: ["checkout"], payment_method: ["payment"] },
+  retail: { shipping_address: ["checkout"], payment_method: ["payment"] },
 };
 
 /** Writable through contributions. personal may use basis "stated"; merchants only "observed". */
 const WRITE: Record<Category, Field[]> = {
   personal: [...FIELDS],
   shoe: ["shoe_size"],
+  retail: ["shoe_size"],
 };
 
 export const POLICY_TABLE = { auto: AUTO, purpose: PURPOSE, write: WRITE } as const;

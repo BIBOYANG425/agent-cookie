@@ -5,7 +5,7 @@
 // by agentId and are never printed (not in assertion messages, not in logs).
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -90,9 +90,38 @@ export const PINNED = {
   offers: PINNED_RAW.offers,
   sellers: PINNED_RAW.offers.map((o) => o.seller).sort(),
   variantIds: PINNED_RAW.offers.map((o) => o.variantId).sort(),
-  /** The recording's own parameters as a trail_shoes intent body (since lane D's B22 re-recording: EU 42 / $120, the card's own size). */
-  intent: { kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: PINNED_RAW.size } },
+  /**
+   * The recording's own parameters as an intent body (EU 42 / $120, the card's own size). `text` is the user's
+   * sentence (IntentRequest); `kind` is the optional hint that also introduces registered trail_shoes merchants.
+   */
+  intent: { text: "找一双越野跑鞋 · Sample", kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: PINNED_RAW.size } },
 } as const;
+
+/**
+ * A18 failure recordings (lane D): `fixtures/ucp/scenarios/<name>/` is a self-contained recording directory in the
+ * same layout as fixtures/ucp (catalog-search.global.json, cart-create.<seller>.json, checkout-*.<seller>.json,
+ * pinned.json naming the variant whose accept hits the failure). The workspace replays it through
+ * AGENT_COOKIE_UCP_FIXTURES. Absent directory → the case stays it.todo; nothing is synthesized here.
+ */
+export interface Scenario {
+  dir: string;
+  pinned: { size: string; budget: number; offers: PinnedOffer[] };
+  /** Every non-empty message content in the scenario's cart/checkout envelopes (what must reach the user verbatim). */
+  messages: Array<{ type: string; content: string; file: string }>;
+  intent: { text: string; public: { budget: string; size: string } };
+}
+export function loadScenario(name: "sold-out" | "requires-escalation"): Scenario | undefined {
+  const dir = path.join(FIXTURES_DIR, "ucp", "scenarios", name);
+  if (!existsSync(path.join(dir, "pinned.json"))) return undefined;
+  const pinned = JSON.parse(readFileSync(path.join(dir, "pinned.json"), "utf8"));
+  const messages: Scenario["messages"] = [];
+  for (const file of readdirSync(dir).filter((f) => /^(cart|checkout)-.*\.json$/.test(f)).sort()) {
+    const env = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
+    const ms = (env?.result?.messages ?? env?.messages ?? []) as Json[];
+    for (const m of ms) if (typeof m?.content === "string" && m.content.trim()) messages.push({ type: String(m.type), content: m.content, file });
+  }
+  return { dir, pinned, messages, intent: { text: "Sample · recorded scenario", public: { budget: String(pinned.budget), size: String(pinned.size) } } };
+}
 
 /** Every seller.domain in the recorded catalog page. */
 export const CATALOG_SELLERS: readonly string[] = [

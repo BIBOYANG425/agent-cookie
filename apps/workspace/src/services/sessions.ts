@@ -7,7 +7,6 @@ import {
 import type { Channel, GrantRow, IntentRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
-import { laneD } from "../laneD.js";
 import type { CardService } from "./card.js";
 import type { Ctx } from "./context.js";
 
@@ -90,8 +89,9 @@ export class SessionService {
       .filter((f, i, all) => all.indexOf(f) === i && has(f) && f !== "payment_method");
     const h: Handshake = { v: 1, sessionId: session.sessionId, jar: this.ctx.config.jarUrl, lang: values.lang ?? "", tone: values.tone ?? "",
       length: values.length ?? "", available, expiresAt: grant.expiresAt };
-    if (laneD.signHandshake) {
-      const { sig, kid } = await laneD.signHandshake(h);
+    // Wired but locked → JAR_LOCKED (403) and the whole intent rolls back; the user unlocks first (lane D).
+    if (this.ctx.laneD.signHandshake) {
+      const { sig, kid } = await this.ctx.laneD.signHandshake(h);
       h.sig = sig;
       h.kid = kid;
     }

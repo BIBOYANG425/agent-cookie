@@ -1,0 +1,114 @@
+### Devin A16 run - session 94dae4b1d11547c698d04be4119e41eb
+Sat Oct 17 22:00:12 UTC 2026
+
+### baseline (recorded before edits)
+# baseline 2026-10-17T21:55:35Z
+commerce-agents HEAD: fd4d59224ab96b43c6dc6888207c67b3bd5a24cf
+status-clean-exit: 1
+HEAD detached at fd4d592
+nothing to commit, working tree clean
+
+agent-cookie HEAD: 8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954
+HEAD detached at 8c1a869
+nothing to commit, working tree clean
+
+### external clone now
+fd4d59224ab96b43c6dc6888207c67b3bd5a24cf
+ A examples/demo_common/agent_cookie.py
+ A examples/demo_common/tests/test_agent_cookie.py
+ M examples/retail/api/main.py
+
+### agent-cookie reference clone (must stay clean)
+8c1a869fe9fc67c7d7a80dd09714d0a4d21b6954
+(clean)
+
+### diff stat
+ examples/demo_common/agent_cookie.py            | 382 ++++++++++++++++++++++++
+ examples/demo_common/tests/test_agent_cookie.py | 273 +++++++++++++++++
+ examples/retail/api/main.py                     |  30 +-
+ 3 files changed, 680 insertions(+), 5 deletions(-)
+
+### offline checks
+All checks passed!
+215 files already formatted
+1114 passed, 1 skipped in 5.98s
+10 passed in 0.50s
+
+### workspace (unmodified, isolated data dir) is up:
+GET /me without key -> 401
+
+### live HTTP run
+
+=== A. who am I (personal, merchant) ===
+[PASS] /me role personal {"agentId": "sample-personal-photon", "category": "personal", "role": "personal"}
+[PASS] /me role merchant {"agentId": "sample-acme", "category": "shoe", "role": "merchant"}
+
+=== B. personal agent posts a Sample intent; workspace introduces sample-acme ===
+[PASS] intent created -> 201
+[PASS] live sample-acme grant fields=['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadline']
+
+=== C. trusted host binds its subject to the workspace-issued pairwise session ===
+settings: AgentCookieSettings(url='http://127.0.0.1:4310', subjects=1, memory='notes') (key not printed)
+
+=== D. A16: generated adapter reads authorized fields over workspace HTTP ===
+[PASS] authorized fields read {"lang": "zh", "tone": "\u7b80\u77ed", "shoe_size": "42", "budget": "120"}
+
+=== E. A16: write this merchant's note, then read it back over HTTP ===
+[PASS] note PUT {"key": "fit_history", "updatedAt": "2026-10-17T22:00:24.262Z", "expiresAt": "2027-10-17T22:00:24.262Z"}
+[PASS] note read back equals write {"key":"fit_history","value":"prefers a roomy toe box; run 2200","category":"context","updated_at":"2026-10-17T22:00:24.259758Z","source_session_id":"07d464c737d4"}
+
+=== F. boundaries: unknown note, filter, other merchant, unbound subject ===
+[PASS] unwritten note -> None (404) 
+[PASS] filtered write refused before HTTP 
+[PASS] card-field note key refused before HTTP 
+[PASS] second merchant registered -> 201
+[PASS] other merchant cannot use acme's session -> 404 NOT_FOUND
+[PASS] other merchant note read -> 404 
+[PASS] unbound demo-user refused (no HTTP, no seed mapping) 
+
+=== G. host wiring: retail app with Agent Cookie preferences, memory off (C11) ===
+[PASS] retail session for bound subject (workspace consulted) -> 200
+[PASS] retail session for unbound demo-user stays local -> 200
+[PASS] retail /api/memory -> 501 C11 (no local store) -> 501
+[PASS] retail memory purge -> 501 C11 (no fake clear) -> 501
+
+=== H. revoke the grant: every path fails closed, no local fallback ===
+[PASS] grant revoked -> 200
+[PASS] fields after revoke -> 403 GRANT_REVOKED
+[PASS] note read after revoke -> 403 GRANT_REVOKED
+[PASS] note write after revoke -> 403 GRANT_REVOKED
+[PASS] retail chat for revoked subject -> 403 before model -> 403 {"detail":{"code":"GRANT_REVOKED","source":"agent-cookie"}}
+[PASS] retail session for revoked subject -> 403 -> 403
+
+=== I. re-authorize with a new intent, then expire it with the test clock ===
+[PASS] fields readable again after new grant {"lang": "zh", "tone": "\u7b80\u77ed", "shoe_size": "42", "budget": "120"}
+[PASS] note survives re-authorization 
+[PASS] fields after grant expiry -> 403 GRANT_EXPIRED
+[PASS] note read after grant expiry -> 403 GRANT_EXPIRED
+
+=== J. C11: AGENT_COOKIE_MEMORY=tier2 refuses at startup ===
+[PASS] tier2 startup fails with ContractUnavailable demo_common.agent_cookie.ContractUnavailable: Agent Cookie merchant HTTP cannot back a MemoryStore (C11, P1 BLOCKED); missing: note enumeration (get_facts and search_facts over every key); note deletion (delete_fact); per-merchant clear (clear); durable purge generation with a conditional write (purge_generation)
+
+SUMMARY {"passed": 29, "failed": [], "a16_core": true}
+
+### raw HTTP: note PUT/GET (Authorization redacted)
+>>> PUT http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>", "content-type": "application/json"}
+>>> body {"value":"{\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758+00:00\",\"source_session\":\"07d464c737d4\"}"}
+<<< 200 {"key":"fit_history","updatedAt":"2026-10-17T22:00:24.262Z","expiresAt":"2027-10-17T22:00:24.262Z"}
+--
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 200 {"key":"fit_history","value":"{\"value\":\"prefers a roomy toe box; run 2200\",\"category\":\"context\",\"updated_at\":\"2026-10-17T22:00:24.259758+00:00\",\"source_session\":\"07d464c737d4\"}","updatedAt":"2026-10-17T22:00:24.262Z","expiresAt":"2027-10-17T22:00:24.355Z"}
+
+--
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+>>> headers {"authorization": "Bearer <redacted>"}
+<<< 404 {"error":{"code":"NOT_FOUND","message":"not found"}}
+
+--
+>>> GET http://127.0.0.1:4310/agent/notes/fit_history?sessionId=g0mte20j
+
+### credential scan of evidence dir
+no keys found
+### done
