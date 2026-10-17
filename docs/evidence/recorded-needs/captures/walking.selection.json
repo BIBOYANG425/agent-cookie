@@ -1,0 +1,70 @@
+{
+  "id": "walking",
+  "text": "最近每天走路通勤，帮我找双舒服的日常走路鞋，95 美元以内。",
+  "query": "comfortable daily walking shoes",
+  "budgetCents": 9500,
+  "currency": "USD",
+  "productCount": 50,
+  "selected": [
+    {
+      "source": "walking.json#/result/products/0/variants/0",
+      "title": "Romy Walking Shoes",
+      "variantId": "gid://shopify/ProductVariant/32537521553544",
+      "variantTitle": "Romy Walking Shoes",
+      "seller": "mff-easyspirit.myshopify.com",
+      "price": {
+        "amount": 8500,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Shoe fit",
+          "label": "M"
+        },
+        {
+          "name": "Color",
+          "label": "Black Leather"
+        },
+        {
+          "name": "Numeric shoe size",
+          "label": "5"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    },
+    {
+      "source": "walking.json#/result/products/14/variants/0",
+      "title": "Ultra Comfy - Healthy and Supportive Walking Shoes",
+      "variantId": "gid://shopify/ProductVariant/49710975353111",
+      "variantTitle": "Ultra Comfy - Healthy and Supportive Walking Shoes",
+      "seller": "5b63bb-0a.myshopify.com",
+      "price": {
+        "amount": 7995,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Color",
+          "label": "Brown"
+        },
+        {
+          "name": "Numeric shoe size",
+          "label": "US 8.5"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    }
+  ],
+  "status": "catalog_support_ready",
+  "fullRecordedRunStatus": "BLOCKED: SDK/Photon generic intent and B continuous iMessage recording pending"
+}

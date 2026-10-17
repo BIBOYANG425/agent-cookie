@@ -1,6 +1,6 @@
 # Devpost draft — Agent Cookie
 
-Editorial draft updated through main `7beb63d` (#11, #12 and #13 merged); the A15/A16 experiments remain pinned to `8c1a869`. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
+Editorial draft updated through main `1d0ffff` (#11–#14 merged); the A15/A16 experiments remain pinned to `8c1a869`. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
 
 ## Project name and tagline
 
@@ -16,7 +16,7 @@ We built Agent Cookie around four questions: who is this customer to this mercha
 
 Agent Cookie is a local workspace for agent-to-agent context. Agents contribute preferences to an identity card; deterministic rules decide what becomes a supported fact. Each merchant receives a separate session identifier and can keep its own small relationship note. Field policies separate ordinary preferences from purpose-restricted fields such as a checkout address.
 
-The demo follows a shopping request from iMessage: find trail running shoes under $120, present merchant offers, then return the selected merchant's checkout handoff. The user does not repeat a stored shoe size. The console shows the card, active grants, and activity, with revocation and a demo reset. The final recording must show the actual outcome: a handoff link is not a completed payment, and an unknown delivery date remains unknown.
+The intended demo starts with a real shopping need chosen on the spot in iMessage. The agent uses relevant size and preferences from the card, respects the budget in that request, and aims to bring back two real merchant offers. It presents at most two merchants, explains insufficient matches or uncertain sizing, and releases an address only to the accepted merchant for checkout. No store, price, or size value is a required outcome. The console shows the card, active grants, and activity, with revocation and a demo reset. The final recording must show the actual outcome: a handoff link is not a completed payment, and an unknown delivery date remains unknown.
 
 We also use Anthropic's original ACME retail blueprint as a compatibility sample. Its catalog contains generic Sample products. The Tier 0 experiment sent a policy-approved prefix containing size 42, but the original API rejected the request because it needed its own session token. A separate protocol probe reached the chat stream but found no configured model credentials. Claude Code and Devin independently applied our integration skill on clean clones. Their limited preferences/note adapters passed 34 and 29 real HTTP checks respectively; full memory adapters remain blocked by the note lifecycle contract. None of these experiments is claimed as a completed integration.
 
@@ -24,7 +24,7 @@ We also use Anthropic's original ACME retail blueprint as a compatibility sample
 
 The workspace uses TypeScript, Hono, SQLite, and a Git-backed memory repository. Merge, expiration, authorization, and pairwise session derivation are deterministic code. Contributions preserve their writer and history; generated card content is derived from those records.
 
-Clients use a shared SDK. The merged B client packages provide a Photon iMessage channel, a CLI, and a personal MCP server for Claude Desktop. The current iMessage implementation recognizes a bounded set of shopping commands; it does not use an LLM for unrestricted intent understanding. The React / Vite console keeps the owner credential on its local server and refreshes every two seconds.
+Clients use a shared SDK. The merged B client packages provide a Photon iMessage channel, a CLI, and a personal MCP server for Claude Desktop. The current iMessage implementation still recognizes only bounded running-shoe commands, and the SDK restricts intent inputs. General shopping queries and category handling are requested from the owning teams; the revised demo is a target until that path and its recordings are verified. Three distinct needs have catalog-recording support in the [backup index](evidence/recorded-needs/README.md); these are not completed iMessage recordings. The React / Vite console keeps the owner credential on its local server and refreshes every two seconds.
 
 The production workspace is connected to the rules, memory, and UCP packages. Fixture mode replays captured merchant responses for repeatable checks; live mode calls merchants through Shopify's UCP CLI. ACME stays in an external clone at a pinned upstream revision.
 

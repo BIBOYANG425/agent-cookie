@@ -1,0 +1,20 @@
+{
+  "query": "waterproof hiking shoes",
+  "context": {
+    "intent": "周末想走山路，帮我找双防水徒步鞋，预算 160 美元。",
+    "address_country": "US",
+    "currency": "USD"
+  },
+  "filters": {
+    "price": {
+      "max": 16000
+    },
+    "available": true,
+    "ships_to": {
+      "country": "US"
+    }
+  },
+  "pagination": {
+    "limit": 50
+  }
+}
