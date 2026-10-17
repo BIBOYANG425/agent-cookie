@@ -1,0 +1,141 @@
+{
+  "date": "2026-10-17",
+  "scope": "Actual Claude Desktop → local MCP → SDK → Sample workspace on 127.0.0.1:4310",
+  "desktopVersion": "2.42304.0",
+  "codeCommit": "03b9dcd661c037dcfd226fee99ca7580086d9317",
+  "sourceNotes": [
+    "Tool names, input and displayed values were observed in actual Desktop approval dialogs and chat UI.",
+    "Desktop log redacts arguments and response bodies; protocol events independently confirm two tools/call requests and corresponding response blocks, but do not contain their values.",
+    "Only non-sensitive Sample fields are recorded; credentials, addresses and private chat identifiers are omitted."
+  ],
+  "observedTools": [
+    {
+      "name": "get_my_card",
+      "approval": "Allow once",
+      "displayedSampleFields": {
+        "lang": "zh",
+        "shoe_size": "42",
+        "budget": "120"
+      }
+    },
+    {
+      "name": "find_agents",
+      "approval": "Allow once",
+      "input": {
+        "kind": "trail_shoes",
+        "budget": "120",
+        "deadline": "周五前到"
+      },
+      "displayedSampleQuotes": [
+        {
+          "title": "Sample Trail A",
+          "priceMinor": 9900,
+          "currency": "USD",
+          "etaDate": null,
+          "seller": "a.example.com"
+        },
+        {
+          "title": "Sample Trail B",
+          "priceMinor": 11500,
+          "currency": "USD",
+          "etaDate": null,
+          "seller": "b.example.com"
+        }
+      ]
+    }
+  ],
+  "protocolEvents": [
+    {
+      "timestamp": "2026-10-17T20:26:23.523Z",
+      "direction": "client",
+      "id": 0,
+      "method": "initialize"
+    },
+    {
+      "timestamp": "2026-10-17T20:26:23.531Z",
+      "direction": "server",
+      "id": 0
+    },
+    {
+      "timestamp": "2026-10-17T20:26:23.534Z",
+      "direction": "client",
+      "id": 1,
+      "method": "tools/list"
+    },
+    {
+      "timestamp": "2026-10-17T20:26:23.538Z",
+      "direction": "server",
+      "id": 1
+    },
+    {
+      "timestamp": "2026-10-17T20:26:47.327Z",
+      "direction": "client",
+      "id": 2,
+      "method": "tools/call"
+    },
+    {
+      "timestamp": "2026-10-17T20:26:47.341Z",
+      "direction": "server",
+      "id": 2,
+      "resultBlocks": 1
+    },
+    {
+      "timestamp": "2026-10-17T20:26:58.567Z",
+      "direction": "client",
+      "id": 3,
+      "method": "tools/call"
+    },
+    {
+      "timestamp": "2026-10-17T20:26:58.576Z",
+      "direction": "server",
+      "id": 3,
+      "resultBlocks": 1
+    }
+  ],
+  "acceptQuoteCalled": false,
+  "realOrderCreated": false,
+  "limitations": [
+    "Sample backend; formal A/C integration and real UCP remain unverified.",
+    "Unknown ETA is not a Friday-delivery promise."
+  ],
+  "workspaceActivity": {
+    "sample": true,
+    "events": [
+      {
+        "id": "4aedcaf0-d96c-4515-9b2a-959066a00344",
+        "at": "2026-10-17T20:26:47.337Z",
+        "event": "GET",
+        "actor": "sample-personal",
+        "object": "/personal/card",
+        "result": "ok",
+        "reason": "Sample"
+      },
+      {
+        "id": "fae36269-b7d6-4a1c-80f0-fbcd271cb2f8",
+        "at": "2026-10-17T20:26:58.573Z",
+        "event": "POST",
+        "actor": "sample-personal",
+        "object": "/personal/intents",
+        "result": "ok",
+        "reason": "Sample"
+      },
+      {
+        "id": "30851708-945a-4c67-ba42-f7a9661683b2",
+        "at": "2026-10-17T20:26:58.576Z",
+        "event": "GET",
+        "actor": "sample-personal",
+        "object": "/personal/intents/:id/quotes",
+        "result": "ok",
+        "reason": "Sample"
+      }
+    ],
+    "personalKeyDenied": true,
+    "correlation": "Same isolated Desktop test window as the two MCP calls; activity timestamps align with request/response intervals."
+  },
+  "screenshots": [
+    "2026-10-17-claude-card.jpg"
+  ],
+  "screenshotsSha256": {
+    "2026-10-17-claude-card.jpg": "b677011902443b346686843f7bad861df32ce1039b48dfc38e0e4ed829d12345"
+  }
+}

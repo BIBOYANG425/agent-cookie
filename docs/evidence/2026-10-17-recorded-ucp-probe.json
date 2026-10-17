@@ -1,0 +1,32 @@
+{
+  "checkedAt": "2026-10-17T20:43:40.021Z",
+  "backend": "lane-a bd9d6e3",
+  "adapter": "lane-d-contract e34800f",
+  "transport": "SDK -> A Hono/SQLite app.request with recorded UCP injected through createDeps override; not active phone runtime",
+  "liveMerchantCalls": false,
+  "normalizedOffers": 50,
+  "eligibleEU42": 1,
+  "parseSuffixUS9": null,
+  "quotes": [
+    {
+      "seller": "shoebacca-prod.myshopify.com",
+      "price": 11997,
+      "currency": "USD",
+      "etaDate": null
+    }
+  ],
+  "sample": true,
+  "limitation": "A default adapters.ts still selects StubUcp; this isolated fixture probe does not change the phone runtime or place an order.",
+  "accept": {
+    "status": "failed",
+    "code": "UPSTREAM_ERROR",
+    "message": "ENOENT: no such file or directory, open '<repo>/fixtures/ucp/cart-create.json'",
+    "hasContinueUrl": true,
+    "sample": true,
+    "receiptPurposes": [
+      "tier0"
+    ],
+    "messageSanitized": "Local repository prefix redacted; error category and missing fixture retained."
+  },
+  "acceptLimitation": "Current matching seller has no cart-create recording; failure is fixture coverage, not demonstrated live authentication failure."
+}
