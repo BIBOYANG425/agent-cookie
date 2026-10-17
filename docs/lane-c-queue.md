@@ -7,7 +7,7 @@
 - [x] C07 packages/memory-repo：openMemoryRepo、appendContribution、writeNote/readNote/deleteNote（≤2KB）、appendReceipt + 测试 — ab57e2f（11 个真实 Git 用例、类型检查通过）
 - [x] C08 packages/memory-repo：regenerateCard（调 rules 生成 CARD.md）、resetToSeed、每次写一个 commit（author=写入者，trailer Agent-Cookie-Sig）+ 测试 — a85471a（17 个真实 Git 用例、类型检查通过）
 - [x] C09 apps/console 骨架：身份卡视图，对 fixtures 或假工作台渲染 — 947b760（浏览器验证与截图）
-- [ ] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询
+- [x] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询 — d58babb（12 测试、类型/构建检查、浏览器实连通过）
 - [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现
 - [ ] C12 skills/add-agent-cookie/SKILL.md
 - [ ] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明
