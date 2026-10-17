@@ -125,3 +125,5 @@ export function createLearner(options: {
     },
   };
 }
+
+export { createHaikuExtractor, createJevClassifier, HAIKU_MODEL } from "./models.js";

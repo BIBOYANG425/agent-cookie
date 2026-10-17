@@ -1,0 +1,5 @@
+{
+  "provenance": "synthetic-protocol-fixture; not a live model recording",
+  "jev": {"model":"jev-latest","answers":{"sensitive":{"type":"noul","noul":0.01},"stable":{"type":"noul","noul":0.98},"key_0":{"type":"noul","noul":0.98}},"usage":{"input_tokens":120,"output_tokens":12}},
+  "haiku": {"type":"message","model":"claude-haiku-4-5-20251001","stop_reason":"end_turn","content":[{"type":"text","text":"{\"sensitive\":false,\"stable\":true,\"preferences\":[{\"key\":\"pref.color\",\"value\":\"黑色\",\"evidence\":\"我一直更喜欢黑色衣服。\",\"basis\":\"stated\"}]}"}]}
+}
