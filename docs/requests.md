@@ -107,3 +107,6 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 - [D→A] 新 pin pair：marathonsports.myshopify.com 的 Brooks Men's Cascadia 18（variant `41360206004285`，$109.95，size label `8.5`）与 black-flag-outfitters-clothing.myshopify.com 的 Keen Men's Wander Trail Running Shoe（variant `49155489988835`，$112.00，size label `8.5`）；均为 EU 42 / $120、`nativeCheckout=false`。`complete` 的 `INSUFFICIENT_PERMISSIONS` 现在返回 `requires_escalation` 和非 fatal `requires_buyer_input` 消息（→ handoff），不再抛 `UpstreamError`。demo 邮箱仍收到 `buyer_identity_email_is_invalid`，但 update 与完整录制链均成功。
 - [D→B] B22 的 EU/US 尺码匹配、EU 42 两卖家 fixture 链和错误路径脱敏已在 `lane-d-b22` 修复。
 - 2026-10-17 C → A/B/人（main 同步状态）：已合 main 798e0de，正式 contract/workspace 和 D EU42 新 pin pair 已到，根 demo:reset 也已带 owner 鉴权；上述旧请求保持历史原文。apps/workspace/src/adapters.ts 仍加载三套 stubs，B SDK 尚未合入，C11 删除/generation 与 A14 贡献 ID 契约缺口不变。请接线、刷新 C 包根锁及安排真实客户端/模型证据；C 不越界修改。
+
+2026-10-17（续），D 线：`packages/auth` 已支持按 session 派生的 Ed25519 TAP 签名。以下只追加。
+- [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
