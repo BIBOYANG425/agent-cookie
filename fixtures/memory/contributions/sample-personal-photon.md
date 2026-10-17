@@ -1,0 +1,3 @@
+- lang: zh [id: sample-lang-01; basis: stated; at: 2026-10-17T16:00:00.000Z]
+- tone: 简短 [id: sample-tone-01; basis: stated; at: 2026-10-17T16:00:01.000Z]
+- shoe_size: 42 [id: sample-shoe-size-01; basis: stated; at: 2026-10-17T16:00:02.000Z]

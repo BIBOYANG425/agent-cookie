@@ -10,7 +10,7 @@ import {
 } from './codec.js';
 import {
   assertRepository, canonicalRoot, commitFiles, exclusive, initialize,
-  optionalFile, recordFiles,
+  optionalFile, recordFiles, restoreSeed,
 } from './storage.js';
 
 export const openMemoryRepo: MemoryRepoApi['openMemoryRepo'] = async (opts) => {
@@ -96,7 +96,17 @@ export const openMemoryRepo: MemoryRepoApi['openMemoryRepo'] = async (opts) => {
         return commitFiles(root, new Map([[path, remaining.length ? renderNotes(remaining) : null]]), meta, 'Delete note');
       });
     },
-    async regenerateCard() { throw new Error('C08 not implemented'); },
+    regenerateCard(merge, meta) {
+      return perform(async () => {
+        metadata(meta); timestamp(merge.now);
+        if (!Array.isArray(merge.personalAgentIds)) throw new WorkspaceError('MISSING_FIELD', 'Personal agent IDs are required');
+        for (const agentId of merge.personalAgentIds) text(agentId);
+        const card = rules.mergeCard(await list(), merge);
+        const content = rules.renderCard(card, { userId, generatedAt: meta.at });
+        const commit = await commitFiles(root, new Map([['CARD.md', content]]), meta, 'Regenerate card');
+        return { card, commit };
+      });
+    },
     appendReceipt(receipt, meta) {
       return perform(async () => {
         metadata(meta);
@@ -106,7 +116,7 @@ export const openMemoryRepo: MemoryRepoApi['openMemoryRepo'] = async (opts) => {
         return commitFiles(root, new Map([['receipts.md', content]]), meta, 'Append receipt');
       });
     },
-    async resetToSeed() { throw new Error('C08 not implemented'); },
+    resetToSeed() { return exclusive(root, () => restoreSeed(root, userId)); },
   };
   return repo;
 };
