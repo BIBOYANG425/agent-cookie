@@ -99,6 +99,7 @@ describe("searchOffers normalization", () => {
       { ...marathon.variant, id: undefined },
       { ...marathon.variant, id: "variant-no-domain", seller: { name: "No domain" } },
       { ...marathon.variant, id: "variant-unavailable", availability: { available: false } },
+      { ...marathon.variant, id: "variant-no-price", price: undefined },
     );
     const calls: string[][] = [];
     const api = createUcpInternal({ mode: "live" }, runnerFor(envelope, calls));
@@ -128,6 +129,7 @@ describe("searchOffers normalization", () => {
     expect(offers.find((offer) => offer.variantId === "variant-unavailable")?.available).toBe(false);
     expect(offers.some((offer) => offer.variantId === "variant-no-product")).toBe(true);
     expect(offers.some((offer) => offer.variantId === "variant-no-domain")).toBe(false);
+    expect(offers.some((offer) => offer.variantId === "variant-no-price")).toBe(false);
     expect(offers.some((offer) => offer.variantId === undefined)).toBe(false);
   });
 

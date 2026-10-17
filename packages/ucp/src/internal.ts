@@ -375,6 +375,8 @@ function normalizeOffers(envelope: JsonRecord, shipsTo: string): UcpOffer[] {
       const sellerDomain = stringValue(seller?.domain);
       if (!variantId || !sellerDomain) continue;
       const price = record(variant.price);
+      const priceCents = price?.amount;
+      if (typeof priceCents !== "number" || !Number.isSafeInteger(priceCents) || priceCents < 0) continue;
       const availability = record(variant.availability);
       const options = Array.isArray(variant.options) ? variant.options : [];
       offers.push({
@@ -383,7 +385,7 @@ function normalizeOffers(envelope: JsonRecord, shipsTo: string): UcpOffer[] {
         productTitle: stringValue(product.title) ?? "",
         variantId,
         variantTitle: stringValue(variant.title) ?? "",
-        priceCents: typeof price?.amount === "number" ? price.amount : 0,
+        priceCents,
         currency: stringValue(price?.currency) ?? "",
         available: availability?.available === true,
         // UCP catalog responses have no per-variant shipping field; this reflects the request filter.
