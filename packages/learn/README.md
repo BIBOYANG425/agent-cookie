@@ -27,6 +27,18 @@ const extract = createHaikuExtractor({
 
 OpenRouter uses its canonical `anthropic/claude-haiku-4.5` alias; it is not a guarantee of Anthropic's dated snapshot ID. Requests require strict structured output, restrict the provider to Anthropic, disable provider fallback, deny data collection and require a ZDR endpoint. If this combination is unavailable, extraction returns no learned output; it does not silently relax routing or switch models. This adapter has synthetic protocol tests, not live credential verification. The accepted owner text is sent to OpenRouter and its model provider for extraction; neither OTel nor the jar should receive the whole input. Keep account input/output logging disabled. See [OpenRouter Haiku](https://openrouter.ai/anthropic/claude-haiku-4.5/api), [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), and [routing controls](https://openrouter.ai/docs/guides/routing/provider-selection).
 
+Local setup: put `OPENROUTER_API_KEY` in a Git-ignored `.env.openrouter` at the repository root, restrict that file to owner read/write, and never send its contents to chat. The library does not auto-load it. With Node22, from the root:
+
+```sh
+pnpm --filter @agent-cookie/learn build
+# Offline protocol check: no credential or network needed.
+node packages/learn/scripts/check-openrouter.mjs --offline
+# Explicit live check: one bounded Haiku request, synthetic sentence only.
+node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs
+```
+
+The check rejects a synthetic sensitive sentence and other group speaker before any model call, then tests one explicit color preference. Output contains only status, timing, call count and extracted field names; no key, original response, real conversation or workspace write. A successful check proves the model adapter, not production learning, card promotion, historical erasure or Spectrum delivery. The remaining A/C dependencies still apply.
+
 The first filter rejects non-owner/group/merchant/assistant inputs, sensitive topics (health, religion, finance, relationships, whereabouts), personal identifiers, quotations and prompt-instruction text. The model also classifies sensitivity. `extractFromConversation` rejects the entire supplied batch if one owner turn is sensitive; it never concatenates other speakers. Overlarge batches (>4000 total characters) fail closed rather than hiding a sensitive portion by truncation. The intent adapter only uses `input.text`, never a merchant's quote or a model-invented query. This conservative filter is not a general natural-language safety proof; real-model quality still needs evaluation, and unsupported/ambiguous material should produce no preference.
 
 The total learner deadline is 10 seconds, Jev at most 1.5s, Haiku at most 8s. Cancellation and adapters that ignore signals are bounded. `explicit-only` is the H14 fallback: first-person explicit rules plus Haiku `stated` confirmation, no Jev or candidate path. No model → no learned output. Promotion remains A/C's deterministic decision; current A downgrades stated and C's evidence shape differs, tracked in B44/B45.
