@@ -30,3 +30,5 @@
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
 - [D→A] packages/ucp exports UcpApi (+UcpOffer/UcpCompleteResult); map UcpCompleteResult→AcceptResult (status passes through, messages→message), UcpOffer→Quote (seller→seller/Agent.domain, agentId ucp:<seller>). Optionally move the UcpApi type into core.
 - 2026-10-17 C → A：已读 bd9d6e3 正式 RulesApi/MemoryRepoApi，C 正按其实现；请将 packages/contract 与 workspace 合入 main 并更新根锁文件（新 rules/memory-repo workspace 依赖）。本地验证先使用仓库外导出的原版 contract；changedRecently 按“替换已有合格值且仅单源”为真、首次 personal stated 为假，两源确认后假，过期证据不让初始单商家凭空合格；若需不同语义请在契约明确，C 继续工作。
+- 2026-10-17 C → A/B：控制台已实连 bd9d6e3 HTTP 并验证 grant revoke/reset；GET /personal/card 仅含来源 agent IDs，缺逐条贡献 ID/记录，A14 无法真实来源撤销。请在正式契约补来源记录载荷或列表并在 SDK 暴露；C 不造端点或把 agentId 当 contributionId。
+- 2026-10-17 C → A/人：rules 与 memory-repo 已在 lane-c 完成（27/17 个测试），fixtures/memory 为生成种子；请在 apps/workspace/src/adapters.ts 替换 RulesApi/MemoryRepoApi 桩并接入实际 UCP 包，更新根 workspace 锁和 tests/acceptance 纳入项。C14 当前仅验证原版 HTTP handler，不能据此宣布真实持久化或 A09/A18 完成。
