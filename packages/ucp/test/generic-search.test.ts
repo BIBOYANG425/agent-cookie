@@ -5,6 +5,7 @@ import type { PinnedOffers } from "@agent-cookie/contract";
 import { describe, expect, it } from "vitest";
 import { createUcp } from "../src/index.js";
 import { createUcpInternal } from "../src/internal.js";
+import { buildSearchInput, recordingOptions } from "../src/record.js";
 
 type JsonRecord = Record<string, any>;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -104,6 +105,23 @@ describe("generic catalog search", () => {
       shipsTo: "US",
     });
     expect(parseInput(calls[2]!).context.intent).toBe("Need size 10 coat (color: blue)");
+  });
+
+  it("omits the catalog price filter when the recorder has no budget", async () => {
+    const options = recordingOptions(["--query", "scarf"]);
+    const calls: string[][] = [];
+    const api = createUcpInternal({ mode: "live" }, async (args) => {
+      calls.push(args);
+      return { result: { products: [] } };
+    });
+
+    expect(options.budget).toBeUndefined();
+    await api.searchOffers(buildSearchInput(options));
+    expect(parseInput(calls[0]!).filters).toEqual({
+      available: true,
+      ships_to: { country: "US" },
+    });
+    expect(parseInput(calls[0]!).filters).not.toHaveProperty("price");
   });
 });
 

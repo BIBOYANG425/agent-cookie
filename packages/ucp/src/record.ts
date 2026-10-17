@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { UcpOffer } from "@agent-cookie/contract";
+import type { UcpOffer, UcpSearchQuery } from "@agent-cookie/contract";
 import {
   createLiveRunner,
   createUcpInternal,
@@ -11,29 +11,30 @@ import {
 } from "./internal.js";
 import { sizeMatch } from "./size.js";
 
-const defaultBudget = 200;
 const defaultLimit = 50;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const pinnedNote = "Test fixture only; not used to pick offers in live mode.";
 
-interface RecordOptions {
+export interface RecordOptions {
   query: string;
-  budget: number;
+  budget?: number;
   size?: string;
   color?: string;
   intent?: string;
+  titleKeyword?: string;
   country: string;
   limit: number;
   out?: string;
   searchOnly: boolean;
 }
 
-function recordingOptions(args: string[]): RecordOptions {
+export function recordingOptions(args: string[]): RecordOptions {
   let query: string | undefined;
-  let budget = defaultBudget;
+  let budget: number | undefined;
   let size: string | undefined;
   let color: string | undefined;
   let intent: string | undefined;
+  let titleKeyword: string | undefined;
   let country = "US";
   let limit = defaultLimit;
   let out: string | undefined;
@@ -55,6 +56,7 @@ function recordingOptions(args: string[]): RecordOptions {
     } else if (arg === "--size") size = value;
     else if (arg === "--color") color = value;
     else if (arg === "--intent") intent = value;
+    else if (arg === "--title-keyword") titleKeyword = value;
     else if (arg === "--country") country = value;
     else if (arg === "--limit") {
       const parsed = Number(value);
@@ -72,6 +74,7 @@ function recordingOptions(args: string[]): RecordOptions {
     ...(size ? { size } : {}),
     ...(color ? { color } : {}),
     ...(intent !== undefined ? { intent } : {}),
+    ...(titleKeyword ? { titleKeyword } : {}),
     country,
     limit,
     ...(out ? { out } : {}),
@@ -94,13 +97,29 @@ function effectiveIntent(options: RecordOptions): string {
   return signals.length > 0 ? `${intent} (${signals.join(", ")})` : intent;
 }
 
+export function buildSearchInput(options: RecordOptions): UcpSearchQuery {
+  return {
+    query: options.query,
+    intentText: effectiveIntent(options),
+    ...(options.size ? { size: options.size } : {}),
+    ...(options.color ? { color: options.color } : {}),
+    ...(options.budget !== undefined ? { maxPriceCents: Math.round(options.budget * 100) } : {}),
+    shipsTo: options.country,
+    limit: options.limit,
+  };
+}
+
 function selectOffers(
   offers: UcpOffer[],
   options: RecordOptions,
-  maxPriceCents: number,
+  maxPriceCents?: number,
 ): Array<{ offer: UcpOffer; matchedSize?: string }> {
   const ranked = offers.flatMap((offer, index) => {
-    if (offer.currency !== "USD" || !offer.available || offer.priceCents > maxPriceCents) return [];
+    if (
+      offer.currency !== "USD"
+      || !offer.available
+      || (maxPriceCents !== undefined && offer.priceCents > maxPriceCents)
+    ) return [];
     const match = options.size ? sizeMatch(offer.sizeOptions, options.size) : "match";
     if (match === "mismatch") return [];
     const matchedSize = options.size && match === "match"
@@ -128,7 +147,7 @@ async function record(): Promise<void> {
   const args = process.argv.slice(2);
   if (args[0] === "--") args.shift();
   const options = recordingOptions(args);
-  const maxPriceCents = Math.round(options.budget * 100);
+  const searchInput = buildSearchInput(options);
   const liveRunner = createLiveRunner();
   const capturedEnvelopes: Array<{ args: string[]; envelope: unknown }> = [];
   const capturedRunner: UcpRunner = async (args) => {
@@ -137,32 +156,30 @@ async function record(): Promise<void> {
     return envelope;
   };
   const api = createUcpInternal({ mode: "live" }, capturedRunner);
-  const intent = effectiveIntent(options);
-  const offers = await api.searchOffers({
-    query: options.query,
-    intentText: intent,
-    ...(options.size ? { size: options.size } : {}),
-    ...(options.color ? { color: options.color } : {}),
-    maxPriceCents,
-    shipsTo: options.country,
-    limit: options.limit,
-  });
-  const selected = selectOffers(offers, options, maxPriceCents);
+  const offers = await api.searchOffers(searchInput);
+  const selected = selectOffers(offers, options, searchInput.maxPriceCents);
 
   if (options.searchOnly) {
+    const titleKeyword = options.titleKeyword ? new RegExp(options.titleKeyword, "i") : undefined;
     console.log(JSON.stringify({
       query: options.query,
-      intent,
-      budget: options.budget,
+      intent: searchInput.intentText,
+      budget: options.budget ?? null,
       size: options.size ?? null,
       color: options.color ?? null,
       totalOffers: offers.length,
       distinctSellers: new Set(offers.map((offer) => offer.sellerDomain)).size,
+      ...(titleKeyword ? {
+        titleKeywordCount: {
+          pattern: options.titleKeyword,
+          count: offers.filter((offer) => titleKeyword.test(offer.productTitle)).length,
+        },
+      } : {}),
       picked: selected.map(({ offer }) => ({
         seller: offer.sellerDomain,
         title: offer.productTitle,
         variantTitle: offer.variantTitle,
-        price: offer.priceCents / 100,
+        priceUsd: offer.priceCents / 100,
         sizeOptions: offer.sizeOptions,
         colorOptions: offer.colorOptions ?? [],
         nativeCheckout: offer.nativeCheckout,
@@ -171,7 +188,8 @@ async function record(): Promise<void> {
     return;
   }
   if (selected.length !== 2) {
-    throw new Error(`Matched ${selected.length} distinct sellers for "${options.query}" within $${options.budget}; need 2`);
+    const budget = options.budget === undefined ? "" : ` within $${options.budget}`;
+    throw new Error(`Matched ${selected.length} distinct sellers for "${options.query}"${budget}; need 2`);
   }
 
   const destination = {
@@ -195,7 +213,7 @@ async function record(): Promise<void> {
   const pinned = {
     recordedAt: new Date().toISOString(),
     query: options.query,
-    budget: options.budget,
+    ...(options.budget !== undefined ? { budget: options.budget } : {}),
     ...(options.size ? { size: options.size } : {}),
     ...(options.color ? { color: options.color } : {}),
     testOnly: true,
@@ -216,13 +234,15 @@ async function record(): Promise<void> {
   console.log(JSON.stringify(scrubFixture({ pinned, complete: summaries }), null, 2));
 }
 
-void record().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  if (error instanceof Error && "stdout" in error) {
-    console.error(JSON.stringify(scrubFixture({
-      stdout: (error as Error & { stdout?: unknown }).stdout,
-      stderr: (error as Error & { stderr?: unknown }).stderr,
-    }), null, 2));
-  }
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void record().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    if (error instanceof Error && "stdout" in error) {
+      console.error(JSON.stringify(scrubFixture({
+        stdout: (error as Error & { stdout?: unknown }).stdout,
+        stderr: (error as Error & { stderr?: unknown }).stderr,
+      }), null, 2));
+    }
+    process.exitCode = 1;
+  });
+}

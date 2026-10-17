@@ -31,7 +31,7 @@ pnpm --filter @agent-cookie/ucp record -- --query "rain jacket" --budget 150 \
   [--size 10] [--color red] [--intent "..."] [--country US] [--limit 50] [--out <dir>]
 ```
 
-`--query` is required. By default, recordings go to `fixtures/ucp/test/<query-slug>/`; `--out` overrides that directory. `--search-only` performs only catalog search, prints the offer summary as JSON, and writes no files.
+`--query` is required; `--budget` is optional and omitted budgets do not add a price filter. By default, recordings go to `fixtures/ucp/test/<query-slug>/`; `--out` overrides that directory. `--search-only` performs only catalog search, prints the offer summary as JSON with prices named `priceUsd`, and writes no files. For a search-only title count, pass `--title-keyword <regex>`; the summary includes the count of product titles matching that case-insensitive regular expression.
 
 ## Fixtures and safety
 
