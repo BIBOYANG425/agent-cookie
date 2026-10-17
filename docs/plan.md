@@ -1,6 +1,6 @@
-<!-- 导出自共享 Artifact「Agent Cookie 工程计划」。以 Artifact 为准；此副本供离线阅读与 coding agent 使用。 -->
+<!-- 导出自共享 Artifact「Agent Cookie 工程计划」。以 Artifact 为准；此副本供离线阅读与 coding agent 使用。v0.3 的修订在本文件里做，需回写 Artifact（见第 7 节）。 -->
 
-LA HACKS 2026 · 工程计划 v0.2 · 2026-10-17
+LA HACKS 2026 · 工程计划 v0.3 · 2026-10-17
 
 # Agent Cookie 工程计划
 
@@ -8,13 +8,21 @@ LA HACKS 2026 · 工程计划 v0.2 · 2026-10-17
 
 本计划以这几天的讨论为基准。技术栈采用队友方案里的选择（TypeScript、Node、SQLite、MCP）。开发按四条并行线分给四个 coding agent，见第 4 节。D 线（Devin）负责 passkey 登录与支付凭据，P1，不影响主线。10 月 17 日版：不报 Fetch 赛道，Photon 为主舞台，商家是 UCP 上的真实 Shopify 店。
 
+> **v0.3 改了什么（相对 v0.2）**
+> - 修内部矛盾：命题是六个不是五个；第 4 节改成四个 coding agent、四条线；T2 的 SDK/CLI 与目录归属冲突（改为 `packages/sdk`、`packages/cli` 归 B 线）；回调载荷统一为 `type` 字段；去掉与"用户不点头"冲突的 `pendingRequests`。
+> - 修 demo 真实性：Shopify 店不会收到我们的 session ID，新增"UCP 商家：工作台代理"一节并改台词；2:05 一拍原来让 Claude Desktop 读商家的 note，违反 A08，改为由商家代理读自己的 note 开口。
+> - 修 Tier 0 矛盾：只给字段名的握手前缀无法让 ACME 报出 42 码（A15），明确 Tier 0 前缀可带 auto 字段值。
+> - 契约补洞：`Agent.chatEndpoint` / `domain`、Quote 的 checkout 字段、`GET /personal/grants`、`POST /personal/contributions`、D 线预留端点、测试时钟、D 线与上游错误码；去掉已砍掉的 pharmacy / hotel；session ID 按稳定的 merchantKey 推导。
+> - 验收：明确 P0 集合（不再写"A01–A18 全绿"，其中有 P1）；补命题 6 的验收 A22；命题 → 验收对照；A10、A17 标为手动证据；A09 用录好的 UCP 响应保证可重复。
+> - 新增：开赛前预检、环境变量与端口表、HTTPS/手机访问风险、开放问题（第 7 节）。
+
 ## 1 · 这个计划具体是什么
 
 我们做三样东西，加上演示用的 agent。
 
 ### 挂钩（packages/mcp）
 
-一个 MCP server。任何 agent 装上它就连上工作台。按钥匙的角色给出不同的工具：个人 agent 用来找 agent、写记录、处理授权请求；商家 agent 用来读字段、请求字段、写自己的 cookie。
+一个 MCP server。任何 agent 装上它就连上工作台。按钥匙的角色给出不同的工具：个人 agent 用来找 agent、写记录、看回执和撤销；商家 agent 用来拿握手、按用途读字段、写贡献记录、写自己的 cookie。
 
 ### 工作台（apps/workspace）
 
@@ -33,20 +41,12 @@ LA HACKS 2026 · 工程计划 v0.2 · 2026-10-17
 ``` mermaid
 
 flowchart LR
-  U[用户
-iMessage] -->|一句话| P[个人 agent
-Photon 线 + SDK]
-  D[Claude Desktop
-+ 挂钩] -->|MCP| W
-  P -->|SDK| W[工作台
-Hono + git 记忆库 + SQLite
-127.0.0.1:4310]
-  W -->|ucp CLI：目录 / cart / checkout| S1[Shopify 店 A
-UCP 端点]
-  W -->|ucp CLI| S2[Shopify 店 B
-UCP 端点]
-  W -->|文本前缀 / skill 接入| ACME[ACME 鞋店
-Anthropic blueprint 原版]
+  U["用户<br/>iMessage"] -->|一句话| P["个人 agent<br/>Photon 线 + SDK"]
+  D["Claude Desktop<br/>+ 挂钩"] -->|MCP| W
+  P -->|SDK| W["工作台<br/>Hono + git 记忆库 + SQLite<br/>127.0.0.1:4310"]
+  W -->|ucp CLI：目录 / cart / checkout| S1["Shopify 店 A<br/>UCP 端点"]
+  W -->|ucp CLI| S2["Shopify 店 B<br/>UCP 端点"]
+  W -->|文本前缀 / skill 接入| ACME["ACME 鞋店<br/>Anthropic blueprint 原版"]
   C[控制台] -->|owner API| W
 ```
 
@@ -85,7 +85,7 @@ Anthropic blueprint 原版]
       skills/add-agent-cookie/  给 coding agent 的接入手册（Tier 2）
       fixtures/expected/    Tier 2 参考实现，只用于验收
       fixtures/             注册表、贡献记录、用户种子数据（Sample）
-      tests/acceptance/     A01–A12（vitest，直接打工作台 HTTP）
+      tests/acceptance/     A01–A22（vitest，直接打工作台 HTTP；A10、A17 是手动证据，存 docs/evidence/）
 
 ### 用户记忆库的布局（fork 自 Agent Memory Repo）
 
@@ -118,7 +118,7 @@ skill 是模型照着做的说明，没有强制力；CLI 和 MCP 是代码，�
 | 用户自己的 agent（Devin、Claude Code、Claude Desktop） | 完全，是它自己的仓库 | Skill + CLI（Claude Desktop 用 MCP stdio） | 它们本来就在 shell 和 git checkout 里。skill 说何时用，CLI 干活。安装方式和 Cognition 的一样 |
 | 商家 agent（别的公司） | 无 | MCP（远程，streamable HTTP） | 唯一能强制范围的路径。每个 agent 一把钥匙，每次读都在服务端核对。永远不给 skill |
 | 商家后端（没有模型） | 无 | SDK | Shopify app 调 `getFields`，不调聊天工具 |
-| 测试、演示、运维 | \- | CLI | `agent-cookie reset`、`agent-cookie read --as shoeA --purpose checkout`；A01–A12 变成 shell 行 |
+| 测试、演示、运维 | \- | CLI | `agent-cookie reset`、`agent-cookie read --as shoeA --purpose checkout`；验收步骤都能写成 shell 行 |
 
 **一条硬规则：**skill 只能包装 CLI，不能自己实现。skill 一旦教模型"直接编辑 CARD.md"，强制力就没了。个人 agent 可以通过 git 整份读自己的仓库，但每一次写仍走 `agent-cookie contribute`，合并规则和签名对自己也生效。
 
@@ -128,11 +128,18 @@ skill 是模型照着做的说明，没有强制力；CLI 和 MCP 是代码，�
 
 | 级 | 商家要做什么 | 我们提供 | 商家得到 | demo 里谁 |
 |----|----|----|----|----|
-| 0 · 零接入 | 无 | 工作台把握手渲染成第一条消息的文本前缀 `[agent-cookie] session k7f2 · lang zh · tone 简短 · available: shoe_size, budget`，投递到它现有的聊天端点 | 第一句话就认识你；只读不写；它自己的 memory 仍在它那边 | ACME 鞋店（第 7 拍开头） |
+| 0 · 零接入 | 无 | 工作台把握手渲染成第一条消息的文本前缀 `[agent-cookie] session k7f2 · lang zh · tone 简短 · shoe_size 42 · budget 120 · on request: shipping_address(checkout)`，投递到它现有的聊天端点 | 第一句话就认识你；只读不写；它自己的 memory 仍在它那边 | ACME 鞋店（第 7 拍开头） |
 | 1 · 只改配置 | MCP 配置加一行我们的 server，装我们的 skill | 远程 MCP 工具 + skill 教模型何时调 | 读写都有，按用途放行，note 存回工作台 | Claude Desktop（个人 agent 侧就是 Tier 1） |
 | 2 · 改代码，由 coding agent 改 | 开发者在自己仓库跑 `/add-agent-cookie` | `skills/add-agent-cookie/SKILL.md`：找 session 标识 → 找 memory / preferences 读写点 → 用 SDK 包一层 → 保留原有写过滤 → 加测试 | 深度接入（blueprint 的 `MemoryStore` 级别） | ACME 鞋店（现场由 Devin 或 Claude Code 升级） |
 
-**参考答案不是交付物。**`AgentCookieMemoryStore`（Python，约 80 行：`subject_id` = pairwise session ID；`get_facts` → `get_fields` + `read_note`；`upsert_facts` → 可写字段走 `contribute`、其余走 `write_note`；`clear` → 删自己的 note）保存在 `fixtures/expected/`，只用来验收 skill 现场生成的结果。Tier 1 对 blueprint 是否零代码未验证（它的 MCP connectors 在后端侧），demo 不赌它。设计文档：`docs/superpowers/specs/2026-10-12-demo-integration-ladder-design.md`。
+**参考答案不是交付物。**`AgentCookieMemoryStore`（Python，约 80 行：`subject_id` = pairwise session ID；`get_facts` → `get_fields` + `read_note`；`upsert_facts` → 可写字段走 `contribute`、其余走 `write_note`；`clear` → 删自己的 note）保存在 `fixtures/expected/`，只用来验收 skill 现场生成的结果。Tier 1 对 blueprint 是否零代码未验证（它的 MCP connectors 在后端侧），demo 不赌它。设计文档：`docs/superpowers/specs/2026-10-12-demo-integration-ladder-design.md`（注意：`docs/superpowers/` 在 `.gitignore` 里，coding agent 的克隆里没有它；本节就是它的有效摘要）。
+
+**Tier 0 前缀是唯一把值写进消息的地方。**零接入的商家没有工具可调，只给字段名它就报不出 42 码（A15）。所以前缀只带该类别策略表里的 auto 字段值（这些本来就允许随握手给），purpose 字段只列名字、永不带值；每次投递写一条回执。Tier 1 以上的握手仍然只有字段名，值走 `GET /agent/fields`。
+
+### UCP 商家：工作台代理
+
+Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以在系统内部，每个 `seller.domain` 由工作台自动注册成一个 `shoe` 类的**代理 agent**（`agentId = ucp:<domain>`，`domain` 写进注册项，没有对外钥匙）。代理和任何商家 agent 走同一套 `canRead`、授权、回执、note；session ID 按 `domain` 推导，所以重置或换个人 agent 后仍是同一个回头客。Shopify 那边只收到 cart / checkout 载荷，地址只在 `checkout update` 那一步出现。台词据此说"工作台替每家店开了一个只对它有效的 ID"，不说"店家拿到了 ID"。
+
 
 ## 2 · 达成目标是什么
 
@@ -147,42 +154,45 @@ skill 是模型照着做的说明，没有强制力；CLI 和 MCP 是代码，�
 | 用户 | 无感：不重复、不点头、随时能撤；每家店拿到的是只对它有效的假名 ID，拼不成一个人 | 一句话得到两双真鞋；地址只进被选中那家的 checkout；控制台撤销 |
 | 商家 | 一条能认人、能追责的 agent 通道：第一条消息前就知道怎么服务；回头客认得出，哪怕用户换了个人 agent；每次读取有签名和回执，纠纷有账本；不用自建用户库（note 存在工作台） | 工作台终端：握手 → ucp 目录 → cart → 按用途放地址 → 写 note；ACME 一拍：零接入就认识你 |
 
-### 必须成立的五个命题
+### 必须成立的六个命题
 
 1.  **先认识，后说话。**商家 agent 在收到用户任何消息之前就拿到握手。
 2.  **每家一个 ID。**同一个用户在不同 agent 那里的 session ID 不同，且不可互推。
-3.  **按用途给字段。**低敏感字段随握手给；敏感字段只在声明的用途与策略相符时给（例：shipping_address 只在 checkout）；策略外字段拒绝，且不泄露别的字段名。用户不需要点头，事后可查、可撤。
+3.  **按用途给字段。**低敏感字段（auto）随握手可读：握手里只列字段名，值无需用途即可读（Tier 0 前缀例外，见接入阶梯）；敏感字段只在声明的用途与策略相符时给（例：shipping_address 只在 checkout）；策略外字段拒绝，且不泄露别的字段名。用户不需要点头，事后可查、可撤。
 4.  **agent 写卡，规则合并。**两个 agent 说同一件事才上卡；猜的永远不上卡。
 5.  **会过期，能撤销。**过期后和撤销后的读取立即被拒。
 6.  **商家认得回头客，不认得人。**同一用户换了个人 agent，到同一商家仍是同一个 session ID；商家永远拿不到电话和全局标识。
 
+命题 → 验收：1 → A04、A09、A15；2 → A03；3 → A05；4 → A02、A11；5 → A06、A07；6 → A22。
+
 ### 验收清单
 
-全部 P0 通过才算"可演示"。每条都是 `tests/acceptance` 里的一个测试，直接调工作台 HTTP。
+全部 P0 通过才算"可演示"。**P0 集合 = A01–A12、A17、A18、A22；P1 = A13–A16、A19–A21。**本文和 AGENTS.md 里的"P0 全绿"都指这个集合。除 A10、A17（真实客户端，手动跑，证据存 `docs/evidence/`）外，每条都是 `tests/acceptance` 里的一个测试，直接调工作台 HTTP；需要外部服务的用 `AGENT_COOKIE_UCP=fixture` 读录好的响应。
 
 | 编号 | 场景 | 通过标准 | 级别 |
 |----|----|----|----|
 | A01 | 注册 agent | 返回 agentId 和钥匙；钥匙能解析出角色和类别 | `P0` |
 | A02 | 合并规则 | 两个不同 agent 的 observed/stated 一致 → 上卡；一个 → 候选；inferred → 永不 | `P0` |
 | A03 | session ID 隔离 | 同一用户对两家店的 ID 不同；不能从一个算出另一个 | `P0` |
-| A04 | 握手只有字段名 | 握手里有 lang/tone/length 和 available 列表，没有任何字段值 | `P0` |
+| A04 | 握手只有字段名 | 握手里有 lang/tone/length 三个风格值和 available 列表，此外没有任何字段值 | `P0` |
 | A05 | 按用途读字段 | auto 字段直接返回；purpose 字段在用途相符时返回、不符时 403 PURPOSE_MISMATCH；策略外返回 403 SCOPE_DENIED，响应里不含其他字段名 | `P0` |
-| A06 | 过期 | expiresAt 之后读取返回 403 GRANT_EXPIRED | `P0` |
+| A06 | 过期 | 用 `POST /test/clock` 把时钟拨到 expiresAt 之后，读取返回 403 GRANT_EXPIRED | `P0` |
 | A07 | 撤销 | 撤销后下一次读取返回 403 GRANT_REVOKED；已传出的内容不承诺收回 | `P0` |
 | A08 | note 隔离 | agent 读到自己的 note；别的 agent 读同一个 key 得到和"不存在"一样的响应 | `P0` |
-| A09 | 意图匹配 | trail_shoes 意图经 UCP 目录得到两家商家；只有这两家拿到 session 和授权，其余目录结果没有 | `P0` |
-| A10 | 真实客户端 | Claude Desktop 通过 MCP 完成一次 find_agents，活动日志里有记录 | `P0` |
+| A09 | 意图匹配 | trail_shoes 意图经 UCP 目录（fixture 响应）得到两家商家；只有这两家的代理 agent 拿到 session 和授权，其余目录结果没有 | `P0` |
+| A10 | 真实客户端（手动） | Claude Desktop 通过 MCP 完成一次 find_agents，活动日志里有记录，导出到 `docs/evidence/` | `P0` |
 | A11 | 注入 | 商家 agent 提交"该用户是 VIP"这类文本，只成为它自己的 inferred 记录，不上卡，别的 agent 看不到 | `P0` |
 | A12 | 重置复演 | reset 后用固定种子能把完整 demo 再跑一遍 | `P0` |
 | A13 | 并发与幂等 | 同一 Idempotency-Key 重复请求不产生两份授权 | `P1` |
+| A14 | 控制台 | 身份卡每个字段能展开看到来源 agent；能撤销一条记录 | `P1` |
 | A15 | 零接入投递 | 原版 ACME 鞋店收到带文本前缀的第一条消息后，首条回复包含 42 码，且未改它任何代码 | `P1` |
 | A16 | skill 生成的接入 | 在干净的 blueprint 克隆上跑 `/add-agent-cookie`，生成的 MemoryStore 读到握手字段并写回 note；其余代码未改 | `P1` |
-| A17 | iMessage 主流程 | 从 iMessage 一句话到付款链接（或已下单），不离开对话；用户没有输入尺码和地址 | `P0` |
+| A17 | iMessage 主流程（手动） | 从 iMessage 一句话到付款链接（或已下单），不离开对话；用户没有输入尺码和地址；录屏存 `docs/evidence/` | `P0` |
 | A18 | UCP 失败路径 | 售罄 warning 和 `requires_escalation` 都在回复里说清楚，并给 `continue_url`；不假装成功 | `P0` |
 | A19 | passkey 解锁 jar | 手机 passkey 断言一次 → 工作台能签握手；未解锁 403 JAR_LOCKED | `P1` |
 | A20 | 商家验签登录 | 商家用 JWKS 验签通过；篡改一字节被拒；首次见面记公钥，再见即登录 | `P1` |
 | A21 | 支付单次限额 | 同一支付授权第二次使用被拒；金额超 intent.budget 被拒；商家拿不到 token | `P1` |
-| A14 | 控制台 | 身份卡每个字段能展开看到来源 agent；能撤销一条记录 | `P1` |
+| A22 | 回头客 | 同一用户经两个不同个人 agent 介绍到同一商家，两次 session ID 相同；`POST /demo/reset` 后仍相同；握手和字段里没有电话、邮箱等全局标识 | `P0` |
 
 ### 比赛目标（10 月 17 日赛道页）
 
@@ -258,7 +268,7 @@ skill 是模型照着做的说明，没有强制力；CLI 和 MCP 是代码，�
 
 终端：工作台从身份卡取 shoe_size、budget、deadline，调 `ucp catalog search`，Shopify 全球目录返回真实结果；选两家（例如 Marathon Sports 和 Shoebacca），各发一个 pairwise session 和 10 分钟授权。手机收到两条：两双真鞋，品牌、价格、到货日，各带购买链接。
 
-说：两家真实商家，真实库存。它们各自拿到一个只对自己有效的 ID。没有电话，没有地址。
+说：两家真实商家，真实库存。工作台替每家店各开了一个只对它有效的 ID。店家没拿到电话，也还没拿到地址。
 
 1:05
 
@@ -274,7 +284,7 @@ skill 是模型照着做的说明，没有强制力；CLI 和 MCP 是代码，�
 
 2:05
 
-换个人 agent：打开 Claude Desktop（装了挂钩），说"刚才那家店我买过什么"。它拿到的是同一个 session ID，读到 note：`last_order = Cascadia 19 @ Shoebacca`。
+换个人 agent：打开 Claude Desktop（装了挂钩），说"刚才那家再来一双"。`find_agents` 再次介绍到 Shoebacca：终端显示 session ID 和 iMessage 那次相同；Shoebacca 的代理读自己的 note `last_order = Cascadia 19`，报价写"上次的 Cascadia 19，同码再来一双？"。（个人 agent 读不到商家的 note，A08；所以这一拍让商家开口，不让 Claude Desktop 去翻。）
 
 说：换了个人 agent，商家认的还是同一个回头客，但它拿不到任何全局标识。
 
@@ -317,82 +327,113 @@ sequenceDiagram
 
 ### 演示规则
 
-- 开场前跑 `pnpm demo:reset`，只重置 fixtures 里的演示数据。
+- 开场前跑 `pnpm demo:reset`（= `agent-cookie reset` = `POST /demo/reset`）：清 SQLite 热状态，把 git 记忆库硬重置到 fixtures 的初始 commit。只在 `AGENT_COOKIE_DEMO=1` 时可用。
 - 模型响应慢或出错时，切到标为 **Recorded run** 的录屏，同时展示当时的日志。预置结果不能假装现场生成。
 - 我们不碰付款：用户在商家的 `continue_url` 自己刷卡。排练时不要真的付；演示时付不付由演示者决定。
 - 每一句台词只说当时真实实现了的能力。
 
 ## 4 · 具体步骤
 
-按 24 小时窗口排。三个 coding agent 并行（一个 Claude Code、两个 Codex），两个人负责合并、决策和演示。每个时段有一个"阶段出口"，出口没到就按砍法处理。勾选框保存在你自己的浏览器里。
+按 24 小时窗口排。四个 coding agent 并行（一个 Claude Code、两个 Codex、一个 Devin），两个人负责合并、决策和演示。每个时段有一个"阶段出口"，出口没到就按砍法处理。
 
-### 三条并行线：按目录分家
+### 四条并行线：按目录分家
 
 | 线 | 跑在 | 拥有的目录（只改这些） | 任务 | 第一个出口 |
 |----|----|----|----|----|
-| A · 核心与工作台 | Claude Code | `packages/core` `apps/workspace` `packages/sdk` `packages/cli` | T0 → T1 → T3（含 ucp 调用）→ T5 → T7 的 A 项 | H2 core 测试过；H6 curl 走完握手、读字段、被拒 |
-| B · 通道与个人 agent | Codex 1 | `packages/mcp` `apps/channel-photon` `skills/agent-cookie` | T2 → Photon 线 → Claude Desktop 配置 → SKILL.md | H6 Claude Desktop 调到 get_my_card；H10 iMessage 一句话收到两双真鞋 |
+| A · 核心与工作台 | Claude Code | `packages/core` `apps/workspace` | T0 → T1 → T3 → T4 的 UCP 项 → T5 → T7 的 A 项 | H2 core 测试过；H6 curl 走完握手、读字段、被拒 |
+| B · 通道与个人 agent | Codex 1 | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` | T2（SDK → CLI → MCP）→ Photon 线 → Claude Desktop 配置 → SKILL.md | H6 Claude Desktop 调到 get_my_card；H10 iMessage 一句话收到两双真鞋 |
 | C · 演示面与验收 | Codex 2 | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` | T6 控制台 → T4 的 ACME 项 → 验收测试 → README、视频 | H6 控制台渲染 fixtures 身份卡；H10 ACME 零接入报价 |
 | D · 登录与支付（P1） | Devin | `packages/auth` `packages/pay` `apps/unlock` | TD1 jar 密钥与 passkey 解锁 → TD2 商家验签登录 → TD3 支付 token 按用途单次放行 | H8 passkey 解锁 jar 并签一条握手；H14 商家验签通过；H18 一次限额单次的测试扣款 |
 
 - **H0–1 只有 A 线写业务代码**：types、policy、端点清单、错误码，提交。B、C 只做脚手架和 fixtures。A 线 H1 顺手提供一个读 fixtures 的 10 行假工作台，B、C 用它开工，H6 换真的。
 - 四条线只通过 `packages/sdk` 调工作台；谁也不直接碰 SQLite 和 git 记忆库；`tests/acceptance` 只打 HTTP。D 线对工作台的唯一接口是两个纯函数（`signHandshake`、`authorizePayment`）和一个端点（`POST /personal/unlock`），由 A 线在契约里预留，D 线实现。
-- 每条线一个分支，只往自己的目录提交；合并到 main 由人做，每两小时一次。D 线的分支只有在 A01–A18 全绿后才合进 main；之前 demo 不依赖它。
+- 每条线一个分支，只往自己的目录提交；合并到 main 由人做，每两小时一次，合并前该线 `pnpm test` 必须绿。D 线的分支只有在 P0 验收全绿后才合进 main；之前 demo 不依赖它。
+- 两个例外：`docs/requests.md` 所有线都可以追加一行（只追加不改）；`docs/plan.md` 只有人改（与 Artifact 同步）。
+- SDK 归 B 线：A 线在 T0 冻结端点和错误码，B 线照契约写客户端；A 线需要的 curl 自测不依赖 SDK。
 - 仓库根放 `AGENTS.md` 和 `CLAUDE.md`，内容相同：目录归属、契约在哪、不改别人的目录、怎么跑测试。Codex 读前者，Claude 读后者。
 
-H0–2T0 · 契约冻结`P0`A 线先行，B、C 搭脚手架
-初始化 pnpm 单仓库：`packages/core sdk mcp`，`apps/workspace console`，`examples/*`，`fixtures`，`tests/acceptance`。锁 Node 22，vitest，tsx。 `packages/core/src/types.ts`：写下本文"接口与数据"一节的全部类型，一字不改。 `packages/core/src/policy.ts`：字段策略表（下文表格）导出为常量；`canRead(category, field, purpose) → "allow" | "deny"`（auto 字段任何用途都 allow；purpose 字段只在声明用途匹配时 allow）；`canWrite(category, field) → boolean`。 `packages/core/src/merge.ts`：`mergeCard(contributions) → { card: CardField[], candidates: Candidate[] }`，按规则：同一 field+value 有 ≥2 个不同 agentId 且 basis≠inferred → 上卡；personal 的 stated 单源 → 上卡（confidence medium）；其余进候选；inferred 永不。**时间规则：**同一字段多个合格值时最新的赢，旧值标 superseded 留在历史；新值只有一个来源时 confidence=medium 并带 `changedRecently`；`lastSupportedAt` 超过 180 天降为 medium，超过 365 天掉卡；personal stated 永远立即覆盖。 `packages/core/src/render.ts`：`renderCard(card) → CARD.md 文本` 和 `parseContributions(md) → Contribution[]`，格式与 Agent Memory Repo 的"一行一条 + \[key: value\]"一致。各 3 个用例，往返无损。 `packages/core/src/session.ts`：`deriveSessionId(userSecret, agentId)` = base32(HMAC-SHA256).slice(0,8)。 core 的三个纯函数各写 3 个 vitest 用例（A02、A03 的核心断言在这里先过）。 `fixtures/`：1 个用户、3 条贡献记录（lang/tone/shoe_size）、3 个 agent 注册项、1 个 Sample 地址。 把 A01–A12 写成 `tests/acceptance/*.test.ts` 的空壳（`it.todo`），编号和标题一致。
+### 开赛前预检（人做，H0 之前）
 
-出口：`pnpm test` 跑过 core 的 9 个用例；类型、策略表、接口名在双方的代码里完全一致。
+每一项要么打勾，要么在开赛时就按砍法降级，不留到 H10 才发现。
+
+- Photon 2.0 beta 账号和线的号码已开通；演示手机已经先给线发过一条（免费层只能回已对话的号码）。
+- `ucp` CLI 0.9.1 装好，`ucp catalog search` 对 "trail running shoes" 有结果；挑好两个在库变体，响应录进 `fixtures/ucp/`。
+- `ANTHROPIC_API_KEY` 可用，计划里的模型 ID 实际调得通。
+- Claude Desktop 已装；`anthropics/commerce-agents` 的 retail 能在本机起来（:8000 / :3000）。
+- D 线：Stripe 测试模式 key；一个 HTTPS 域名或 tunnel（WebAuthn 只在 secure context 下工作，rpID 绑定域名）。
+- 确认 LA Hacks 2026 对预制资产（本计划、fixtures、设计稿）的规定。
+
+### 环境变量与端口
+
+| 名称 | 值 / 用途 | 谁用 |
+|----|----|----|
+| `AGENT_COOKIE_URL` | `http://127.0.0.1:4310` | SDK、CLI、MCP、Photon 线 |
+| `AGENT_COOKIE_KEY` | 当前 agent 的钥匙 | SDK、CLI、MCP |
+| `MEMORY_REPO_PATH` | 用户 git 记忆库的本地路径 | 工作台 |
+| `AGENT_COOKIE_UCP` | `live` / `fixture`（读 `fixtures/ucp/`） | 工作台；验收和断网排练用 fixture |
+| `AGENT_COOKIE_DEMO` | `1` 时开放 `POST /demo/reset` | 工作台 |
+| `AGENT_COOKIE_TEST` | `1` 时开放 `POST /test/clock` | 工作台；只在验收里开 |
+| `OPT_OUT_INSTRUMENTATION` | `true` | ucp CLI |
+| `ANTHROPIC_API_KEY` | 自建商家 agent、Photon 线的模型 | A、B |
+| `STRIPE_SECRET_KEY` | 测试模式 | D 线，P1 |
+| `SENTRY_DSN` | tracing + logs | A 线，P1 |
+| Photon 凭据 | 名字以 Photon 文档为准 | B 线 |
+
+端口：工作台 4310（只听 127.0.0.1）；MCP streamable HTTP 4311；控制台 5173（Vite 默认）；ACME 8000 / 3000；`apps/unlock` 4312，只经 HTTPS tunnel 暴露给手机。
+
+H0–2T0 · 契约冻结`P0`A 线先行，B、C 搭脚手架
+初始化 pnpm 单仓库：`packages/core sdk mcp`，`apps/workspace console`，`examples/*`，`fixtures`，`tests/acceptance`。锁 Node 22，vitest，tsx。 `packages/core/src/types.ts`：写下本文"接口与数据"一节的全部类型，一字不改。 `packages/core/src/policy.ts`：字段策略表（下文表格）导出为常量；`canRead(category, field, purpose) → "allow" | "deny"`（auto 字段任何用途都 allow；purpose 字段只在声明用途匹配时 allow）；`canWrite(category, field) → boolean`。 `packages/core/src/merge.ts`：`mergeCard(contributions) → { card: CardField[], candidates: Candidate[] }`，按规则：同一 field+value 有 ≥2 个不同 agentId 且 basis≠inferred → 上卡；personal 的 stated 单源 → 上卡（confidence medium）；其余进候选；inferred 永不。**时间规则：**同一字段多个合格值时最新的赢，旧值标 superseded 留在历史；新值只有一个来源时 confidence=medium 并带 `changedRecently`；`lastSupportedAt` 超过 180 天降为 medium，超过 365 天掉卡；personal stated 永远立即覆盖。 `packages/core/src/render.ts`：`renderCard(card) → CARD.md 文本` 和 `parseContributions(md) → Contribution[]`，格式与 Agent Memory Repo 的"一行一条 + \[key: value\]"一致。各 3 个用例，往返无损。 `packages/core/src/session.ts`：`deriveSessionId(userSecret, merchantKey)` = base32(HMAC-SHA256).slice(0,8)，`merchantKey = agent.domain ?? agent.agentId`（UCP 代理用 domain，重置和重新注册后回头客不变）。所有涉及时间的纯函数显式接收 `now`，不读系统时钟。 policy、merge、session 各写 3 个 vitest 用例，render 往返 3 个（A02、A03 的核心断言在这里先过）。 `fixtures/`：1 个用户、3 条贡献记录（lang/tone/shoe_size）、3 个 agent 注册项、1 个 Sample 地址。 把验收清单 A01–A22 全部写成 `tests/acceptance/*.test.ts` 的空壳（`it.todo`），编号和标题一致；A10、A17 写成指向 `docs/evidence/` 的说明。
+
+出口：`pnpm test` 跑过 core 的 12 个用例；类型、策略表、接口名在双方的代码里完全一致。
 
 H2–6T1 · 工作台骨架`P0`A 线 · Claude Code
 SQLite 只建热状态表：agents, users, sessions, grants, intents, quotes, activity。 `apps/workspace/src/repo.ts`：用 simple-git 打开 `MEMORY_REPO_PATH`；`appendContribution(agentId, line)`、`writeNote(sessionId, kv)`、`appendReceipt(line)`、`regenerateCard()`，每次写一个 commit，author 为写入者，trailer 带 `Agent-Cookie-Sig`。fixtures 以一个初始 commit 灌入。 鉴权中间件：`Authorization: Bearer <key>` → 查 agents 表 → 挂上 `{agentId, category, role}`。无钥匙 401 AUTH_REQUIRED。 `POST /agents/register`、`POST /agent/contributions`（经 canWrite 过滤）、`GET /personal/card`。 合并任务：每次写入 contributions 后同步调用 `mergeCard` 重算 card_fields（先不做定时，写入即合并）。 sessions + grants：`introduce(userId, agentId)` 内部函数 → 生成 session、level-0 grant（策略表里 auto 字段，10 分钟）。 `GET /agent/handshake`、`GET /agent/fields`：每次读都检查 grant 存在、未过期、未撤销；字段按 canRead(category, field, purpose) 分流为返回 / 403。 activity 表：每个端点写一行 `{event, actor, object, result, reason}`，不写字段值。 让 A01、A02、A04、A05、A06 从 todo 变成通过。
 
 出口：curl 能注册 agent、写记录、看到合并后的卡、拿握手、读字段并被正确拒绝。
 
-H2–6T2 · 挂钩 + SDK + 接上 Claude Desktop`P0`B 线 / C 线 · Codex
+H2–6T2 · 挂钩 + SDK + 接上 Claude Desktop`P0`B 线 · Codex 1（console 脚手架归 C 线）
 `packages/sdk`：`new WorkspaceClient({ baseUrl, key })`，每个端点一个方法，错误统一抛 `WorkspaceError { status, code, message }`。 `packages/cli`：`agent-cookie card | contribute | find | accept | read --as --purpose | grants | revoke | receipts | reset`，每个子命令一行调 SDK，输出 JSON（`--pretty` 给人看）。 `packages/mcp`：启动时读 `AGENT_COOKIE_URL`、`AGENT_COOKIE_KEY`，调 `GET /me` 拿角色，按角色注册工具（工具表见下文）。 stdio 传输跑通；写 `claude_desktop_config.json` 示例到 README。 在 Claude Desktop 里调用 `get_my_card`，看到 fixtures 里的三个字段。 `apps/console` 脚手架：Vite + React，一个页面先把 `GET /personal/card` 的 JSON 渲染成表。 streamable HTTP 传输跑通（商家 agent 用），端口 4311。
 
 出口：Claude Desktop → MCP → 工作台 → SQLite 闭环；A10 的前半段（真实客户端调用有日志）成立。
 
 H6–10T3 · 意图、匹配、报价、授权请求`P0`A 线 · Claude Code
-`POST /personal/intents`：存 intent；按 `agents.capabilities` 包含 `intent.kind` 匹配；对每个匹配 agent 调 `introduce`；向其 `callbackUrl` POST `{sessionId, handshake, intent 公开部分}`。 `POST /agent/quotes`；`GET /personal/intents/:id/quotes`（长轮询最多 20 秒，凑齐或超时返回）。 `POST /personal/quotes/:id/accept` → 通知对应 agent 的 callbackUrl `{event:"accepted"}`。 `GET /agent/fields` 接受 `purpose` 参数；purpose 字段在用途匹配时放行并写一条 activity（含用途），不匹配返回 403 PURPOSE_MISMATCH；`GET /personal/receipts` 返回最近的敏感字段读取回执。 A09 通过；A05 的 purpose 分支通过。
+`POST /personal/intents`：存 intent；按 `agents.capabilities` 包含 `intent.kind` 匹配；对每个匹配 agent 调 `introduce`；向其 `callbackUrl` POST `{type:"introduce", sessionId, handshake, intent}`（intent 只含公开部分；UCP 代理没有 callbackUrl，由工作台内部处理）。 `POST /agent/quotes`；`GET /personal/intents/:id/quotes`（长轮询最多 20 秒，凑齐或超时返回）。 `POST /personal/quotes/:id/accept` → 通知对应 agent 的 callbackUrl `{type:"accepted", sessionId, quoteId}`。 `GET /agent/fields` 接受 `purpose` 参数；purpose 字段在用途匹配时放行并写一条 activity（含用途），不匹配返回 403 PURPOSE_MISMATCH；`GET /personal/receipts` 返回最近的敏感字段读取回执。 A09 通过；A05 的 purpose 分支通过。
 
 出口：用 curl 扮演两家店，从 intent 到两份 quote 到 accept 到按 checkout 用途读到地址，一条线走通。
 
 H6–10T4 · 真实商家（UCP）、Photon 通道、ACME`P0`A 线 UCP · B 线 Photon · C 线 ACME
-A：`npm i -g @shopify/ucp-cli`（0.9.1 已验证），`ucp profile init --name agent`，`OPT_OUT_INSTRUMENTATION=true`。工作台用子进程调 CLI，解析 JSON。 A：`POST /personal/intents` 对 kind=trail_shoes：从身份卡取 shoe_size / budget / deadline → `ucp catalog search`（query、context.intent、filters.price、ships_to）→ 取前两个不同 `seller.domain` 的在库变体 → 为每家建 session + 授权 → 存为两条 quote（title、price、eta、seller、variant、checkout_url）。 A：`POST /personal/quotes/:id/accept`：`ucp cart create --business` → `checkout create --cart-id` → `get_fields(shipping_address, purpose=checkout)`（写回执）→ `checkout update` 填 `fulfillment.methods[].destinations[]` 和 `buyer.email` → `checkout complete`。`completed` 记订单；`requires_escalation` 返回 `continue_url`；售罄 warning 原样转给用户。成功后 `write_note(last_order)`。 B：`apps/channel-photon`：Photon 2.0 beta 收 iMessage → 调 SDK `find` / `accept` → 回两条鞋的消息（品牌、价格、到货、链接）和一条结果消息。免费层只能回已对话的号码，演示前先让手机给线发一条。 C：克隆 `anthropics/commerce-agents`，跑通 retail（:8000/:3000）。工作台 `introduce` 对注册项带 `chatEndpoint` 的商家改为文本前缀投递（A 线提供端点，C 线配置）。 C：`fixtures/expected/agent_cookie_memory_store.py` 参考实现（约 80 行），只用于验收 skill 输出。 A：排练前锁定两个在库变体的 ID 写进 fixtures（上次 Cascadia 11 码售罄了），演示时优先用，搜索结果变化时回退到实时结果。
+A：`npm i -g @shopify/ucp-cli`（0.9.1 已验证），`ucp profile init --name agent`，`OPT_OUT_INSTRUMENTATION=true`。工作台用子进程调 CLI，解析 JSON。 A：每个 `seller.domain` 首次出现时注册为代理 agent（见"UCP 商家：工作台代理"）；ucp 调用在 `AGENT_COOKIE_UCP=fixture` 时读 `fixtures/ucp/`。 A：`POST /personal/intents` 对 kind=trail_shoes：从身份卡取 shoe_size / budget / deadline → `ucp catalog search`（query、context.intent、filters.price、ships_to）→ 取前两个不同 `seller.domain` 的在库变体 → 为每家建 session + 授权 → 存为两条 quote（title、price、eta、seller、variant、checkout_url）。 A：`POST /personal/quotes/:id/accept`：`ucp cart create --business` → `checkout create --cart-id` → `get_fields(shipping_address, purpose=checkout)`（写回执）→ `checkout update` 填 `fulfillment.methods[].destinations[]` 和 `buyer.email` → `checkout complete`。`completed` 记订单；`requires_escalation` 返回 `continue_url`；售罄 warning 原样转给用户。成功后 `write_note(last_order)`。 B：`apps/channel-photon`：Photon 2.0 beta 收 iMessage → 调 SDK `find` / `accept` → 回两条鞋的消息（品牌、价格、到货、链接）和一条结果消息。免费层只能回已对话的号码，演示前先让手机给线发一条。 C：克隆 `anthropics/commerce-agents`，跑通 retail（:8000/:3000）。工作台 `introduce` 对注册项带 `chatEndpoint` 的商家改为文本前缀投递（A 线提供端点，C 线配置）。 C：`fixtures/expected/agent_cookie_memory_store.py` 参考实现（约 80 行），只用于验收 skill 输出。 A：排练前锁定两个在库变体的 ID 写进 fixtures（上次 Cascadia 11 码售罄了），演示时优先用，搜索结果变化时回退到实时结果。
 
 出口：iMessage 一句话 → 两双真鞋 → 回"要第二双" → 付款链接或已下单；控制台回执一行。
 
 H10–14T5 · note、过期、撤销、错误契约`P0`A 线 · Claude Code
-`PUT/GET /agent/notes/:key`，按 (agentId, userId, key) 隔离；别人读返回和不存在相同的 404。 过期：`expiresAt` 用服务器时间判断；测试里允许注入时钟。`POST /personal/grants/:id/revoke`。 错误契约统一：401 AUTH_REQUIRED、403 SCOPE_DENIED / GRANT_EXPIRED / GRANT_REVOKED、404 NOT_FOUND、422 MISSING_FIELD、409 IDEMPOTENCY_CONFLICT。未授权主体得到的拒绝里不含任何字段名或条目名。 A06、A07、A08、A11 通过。A11 的做法：商家提交 `{field:"vip", value:"true", basis:"observed"}` → canWrite 为 false → 降级存为 inferred 或拒绝，均不进卡。 `POST /demo/reset`：清表、重灌 fixtures；A12 通过。
+`PUT/GET /agent/notes/:key`，按 (agentId, userId, key) 隔离；别人读返回和不存在相同的 404。 过期：`expiresAt` 用服务器时间判断；`AGENT_COOKIE_TEST=1` 时开放 `POST /test/clock { offsetMs }`，其他情况下该端点不存在。`POST /personal/grants/:id/revoke`。 错误契约统一：401 AUTH_REQUIRED、403 SCOPE_DENIED / GRANT_EXPIRED / GRANT_REVOKED / PURPOSE_MISMATCH、404 NOT_FOUND、422 MISSING_FIELD、409 IDEMPOTENCY_CONFLICT。未授权主体得到的拒绝里不含任何字段名或条目名。 A06、A07、A08、A11 通过。A11 的做法：商家提交 `{field:"vip", value:"true", basis:"observed"}` → canWrite 为 false → 降级存为 inferred 或拒绝，均不进卡。 `POST /demo/reset`：清表、重灌 fixtures、git 记忆库硬重置到 fixtures 初始 commit；A12、A22 通过。
 
-出口：A01–A12 里除 A10 外全部绿色。
+出口：A01–A12 里除 A10 外全部绿色，A22 绿色。
 
-H10–14T6 · 控制台、skill、个人 agent 文案`P0`B 线 / C 线 · Codex
-控制台三个视图：身份卡（字段可展开看来源记录，每条可撤）、授权（agent、字段、剩余时间、撤销按钮）、活动（倒序，可展开 reason）。顶部"重置演示"。 每 2 秒拉一次，不做 websocket。 个人 agent 侧：`find_agents` / `accept_quote` 的返回里附上最近的回执（谁、读了什么、什么用途），让 Claude Desktop 顺口告诉用户，不需要用户操作。 把 Claude Desktop 用到的工具描述改到最短、最不会被误用（描述里写清"此工具会把用户的意图发给外部商家"）。 `skills/agent-cookie/SKILL.md`：会话开始跑 `agent-cookie card`；学到稳定偏好跑 `agent-cookie contribute`；需要外部服务跑 `agent-cookie find`；永远不把身份卡贴进发给别的 agent 的消息。用 `npx skills add` 装进 Claude Code，用 `devin plugins install` 装进 Devin，各跑一次。 `skills/add-agent-cookie/SKILL.md`：给 coding agent 的接入手册（找 session 标识 → 找 memory / preferences 读写点 → 用 SDK 包一层 → 保留原有写过滤 → 加测试），附 blueprint 作为已验证例子。在一份干净的 blueprint 克隆上用 Claude Code 跑通一次，录屏；对照 `fixtures/expected/` 验收（A16）。
+H10–14T6 · 控制台、skill、个人 agent 文案`P0`B 线（个人 agent 文案、agent-cookie skill）/ C 线（控制台、add-agent-cookie）
+控制台三个视图：身份卡（字段可展开看来源记录，每条可撤）、授权（`GET /personal/grants`：agent、字段、用途、剩余时间、撤销按钮）、活动（倒序，可展开 reason）。顶部"重置演示"。 每 2 秒拉一次，不做 websocket。 个人 agent 侧：`find_agents` / `accept_quote` 的返回里附上最近的回执（谁、读了什么、什么用途），让 Claude Desktop 顺口告诉用户，不需要用户操作。 把 Claude Desktop 用到的工具描述改到最短、最不会被误用（描述里写清"此工具会把用户的意图发给外部商家"）。 `skills/agent-cookie/SKILL.md`：会话开始跑 `agent-cookie card`；学到稳定偏好跑 `agent-cookie contribute`；需要外部服务跑 `agent-cookie find`；永远不把身份卡贴进发给别的 agent 的消息。用 `npx skills add` 装进 Claude Code，用 `devin plugins install` 装进 Devin，各跑一次。 `skills/add-agent-cookie/SKILL.md`：给 coding agent 的接入手册（找 session 标识 → 找 memory / preferences 读写点 → 用 SDK 包一层 → 保留原有写过滤 → 加测试），附 blueprint 作为已验证例子。在一份干净的 blueprint 克隆上用 Claude Code 跑通一次，录屏；对照 `fixtures/expected/` 验收（A16）。
 
 出口：完整 demo 从 reset 开始跑通一遍，包括 Claude Desktop 换 agent 和控制台的撤销。
 
 H2–18TD · 登录与支付（D 线）`P1`D 线 · Devin
 原则：passkey 不进 cookie，卡号不进任何地方。jar 自己是一把密钥，用户的 passkey 只用来解锁 jar；支付走提供方的 token，按用途、按金额、单次放行。
 
-**TD1 · jar 密钥与 passkey 解锁（H2–8）。**`packages/auth`：jar 生成 Ed25519 密钥对，私钥加密存本机；`apps/unlock` 一个手机能开的页面，用 `@simplewebauthn/server` + browser 做 passkey 注册和断言，断言成功后解锁 jar 私钥 N 分钟；`signHandshake(handshake) → { sig, kid }`。验收 A19：手机 Face ID 一次 → 工作台能签握手；未解锁时签名接口 403 JAR_LOCKED。 **TD2 · 商家验签登录（H8–14）。**握手增加 `sig` 和 `kid`；工作台暴露 `GET /.well-known/agent-cookie-jwks.json`；商家侧 SDK 加 `verifyHandshake()`；首次见面把 jar 公钥记在该商家的 note 里，之后验签即登录（"Sign in with Agent Cookie"，等价于 OIDC pairwise subject）。ACME 的 Tier 2 参考实现改为验签后才读字段。验收 A20：篡改一个字节的握手被拒。 **TD3 · 支付凭据按用途单次放行（H10–18）。**`packages/pay`：身份卡字段 `payment_method` 只存提供方 token 引用（Stripe 测试模式的 payment method id；Visa 沙盒接得上就换）。策略：purpose=payment、金额 ≤ intent.budget、单次有效、只给被接受报价的那一家。`authorizePayment({ sessionId, amount, currency })` 由工作台替用户向提供方发起，商家只拿到授权结果，不拿 token。回执写金额。验收 A21：同一授权第二次使用被拒；超预算被拒。 **TD4 · 接到 demo（H18 前）。**UCP 真实商家的 checkout 若接受 `payment.instruments` 的委托支付则接入，否则保持 `requires_escalation`（用户自己刷）；ACME 的 checkout handoff 用 Stripe 测试模式走完 TD3。demo 第 4 拍据此二选一，台词如实。
+**TD1 · jar 密钥与 passkey 解锁（H2–8）。**`packages/auth`：jar 生成 Ed25519 密钥对，私钥加密存本机；`apps/unlock` 一个手机能开的页面，用 `@simplewebauthn/server` + browser 做 passkey 注册和断言，断言成功后解锁 jar 私钥 N 分钟（手机经 HTTPS tunnel 访问该页，工作台本身仍只听 127.0.0.1）；`signHandshake(handshake) → { sig, kid }`。验收 A19：手机 Face ID 一次 → 工作台能签握手；未解锁时签名接口 403 JAR_LOCKED。 **TD2 · 商家验签登录（H8–14）。**握手增加 `sig` 和 `kid`；工作台暴露 `GET /.well-known/agent-cookie-jwks.json`；商家侧 SDK 加 `verifyHandshake()`；首次见面把 jar 公钥记在该商家的 note 里，之后验签即登录（"Sign in with Agent Cookie"，等价于 OIDC pairwise subject）。ACME 的 Tier 2 参考实现改为验签后才读字段。验收 A20：篡改一个字节的握手被拒。 **TD3 · 支付凭据按用途单次放行（H10–18）。**`packages/pay`：身份卡字段 `payment_method` 只存提供方 token 引用（Stripe 测试模式的 payment method id；Visa 沙盒接得上就换）。策略：purpose=payment、金额 ≤ intent.budget、单次有效、只给被接受报价的那一家。`authorizePayment({ sessionId, amount, currency })` 由工作台替用户向提供方发起，商家只拿到授权结果，不拿 token。回执写金额。验收 A21：同一授权第二次使用被拒；超预算被拒。 **TD4 · 接到 demo（H18 前）。**UCP 真实商家的 checkout 若接受 `payment.instruments` 的委托支付则接入，否则保持 `requires_escalation`（用户自己刷）；ACME 的 checkout handoff 用 Stripe 测试模式走完 TD3。demo 第 4 拍据此二选一，台词如实。
 
 出口：A19–A21 绿；至少一条真实路径（ACME + Stripe 测试模式）从握手验签到限额单次扣款跑通。没到出口，demo 只讲设计，不演。
 
-H14–18T7 · 验收、幂等、稳定性`P0`三线
+H14–18T7 · 验收、幂等、稳定性`P0`A、B、C 三线（D 线按自己的出口走）
 A：Idempotency-Key 落在 intents、quotes、quotes/accept；A13 通过。 A：商家 callback 失败重试 3 次，失败写 activity，不阻塞别的商家。 B：从 reset 连跑 demo 两遍，记录每一步耗时；超过 20 秒的步骤换 haiku 或缩短提示。 B：录一遍完整运行，标 Recorded run，作为备用。 A10：从 Claude Desktop 跑的那次，把活动日志导出存进 `docs/evidence/`。
 
-出口：A01–A13 全绿；demo 两遍无人工干预。
+出口：P0 验收全绿，A13 绿；demo 两遍无人工干预。
 
 H18–21T8 · 加分项（只在 T7 出口达成后）`P1`可分头
 A：Sentry：工作台接 tracing + logs 两个产品，截一张 ucp 调用的 trace。 C：Paper 赛道：控制台两小时打磨（间距、空状态文案、键盘可达、320 宽度）。 C：Devin 跑一次 `/add-agent-cookie` 并录屏（Cognition 赛道）；Claude Code 跑的那次作为备用。 人：GoDaddy 注册 agentcookie 域名；Photon 线绑一个好记的名字。 P2：Jev 判断"声明用途与当前对话是否相称"，只写警告回执。
 
 出口：每一项要么完整跑通，要么完全不提。
 
-H21–24T9 · 冻结与提交`P0`三线
+H21–24T9 · 冻结与提交`P0`四线（D 线未达出口则不合并）
 冻结功能。只许修 bug、改文案。 README：一条命令启动（`pnpm dev` 起工作台 + 控制台 + Photon 线）、ucp CLI 安装、Claude Desktop 配置、环境变量名、重置命令、已支持的客户端。 提交材料：简介、代码入口、架构图、测试结果截图、演示视频、第三方依赖、预制资产说明（本计划和 fixtures 属于赛前材料）。 三到四分钟排练两遍，按正式时长调整。
 
 出口：视频、README、代码入口三者一致。
@@ -429,18 +470,18 @@ H21–24T9 · 冻结与提交`P0`三线
 <td>用 fixtures 里锁定的两个变体；仍不行则只演到购买链接，不演 checkout complete</td>
 </tr>
 <tr>
-<td>H14</td>
-<td>完整 demo 还没跑通一遍</td>
-<td>砍掉 ACME 一拍和 Claude Desktop 换 agent 一拍，只保留 iMessage 主线 + 控制台撤销</td>
-</tr>
-<tr>
 <td>H10</td>
 <td>git 写入路径不稳（锁、并发 commit）</td>
 <td>长期数据也退回 SQLite，保留 CARD.md 导出命令；fork 故事改为"格式兼容"</td>
 </tr>
 <tr>
+<td>H14</td>
+<td>完整 demo 还没跑通一遍</td>
+<td>砍掉 ACME 一拍和 Claude Desktop 换 agent 一拍，只保留 iMessage 主线 + 控制台撤销</td>
+</tr>
+<tr>
 <td>H18</td>
-<td>A01–A18 未全绿</td>
+<td>P0 验收未全绿</td>
 <td>T8 全部取消；D 线分支不合并，demo 只讲登录与支付的设计</td>
 </tr>
 <tr>
@@ -450,22 +491,26 @@ H21–24T9 · 冻结与提交`P0`三线
 </tbody>
 </table>
 
-## 接口与数据
+## 5 · 接口与数据
 
 这一节是 T0 要冻结的契约。后面所有任务都引用这里的名字，不另起名。
 
 ### 类型（packages/core/src/types.ts）
 
     export type Basis = "observed" | "stated" | "inferred";
-    export type Category = "personal" | "shoe" | "pharmacy" | "hotel";
+    export type Category = "personal" | "shoe";   // pharmacy、hotel 已于 10 月 17 日砍掉，赛后再加
+    export type Role = "personal" | "merchant";  // category === "personal" ? "personal" : "merchant"
     export type Field =
       | "lang" | "tone" | "length"
       | "shoe_size" | "budget" | "deadline"
-      | "shipping_address" | "date_of_birth" | "allergies" | "diet"
+      | "shipping_address"
       | "payment_method";   // 只存支付提供方的 token 引用，永远不是卡号
 
     export interface Agent { agentId: string; name: string; category: Category;
-      capabilities: string[]; callbackUrl?: string; createdAt: string; }
+      capabilities: string[]; callbackUrl?: string;
+      chatEndpoint?: string;   // 有则走 Tier 0 文本前缀投递（ACME）
+      domain?: string;         // UCP 代理的 seller.domain；session ID 按它推导
+      createdAt: string; }
 
     export interface Contribution { id: string; userId: string; agentId: string;
       field: Field; value: string; basis: Basis; createdAt: string; revokedAt?: string; }
@@ -488,10 +533,17 @@ H21–24T9 · 冻结与提交`P0`三线
       public: Record<string, string>; expiresAt: string; }
 
     export interface Quote { id: string; intentId: string; agentId: string;
-      text: string; price: number; currency: "USD"; etaDate: string; }
+      text: string; price: number; currency: "USD"; etaDate: string;
+      title?: string; seller?: string; variantId?: string; checkoutUrl?: string; }  // UCP 报价
 
     export interface Receipt { id: string; sessionId: string; agentId: string;
-      fields: Field[]; purpose: string; createdAt: string; }
+      fields: Field[]; purpose: string; amount?: number; createdAt: string; }  // amount 由 D 线支付授权填
+
+    // D 线预留（P1），A 线只放类型和签名，不实现
+    export interface PaymentAuthorization { id: string; sessionId: string; quoteId: string;
+      amount: number; currency: "USD"; status: "authorized" | "declined" | "used"; createdAt: string; }
+    export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
+    export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
 
 ### 字段策略表（packages/core/src/policy.ts）
 
@@ -499,11 +551,9 @@ H21–24T9 · 冻结与提交`P0`三线
 |----|----|----|----|
 | personal | 全部 | 无 | 全部，basis 可为 stated |
 | shoe | lang, tone, length, shoe_size, budget, deadline | shipping_address，仅 purpose=checkout | shoe_size（observed） |
-| pharmacy | lang, tone, length | date_of_birth 仅 purpose=prescription；shipping_address 仅 purpose=delivery；allergies 仅 purpose=prescription | allergies（stated） |
-| hotel | lang, tone, length, budget, deadline | shipping_address，仅 purpose=checkout | 无 |
 | 任何商家类别 | — | payment_method，仅 purpose=payment，且金额 ≤ intent.budget、单次有效、只给被接受报价的那一家；放行的是授权结果，不是 token | 无 |
 
-表里没有的组合一律 deny。用途由商家声明，工作台只核对用途与字段是否相符，并把每次放行写成回执给用户。电话号码不是字段，永远不进卡。
+表里没有的组合一律 deny。pharmacy、hotel 两类连同 date_of_birth、allergies、diet 字段已砍掉；下文"药店"只作隔离的举例。用途由商家声明，工作台只核对用途与字段是否相符，并把每次放行写成回执给用户。电话号码不是字段，永远不进卡。
 
 ### 工作台 HTTP（apps/workspace，127.0.0.1:4310）
 
@@ -517,6 +567,8 @@ H21–24T9 · 冻结与提交`P0`三线
 | GET /personal/card | personal | 身份卡 + 候选区 |
 | GET /personal/receipts | personal / 控制台 | 最近的敏感字段读取回执（谁、什么字段、什么用途） |
 | POST /personal/grants/:id/revoke | personal / 控制台 | 立即撤销 |
+| POST /personal/contributions | personal | 记一条 stated（MCP `record`、CLI `contribute`），立即重算卡 |
+| GET /personal/grants | personal / 控制台 | 当前授权：agent、字段、用途、剩余时间；不含值 |
 | POST /personal/contributions/:id/revoke | personal / 控制台 | 撤一条记录并重算卡 |
 | GET /agent/handshake?sessionId= | 商家 | 返回 Handshake，只有字段名 |
 | GET /agent/fields?sessionId=&fields=&purpose= | 商家 | 200 值 / 403 SCOPE_DENIED / 403 PURPOSE_MISMATCH；purpose 字段放行时写回执 |
@@ -524,7 +576,10 @@ H21–24T9 · 冻结与提交`P0`三线
 | POST /agent/contributions | 商家 | 经 canWrite 过滤后入库，立即重算卡 |
 | PUT / GET /agent/notes/:key?sessionId= | 商家 | 自己的 cookie note |
 | GET /owner/activity | 控制台 | 事件列表，不含字段值 |
-| POST /demo/reset | 控制台 | 清表并重灌 fixtures |
+| POST /demo/reset | 控制台 / CLI | 清表、重灌 fixtures、记忆库重置；仅 `AGENT_COOKIE_DEMO=1` |
+| POST /test/clock | 验收测试 | `{ offsetMs }` 拨服务器时钟；仅 `AGENT_COOKIE_TEST=1` |
+| POST /personal/unlock | 手机解锁页 | D 线 P1：passkey 断言通过后解锁 jar N 分钟 |
+| GET /.well-known/agent-cookie-jwks.json | 任何人 | D 线 P1：jar 公钥 |
 
 写操作带 `Idempotency-Key`。商家的 callbackUrl 收到两种 POST：`{type:"introduce", sessionId, handshake, intent}` 和 `{type:"accepted", sessionId, quoteId}`。
 
@@ -532,8 +587,8 @@ H21–24T9 · 冻结与提交`P0`三线
 
 #### role = personal（Claude Desktop）
 
-- `find_agents({ kind, public })` → 介绍并等报价，返回 quotes 和 pendingRequests
-- `accept_quote({ quoteId })` → 返回 pendingRequests
+- `find_agents({ kind, public })` → 介绍并等报价，返回 quotes 和最近的 receipts（只用于告知，用户无需批准）
+- `accept_quote({ quoteId })` → 返回结果（completed / continue_url）和最近的 receipts
 - `recent_receipts()`
 - `get_my_card()`
 - `record({ field, value })` → basis 固定为 stated
@@ -619,8 +674,12 @@ passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自�
 | 404 NOT_FOUND | 不存在或无权知道是否存在 | 按不存在处理 |
 | 409 IDEMPOTENCY_CONFLICT | 同键不同内容 | 换新键 |
 | 422 MISSING_FIELD | 请求缺必要字段 | 补字段 |
+| 502 UPSTREAM_ERROR | ucp / Photon / 支付提供方失败 | 有 continue_url 就原样给用户；不假装成功 |
+| 403 JAR_LOCKED | D 线：jar 未解锁，不能签名 | 让用户在手机上解锁一次 |
+| 403 AUTHORIZATION_USED | D 线：单次支付授权已用过 | 需要新的授权 |
+| 403 OVER_BUDGET | D 线：金额超过 intent.budget | 不要重试；告诉用户 |
 
-## 风险与边界
+## 6 · 风险与边界
 
 ### 主要风险
 
@@ -630,6 +689,8 @@ passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自�
 - **时间。**任务清单总量大于 24 小时的舒适区。对策：出口和砍法是硬规则，不讨论。
 - **Photon 2.0 beta。**刚开放，文档少，免费层只能回已对话的号码。对策：H10 砍法；开赛第一小时就让 B 线把一条消息收发跑通。
 - **UCP 的实时库存。**排练时在库的变体演示时可能售罄。对策：T4-6 锁两个变体 + 实时回退；售罄本身也是 A18 要演的失败路径。
+- **手机与公网访问。**工作台只听 127.0.0.1，但 passkey 页要手机能开、要 HTTPS。对策：只把 `apps/unlock` 经 tunnel 暴露，预检里定好域名；没有就 D 线只演桌面浏览器上的 passkey。
+- **Tier 0 前缀把 auto 值写进对方的对话记录。**对策：只放该类别的 auto 字段，每次投递写回执；这是零接入的代价，台词如实说。
 - **git 写入并发。**多个商家同时写会排队 commit。对策：工作台内单队列串行提交，按写入者分文件所以永不冲突；H10 砍法兜底。
 
 ### 这个周末不做
@@ -680,6 +741,20 @@ passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自�
 - 交付形态：一个 SDK，三个壳（CLI、MCP、Skill）。给陌生人的只有 MCP 和 SDK；skill 只包装 CLI。
 - 当下偏好放 intent，不进卡；intent 字段遮盖 card 字段；最新合格值赢；用户亲口说的立即覆盖。
 - 登录与支付做，但在 D 线（Devin）、P1：passkey 只解锁 jar，jar 密钥签握手，商家验签即登录；卡号不存，只存支付 token 引用，按用途、限额、单次放行授权结果。D 线不合并进 main 直到 P0 全绿。
-- 10 月 17 日：不报 Fetch / Agentverse，不用 Browser Use；Photon 是主舞台；商家是 UCP 上的真实 Shopify 店；药店和酒店去掉，隔离由两家真实商家证明；三个 coding agent 按目录分三条线。
+- 10 月 17 日：不报 Fetch / Agentverse，不用 Browser Use；Photon 是主舞台；商家是 UCP 上的真实 Shopify 店；药店和酒店去掉，隔离由两家真实商家证明；四个 coding agent 按目录分四条线（D 线 P1）。
 
 示例里的店铺、价格、地址、鞋码都是 Sample。接口为 v0.1 拟定契约，T0 冻结后再改要双方同意。
+
+## 7 · 开放问题（需要人拍板）
+
+v0.3 已按下面的"本版做法"改写；不同意的，改回对应段落并在这里划掉。
+
+| 问题 | 本版做法 | 影响 |
+|----|----|----|
+| Tier 0 前缀要带值才能让 ACME 报 42 码，和"只发握手（字段名）"的硬规则冲突 | 允许带该类别 auto 字段值，purpose 字段永不带值，写回执；AGENTS.md 硬规则同步加例外 | A15、接入阶梯 |
+| `packages/sdk`、`packages/cli` 原归 A 线，但 T2 让 Codex 写 | 归 B 线；A 线只冻结契约 | AGENTS.md 目录表 |
+| session ID 按 agentId 推导，重置或重新注册后回头客就断 | 按 `merchantKey = domain ?? agentId` 推导 | session.ts、A22 |
+| pharmacy / hotel 已砍，契约里还在 | 从类型和策略表删除 | types.ts、policy.ts |
+| `docs/superpowers/` 被 gitignore，计划却引用其中的设计文档 | 本文摘要为准；要给 agent 看就移出 ignore | C 线 |
+| 本文件改动与"以 Artifact 为准"冲突 | 人把 v0.3 回写 Artifact 后，再按 Artifact 重新导出 | 全部 |
+| 模型 ID `claude-sonnet-5-5` 未在本仓库验证 | 预检里实际调一次 | A、B |
