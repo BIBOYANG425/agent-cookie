@@ -8,8 +8,8 @@
 
 ## 真相来源
 
-- 契约（类型、字段策略、HTTP 端点、MCP 工具、错误码）：工程计划第 5 节，冻结后落在 `packages/core/src/types.ts` 与 `policy.ts`。改契约要两条线以上同意。
-- demo 设计：工程计划第 3 节（共享 Artifact），不入库。
+- 工程计划：`docs/plan.md`（导出自共享 Artifact，以 Artifact 为准）。契约（类型、字段策略、HTTP 端点、MCP 工具、错误码）在其第 5 节，冻结后落在 `packages/core/src/types.ts` 与 `policy.ts`。改契约要两条线以上同意。
+- demo 设计：`docs/plan.md` 第 3 节。
 - 不要发明新的字段名、端点名、工具名。缺什么先在契约里加，再实现。
 
 ## 四条线，按目录分家
