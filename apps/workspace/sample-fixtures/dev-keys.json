@@ -1,0 +1,6 @@
+{
+  "ck_personal_sample": { "agentId": "personal-photon", "role": "personal" },
+  "ck_personal_desktop_sample": { "agentId": "personal-desktop", "role": "personal" },
+  "ck_owner_sample": { "agentId": "owner", "role": "owner" },
+  "ck_merchant_acme_sample": { "agentId": "shoe-acme", "role": "merchant" }
+}
