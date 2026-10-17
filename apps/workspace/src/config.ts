@@ -26,7 +26,8 @@ export interface Config {
   test: boolean;
   callbackTimeoutMs: number;
   callbackRetries: number;
-  /** Lane D (P1), passed through to packages/auth when it is wired. */
+  unlockTtlMs: number;
+  /** Lane D (P1): both values opt in to packages/auth wiring. */
   jarKek?: string;
   unlockSecret?: string;
 }
@@ -46,6 +47,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.AGENT_COOKIE_UCP !== undefined && env.AGENT_COOKIE_UCP !== "live" && env.AGENT_COOKIE_UCP !== "fixture") {
     throw new Error("AGENT_COOKIE_UCP must be live or fixture");
   }
+  const jarKek = env.AGENT_COOKIE_JAR_KEK || undefined;
+  const unlockSecret = env.AGENT_COOKIE_UNLOCK_SECRET || undefined;
+  if ((jarKek === undefined) !== (unlockSecret === undefined)) {
+    throw new Error("AGENT_COOKIE_JAR_KEK and AGENT_COOKIE_UNLOCK_SECRET must be set together");
+  }
+  if (jarKek && Buffer.from(jarKek, "base64url").length !== 32) {
+    throw new Error("AGENT_COOKIE_JAR_KEK must decode to exactly 32 bytes");
+  }
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   return {
     host: "127.0.0.1",
@@ -61,7 +70,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     test: env.AGENT_COOKIE_TEST === "1",
     callbackTimeoutMs: int(env.CALLBACK_TIMEOUT_MS, 5000, 50, 60_000),
     callbackRetries: int(env.CALLBACK_RETRIES, 3, 1, 10),
-    jarKek: env.AGENT_COOKIE_JAR_KEK,
-    unlockSecret: env.AGENT_COOKIE_UNLOCK_SECRET,
+    unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
+    jarKek,
+    unlockSecret,
   };
 }

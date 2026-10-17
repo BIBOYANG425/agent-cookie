@@ -1,9 +1,14 @@
-// Lane D (P1) plug points. packages/auth and packages/pay set these when they are merged; until then the
-// routes answer as if the feature is absent (unlock → 404, JWKS → empty), and payment_method is never released.
+// Lane D (P1) plug points. Auth hooks are opt-in via the jar KEK and unlock secret; payment_method stays disabled.
 import type { AuthorizePayment, SignHandshake } from "@agent-cookie/contract";
 
 export interface LaneDHooks {
   signHandshake?: SignHandshake;
+  signTapRequest?: (o: {
+    sessionId: string;
+    authority: string;
+    path: string;
+    tag: "agent-browser-auth" | "agent-payer-auth";
+  }) => Promise<{ signatureInput: string; signature: string; keyId: string }>;
   authorizePayment?: AuthorizePayment;
   /** POST /personal/unlock → @agent-cookie/auth handleUnlock. */
   handleUnlock?: (req: Request) => Promise<Response>;

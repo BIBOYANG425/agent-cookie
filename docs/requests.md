@@ -169,3 +169,4 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 
 2026-10-17（续），D 线：`packages/auth` 已支持按 session 派生的 Ed25519 TAP 签名。以下只追加。
 - [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
+- [D→A] D 线认证 hooks 已接入工作台，仅同时设置 `AGENT_COOKIE_JAR_KEK` 与 `AGENT_COOKIE_UNLOCK_SECRET` 时启用；包含 unlock、session JWKS、handshake 与出站 TAP 签名，默认未配置时保持原行为。涉及 `apps/workspace/src/config.ts`、`apps/workspace/src/deps.ts`、`apps/workspace/src/laneD.ts`、`apps/workspace/src/laneD-wire.ts`、`apps/workspace/src/services/delivery.ts`、`apps/workspace/test/laneD-wire.test.ts`、`apps/workspace/package.json`、`pnpm-lock.yaml` 和 `docs/requests.md`。

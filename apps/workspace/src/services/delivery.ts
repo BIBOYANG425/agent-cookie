@@ -2,18 +2,30 @@
 // Retries with backoff, never throws, never blocks other merchants (plan §4 T7). Failures go to activity.
 import { buildTier0Prefix, renderTier0Prefix, type Agent, type Field, type Handshake, type MerchantCallback } from "@agent-cookie/contract";
 import type { Log } from "../activity.js";
+import { laneD } from "../laneD.js";
 
 export interface PostResult { ok: boolean; attempts: number; status?: number }
 
 const BACKOFF_MS = [200, 800, 2000];
 
-export async function postJson(url: string, body: unknown, opts: { timeoutMs: number; attempts: number }): Promise<PostResult> {
+export async function postJson(url: string, body: unknown, opts: {
+  timeoutMs: number;
+  attempts: number;
+  sign?: () => Promise<Record<string, string> | undefined>;
+}): Promise<PostResult> {
   let status: number | undefined;
   for (let i = 0; i < opts.attempts; i++) {
     try {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (opts.sign) {
+        try {
+          Object.assign(headers, await opts.sign());
+        } catch {
+        }
+      }
       const res = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(body),
         redirect: "manual",
         signal: AbortSignal.timeout(opts.timeoutMs),
@@ -56,7 +68,17 @@ export class Delivery {
 
   callback(agent: Agent, body: MerchantCallback): Promise<PostResult> {
     if (!agent.callbackUrl) return Promise.resolve({ ok: false, attempts: 0 });
-    return this.track(postJson(agent.callbackUrl, body, this.opts).then((r) => {
+    const sign = laneD.signTapRequest ? async () => {
+      const url = new URL(agent.callbackUrl!);
+      const signed = await laneD.signTapRequest!({
+        sessionId: body.sessionId,
+        authority: url.host,
+        path: url.pathname + url.search,
+        tag: body.type === "accepted" ? "agent-payer-auth" : "agent-browser-auth",
+      });
+      return { "Signature-Input": signed.signatureInput, Signature: signed.signature };
+    } : undefined;
+    return this.track(postJson(agent.callbackUrl, body, { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: `callback.${body.type}`, actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;
@@ -75,7 +97,18 @@ export class Delivery {
     if (!agent.chatEndpoint) return Promise.resolve({ ok: false, attempts: 0 });
     const prefix = renderTier0Prefix(buildTier0Prefix(handshake, agent.category, values));
     const message = text ? `${prefix}\n${text}` : prefix;
-    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message }, this.opts).then((r) => {
+    const sign = laneD.signTapRequest ? async () => {
+      const url = new URL(agent.chatEndpoint!);
+      const signed = await laneD.signTapRequest!({
+        sessionId: handshake.sessionId,
+        authority: url.host,
+        path: url.pathname + url.search,
+        tag: "agent-browser-auth",
+      });
+      return { "Signature-Input": signed.signatureInput, Signature: signed.signature };
+    } : undefined;
+    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message },
+      { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: "tier0.deliver", actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;
