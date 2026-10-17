@@ -1,0 +1,13 @@
+{
+  "code": "INSUFFICIENT_PERMISSIONS",
+  "message": "MCP RPC error from https://zero-foxtrot.myshopify.com/api/ucp/mcp [HTTP 403] (-32000): AuthenticationRequired (Unauthorized: A valid JWT is required to call complete_checkout. See https://shopify.dev/docs/agents/get-started/authentication for instructions on generating a token and authenticating your requests.)",
+  "cta": {
+    "description": "This business requires authentication that this CLI does not implement (e.g. JWT, OAuth, API key). Do not keep retrying the same operation. Hand the buyer off using the best URL you already have, in order: current/prior cart or checkout continue_url; selected variant.checkout_url; selected variant/product url; seller.url/homepage; otherwise the business URL or https://<seller.domain>.",
+    "commands": [
+      {
+        "command": "ucp # open <continue_url> | <variant.checkout_url> | <variant.url> | <seller.url> from a prior response",
+        "description": "Hand the buyer the best URL you already have; this CLI cannot complete business-authenticated flows."
+      }
+    ]
+  }
+}

@@ -5,9 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agent, Handshake } from "@agent-cookie/contract";
 import { createUnlockToken, parseTapSignatureInput, verifyHandshake, verifyTapRequest } from "@agent-cookie/auth";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { laneD } from "../src/laneD.js";
 import { postJson } from "../src/services/delivery.js";
 import { harness, KEYS, SAMPLE_FIXTURES_DIR } from "./harness.js";
 
@@ -51,8 +50,8 @@ async function wiredHarness() {
   return {
     ...h,
     dataDir,
-    close() {
-      h.deps.close();
+    async close() {
+      await h.deps.close();
       rmSync(dataDir, { recursive: true, force: true });
     },
   };
@@ -80,21 +79,18 @@ function verifyRequest(request: CapturedRequest, jwk: any, tag: "agent-browser-a
   });
 }
 
+// Hooks live on each workspace instance (deps.laneD), not in a module global (lane A, merge of #13).
 describe("Lane D workspace wiring", () => {
-  afterEach(() => {
-    expect(Object.keys(laneD)).toEqual([]);
-  });
-
   it("keeps hooks absent by default and validates opt-in config", async () => {
     const h = await harness();
     try {
-      expect(Object.keys(laneD)).toEqual([]);
+      expect(Object.keys(h.deps.laneD)).toEqual([]);
       expect((await h.post("/personal/unlock")).status).toBe(404);
       expect((await h.get("/.well-known/agent-cookie-jwks.json?sessionId=test")).body).toEqual({ keys: [] });
       expect(loadConfig({ FIXTURES_DIR: SAMPLE_FIXTURES_DIR }).unlockTtlMs).toBe(900_000);
       expect(loadConfig({ FIXTURES_DIR: SAMPLE_FIXTURES_DIR, UNLOCK_TTL_MS: "1200" }).unlockTtlMs).toBe(1200);
     } finally {
-      h.deps.close();
+      await h.deps.close();
     }
 
     for (const partial of [
@@ -122,7 +118,7 @@ describe("Lane D workspace wiring", () => {
       expect(existsSync(join(h.dataDir, "jar.json"))).toBe(true);
       expect(merchant.agentId).toBeTruthy();
     } finally {
-      h.close();
+      await h.close();
     }
   });
 
@@ -130,7 +126,7 @@ describe("Lane D workspace wiring", () => {
     const h = await wiredHarness();
     const sink = await tapSink();
     try {
-      expect(Object.keys(laneD)).toEqual(expect.arrayContaining(["signHandshake", "signTapRequest", "handleUnlock", "jwks"]));
+      expect(Object.keys(h.deps.laneD)).toEqual(expect.arrayContaining(["signHandshake", "signTapRequest", "handleUnlock", "jwks"]));
       expect((await unlock(h)).status).toBe(200);
       const merchant = await h.registerMerchant({ callbackUrl: sink.url, capabilities: ["wire_test"] });
       const intent = await h.post("/personal/intents", KEYS.personal, { kind: "wire_test", public: {}, text: "hello" });
@@ -183,7 +179,7 @@ describe("Lane D workspace wiring", () => {
       expect(existsSync(join(h.dataDir, "jar.json"))).toBe(true);
     } finally {
       sink.close();
-      h.close();
+      await h.close();
     }
   });
 
@@ -197,7 +193,7 @@ describe("Lane D workspace wiring", () => {
         timeoutMs: 500,
         attempts: 2,
         sign: async () => {
-          const signed = await laneD.signTapRequest!({
+          const signed = await h.deps.laneD.signTapRequest!({
             sessionId: "retry-session",
             authority: target.host,
             path: target.pathname + target.search,
@@ -222,7 +218,7 @@ describe("Lane D workspace wiring", () => {
       expect(header(sink.requests[2]!.headers, "signature")).toBe("");
     } finally {
       sink.close();
-      h.close();
+      await h.close();
     }
   });
 });

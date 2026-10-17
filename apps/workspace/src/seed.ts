@@ -27,7 +27,7 @@ function readJson<T>(dir: string, file: string, dflt: T): T {
   return JSON.parse(readFileSync(p, "utf8")) as T;
 }
 
-export function loadFixtures(dir: string): Fixtures {
+export function loadFixtures(dir: string, ucpDir?: string): Fixtures {
   const users = readJson<SeedUser[]>(dir, FIXTURE_FILES.users, []);
   if (users.length === 0) throw new Error(`no users in ${resolve(dir, FIXTURE_FILES.users)}`);
   const agents = readJson<Agent[]>(dir, FIXTURE_FILES.agents, []);
@@ -41,7 +41,7 @@ export function loadFixtures(dir: string): Fixtures {
     contributions.push({ id: "seed-shipping-address-01", userId: users[0]!.userId, agentId: personal.agentId, field: "shipping_address",
       value: address.value, basis: "stated", createdAt: new Date((last || Date.parse("2026-10-17T00:00:00.000Z")) + 1000).toISOString() });
   }
-  const pinned = readJson<PinnedOffers | null>(resolve(dir, FIXTURE_FILES.ucp), "pinned.json", null);
+  const pinned = readJson<PinnedOffers | null>(ucpDir ?? resolve(dir, FIXTURE_FILES.ucp), "pinned.json", null);
   return {
     users,
     agents,
@@ -73,4 +73,22 @@ export function ensureOwnerKey(store: Store, config: Config, now: string): void 
     store.insertKey({ keyHash: hashKey(key), agentId: "owner", role: "owner", createdAt: now });
     console.log(`[workspace] owner key written to ${path}`);
   }
+}
+
+/**
+ * A database created by an older workspace (or a restart on a file database): add fixture agents it lacks, load the
+ * Sample keys in demo/test mode, mark the fixture contributions as Sample seed (origin, B20) and add seed
+ * contributions it never had (the address, B21). A seed id that exists — even revoked — is left alone.
+ */
+export function upgradeSeed(store: Store, f: Fixtures, config: Config, now: string): void {
+  store.tx(() => {
+    for (const a of f.agents) if (!store.agent(a.agentId)) store.insertAgent(a);
+    if (config.demo || config.test) {
+      for (const [key, who] of Object.entries(f.devKeys)) store.insertKey({ keyHash: hashKey(key), agentId: who.agentId, role: who.role, createdAt: now });
+    }
+    for (const c of f.contributions) {
+      if (store.contribution(c.id)) store.markSeed(c.id);
+      else store.insertContribution(c, "seed");
+    }
+  });
 }

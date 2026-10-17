@@ -5,7 +5,7 @@ import { isField, readDecision, readMode, type Field, type Receipt } from "@agen
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import type { CardService } from "./card.js";
-import { persist, writeMeta, type Ctx } from "./context.js";
+import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { SessionService } from "./sessions.js";
 
 export interface FieldRead { sessionId: string; purpose: string; fields: Partial<Record<Field, string>>; receipt?: Receipt }
@@ -50,8 +50,10 @@ export class FieldService {
     const released = purposeOnes.filter((f) => out[f] !== undefined);
     if (released.length > 0) {
       receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: released, purpose: purpose!, createdAt: this.ctx.clock.nowIso() };
+      // "每次放行写回执": no durable receipt, no release. Git first, then SQLite, then the values.
+      const r0 = receipt;
+      await persistStrict(this.ctx, "receipt", agent.agentId, (r) => r.appendReceipt(r0, writeMeta(this.ctx, "workspace", r0)));
       this.ctx.store.insertReceipt({ ...receipt, userId: session.userId });
-      await persist(this.ctx, "receipt", agent.agentId, (r) => r.appendReceipt(receipt!, writeMeta(this.ctx, "workspace", receipt)));
     }
     this.ctx.log({ event: "fields.read", actor: agent.agentId, object: sessionId, result: "allow",
       reason: `${fields.join(",")} purpose=${purpose ?? ""}` });

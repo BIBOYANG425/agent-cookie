@@ -130,7 +130,7 @@ describe("live profile initialization", () => {
 });
 
 describe("searchOffers normalization", () => {
-  it("preserves all catalog variants and normalizes size, currency, native checkout, ETA, and shipsTo", async () => {
+  it("keeps available USD catalog variants and normalizes size, native checkout, ETA, and shipsTo", async () => {
     const marathon = rawVariants.find(({ variant }) => variant.id === "gid://shopify/ProductVariant/42550028075069")!;
     const nzd = rawVariants.find(({ variant }) => variant.price?.currency === "NZD")!;
     const unavailable = rawVariants.find(({ variant }) => variant.availability?.available === false)!;
@@ -167,8 +167,8 @@ describe("searchOffers normalization", () => {
       etaDate: null,
       shipsTo: ["US"],
     });
-    expect(offers.find((offer) => offer.variantId === nzd.variant.id)?.currency).toBe("NZD");
-    expect(offers.find((offer) => offer.variantId === "variant-unavailable")?.available).toBe(false);
+    expect(offers.some((offer) => offer.variantId === nzd.variant.id)).toBe(false);
+    expect(offers.some((offer) => offer.variantId === "variant-unavailable")).toBe(false);
     expect(offers.some((offer) => offer.variantId === "variant-no-product")).toBe(true);
     expect(offers.some((offer) => offer.variantId === "variant-no-domain")).toBe(false);
     expect(offers.some((offer) => offer.variantId === "variant-no-price")).toBe(false);
@@ -451,7 +451,7 @@ describe("complete and upstream failures", () => {
 });
 
 describe("committed fixture mode", () => {
-  it("filters the pinned EU-42 offers and completes each recorded handoff chain", async () => {
+  it("returns generic catalog offers and completes the pinned handoff chains", async () => {
     const api = createUcp({ mode: "fixture" });
     const pinned = loadFixture("pinned.json");
     const offers = await api.searchOffers({
@@ -468,8 +468,8 @@ describe("committed fixture mode", () => {
     );
     const pinnedOffers = pinned.offers as JsonRecord[];
     const sellers = [...new Set(matching.map((offer) => offer.sellerDomain))].sort();
-    expect(sellers).toHaveLength(2);
-    expect(sellers).toEqual(pinnedOffers.map((offer) => offer.seller).sort());
+    expect(sellers.length).toBeGreaterThanOrEqual(2);
+    for (const item of pinnedOffers) expect(sellers).toContain(item.seller);
 
     for (const item of pinnedOffers) {
       const offer = matching.find((candidate) => candidate.variantId === item.variantId);

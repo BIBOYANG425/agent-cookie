@@ -54,14 +54,62 @@ export function toSystem(size: Size, system: "EU" | "US"): string | undefined {
   return system === "US" ? EU_TO_US_MEN[value] : US_TO_EU_MEN[value];
 }
 
-export function sizeMatches(options: readonly string[], cardSize: string): boolean {
-  const requested = parseSize(cardSize);
-  if (!requested) return false;
-  return options.some((option) =>
-    option.split(/[\/,]/).some((component) => {
-      const available = parseSize(component);
-      return available !== undefined
-        && toSystem(requested, available.system) === available.value;
-    })
-  );
+type LetterSize = "XXS" | "XS" | "S" | "M" | "L" | "XL" | "2XL" | "3XL";
+
+function letterSize(raw: string): LetterSize | undefined {
+  const value = raw.trim().replace(/\s+/g, " ").toUpperCase();
+  const wordValue = value.replace(/\s*\((?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|XXXL)\)$/, "").trim();
+  const aliases: Record<string, LetterSize> = {
+    XXS: "XXS",
+    "X-SMALL": "XS",
+    "EXTRA SMALL": "XS",
+    XS: "XS",
+    S: "S",
+    SMALL: "S",
+    M: "M",
+    MEDIUM: "M",
+    L: "L",
+    LARGE: "L",
+    "X-LARGE": "XL",
+    "EXTRA LARGE": "XL",
+    XL: "XL",
+    "XX-LARGE": "2XL",
+    XXL: "2XL",
+    "2XL": "2XL",
+    XXXL: "3XL",
+    "3XL": "3XL",
+  };
+  return aliases[value] ?? aliases[wordValue];
+}
+
+function oneSizeLabel(raw: string): boolean {
+  return /^(?:one size(?: fits all)?|o\/s|os|osfa|default title|n\/a)$/i.test(raw.trim().replace(/\s+/g, " "));
+}
+
+export function sizeMatch(options: readonly string[], requested: string): "match" | "mismatch" | "no-size" {
+  const requestedLetters = letterSize(requested);
+  const requestedNumeric = requestedLetters ? undefined : parseSize(requested);
+  if (!requestedLetters && !requestedNumeric) return "mismatch";
+  if (options.length === 0 || options.every(oneSizeLabel)) return "no-size";
+
+  for (const option of options) {
+    if (oneSizeLabel(option)) continue;
+    for (const component of option.split(/[\/,]/)) {
+      const label = component.trim();
+      if (!label || oneSizeLabel(label)) continue;
+      const availableLetters = letterSize(label);
+      if (requestedLetters) {
+        if (availableLetters === requestedLetters) return "match";
+        continue;
+      }
+      if (availableLetters) continue;
+      const available = parseSize(label);
+      if (available && toSystem(requestedNumeric!, available.system) === available.value) return "match";
+    }
+  }
+  return "mismatch";
+}
+
+export function sizeMatches(options: readonly string[], requested: string): boolean {
+  return sizeMatch(options, requested) !== "mismatch";
 }

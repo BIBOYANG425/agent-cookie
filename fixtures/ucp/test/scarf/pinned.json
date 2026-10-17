@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-17T22:19:19.572Z",
+  "query": "scarf",
+  "budget": 60,
+  "testOnly": true,
+  "note": "Test fixture only; not used to pick offers in live mode.",
+  "offers": [
+    {
+      "variantId": "gid://shopify/ProductVariant/44455212712092",
+      "seller": "vela-scarves.myshopify.com",
+      "title": "Ombre Olive",
+      "price": 2700,
+      "nativeCheckout": false
+    },
+    {
+      "variantId": "gid://shopify/ProductVariant/47332828840148",
+      "seller": "simplymerino.myshopify.com",
+      "title": "Merino Neck Scarf",
+      "price": 3500,
+      "nativeCheckout": false
+    }
+  ]
+}

@@ -7,10 +7,11 @@ import type { Deps } from "./deps.js";
 import { fail, installErrorHandling, json, optStr, query, readJson, str, type AppEnv } from "./http.js";
 import { hashKey, mintKey, newId } from "./ids.js";
 import { idempotency } from "./idempotency.js";
-import { laneD } from "./laneD.js";
+import { isJarLocked } from "./laneD.js";
+import { requestSpan } from "./telemetry.js";
 import { theUser } from "./services/context.js";
 
-const CATEGORIES: Category[] = ["personal", "shoe"];
+const CATEGORIES: Category[] = ["personal", "shoe", "retail"];
 const MAX_CLOCK_OFFSET_MS = 10 * 365 * 86_400_000;
 
 /** "2026-10-21" or a full ISO timestamp whose calendar date really exists (no 2026-02-31). */
@@ -71,15 +72,18 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   installErrorHandling(app);
 
+  // Sentry tracing (no-op without SENTRY_DSN): one transaction per request, named by route template, never by path.
+  app.use("*", async (c, next) => {
+    await requestSpan(c.req.method, async (rename) => {
+      await next();
+      rename(c.req.routePath === "/*" ? "unmatched" : c.req.routePath, c.res.status);
+    });
+  });
+
   // Every request but the reset itself passes the reset barrier.
   app.use("*", async (c, next) => {
     if (c.req.path === "/demo/reset") return next();
-    await deps.gate.enter();
-    try {
-      await next();
-    } finally {
-      deps.gate.leave();
-    }
+    await deps.gate.run(() => next());
   });
 
   // Activity row for every request (never values). Reading the activity log itself is not logged.
@@ -164,12 +168,17 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ ok: true, card });
   });
 
+  // IntentRequest (contract): `text` = the user's words, required. Transition: a request with only the old `kind` is
+  // still accepted (it searches for the kind's words) until lanes B's SDK/MCP/channel send `text` (docs/requests.md).
   app.post("/personal/intents", auth, personal, idem, async (c) => {
     const body = await readJson(c);
-    const kind = str(body, "kind", { max: 64 });
-    if (!/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
-    const text = optStr(body, "text", { max: 1000 });
-    const out = await deps.commerce.createIntent(c.get("agent"), user(), { kind, public: stringRecord(body.public, "public"), ...(text ? { text } : {}) });
+    const text = optStr(body, "text", { max: 1000 })?.trim() || undefined;
+    const query = optStr(body, "query", { max: 200 })?.trim() || undefined;
+    const kind = optStr(body, "kind", { max: 64 });
+    if (kind !== undefined && !/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
+    if (!text && !kind) fail("MISSING_FIELD", "missing text");
+    const out = await deps.commerce.createIntent(c.get("agent"), user(), { public: stringRecord(body.public, "public"),
+      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(kind ? { kind } : {}) });
     return json(out, 201);
   });
 
@@ -287,14 +296,21 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   }
 
   // ---- lane D (P1) plug points
+  // The unlock app's HMAC handoff token is the credential here (lane D's handleUnlock verifies it).
   app.post("/personal/unlock", async (c) => {
-    if (!laneD.handleUnlock) fail("NOT_FOUND");
-    return laneD.handleUnlock(c.req.raw);
+    if (!deps.laneD.handleUnlock) fail("NOT_FOUND");
+    return deps.laneD.handleUnlock(c.req.raw);
   });
+  // Public, but only for sessions that exist: keys are derived per session, and arbitrary ids must not grow the key file.
   app.get("/.well-known/agent-cookie-jwks.json", async (c) => {
     const sessionId = c.req.query("sessionId");
-    if (!laneD.jwks || !sessionId) return json({ keys: [] });
-    return json(await laneD.jwks(sessionId));
+    if (!deps.laneD.jwks || !sessionId || !store.session(sessionId)) return json({ keys: [] });
+    try {
+      return json(await deps.laneD.jwks(sessionId));
+    } catch (err) {
+      if (isJarLocked(err)) return json({ keys: [] });
+      throw err;
+    }
   });
 
   return app;

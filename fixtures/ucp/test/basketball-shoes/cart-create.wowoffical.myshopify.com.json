@@ -1,0 +1,340 @@
+{
+  "business": "https://wowoffical.myshopify.com",
+  "endpoint": "https://wowoffical.myshopify.com/api/ucp/mcp",
+  "transport": "mcp",
+  "ucp": {
+    "version": "2026-08-25",
+    "status": "success",
+    "services": {
+      "dev.ucp.shopping": []
+    },
+    "capabilities": {
+      "dev.ucp.shopping.checkout": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/checkout/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/checkout.json"
+        }
+      ],
+      "dev.ucp.shopping.fulfillment": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/fulfillment/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/fulfillment.json",
+          "extends": [
+            "dev.ucp.shopping.checkout",
+            "dev.ucp.shopping.cart"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          },
+          "config": {
+            "multi_destination": [],
+            "method_combinations": [
+              [
+                "shipping"
+              ]
+            ]
+          }
+        }
+      ],
+      "dev.ucp.shopping.buyer_consent": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/buyer-consent/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/buyer_consent.json",
+          "extends": [
+            "dev.ucp.shopping.cart",
+            "dev.ucp.shopping.checkout"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ],
+      "dev.ucp.shopping.discount": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/discount/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/discount.json",
+          "extends": [
+            "dev.ucp.shopping.checkout",
+            "dev.ucp.shopping.cart"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ],
+      "dev.ucp.shopping.cart": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/cart/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/cart.json"
+        }
+      ],
+      "dev.ucp.shopping.order": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/order/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/order.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_lookup.json"
+        }
+      ],
+      "dev.shopify.catalog": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://shopify.dev/docs/agents/catalog/storefront-catalog",
+          "schema": "https://shopify.dev/ucp/schemas/2026-08-25/shopify_catalog.json",
+          "extends": [
+            "dev.ucp.shopping.catalog.search",
+            "dev.ucp.shopping.catalog.lookup"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ]
+    },
+    "payment_handlers": {
+      "com.google.pay": [
+        {
+          "id": "gpay",
+          "version": "2026-01-11",
+          "spec": "https://pay.google.com/gp/p/ucp/2026-01-11/",
+          "schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/config.json",
+          "config": {
+            "api_version": 2,
+            "api_version_minor": 0,
+            "merchant_info": {
+              "merchant_name": "Way of Wade",
+              "merchant_id": "16708973830884969730",
+              "merchant_origin": "www.wayofwade.com",
+              "auth_jwt": ""
+            },
+            "allowed_payment_methods": [
+              {
+                "type": "CARD",
+                "parameters": {
+                  "allowed_auth_methods": [
+                    "PAN_ONLY",
+                    "CRYPTOGRAM_3DS"
+                  ],
+                  "allowed_card_networks": [
+                    "VISA",
+                    "MASTERCARD",
+                    "AMEX",
+                    "DISCOVER",
+                    "JCB"
+                  ],
+                  "billing_address_required": true,
+                  "billing_address_parameters": {
+                    "format": "FULL",
+                    "phone_number_required": true
+                  }
+                },
+                "tokenization_specification": {
+                  "type": "PAYMENT_GATEWAY",
+                  "parameters": {
+                    "gateway": "shopify",
+                    "gatewayMerchantId": "56183980187"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "dev.shopify.card": [
+        {
+          "id": "shopify.card",
+          "version": "2026-01-15",
+          "spec": "https://ucp.dev/specification/payment-handler-guide",
+          "schema": "https://shopify.dev/ucp/card-payment-handler/2026-01-15/config.json",
+          "config": {
+            "payment_methods": [
+              {
+                "type": "card",
+                "enabled_card_brands": [
+                  "visa",
+                  "master",
+                  "american_express",
+                  "discover",
+                  "elo",
+                  "jcb",
+                  "unionpay"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "dev.shopify.shop_pay": [
+        {
+          "id": "shop_pay",
+          "version": "2026-04-08",
+          "spec": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/spec.md",
+          "schema": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/schema.json",
+          "config": {
+            "shop_id": "56183980187"
+          }
+        }
+      ]
+    }
+  },
+  "result": {
+    "id": "gid://shopify/Cart/hWNI5eJpVys7tEdEOnsi8ImW?key=REDACTED",
+    "line_items": [
+      {
+        "id": "gid://shopify/CartLine/b2d87778-dc6b-4011-91ba-1758b9506d22?cart=hWNI5eJpVys7tEdEOnsi8ImW",
+        "item": {
+          "id": "gid://shopify/ProductVariant/47084206260439",
+          "title": "Wade All City 13 Encore \"Family Love\" - US-M 10.5 / US-W 11.5 / EU 44 / UK 9.5 / 28.0cm / 11.0\"",
+          "price": 10700,
+          "image_url": "https://cdn.shopify.com/s/files/1/0561/8398/0187/files/ABAV043-1-MXK-WHITE-1.jpg?v=1757991606"
+        },
+        "quantity": 1,
+        "totals": [
+          {
+            "type": "subtotal",
+            "amount": 10700,
+            "display_text": "Subtotal"
+          },
+          {
+            "type": "total",
+            "amount": 10700,
+            "display_text": "Total"
+          }
+        ]
+      }
+    ],
+    "currency": "USD",
+    "buyer": {
+      "consent": {
+        "dev.ucp.consent.analytics": {
+          "granted": false,
+          "source": "business",
+          "description": "Analytics and performance measurement"
+        },
+        "dev.ucp.consent.preferences": {
+          "granted": false,
+          "source": "business",
+          "description": "Remember preferences and personalize your shopping experience"
+        },
+        "dev.ucp.consent.sale_or_sharing": {
+          "granted": false,
+          "source": "business",
+          "description": "Sale or sharing of personal data with third parties"
+        },
+        "dev.ucp.consent.marketing": {
+          "granted": false,
+          "source": "business",
+          "description": "Marketing communications",
+          "segments": {
+            "dev.ucp.consent.marketing.email": {
+              "granted": false,
+              "source": "business",
+              "description": "Promotional emails"
+            },
+            "dev.ucp.consent.marketing.sms": {
+              "granted": false,
+              "source": "business",
+              "description": "Marketing text messages"
+            }
+          }
+        }
+      }
+    },
+    "discounts": {
+      "codes": [],
+      "applied": []
+    },
+    "totals": [
+      {
+        "type": "subtotal",
+        "amount": 10700,
+        "display_text": "Subtotal"
+      },
+      {
+        "type": "total",
+        "amount": 10700,
+        "display_text": "Total"
+      }
+    ],
+    "fulfillment": {
+      "methods": []
+    },
+    "expires_at": "2026-11-16T23:19:27Z",
+    "links": [
+      {
+        "type": "refund_policy",
+        "title": "Refund Policy",
+        "url": "https://checkout.shopify.com/56183980187/policies/24601624731.html?locale=en"
+      },
+      {
+        "type": "privacy_policy",
+        "title": "Privacy Policy",
+        "url": "https://checkout.shopify.com/56183980187/policies/24601657499.html?locale=en"
+      },
+      {
+        "type": "terms_of_service",
+        "title": "Terms of Service",
+        "url": "https://checkout.shopify.com/56183980187/policies/24601690267.html?locale=en"
+      },
+      {
+        "type": "shipping_policy",
+        "title": "Shipping Policy",
+        "url": "https://checkout.shopify.com/56183980187/policies/24601723035.html?locale=en"
+      },
+      {
+        "type": "contact_information",
+        "title": "Contact Information",
+        "url": "https://checkout.shopify.com/56183980187/policies/26876739799.html?locale=en"
+      }
+    ],
+    "messages": [],
+    "continue_url": "https://wowoffical.myshopify.com/cart/c/hWNI5eJpVys7tEdEOnsi8ImW?key=REDACTED"
+  },
+  "cta": {
+    "description": "Cart saved. To buy, create a checkout from this cart using the same business. For shipping estimates, inspect cart update schema; cart fulfillment is estimate-only, and checkout is final/selectable. Use the fulfillment guidance for payload examples.",
+    "commands": [
+      {
+        "command": "ucp checkout create --business <business> --input '{\"cart_id\":\"<cart_id>\",\"line_items\":[]}'",
+        "description": "create checkout from this cart — substitute <cart_id> with result.id and <business> with the same business used for this cart; line_items is required and can be empty for cart conversion"
+      },
+      {
+        "command": "ucp cart update --input-schema --business <business>",
+        "description": "inspect the cart update schema before requesting shipping estimates — only send fulfillment fields the merchant advertises"
+      },
+      {
+        "command": "ucp cart update <cart_id> --business <business> --input '{\"line_items\":[{\"id\":\"<line_item_id>\",\"item\":{\"id\":\"<item_id>\"},\"quantity\":<quantity>}],\"fulfillment\":{\"methods\":[{\"type\":\"shipping\",\"line_item_ids\":[\"<line_item_id>\"],\"destinations\":[{\"address_country\":\"<country>\",\"address_region\":\"<region>\",\"postal_code\":\"<postal_code>\"}]}]}}'",
+        "description": "request cart-stage shipping estimates with request-shaped line_items; returned cart fulfillment/totals are estimates"
+      },
+      {
+        "command": "ucp catalog search --set '/query=<search-term>'",
+        "description": "find more items — add them to this cart before proceeding to checkout"
+      }
+    ]
+  }
+}

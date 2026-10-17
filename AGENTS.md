@@ -8,7 +8,7 @@
 
 ## 真相来源
 
-- 工程计划：`docs/plan.md`（导出自共享 Artifact，以 Artifact 为准）。契约（类型、字段策略、HTTP 端点、MCP 工具、错误码）在其第 5 节，冻结后落在 `packages/core/src/types.ts` 与 `policy.ts`。改契约要两条线以上同意。
+- 工程计划：`docs/plan.md`（导出自共享 Artifact，以 Artifact 为准）。契约（类型、字段策略、HTTP 端点、MCP 工具、错误码）在其第 5 节，冻结后落在 `packages/contract/src/types.ts` 与 `policy.ts`（原 `packages/core`）。改契约要两条线以上同意。
 - demo 设计：`docs/plan.md` 第 3 节。
 - 不要发明新的字段名、端点名、工具名。缺什么先在契约里加，再实现。
 
@@ -16,15 +16,15 @@
 
 | 线 | 拥有的目录（只改这些） |
 |---|---|
-| A · 核心与工作台（Claude Code，Bo 的会话） | `packages/core` `apps/workspace` |
-| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
-| C · 演示面与验收（Codex B，Bo 的） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` |
-| D · 登录与支付（Devin，Bo 的，P1） | `packages/auth` `packages/pay` `apps/unlock` |
+| A · 核心与工作台（Claude Code，Bo 的会话） | `packages/contract` `apps/workspace` |
+| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `apps/workspace-fake` `skills/agent-cookie` |
+| C · 演示面与验收（Codex B，Bo 的） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `packages/rules` `packages/memory-repo` `fixtures` `tests/acceptance` `docs` |
+| D · 登录与支付（Devin，Bo 的，P1） | `packages/auth` `packages/pay` `packages/ucp` `apps/unlock` |
 
 规则：
 - 只改自己线的目录。需要别的目录改动，写进 `docs/requests.md` 一行，由人转达（这个文件所有线都可以追加，只追加不改）。`docs/plan.md` 只有人改。
 - 所有线只通过 `packages/sdk` 调工作台；不直接碰 SQLite，不直接碰 git 记忆库。`tests/acceptance` 只打 HTTP。
-- D 线对工作台的接口只有 `signHandshake`、`authorizePayment` 两个纯函数和 `POST /personal/unlock` 一个端点，由 A 线在契约里预留。D 线分支在 P0 验收（A01–A12、A17、A18、A22）全绿前不合并进 main。
+- D 线对工作台的接口：`signHandshake`、`signTapRequest`、`authorizePayment` 三个函数，`POST /personal/unlock`、`GET /.well-known/agent-cookie-jwks.json` 两个端点，由 A 线在契约和 `apps/workspace/src/laneD.ts` 里预留（每个工作台实例一份 hooks，`AGENT_COOKIE_JAR_KEK` 与 `AGENT_COOKIE_UNLOCK_SECRET` 同时设置才启用）；`packages/ucp` 通过契约的 `UcpApi` 接入。D 线分支在 P0 验收（A01–A12、A17、A18、A22）全绿前不合并进 main。
 - 每条线一个分支（`lane-a` / `lane-b` / `lane-c` / `lane-d`），只往自己的目录提交。合并到 `main` 由人做。
 - H0–1 只有 A 线写业务代码。B、C 先用 `fixtures/` 和 A 线提供的假工作台开工。
 

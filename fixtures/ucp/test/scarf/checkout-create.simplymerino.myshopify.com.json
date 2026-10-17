@@ -1,0 +1,308 @@
+{
+  "business": "https://simplymerino.myshopify.com",
+  "endpoint": "https://simplymerino.myshopify.com/api/ucp/mcp",
+  "transport": "mcp",
+  "ucp": {
+    "version": "2026-08-25",
+    "status": "success",
+    "services": {
+      "dev.ucp.shopping": []
+    },
+    "capabilities": {
+      "dev.ucp.shopping.checkout": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/checkout/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/checkout.json"
+        }
+      ],
+      "dev.ucp.shopping.fulfillment": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/fulfillment/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/fulfillment.json",
+          "extends": [
+            "dev.ucp.shopping.checkout",
+            "dev.ucp.shopping.cart"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          },
+          "config": {
+            "multi_destination": [],
+            "method_combinations": [
+              [
+                "shipping"
+              ]
+            ]
+          }
+        }
+      ],
+      "dev.ucp.shopping.buyer_consent": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/buyer-consent/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/buyer_consent.json",
+          "extends": [
+            "dev.ucp.shopping.cart",
+            "dev.ucp.shopping.checkout"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ],
+      "dev.ucp.shopping.discount": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/discount/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/discount.json",
+          "extends": [
+            "dev.ucp.shopping.checkout",
+            "dev.ucp.shopping.cart"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ],
+      "dev.ucp.shopping.cart": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/cart/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/cart.json"
+        }
+      ],
+      "dev.ucp.shopping.order": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/order/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/order.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_lookup.json"
+        }
+      ],
+      "dev.shopify.catalog": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://shopify.dev/docs/agents/catalog/storefront-catalog",
+          "schema": "https://shopify.dev/ucp/schemas/2026-08-25/shopify_catalog.json",
+          "extends": [
+            "dev.ucp.shopping.catalog.search",
+            "dev.ucp.shopping.catalog.lookup"
+          ],
+          "requires": {
+            "protocol": {
+              "min": "2026-08-25"
+            }
+          }
+        }
+      ]
+    },
+    "payment_handlers": {
+      "dev.shopify.card": [
+        {
+          "id": "shopify.card",
+          "version": "2026-01-15",
+          "spec": "https://ucp.dev/specification/payment-handler-guide",
+          "schema": "https://shopify.dev/ucp/card-payment-handler/2026-01-15/config.json",
+          "config": {
+            "payment_methods": [
+              {
+                "type": "card",
+                "enabled_card_brands": [
+                  "visa",
+                  "master",
+                  "american_express",
+                  "discover",
+                  "diners_club"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "dev.shopify.shop_pay": [
+        {
+          "id": "shop_pay",
+          "version": "2026-01-23",
+          "spec": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/spec.md",
+          "schema": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/schema.json",
+          "config": {
+            "shop_id": "5195071534"
+          }
+        }
+      ]
+    }
+  },
+  "result": {
+    "id": "gid://shopify/Checkout/hWNI5eIl1zczjjDQKGVvpCeG?key=REDACTED",
+    "currency": "USD",
+    "buyer": {
+      "consent": {
+        "dev.ucp.consent.analytics": {
+          "granted": false,
+          "source": "business",
+          "description": "Analytics and performance measurement"
+        },
+        "dev.ucp.consent.preferences": {
+          "granted": false,
+          "source": "business",
+          "description": "Remember preferences and personalize your shopping experience"
+        },
+        "dev.ucp.consent.sale_or_sharing": {
+          "granted": false,
+          "source": "business",
+          "description": "Sale or sharing of personal data with third parties"
+        },
+        "dev.ucp.consent.marketing": {
+          "granted": false,
+          "source": "business",
+          "description": "Marketing communications",
+          "segments": {
+            "dev.ucp.consent.marketing.email": {
+              "granted": false,
+              "source": "business",
+              "description": "Promotional emails"
+            },
+            "dev.ucp.consent.marketing.sms": {
+              "granted": false,
+              "source": "business",
+              "description": "Marketing text messages"
+            }
+          }
+        }
+      }
+    },
+    "line_items": [
+      {
+        "id": "gid://shopify/CartLine/6a8c95d1-0bea-41bf-99f9-4406910e6cde?cart=hWNI5eIl1zczjjDQKGVvpCeG",
+        "item": {
+          "id": "gid://shopify/ProductVariant/47332828840148",
+          "title": "Merino Neck Scarf - Nutmeg",
+          "price": 3500,
+          "image_url": "https://cdn.shopify.com/s/files/1/0051/9507/1534/files/merino-neck-scarf-accessories-simply-merino-nutmeg-970489.jpg?v=1786126788"
+        },
+        "quantity": 1,
+        "totals": [
+          {
+            "type": "subtotal",
+            "amount": 3500,
+            "display_text": "Subtotal"
+          },
+          {
+            "type": "total",
+            "amount": 3500,
+            "display_text": "Total"
+          }
+        ]
+      }
+    ],
+    "discounts": {
+      "codes": [],
+      "applied": []
+    },
+    "totals": [
+      {
+        "type": "subtotal",
+        "amount": 3500,
+        "display_text": "Subtotal"
+      },
+      {
+        "type": "total",
+        "amount": 3500,
+        "display_text": "Total"
+      }
+    ],
+    "fulfillment": {
+      "methods": []
+    },
+    "expires_at": "2026-11-16T23:19:18Z",
+    "links": [
+      {
+        "type": "refund_policy",
+        "title": "Refund Policy",
+        "url": "https://checkout.shopify.com/5195071534/policies/27874787540.html?locale=en"
+      },
+      {
+        "type": "privacy_policy",
+        "title": "Privacy Policy",
+        "url": "https://checkout.shopify.com/5195071534/policies/27874820308.html?locale=en"
+      },
+      {
+        "type": "terms_of_service",
+        "title": "Terms of Service",
+        "url": "https://checkout.shopify.com/5195071534/policies/27874853076.html?locale=en"
+      },
+      {
+        "type": "shipping_policy",
+        "title": "Shipping Policy",
+        "url": "https://checkout.shopify.com/5195071534/policies/27874885844.html?locale=en"
+      },
+      {
+        "type": "contact_information",
+        "title": "Contact Information",
+        "url": "https://checkout.shopify.com/5195071534/policies/27874918612.html?locale=en"
+      }
+    ],
+    "payment": {
+      "instruments": []
+    },
+    "messages": [
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "buyer_identity_contact_method_required",
+        "content": "Missing a valid contact method.",
+        "severity": "recoverable"
+      },
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "delivery_address_required",
+        "content": "A destination address is required in order to continue.",
+        "severity": "recoverable"
+      },
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "delivery_no_delivery_available",
+        "content": "Your cart has been updated and the items you added can’t be shipped to your address. Remove the items to complete your order.",
+        "severity": "recoverable"
+      }
+    ],
+    "status": "incomplete",
+    "continue_url": "https://simplymerino.myshopify.com/cart/c/hWNI5eIl1zczjjDQKGVvpCeG?key=REDACTED"
+  },
+  "cta": {
+    "description": "Checkout needs fulfillment destination or selection. Inspect checkout update schema, then send request-shaped line_items with line_item_ids from result.line_items[].id. Present returned methods/options to the buyer unless their preference is already clear; then select each group with selected_option_id. Use the fulfillment guidance for payload examples.",
+    "commands": [
+      {
+        "command": "ucp checkout update --input-schema --business <business>",
+        "description": "inspect the checkout update schema before sending fulfillment, buyer, payment, discount, or business-specific fields"
+      },
+      {
+        "command": "ucp checkout update <checkout_id> --input '<request-shaped line_items + fulfillment.methods[] payload>'",
+        "description": "send the selected shipping or pickup fulfillment payload from the live schema; use result.line_items[N].id for line_item_ids and the fulfillment guidance for examples"
+      }
+    ]
+  }
+}

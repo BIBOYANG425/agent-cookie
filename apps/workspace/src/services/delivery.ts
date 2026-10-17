@@ -2,12 +2,13 @@
 // Retries with backoff, never throws, never blocks other merchants (plan §4 T7). Failures go to activity.
 import { buildTier0Prefix, renderTier0Prefix, type Agent, type Field, type Handshake, type MerchantCallback } from "@agent-cookie/contract";
 import type { Log } from "../activity.js";
-import { laneD } from "../laneD.js";
+import { isJarLocked, type LaneDHooks, type TapTag } from "../laneD.js";
 
 export interface PostResult { ok: boolean; attempts: number; status?: number }
 
 const BACKOFF_MS = [200, 800, 2000];
 
+/** `sign` runs once per attempt (TAP signatures carry a fresh nonce and time); if it fails the request goes unsigned. */
 export async function postJson(url: string, body: unknown, opts: {
   timeoutMs: number;
   attempts: number;
@@ -21,6 +22,7 @@ export async function postJson(url: string, body: unknown, opts: {
         try {
           Object.assign(headers, await opts.sign());
         } catch {
+          // unsigned; Delivery logs the reason
         }
       }
       const res = await fetch(url, {
@@ -44,7 +46,27 @@ export async function postJson(url: string, body: unknown, opts: {
 
 export class Delivery {
   private pending = new Set<Promise<unknown>>();
-  constructor(private opts: { timeoutMs: number; attempts: number }, private log: Log) {}
+  constructor(private opts: { timeoutMs: number; attempts: number }, private log: Log, private laneD: LaneDHooks = {}) {}
+
+  /**
+   * TAP (lane D): with the jar wired, every request to a merchant is signed with the session's pairwise key
+   * (keyId = the handshake kid). Signing failure (the unlock expired) → the request goes unsigned, logged.
+   */
+  private tapSigner(agent: Agent, url: string, sessionId: string, tag: TapTag): (() => Promise<Record<string, string>>) | undefined {
+    const sign = this.laneD.signTapRequest;
+    if (!sign) return undefined;
+    return async (): Promise<Record<string, string>> => {
+      const u = new URL(url);
+      try {
+        // Same convention as lane D's merchant verifier: @path is what the merchant sees as req.url (path + query).
+        const s = await sign({ sessionId, authority: u.host, path: u.pathname + u.search, tag });
+        return { "Signature-Input": s.signatureInput, Signature: s.signature };
+      } catch (err) {
+        this.safeLog({ event: "tap.sign", actor: "workspace", object: agent.agentId, result: "unsigned", reason: isJarLocked(err) ? "JAR_LOCKED" : "error" });
+        return {};
+      }
+    };
+  }
 
   /** Fire and track; `settle()` awaits everything in flight (tests, shutdown). The tracked promise never rejects. */
   private track(p: Promise<PostResult>): Promise<PostResult> {
@@ -68,16 +90,8 @@ export class Delivery {
 
   callback(agent: Agent, body: MerchantCallback): Promise<PostResult> {
     if (!agent.callbackUrl) return Promise.resolve({ ok: false, attempts: 0 });
-    const sign = laneD.signTapRequest ? async () => {
-      const url = new URL(agent.callbackUrl!);
-      const signed = await laneD.signTapRequest!({
-        sessionId: body.sessionId,
-        authority: url.host,
-        path: url.pathname + url.search,
-        tag: body.type === "accepted" ? "agent-payer-auth" : "agent-browser-auth",
-      });
-      return { "Signature-Input": signed.signatureInput, Signature: signed.signature };
-    } : undefined;
+    const tag: TapTag = body.type === "accepted" ? "agent-payer-auth" : "agent-browser-auth";
+    const sign = this.tapSigner(agent, agent.callbackUrl, body.sessionId, tag);
     return this.track(postJson(agent.callbackUrl, body, { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: `callback.${body.type}`, actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
@@ -97,18 +111,8 @@ export class Delivery {
     if (!agent.chatEndpoint) return Promise.resolve({ ok: false, attempts: 0 });
     const prefix = renderTier0Prefix(buildTier0Prefix(handshake, agent.category, values));
     const message = text ? `${prefix}\n${text}` : prefix;
-    const sign = laneD.signTapRequest ? async () => {
-      const url = new URL(agent.chatEndpoint!);
-      const signed = await laneD.signTapRequest!({
-        sessionId: handshake.sessionId,
-        authority: url.host,
-        path: url.pathname + url.search,
-        tag: "agent-browser-auth",
-      });
-      return { "Signature-Input": signed.signatureInput, Signature: signed.signature };
-    } : undefined;
-    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message },
-      { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
+    const sign = this.tapSigner(agent, agent.chatEndpoint, handshake.sessionId, "agent-browser-auth");
+    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message }, { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: "tier0.deliver", actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;

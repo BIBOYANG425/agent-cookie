@@ -1,27 +1,25 @@
 // Intents → matching → introductions → quotes → accept. UCP stores are reached through UcpApi via per-domain
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
-  GRANT_TTL_MS, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
+  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
   type AcceptResult, type Agent, type Field, type Quote, type Receipt, type UcpCheckout, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
-import { parseAddress, parseBudgetCents, pickSellers } from "../ucp-filter.js";
+import { parseAddress, parseBudgetCents, parseCount, pickSellers, type SearchConditions } from "../ucp-filter.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
-import { persist, writeMeta, type Ctx } from "./context.js";
+import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { FieldService } from "./fields.js";
 import type { NoteService } from "./notes.js";
 import type { Introduction, SessionService } from "./sessions.js";
 
-/** Intent kinds served by the UCP catalog, with the default search query. */
-export const UCP_KINDS: Record<string, string> = { trail_shoes: "trail running shoes" };
-
 const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
 
-export interface IntentInput { kind: string; public: Record<string, string>; text?: string }
+/** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
+export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
 
 export function toQuote(q: QuoteRow): Quote {
   const out: Quote = { id: q.id, intentId: q.intentId, agentId: q.agentId, text: q.text, price: q.price, currency: "USD", etaDate: q.etaDate ?? null };
@@ -30,6 +28,7 @@ export function toQuote(q: QuoteRow): Quote {
   if (q.seller !== undefined) out.seller = q.seller;
   if (q.variantId !== undefined) out.variantId = q.variantId;
   if (q.checkoutUrl !== undefined) out.checkoutUrl = q.checkoutUrl;
+  if (q.sizeNote !== undefined) out.sizeNote = q.sizeNote;
   out.source = q.source ?? "live";
   return out;
 }
@@ -72,16 +71,24 @@ export class CommerceService {
       const problem = publicEntryProblem(k, v);
       if (problem) fail("MISSING_FIELD", problem);
     }
-    if (input.text && containsCardNumber(input.text)) fail("MISSING_FIELD", "card numbers are never stored");
+    for (const t of [input.text, input.query]) if (t && containsCardNumber(t)) fail("MISSING_FIELD", "card numbers are never stored");
+    const count = input.public.count === undefined ? DEFAULT_SELLER_COUNT : parseCount(input.public.count, MAX_SELLER_COUNT);
+    if (count === undefined) fail("MISSING_FIELD", `count must be 1–${MAX_SELLER_COUNT}`);
+    const statedBudget = input.public.budget;
+    const maxPriceCents = parseBudgetCents(statedBudget);
+    if (statedBudget !== undefined && maxPriceCents === undefined) fail("MISSING_FIELD", "budget is not an amount");
     const { store, clock } = this.ctx;
-    const intent: IntentRow = { id: newId("i"), userId, agentId: personal.agentId, kind: input.kind, public: input.public,
+    const intent: IntentRow = { id: newId("i"), userId, agentId: personal.agentId, public: input.public,
       createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS) };
+    if (input.kind) intent.kind = input.kind;
     if (input.text) intent.text = input.text;
+    if (input.query) intent.query = input.query;
 
     interface Plan extends Introduction { newAgent?: Agent; quote?: QuoteRow; receipt?: Receipt; values?: Partial<Record<Field, string>> }
     const plans: Plan[] = [];
     for (const agent of store.agents()) {
-      if (agent.category === "personal" || agent.domain || !agent.capabilities.includes(input.kind)) continue;
+      // Registered merchants come in through the optional kind hint; UCP stores through the search below.
+      if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
       if (agent.callbackUrl) {
         plans.push(await this.sessions.prepare(userId, agent, intent, "callback"));
       } else if (agent.chatEndpoint) {
@@ -93,24 +100,34 @@ export class CommerceService {
         plans.push({ ...x, receipt, values });
       }
     }
+    // UCP: the user's words drive the search (query, else the sentence itself; a legacy kind-only request searches
+    // for its kind). Only the budget stated in this request excludes; the card's budget and size only rank.
     let ucpNote: { result: string; reason: string } | undefined;
-    if (Object.hasOwn(UCP_KINDS, input.kind)) {
-      const values = this.card.values(userId, intent);
-      const maxPriceCents = parseBudgetCents(values.budget);
+    const query = input.query ?? input.text ?? input.kind?.replace(/_/g, " ");
+    if (query) {
+      const card = this.card.values(userId);
+      const conditions: SearchConditions = { shipsTo: "US", ...(maxPriceCents !== undefined ? { maxPriceCents } : {}) };
+      const preferMaxPriceCents = maxPriceCents === undefined ? parseBudgetCents(card.budget) : undefined;
+      if (preferMaxPriceCents !== undefined) conditions.preferMaxPriceCents = preferMaxPriceCents;
+      const size = input.public.size ?? input.public.shoe_size ?? card.shoe_size;
+      if (size) conditions.size = size;
+      if (card.lang) conditions.lang = card.lang;
       let offers: UcpOffer[] | undefined;
       try {
-        offers = await this.ctx.ucp.searchOffers({ query: intent.public.query ?? UCP_KINDS[input.kind]!, intentText: intent.text,
-          maxPriceCents, shipsTo: "US", limit: 50 });
+        offers = await this.ctx.ucp.searchOffers({ query, ...(intent.text ? { intentText: intent.text } : {}),
+          ...(maxPriceCents !== undefined ? { maxPriceCents } : {}), shipsTo: "US", limit: 50 });
       } catch (err) {
         ucpNote = { result: "failed", reason: err instanceof WorkspaceError ? err.code : "error" };
       }
       if (offers) {
-        const picked = pickSellers(offers, { shoeSize: values.shoe_size, maxPriceCents, shipsTo: "US" }, 2, this.pinned);
+        // Pinned rehearsal variants are a fixture-mode aid only: live search never looks at them.
+        const pinned = this.ctx.config.ucpMode === "fixture" ? this.pinned : [];
+        const picked = pickSellers(offers, conditions, count, pinned);
         ucpNote = { result: "ok", reason: `offers=${offers.length} picked=${picked.length}` };
-        for (const offer of picked) {
+        for (const { offer, sizeNote } of picked) {
           const existing = store.agentByDomain(offer.sellerDomain);
-          const proxy: Agent = existing ?? { agentId: `ucp:${offer.sellerDomain}`, name: `${offer.sellerName} (UCP proxy)`, category: "shoe",
-            capabilities: Object.keys(UCP_KINDS), domain: offer.sellerDomain, createdAt: clock.nowIso() };
+          const proxy: Agent = existing ?? { agentId: `ucp:${offer.sellerDomain}`, name: `${offer.sellerName} (UCP proxy)`, category: "retail",
+            capabilities: [], domain: offer.sellerDomain, createdAt: clock.nowIso() };
           const x = await this.sessions.prepare(userId, proxy, intent, "ucp");
           const title = `${offer.productTitle}${offer.variantTitle ? ` · ${offer.variantTitle}` : ""}`;
           const quote: QuoteRow = { id: newId("q"), intentId: intent.id, agentId: proxy.agentId, sessionId: x.session.sessionId,
@@ -119,6 +136,7 @@ export class CommerceService {
             source: this.ctx.config.ucpMode === "live" ? "live" : "fixture" };
           const url = offer.checkoutUrl ?? offer.url;
           if (url) quote.checkoutUrl = url;
+          if (sizeNote) quote.sizeNote = sizeNote;
           plans.push({ ...x, quote, ...(existing ? {} : { newAgent: proxy }) });
         }
       }
@@ -126,7 +144,8 @@ export class CommerceService {
 
     store.tx(() => {
       store.insertIntent(intent);
-      this.ctx.log({ event: "intent.create", actor: personal.agentId, object: intent.id, result: "ok", reason: input.kind });
+      this.ctx.log({ event: "intent.create", actor: personal.agentId, object: intent.id, result: "ok",
+        reason: input.text ? (input.kind ?? "text") : `${input.kind} (legacy: no text)` });
       if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote });
       for (const p of plans) {
         if (p.newAgent) {
@@ -142,10 +161,18 @@ export class CommerceService {
     for (const p of plans) {
       if (p.channel === "callback") {
         void this.ctx.delivery.callback(p.agent, { type: "introduce", sessionId: p.session.sessionId, handshake: p.handshake,
-          intent: { id: intent.id, kind: intent.kind, public: intent.public, expiresAt: intent.expiresAt } });
+          // Callback merchants are matched through the kind hint, so it is always set here.
+          intent: { id: intent.id, kind: intent.kind ?? "", public: intent.public, expiresAt: intent.expiresAt } });
       } else if (p.channel === "tier0" && p.receipt) {
+        // The Tier 0 prefix carries values: deliver only once its receipt is durable in git.
         const receipt = p.receipt;
-        await persist(this.ctx, "receipt", "workspace", (r) => r.appendReceipt(receipt, writeMeta(this.ctx, "workspace", receipt)));
+        try {
+          await persistStrict(this.ctx, "receipt", "workspace", (r) => r.appendReceipt(receipt, writeMeta(this.ctx, "workspace", receipt)));
+        } catch (err) {
+          if (err instanceof WorkspaceError && err.code === "NOT_FOUND") throw err;
+          this.ctx.log({ event: "tier0.deliver", actor: "workspace", object: p.agent.agentId, result: "skipped", reason: "receipt not durable" });
+          continue;
+        }
         void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text);
       }
     }
@@ -162,7 +189,7 @@ export class CommerceService {
       const rows = this.ctx.store.quotesForIntent(intentId);
       const quoted = new Set(rows.map((q) => q.agentId));
       const complete = [...expected].every((a) => quoted.has(a));
-      if (complete || Date.now() - started >= wait) return { intentId, quotes: rows.map(toQuote), complete };
+      if (complete || this.ctx.closing() || Date.now() - started >= wait) return { intentId, quotes: rows.map(toQuote), complete };
       await new Promise((r) => setTimeout(r, Math.min(250, wait - (Date.now() - started))));
     }
   }
@@ -266,16 +293,25 @@ export class CommerceService {
     const stopped = (messages: UcpMessage[], status?: string) =>
       status === "canceled" || messages.some((m) => m.type === "error" && m.severity === "unrecoverable");
     const done = (r: AcceptResult): AcceptResult => (receipts.length > 0 ? { ...r, receipts } : r);
+    // Warnings (low stock, sold-out notices) from any step reach the user verbatim, even when a later step does not
+    // repeat them (plan T4: 售罄 warning 原样转给用户). Info messages are per-step state and are not carried.
+    const warnings: UcpMessage[] = [];
+    const heard = (ms: UcpMessage[]) => {
+      for (const m of ms) if (m.type === "warning" && m.content && !warnings.some((w) => w.content === m.content)) warnings.push(m);
+    };
+    const say = (ms: UcpMessage[]) => messageText([...warnings.filter((w) => !ms.some((m) => m.content === w.content)), ...ms]);
     try {
       if (!q.variantId) throw new UpstreamError("quote has no variant");
       const cart = await ucp.createCart({ sellerDomain: proxy.domain!, variantId: q.variantId });
       cartUrl = cart.continueUrl;
+      heard(cart.messages);
       if (stopped(cart.messages)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(cart.messages) ?? "The merchant refused the cart." }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(cart.messages) ?? "The merchant refused the cart." }));
       }
       co = await ucp.createCheckout(cart);
+      heard(co.messages);
       if (stopped(co.messages, co.status)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       // fixtures/README: a Sample address is never sent to a real store. In live mode, hand off before reading it.
       const onCard = this.card.values(this.ctx.store.session(q.sessionId)!.userId).shipping_address;
@@ -293,8 +329,9 @@ export class CommerceService {
           : { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "No shipping address and no merchant page to finish on." });
       }
       co = await ucp.setDestination(co, parseAddress(address));
+      heard(co.messages);
       if (stopped(co.messages, co.status)) {
-        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: messageText(co.messages) ?? `checkout ${co.status}` }));
+        return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       try {
         co = await ucp.complete(co);
@@ -303,7 +340,8 @@ export class CommerceService {
         // That is the escalation case: the user pays on the merchant's page (handoff), not a failure.
         const u = err instanceof UpstreamError ? err.continueUrl ?? url() : undefined;
         if (err instanceof UpstreamError && u && needsBuyer(err.message)) {
-          const result: AcceptResult = { status: "handoff", quoteId: q.id, continueUrl: u, message: publicUpstreamMessage(err.message) };
+          const result: AcceptResult = { status: "handoff", quoteId: q.id, continueUrl: u,
+            message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" ") };
           await this.lastOrder(proxy, q);
           return done(result);
         }
@@ -312,12 +350,13 @@ export class CommerceService {
     } catch (err) {
       if (err instanceof UpstreamError) {
         const u = err.continueUrl ?? url();
-        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: publicUpstreamMessage(err.message), ...(u ? { continueUrl: u } : {}) });
+        return done({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR",
+          message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" "), ...(u ? { continueUrl: u } : {}) });
       }
       if (err instanceof WorkspaceError) return done({ status: "blocked", quoteId: q.id, code: err.code, message: err.message });
       throw err;
     }
-    const message = messageText(co.messages);
+    const message = say(co.messages);
     let result: AcceptResult;
     if (stopped(co.messages, co.status)) {
       result = withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: message ?? `checkout ${co.status}` });

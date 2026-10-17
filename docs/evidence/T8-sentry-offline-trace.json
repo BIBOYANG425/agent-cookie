@@ -1,0 +1,89 @@
+{
+  "capturedAt": "2026-10-17T22:08:07.341Z",
+  "sdk": "@sentry/node 11.4.0",
+  "ucpMode": "fixture",
+  "acceptResult": {
+    "status": "handoff",
+    "continueUrlHost": "marathonsports.myshopify.com"
+  },
+  "envelopes": 5,
+  "spans": 11,
+  "acceptTrace": [
+    {
+      "name": "POST /personal/quotes/:id/accept",
+      "trace_id": "1c7034b0bc7249d38e3564694268255f",
+      "span_id": "9abe923be3a11e37",
+      "is_segment": true,
+      "status": "ok",
+      "duration_ms": 214.69,
+      "attributes": {
+        "sentry.op": "http.server",
+        "http.route": "/personal/quotes/:id/accept",
+        "http.response.status_code": 200
+      }
+    },
+    {
+      "name": "ucp.createCart",
+      "trace_id": "1c7034b0bc7249d38e3564694268255f",
+      "span_id": "95d497a929c1a3a4",
+      "parent_span_id": "9abe923be3a11e37",
+      "is_segment": false,
+      "status": "ok",
+      "duration_ms": 1.15,
+      "attributes": {
+        "sentry.op": "ucp",
+        "ucp.op": "createCart",
+        "ucp.mode": "fixture",
+        "ucp.seller": "marathonsports.myshopify.com"
+      }
+    },
+    {
+      "name": "ucp.createCheckout",
+      "trace_id": "1c7034b0bc7249d38e3564694268255f",
+      "span_id": "89b7e877b5b2033d",
+      "parent_span_id": "9abe923be3a11e37",
+      "is_segment": false,
+      "status": "ok",
+      "duration_ms": 0.84,
+      "attributes": {
+        "sentry.op": "ucp",
+        "ucp.op": "createCheckout",
+        "ucp.mode": "fixture",
+        "ucp.seller": "marathonsports.myshopify.com",
+        "ucp.status": "requires_escalation"
+      }
+    },
+    {
+      "name": "ucp.setDestination",
+      "trace_id": "1c7034b0bc7249d38e3564694268255f",
+      "span_id": "8e5b1324a2dc10a7",
+      "parent_span_id": "9abe923be3a11e37",
+      "is_segment": false,
+      "status": "ok",
+      "duration_ms": 1.18,
+      "attributes": {
+        "sentry.op": "ucp",
+        "ucp.op": "setDestination",
+        "ucp.mode": "fixture",
+        "ucp.seller": "marathonsports.myshopify.com",
+        "ucp.status": "incomplete"
+      }
+    },
+    {
+      "name": "ucp.complete",
+      "trace_id": "1c7034b0bc7249d38e3564694268255f",
+      "span_id": "89dbb642c6d7774b",
+      "parent_span_id": "9abe923be3a11e37",
+      "is_segment": false,
+      "status": "ok",
+      "duration_ms": 0.72,
+      "attributes": {
+        "sentry.op": "ucp",
+        "ucp.op": "complete",
+        "ucp.mode": "fixture",
+        "ucp.seller": "marathonsports.myshopify.com",
+        "ucp.status": "requires_escalation"
+      }
+    }
+  ]
+}

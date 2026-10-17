@@ -7,7 +7,7 @@ import type { IntentRow, StoredContribution } from "../db.js";
 import { containsCardNumber, isTokenReference } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
-import { persist, writeMeta, type Ctx } from "./context.js";
+import { persist, persistStrict, writeMeta, type Ctx } from "./context.js";
 
 /** Fields an intent may override for its merchants ("intent 字段遮盖 card 字段"). Purpose fields never travel in an intent. */
 const PURPOSE_ANYWHERE = new Set<Field>([...purposeFields("shoe"), "shipping_address", "payment_method"]);
@@ -37,6 +37,9 @@ export class CardService {
       const intent = typeof intentOrId === "string" ? this.ctx.store.intent(intentOrId) : intentOrId;
       if (intent && intent.userId === userId) {
         for (const [k, v] of Object.entries(intent.public)) if (overridable(k) && typeof v === "string" && v !== "") out[k] = v;
+        // A size stated in this request (IntentRequest.public.size) is this intent's shoe_size.
+        const size = intent.public.size;
+        if (typeof size === "string" && size !== "" && !intent.public.shoe_size) out.shoe_size = size;
       }
     }
     return out;
@@ -57,12 +60,13 @@ export class CardService {
       basis = "inferred";
     }
     const c: StoredContribution = { id: newId("c"), userId, agentId: agent.agentId, field: input.field, value: input.value, basis, createdAt: this.ctx.clock.nowIso() };
+    // Git first: an HTTP success always means the record is in the memory repo (unknown field names stay SQLite-only, A11).
+    if (isField(c.field)) {
+      await persistStrict(this.ctx, "contribution", agent.agentId, (r) => r.appendContribution(c as Contribution, writeMeta(this.ctx, agent.agentId, c)));
+    }
     this.ctx.store.insertContribution(c);
     this.ctx.log({ event: "contribution.add", actor: agent.agentId, object: c.id, result: basis, reason: isField(c.field) ? c.field : "unknown_field" });
-    if (isField(c.field)) {
-      await persist(this.ctx, "contribution", agent.agentId, (r) => r.appendContribution(c as Contribution, writeMeta(this.ctx, agent.agentId, c)));
-      await this.regenerate(agent.agentId);
-    }
+    if (isField(c.field)) await this.regenerate(agent.agentId);
     return { stored: basis, contribution: c };
   }
 
@@ -70,9 +74,11 @@ export class CardService {
     const c = this.ctx.store.contribution(id);
     if (!c || c.userId !== userId) fail("NOT_FOUND");
     const at = this.ctx.clock.nowIso();
+    if (isField(c.field)) {
+      await persistStrict(this.ctx, "contribution.revoke", actor, (r) => r.revokeContribution(id, at, writeMeta(this.ctx, actor, { id, at })));
+    }
     this.ctx.store.revokeContribution(id, at);
     this.ctx.log({ event: "contribution.revoke", actor, object: id, result: "ok" });
-    await persist(this.ctx, "contribution.revoke", actor, (r) => r.revokeContribution(id, at, writeMeta(this.ctx, actor, { id, at })));
     await this.regenerate(actor);
     return this.get(userId);
   }
