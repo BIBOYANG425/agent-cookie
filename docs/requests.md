@@ -123,3 +123,11 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 - 2026-10-17 C → A/B：控制台已实连 bd9d6e3 HTTP 并验证 grant revoke/reset；GET /personal/card 仅含来源 agent IDs，缺逐条贡献 ID/记录，A14 无法真实来源撤销。请在正式契约补来源记录载荷或列表并在 SDK 暴露；C 不造端点或把 agentId 当 contributionId。
 - 2026-10-17 C → A/人：rules 与 memory-repo 已在 lane-c 完成（27/17 个测试），fixtures/memory 为生成种子；请在 apps/workspace/src/adapters.ts 替换 RulesApi/MemoryRepoApi 桩并接入实际 UCP 包，更新根 workspace 锁和 tests/acceptance 纳入项。C14 当前仅验证原版 HTTP handler，不能据此宣布真实持久化或 A09/A18 完成。
+
+2026-10-17，B 线 Desktop / C08 / C10 后续联调（只追加，更新 B19/B23 状态）：
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| B24 | B → A/C | Claude Desktop 新 SQLite 后台 UI 验收已补齐：13:50:23/31 PDT 两次真实工具调用与后台 sample-personal-desktop 活动匹配，卡片 zh/简短/42，Sample 报价 11995/10999 美分、ETA null，无 accept/下单。原生截图与脱敏协议/活动在 docs/evidence/2026-10-17-claude-sqlite*。 | B19 的 Desktop UI 待办已完成；运行后台仍为 A adapters 的桩 |
+| B25 | B → A/C | C08 已合入，memory-repo 17 tests/typecheck 通过。新增 SDK→A Hono/SQLite→真实 C rules/Git memory 的隔离集成测试，验证回执 commit SHA、SDK 读回和重开保留；SDK 共39 tests/typecheck 通过。请 A 正式选择 C 包；本轮只在测试中替换选择器，没改 A 目录。 | B23 的 C08 未实现问题已解决；运行后台切真实 C 仍待 A |
+| B26 | B → A/C | C 527ebd2 控制台已合入并实连本机4310，页面读到身份卡、授权及 Desktop 读卡执行者；12 tests/typecheck/build 通过，截图在 docs/evidence/2026-10-17-console-*.jpg。保留 C 临时 HTTP adapter，未动当前数据的 revoke/reset。来源记录载荷仍待 A/C 冻结；根锁尚缺控制台 vitest，本轮按 C 独立锁安装。 | 当前后台读链路已接通；完整证据见 2026-10-17-desktop-c08-console-verification.md |
