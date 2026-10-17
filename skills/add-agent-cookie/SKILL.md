@@ -11,7 +11,9 @@ description: 在已有商家 agent 的代码中接入 Agent Cookie，定位主�
 
 读目标仓库的指令、启动方式、memory 协议与现有测试。记录 commit 和干净工作树状态，先跑原版，分别记录服务启动与模型聊天结果。没有模型凭据时继续做确定性检查，明确聊天未验证。
 
-取得 Agent Cookie 已冻结的 `packages/core/src/types.ts`、`policy.ts`、HTTP 请求/响应和 SDK 契约。计划草稿、接口名字和代码注释不能替代缺失的载荷契约。确认 session、字段用途、可写 field/basis、note 格式/大小/过期/删除、错误码、认证头、幂等语义。契约缺失时完成定位和需求报告，暂停依赖它的适配代码；不造字段、端点、SDK 方法或可用 fake server。
+取得 Agent Cookie 已冻结的 `packages/contract/src/types.ts`、`policy.ts`、`apis.ts`、`endpoints.ts`，并核对工作台路由实际请求/响应和 SDK。当前已核对 A 的 `bd9d6e3`，尚未合入 main；`packages/core` 是旧路径。`MemoryRepoApi` 是工作台内部持久化接口，不能当作商家 HTTP 或 SDK。确认 session、用途、可写 field/basis、note 大小/过期/删除、错误码、认证头及幂等语义。
+
+依赖未合入时，可以先做明确标为 Sample 的内存 port、fixture 和确定性测试，并在未实现边界标 `TODO(contract)`；不发明远程字段、端点或 SDK 方法。完整 HTTP store 缺删除/generation 等能力时应启动失败或明确报错，不能空操作后返回成功，也不能把本地测试当作真实授权验收。
 
 TypeScript 通过 `packages/sdk`；本项目计划特许的 Python blueprint 用 `httpx` 按冻结 HTTP 契约调用，不另建 Python SDK。不直接访问 SQLite、用户 git 记忆库或 `CARD.md`。API key 只由 host 环境提供，不能由模型工具参数选择。
 
@@ -33,6 +35,8 @@ TypeScript 通过 `packages/sdk`；本项目计划特许的 Python blueprint 用
 
 ## Anthropic commerce-agents 的已核对基线
 
-该例子目前只核对了源码与启动流程，Agent Cookie 深度接入尚未验证。目标是此仓库时，阅读 [references/commerce-agents.md](references/commerce-agents.md)，按固定 commit 重新确认路径；不要假定计划中的“三方法、约 80 行”适用于当前上游。
+该例子已核对源码、启动流程、独立 session/SSE transport，以及六方法 Sample 内存参考；Agent Cookie 深度接入尚未验证。目标是此仓库时，阅读 [references/commerce-agents.md](references/commerce-agents.md)，按固定 commit 重新确认路径；不要假定计划中的“三方法、约 80 行”适用于当前上游。
+
+本仓库 [fixtures/expected](../../fixtures/expected/README.md) 是验收参考，不是要复制到用户仓库的交付实现。已通过的测试只覆盖绑定、关系事实过滤、隔离、读写/搜索/删除、clear generation 与上游提取中途 clear；没有真实 HTTP MemoryStore、A16 模型聊天或干净克隆录屏证据。单条删除在原版中不递增 generation；原版检查 generation 后再写入也不是跨 worker 原子操作。需要服务端条件写入或等价同步屏障后，才能宣称防止所有删除复活竞态。
 
 若用户只要求先验证双 shopping agent 的授权上下文和有限关系 note，可评估现有 get_preferences 与 save_memory / recall_memories 接缝，关闭未接入的持久 memory/extraction/seed，不实例化残缺 MemoryStore。模型调用前必须有明确的工作台授权 gate；上游偏好预取会吞掉异常。明确说明此范围不包含完整删除/清空/自动提取，也不等于 A16 的完整 MemoryStore 接入。工作台载荷仍须冻结，不能以“最小版”为由猜字段或返回假授权。

@@ -1,6 +1,6 @@
 # 双店共用的接入边界
 
-目标：两家使用同一份 Messages API `ShoppingAgent` 接入代码，各自独立的工作台 merchant 身份、pairwise session 与关系 note。用户已选择保留上游通用 Sample 商品。正式工作台契约尚未到 `lane-c`，下文是接入设计和已完成的独立协议组件，不是可运行的授权实现。
+目标：两家使用同一份 Messages API `ShoppingAgent` 接入代码，各自独立的工作台 merchant 身份、pairwise session 与关系 note。用户已选择保留上游通用 Sample 商品。A 的正式契约 `bd9d6e3` 已可读，尚未合入 main；下文是接入设计和已完成的独立协议组件，不是可运行的授权实现。
 
 ## 已有的共享组件
 
@@ -47,8 +47,10 @@ A/B 后端配置分别提供商家凭据和稳定身份。应用模块与 adapte
 
 两个非 UCP 店面不得填同一个 localhost domain 作为 merchantKey。使用不同稳定 agentId 的规则与 seed/reset 由 A 冻结。不要在下一轮撤销验证前自动 find/介绍，否则可能获得新 grant，掩盖被撤的旧授权。
 
-## 仍待冻结的工作台部分
+## 已知契约与剩余边界
 
-注册、同一用户绑定两把 personal key、介绍与上游 session 的受信映射、fields/note 请求响应与 SDK 方法、note 是否受 grant 撤销约束、auto 放行回执关联、以及 real UCP 流程停在 cart 的入口。全部需求已追加 `docs/requests.md`；本目录不通过猜载荷或制造新端点填补。
+A `packages/contract` 和实际路由已提供字段、note 读写与错误载荷；note 读写使用 merchant key + sessionId，并受当前 grant 检查。仍需完成受信 host 的介绍/session 映射、两店独立凭据与授权 gate、SDK 替换、auto 放行回执关联和真实调用验证。不能把已存在的类型与路由当作已接通。
+
+完整 MemoryStore 还缺商家 HTTP 的 note 删除、枚举、clear、持久 generation 和条件写入语义，以及 MemoryFact 编码与跨层 2048-byte 限额的一致定义。内部 `MemoryRepoApi.deleteNote` 不构成新的商家权限。[六方法内存参考](../../fixtures/expected/README.md) 可用于隔离/过滤/删除语义的离线验收；它的 HTTP port 明确拒绝启用，不会回退到本地事实冒充工作台成功。跨线请求由主代理统一记录。
 
 TypeScript 工作台调用通过 B 的 SDK；计划特许的 Python blueprint 调用可以使用 httpx 按冻结 HTTP 契约。两种方式都不能读 SQLite 或用户 git 记忆库。
