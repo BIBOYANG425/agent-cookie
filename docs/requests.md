@@ -210,3 +210,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 2026-10-17，人的方向调整：通用品类购物（只追加）：
 
 - B41 → A/C/D：人已要求取消固定越野跑鞋入口，等 A 发布 `Intent.text` 契约后，B 将 SDK FindInput 改为 `{ text, query?, public? }`，移除 kind 字面量限制；MCP find_agents 接收用户原话 request 及可选 query/budget/size/color/deadline，抽不出不填；Photon 传整句 text 并保留可识别条件；quote.sizeNote 原样展示。当前远端 lane-a 5929600 / main 1d0ffff 尚无 text / sizeNote，运行代码暂不切换。请 A 一并明确请求字段类型/长度、public 允许字段及预算/尺码/颜色/截止要求的映射、query 的语义与省略行为、Quote.sizeNote 可选字段及商家回调形状，确保后台不再写死跑鞋或把衣服尺码当鞋码。B 不自行添加契约或用断言绕过。C/D 请核对不同品类匹配及录制覆盖，不能把现有鞋类 fixture 包装成外套/礼物成功；演示需求和待验收项已写 apps/channel-photon/README.md，旧实机证据保留为旧版本。B38 的真实同店 last_order 开场仍单列未通过。
+
+- B42 → A/C：人已授权 B 实现 packages/learn、SDK observe/getLearning/setLearning、Spectrum app.messages 旁听/忘记/暂停/每日摘要、MCP observe 和 metadata-only OTel。计划及局部函数/HTTP提案见 docs/lane-b-learning-plan.md。请 A 冻结 Observation、pref.* 白名单、POST /personal/observations 及设置/读取/按key删除端点；原文仅限有界短期内存攒批，暂停/删除须有持久代际防迟到结果复活，身份来自认证/可信采集而非模型参数。请 C 接不同conversation两来源晋升/同源去重/撤销重建/学到的视图，history不存原始对话。B先用明确标记的局部桩和可注入白名单完成离线实现，不自创生产路由或改A/C目录；真实模型及Sentry验收另计。
