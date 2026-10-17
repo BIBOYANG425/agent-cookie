@@ -19,3 +19,7 @@
 - 2026-10-17 C → A：新序列只展示一个真实UCP cart，本轮不做真实付款/下单；现accept流程可继续到checkout complete，请提供既有流程中停在cart的明确调用/配置边界，由契约确认，不由C造新cart端点。
 - 2026-10-17 C → 人/A/B：用户已明确两家Sample店使用blueprint原有通用商品，不新增跑鞋资产；展示lang/tone/length等获准上下文与关系note，不能沿用原A15按42码报鞋价的成功承诺。请人工同步分镜/A15，并确认既有personal|shoe类别下的最小授权、注册capabilities与意图路由，不由C新增retail类别或工具名。
 - 2026-10-17 C → A/B：为先证明双agent真实读写，可优先走上游get_preferences + 现有save_memory/recall_memories接缝，关闭未接入的持久memory/extraction/seed，暂不实现六方法MemoryStore；仍需冻结fields/note载荷与受信host绑定。模型前必须明确授权gate（上游prefetch会吞异常继续），不能用403后旧history兜底。此最小接入不冒充A16完整MemoryStore。
+- 2026-10-17 C → A/人：用户新增授权 C 负责 packages/rules 与 packages/memory-repo，先等 A 的 RulesApi/MemoryRepoApi 类型合入，再先 rules 后 memory-repo；当前 origin/lane-a@17ea049 无这两个接口，main@d48e263 和 lane-c 无契约包。请合入实际接口导出/包路径及根 workspace 接线、同步到 lane-c，并由人更新目录分工；C 不临时复制类型或自行改 plan.md。
+- 2026-10-17 C → A：已实际复现 17ea049 mergeCard 输入顺序依赖：personal stated43(10/14)、A/B observed44(10/15-16)、C observed45(10/17)，固定 now 与相同4条记录，排列分别得到45/43/44；请在 RulesApi 契约明确 personal/单源更新的全序资格、时间字段与衰减历史语义，新 rules 必须过排列不变性，详见 docs/rules-memory-repo-readiness.md。
+- 2026-10-17 C → A：新 rules 要求往返无损，现 renderValue 把 CR/LF 改空格不满足；请冻结无损转义与 userId/agentId 外部绑定、base32 编码规则。现 contributionsFileName 使 a:b 与 a_b 同落 a_b.md，也须冻结无碰撞路径映射或合法 ID 域；C 不沿用这些有损行为。
+- 2026-10-17 C → A：MemoryRepoApi 请明确可信 writer/payload signature/显式时钟的传入、每次写入与 CARD 重算的 commit 边界、撤销物化和 note 读续期由哪层负责、完整 note 文件 UTF-8 2048 字节限制，以及 fixtures seed commit 的识别/允许 reset 根目录与稳定身份保留；Contribution 无 signature 字段且 Note 无 lastReadAt，C 不自行增字段或伪造 Agent-Cookie-Sig。
