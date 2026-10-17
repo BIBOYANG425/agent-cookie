@@ -109,3 +109,20 @@ describe('shopping response boundaries', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('owner activity export', () => {
+  it('returns only contract event fields and preserves authorization failures', async () => {
+    const row={id:'event',at:'2026-10-17T20:00:00Z',event:'intent.created',actor:'sample-personal',object:'intent',result:'ok',reason:'Sample'};
+    const fetcher=vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({activity:[{...row,privateValue:'excluded'}],sample:true}))
+      .mockResolvedValueOnce(Response.json({error:{code:'SCOPE_DENIED',message:'private'}},{status:403}));
+    const client=new WorkspaceClient({...config,fetch:fetcher});
+    expect(await client.getActivity()).toEqual({activity:[row],sample:true});
+    expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4310/owner/activity');
+    await expect(client.getActivity()).rejects.toMatchObject({status:403,code:'SCOPE_DENIED'});
+  });
+  it.each([{}, {activity:[null]}, {activity:[{id:'event'}]}])('rejects malformed activity instead of exporting it',async payload=>{
+    const client=new WorkspaceClient({...config,fetch:async()=>Response.json(payload)});
+    await expect(client.getActivity()).rejects.toThrow('Invalid activity response');
+  });
+});

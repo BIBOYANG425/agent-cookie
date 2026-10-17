@@ -55,3 +55,5 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | B15 | B → A/C | Photon 项目及 shared iMessage 线路已建，先前 ping 已 delivered 且用户确认收到；本轮持续 Socket.IO 已连接，绑定唯一测试 sender，游标/发件箱 0600 持久化，重复消息幂等，未知发送结果停机。个人 agent 为受限确定性 parser，无 LLM key 依赖。业务会保留 Sample、未知 ETA 与 handoff 警告。 | 手机购物步骤等待用户发送；不计作 A17 已通过 |
 
 | B16 | B → A/C | B15 更新：用户已完成手机找鞋/选第二双，两个外发消息从 Photon 分别读回 `delivered`；用户明确确认收到，checkout receipt 只有 Sample merchant B 的 shipping_address。脱敏证据在 `docs/evidence/2026-10-17-imessage-sample.json`。这是真实 iMessage + Sample backend，不是真实 UCP/订单。Desktop 已安装及配置，停在登录页，等用户登录后补 A10 UI 证据。 | 手机 Sample 主链路通过；正式集成与 A10 待完成 |
+
+| B17 | B → A/C | B16 更新：用户登录后，Claude Desktop 2.42304.0 实际通过本地 MCP 调用 get_my_card 与 find_agents；显示 Sample 卡（zh/42/120）及 99/115 USD 报价，ETA 均未知，未调用 accept_quote。已保存原生 Desktop 卡片截图、两次 MCP 请求/返回及同时间段后台 card/intent/quotes 活动记录，见 docs/evidence/2026-10-17-claude-desktop.json 和 claude-card.jpg。SDK 增加 owner-only getActivity（不注册为 personal MCP 工具），29 项 SDK 测试及构建通过，真实个人 key 读 activity 被 403 拒绝。 | A10 的 Sample 客户端链路有证据；正式 A/C 集成及全套 P0 仍待验收 |

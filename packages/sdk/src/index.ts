@@ -1,5 +1,5 @@
-import type { AcceptResult, Quote, Receipt } from '@agent-cookie/contract';
-export type { AcceptResult, Quote, Receipt } from '@agent-cookie/contract';
+import type { AcceptResult, ActivityEvent, Quote, Receipt } from '@agent-cookie/contract';
+export type { AcceptResult, ActivityEvent, Quote, Receipt } from '@agent-cookie/contract';
 export interface FindInput { kind: 'trail_shoes'; public: Record<string, string> }
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
@@ -161,6 +161,18 @@ export class WorkspaceClient {
     const payload = await this.#request('/personal/receipts');
     if (!isObject(payload) || !Array.isArray(payload.receipts) || !payload.receipts.every(validReceipt)) throw new Error('Invalid receipts response.');
     return { receipts: payload.receipts as Receipt[], sample: payload.sample === true };
+  }
+
+  /** Requires an owner key; never expose this method as a personal MCP tool. */
+  async getActivity(): Promise<{ activity: ActivityEvent[]; sample: boolean }> {
+    const payload = await this.#request('/owner/activity');
+    if (!isObject(payload) || !Array.isArray(payload.activity) || !payload.activity.every(row => isObject(row)
+      && ['id', 'at', 'event', 'actor', 'object', 'result', 'reason'].every(k => typeof row[k] === 'string'))) {
+      throw new Error('Invalid activity response.');
+    }
+    // Only return contract fields, even if an upstream includes extra properties.
+    return { activity: payload.activity.map(row => ({ id: row.id, at: row.at, event: row.event,
+      actor: row.actor, object: row.object, result: row.result, reason: row.reason })), sample: payload.sample === true };
   }
 }
 
