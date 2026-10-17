@@ -60,3 +60,8 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 - [D→A] `ucp-filter.ts` `parseSize` 不认后缀式 "9 US"（Marathon Sports 的真实标签），也不认 "UK"；请支持 `<num> US|EU` 后缀，UK 解析后不匹配。
 - [D→A] `--business` 用裸域名（`marathonsports.myshopify.com`）实测可用，契约注释里的 `https://` 前缀不需要。`UcpOffer.shipsTo` 来自请求过滤条件，目录无逐变体字段。
 - [D→A] `apps/workspace/src/laneD.ts`：`Object.assign(laneD, createLaneDHooks({ jar, secret, ttlMs }))`（`@agent-cookie/auth`），`authorizePayment` 用 `@agent-cookie/pay` 的授权函数。
+
+2026-10-17（续），D 线：B22 修复与 EU 42 fixture 重新录制（lane-d-b22）。以下只追加。
+- [D→A] `apps/workspace/src/ucp-filter.ts` 请删除本地 `parseSize` 和 EU↔US 表，改从 `@agent-cookie/ucp` 导入 `{ sizeMatches, parseSize }`，统一支持 `9 US` 等标签；EU 42 对应 US 8.5，EU 42.5 对应 US 9，不能把 US 9 当作 EU 42。
+- [D→A] 新 pin pair：marathonsports.myshopify.com 的 Brooks Men's Cascadia 18（variant `41360206004285`，$109.95，size label `8.5`）与 black-flag-outfitters-clothing.myshopify.com 的 Keen Men's Wander Trail Running Shoe（variant `49155489988835`，$112.00，size label `8.5`）；均为 EU 42 / $120、`nativeCheckout=false`。`complete` 的 `INSUFFICIENT_PERMISSIONS` 现在返回 `requires_escalation` 和非 fatal `requires_buyer_input` 消息（→ handoff），不再抛 `UpstreamError`。demo 邮箱仍收到 `buyer_identity_email_is_invalid`，但 update 与完整录制链均成功。
+- [D→B] B22 的 EU/US 尺码匹配、EU 42 两卖家 fixture 链和错误路径脱敏已在 `lane-d-b22` 修复。

@@ -205,26 +205,26 @@
     }
   },
   "result": {
-    "id": "gid://shopify/Cart/hWNI5R9bo0MkkcrpTxf8XzlQ?key=REDACTED",
+    "id": "gid://shopify/Cart/hWNI5Wo4uNx9GJ6eWPt37EYy?key=REDACTED",
     "line_items": [
       {
-        "id": "gid://shopify/CartLine/9b08d803-7c35-433f-acfc-cdfb8d03ba1f?cart=hWNI5R9bo0MkkcrpTxf8XzlQ",
+        "id": "gid://shopify/CartLine/9421f70c-3edd-4a83-a850-78ce1bcc217a?cart=hWNI5Wo4uNx9GJ6eWPt37EYy",
         "item": {
-          "id": "gid://shopify/ProductVariant/42550028075069",
-          "title": "Brooks Men's Cascadia 19 - 9 / Medium (D) / Alloy/Ebony/Orange",
-          "price": 10495,
-          "image_url": "https://cdn.shopify.com/s/files/1/0129/6942/files/mens-brooks-cascadia-19-alloy-ebony-orange_3.jpg?v=1755869262"
+          "id": "gid://shopify/ProductVariant/41360206004285",
+          "title": "Brooks Men's Cascadia 18 - 8.5 / Medium (D) / Oyster/Primer Grey/Coconut",
+          "price": 10995,
+          "image_url": "https://cdn.shopify.com/s/files/1/0129/6942/files/BrooksMen_sCascadia18Oyster-Grey-Coconut-4.jpg?v=1728929353"
         },
         "quantity": 1,
         "totals": [
           {
             "type": "subtotal",
-            "amount": 10495,
+            "amount": 10995,
             "display_text": "Subtotal"
           },
           {
             "type": "total",
-            "amount": 10495,
+            "amount": 10995,
             "display_text": "Total"
           }
         ]
@@ -274,19 +274,19 @@
     "totals": [
       {
         "type": "subtotal",
-        "amount": 10495,
+        "amount": 10995,
         "display_text": "Subtotal"
       },
       {
         "type": "total",
-        "amount": 10495,
+        "amount": 10995,
         "display_text": "Total"
       }
     ],
     "fulfillment": {
       "methods": []
     },
-    "expires_at": "2026-11-16T21:09:32Z",
+    "expires_at": "2026-11-16T22:05:19Z",
     "links": [
       {
         "type": "refund_policy",
@@ -305,7 +305,7 @@
       }
     ],
     "messages": [],
-    "continue_url": "https://marathonsports.myshopify.com/cart/c/hWNI5R9bo0MkkcrpTxf8XzlQ?key=REDACTED"
+    "continue_url": "https://marathonsports.myshopify.com/cart/c/hWNI5Wo4uNx9GJ6eWPt37EYy?key=REDACTED"
   },
   "cta": {
     "description": "Cart saved. To buy, create a checkout from this cart using the same business. For shipping estimates, inspect cart update schema; cart fulfillment is estimate-only, and checkout is final/selectable. Use the fulfillment guidance for payload examples.",
