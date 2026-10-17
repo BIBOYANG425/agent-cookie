@@ -1,9 +1,23 @@
-import type { AcceptResult, ActivityEvent, Quote, Receipt } from '@agent-cookie/contract';
-export type { AcceptResult, ActivityEvent, Quote, Receipt } from '@agent-cookie/contract';
+import type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
+export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
 export interface FindInput { kind: 'trail_shoes'; public: Record<string, string> }
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
+export interface RequestOptions { signal?: AbortSignal }
+// GET /personal/grants adds these display fields to the contract Grant.
+// Wire shape verified against workspace/services/sessions.ts; policy stays server-side.
+export interface WorkspaceGrant extends Grant {
+  agentId: string;
+  agentName: string;
+  createdAt: string;
+  remainingMs: number;
+  status: 'live' | 'expired' | 'revoked';
+}
+export interface GrantList { grants: WorkspaceGrant[]; sample: boolean }
+export interface RevokeGrantResult { ok: true; revokedAt: string; sample: boolean }
+export interface RevokeContributionResult { ok: true; card: Card; sample: boolean }
+export interface DemoResetResult { ok: true; seededAt: string; sample: boolean }
 
 export interface WorkspaceConfig {
   baseUrl: string;
@@ -79,8 +93,10 @@ export class WorkspaceClient {
     }
   }
 
-  async #request(path: string, body?: unknown, idempotencyKey?: string): Promise<unknown> {
+  async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}): Promise<unknown> {
     if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
+    const cancelled = () => new DOMException('The workspace request was cancelled.', 'AbortError');
+    if (options.signal?.aborted) throw cancelled();
     let response: Response;
     let payload: unknown;
     try {
@@ -91,8 +107,9 @@ export class WorkspaceClient {
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         redirect: 'manual', // Never forward a local credential to a redirect destination.
+        credentials: 'omit',
         cache: 'no-store',
-        signal: AbortSignal.timeout(this.#timeoutMs),
+        signal: AbortSignal.any([AbortSignal.timeout(this.#timeoutMs), ...(options.signal ? [options.signal] : [])]),
       });
       if (response.status >= 300 && response.status < 400) {
         await response.body?.cancel();
@@ -100,6 +117,7 @@ export class WorkspaceClient {
       }
       payload = await response.json();
     } catch {
+      if (options.signal?.aborted) throw cancelled(); // Never expose the caller's arbitrary abort reason.
       throw new Error('The workspace could not be reached or returned an invalid response.');
     }
     if (!response.ok) {
@@ -113,16 +131,16 @@ export class WorkspaceClient {
     return this.#config.sample && isObject(payload) ? { ...payload, sample: true } : payload;
   }
 
-  async getMe(): Promise<WorkspaceIdentity> {
-    const payload = await this.#request('/me');
+  async getMe(options?: RequestOptions): Promise<WorkspaceIdentity> {
+    const payload = await this.#request('/me', undefined, undefined, options);
     if (!isObject(payload) || !['agentId', 'category', 'role'].every(key => typeof payload[key] === 'string' && payload[key])) {
       throw new Error('The workspace returned an invalid identity response.');
     }
     return { agentId: payload.agentId as string, category: payload.category as string, role: payload.role as string };
   }
 
-  async getMyCard(): Promise<unknown> {
-    const payload = await this.#request('/personal/card');
+  async getMyCard(options?: RequestOptions): Promise<unknown> {
+    const payload = await this.#request('/personal/card', undefined, undefined, options);
     if (!isObject(payload) || !Array.isArray(payload.card) || !Array.isArray(payload.candidates)) {
       throw new Error('The workspace returned an invalid card response.');
     }
@@ -130,16 +148,16 @@ export class WorkspaceClient {
     return payload;
   }
 
-  async createIntent(input: FindInput, idempotencyKey: string): Promise<{ intentId: string; sample: boolean }> {
+  async createIntent(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<{ intentId: string; sample: boolean }> {
     if (input.kind !== 'trail_shoes' || !isObject(input.public) || Object.entries(input.public).some(([k,v]) =>
       !['budget', 'deadline'].includes(k) || typeof v !== 'string' || v.length > 100)) throw new Error('Invalid shopping intent.');
-    const payload = await this.#request('/personal/intents', input, idempotencyKey);
+    const payload = await this.#request('/personal/intents', input, idempotencyKey, options);
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
     return { intentId: payload.intentId, sample: payload.sample === true };
   }
 
-  async getQuotes(intentId: string): Promise<QuoteList> {
-    const payload = await this.#request(`/personal/intents/${encodeURIComponent(intentId)}/quotes`);
+  async getQuotes(intentId: string, options?: RequestOptions): Promise<QuoteList> {
+    const payload = await this.#request(`/personal/intents/${encodeURIComponent(intentId)}/quotes`, undefined, undefined, options);
     if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => isObject(q)
       && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
       && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
@@ -147,14 +165,14 @@ export class WorkspaceClient {
     return { quotes: payload.quotes as Quote[], sample: payload.sample === true };
   }
 
-  async find(input: FindInput, idempotencyKey: string): Promise<FindResult> {
-    const created = await this.createIntent(input, idempotencyKey);
-    const quoted = await this.getQuotes(created.intentId);
+  async find(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<FindResult> {
+    const created = await this.createIntent(input, idempotencyKey, options);
+    const quoted = await this.getQuotes(created.intentId, options);
     return { ...quoted, intentId: created.intentId, sample: created.sample || quoted.sample };
   }
 
-  async accept(quoteId: string, idempotencyKey: string): Promise<CheckoutResult> {
-    const payload = await this.#request(`/personal/quotes/${encodeURIComponent(quoteId)}/accept`, {}, idempotencyKey);
+  async accept(quoteId: string, idempotencyKey: string, options?: RequestOptions): Promise<CheckoutResult> {
+    const payload = await this.#request(`/personal/quotes/${encodeURIComponent(quoteId)}/accept`, {}, idempotencyKey, options);
     if (!isObject(payload) || !['ordered','handoff','blocked','failed'].includes(String(payload.status)) || payload.quoteId !== quoteId
       || (payload.status === 'ordered' && (typeof payload.orderId !== 'string' || !payload.orderId))
       || (payload.continueUrl !== undefined && !safeLink(payload.continueUrl))
@@ -162,15 +180,15 @@ export class WorkspaceClient {
     return { ...payload, sample: payload.sample === true } as CheckoutResult;
   }
 
-  async getReceipts(): Promise<{ receipts: Receipt[]; sample: boolean }> {
-    const payload = await this.#request('/personal/receipts');
+  async getReceipts(options?: RequestOptions): Promise<{ receipts: Receipt[]; sample: boolean }> {
+    const payload = await this.#request('/personal/receipts', undefined, undefined, options);
     if (!isObject(payload) || !Array.isArray(payload.receipts) || !payload.receipts.every(validReceipt)) throw new Error('Invalid receipts response.');
     return { receipts: payload.receipts as Receipt[], sample: payload.sample === true };
   }
 
   /** Requires an owner key; never expose this method as a personal MCP tool. */
-  async getActivity(): Promise<{ activity: ActivityEvent[]; sample: boolean }> {
-    const payload = await this.#request('/owner/activity');
+  async getActivity(options?: RequestOptions): Promise<{ activity: ActivityEvent[]; sample: boolean }> {
+    const payload = await this.#request('/owner/activity', undefined, undefined, options);
     // A's SQLite backend returns `events`; the B-local fake used `activity`.
     const rows = isObject(payload) ? payload.events ?? payload.activity : undefined;
     if (!isObject(payload) || (payload.events !== undefined && payload.activity !== undefined)
@@ -182,8 +200,56 @@ export class WorkspaceClient {
     return { activity: rows.map(row => ({ id: row.id, at: row.at, event: row.event,
       actor: row.actor, object: row.object, result: row.result, reason: row.reason })), sample: payload.sample === true };
   }
+
+  async getGrants(options?: RequestOptions): Promise<GrantList> {
+    const payload = await this.#request('/personal/grants', undefined, undefined, options);
+    if (!isObject(payload) || !Array.isArray(payload.grants) || !payload.grants.every(validGrant)) {
+      throw new Error('Invalid grants response.');
+    }
+    return { ...payload, grants: payload.grants as WorkspaceGrant[], sample: payload.sample === true };
+  }
+
+  async revokeGrant(grantId: string, options?: RequestOptions): Promise<RevokeGrantResult> {
+    const payload = await this.#request(`/personal/grants/${resourceId(grantId)}/revoke`, {}, undefined, options);
+    if (!isObject(payload) || payload.ok !== true || !validDate(payload.revokedAt)) throw new Error('Invalid grant revocation response.');
+    return { ...payload, ok: true, revokedAt: payload.revokedAt, sample: payload.sample === true };
+  }
+
+  async revokeContribution(contributionId: string, options?: RequestOptions): Promise<RevokeContributionResult> {
+    const payload = await this.#request(`/personal/contributions/${resourceId(contributionId)}/revoke`, {}, undefined, options);
+    if (!isObject(payload) || payload.ok !== true || !validCard(payload.card)) throw new Error('Invalid contribution revocation response.');
+    return { ...payload, ok: true, card: payload.card, sample: payload.sample === true };
+  }
+
+  /** Owner only, AGENT_COOKIE_DEMO=1. Explicit action; never called by polling or retried. */
+  async demoReset(options?: RequestOptions): Promise<DemoResetResult> {
+    const payload = await this.#request('/demo/reset', {}, undefined, options);
+    if (!isObject(payload) || payload.ok !== true || !validDate(payload.seededAt)) throw new Error('Invalid demo reset response.');
+    return { ...payload, ok: true, seededAt: payload.seededAt, sample: payload.sample === true };
+  }
 }
 
+function resourceId(value: string): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > 256 || /^[.]{1,2}$/.test(value) || /[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error('Invalid resource ID.');
+  }
+  return encodeURIComponent(value);
+}
+function validDate(value: unknown): value is string { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
+function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every(v => typeof v === 'string'); }
+function validGrant(v: unknown): boolean {
+  return isObject(v) && ['id','sessionId','agentId','agentName','purpose'].every(k => typeof v[k] === 'string' && v[k])
+    && strings(v.fields) && validDate(v.createdAt) && validDate(v.expiresAt)
+    && typeof v.remainingMs === 'number' && Number.isFinite(v.remainingMs) && v.remainingMs >= 0
+    && ['live','expired','revoked'].includes(String(v.status)) && (v.revokedAt === undefined || validDate(v.revokedAt));
+}
+function validCard(value: unknown): value is Card {
+  const base = (v: unknown): v is Record<string, unknown> => isObject(v) && typeof v.field === 'string' && !!v.field && typeof v.value === 'string' && strings(v.sources);
+  return isObject(value) && Array.isArray(value.card) && value.card.every(v => base(v)
+    && ['high','medium'].includes(String(v.confidence)) && validDate(v.updatedAt) && validDate(v.lastSupportedAt) && typeof v.changedRecently === 'boolean')
+    && Array.isArray(value.candidates) && value.candidates.every(v => base(v) && ['single_source','inferred'].includes(String(v.reason)))
+    && Array.isArray(value.superseded) && value.superseded.every(v => base(v) && validDate(v.lastSupportedAt) && typeof v.supersededBy === 'string');
+}
 function validReceipt(v: unknown): boolean { return isObject(v) && ['id','sessionId','agentId','purpose','createdAt'].every(k => typeof v[k] === 'string')
   && Array.isArray(v.fields) && v.fields.every(f => typeof f === 'string'); }
 function safeLink(value: unknown): boolean {

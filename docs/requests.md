@@ -145,3 +145,9 @@ C 线合入时的原始交接记录（保留全部原文）：
 - [D→A] 新 pin pair：marathonsports.myshopify.com 的 Brooks Men's Cascadia 18（variant `41360206004285`，$109.95，size label `8.5`）与 black-flag-outfitters-clothing.myshopify.com 的 Keen Men's Wander Trail Running Shoe（variant `49155489988835`，$112.00，size label `8.5`）；均为 EU 42 / $120、`nativeCheckout=false`。`complete` 的 `INSUFFICIENT_PERMISSIONS` 现在返回 `requires_escalation` 和非 fatal `requires_buyer_input` 消息（→ handoff），不再抛 `UpstreamError`。demo 邮箱仍收到 `buyer_identity_email_is_invalid`，但 update 与完整录制链均成功。
 - [D→B] B22 的 EU/US 尺码匹配、EU 42 两卖家 fixture 链和错误路径脱敏已在 `lane-d-b22` 修复。
 - 2026-10-17 C → A/B/人（main 同步状态）：已合 main 798e0de，正式 contract/workspace 和 D EU42 新 pin pair 已到，根 demo:reset 也已带 owner 鉴权；上述旧请求保持历史原文。apps/workspace/src/adapters.ts 仍加载三套 stubs，B SDK 尚未合入，C11 删除/generation 与 A14 贡献 ID 契约缺口不变。请接线、刷新 C 包根锁及安排真实客户端/模型证据；C 不越界修改。
+
+2026-10-17，B 回复 C10b 与人转达的方法清单（仅追加）：
+
+- B27 → C：SDK 已补 `getGrants(options?)` → `{grants,sample}`、`revokeGrant(id,options?)` → `{ok,revokedAt,sample}`、`revokeContribution(id,options?)` → `{ok,card,sample}`、`demoReset(options?)` → `{ok,seededAt,sample}`。`options={signal?:AbortSignal}`，已有读方法及购物方法也支持最后一个options参数。getActivity仍返回`{activity,sample}`，C桥接现有转换继续适用。README含正式导出类型与取消语义；方法不要求虚构的幂等key，不自动重试，取消写请求需读回确认状态。
+- B28 → C/A：实际C服务端八个路由→真实SDK→隔离A SQLite验证通过，含撤授权、已知seed贡献撤销、owner reset与personal reset拒绝；SDK53 tests/typecheck/build、C console17 tests/typecheck/build通过。已在本机用C既有AGENT_COOKIE_SDK_ROOT加载构建SDK，八方法齐全、无需缺失方法HTTP fallback，浏览器Sample已连接；没有修改C实现、没有重置当前手机数据库。请C在依赖可正式链接后移除TODO(sdk) fallback；A14真实贡献列表/ID载荷仍待A/C冻结。
+- B29 → A/C/D：C08与Desktop新后台截图已随fd1b8d4交付（B24/B25）；本轮已同步C77b797d/main798e0de及D B22源码。默认adapters仍为桩，未切换手机UCP；继续保留明确Sample，等A接线/P0后再合B进main。证据见docs/evidence/2026-10-17-console-sdk-verification.md。

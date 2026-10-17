@@ -61,3 +61,27 @@ it('preserves a selected-merchant checkout receipt from A own Sample seed',async
   expect(receipts).toHaveLength(1);
   expect(receipts[0]).toMatchObject({agentId:selected.agentId,fields:['shipping_address']});
 });
+
+it('revokes a grant and a known source, and permits only the owner to reset isolated demo data',async()=>{
+  const root=fileURLToPath(new URL('../../../fixtures/',import.meta.url));
+  const {personals:[client],owner}=await setup(root);
+  const original=await owner.getMyCard();
+  await client.find({kind:'trail_shoes',public:{budget:'120'}},'console:find');
+  const before=await owner.getGrants();
+  expect(before.grants.length).toBeGreaterThan(0);
+  const target=before.grants[0];
+  expect(await owner.revokeGrant(target.id)).toMatchObject({ok:true,sample:true});
+  expect((await owner.getGrants()).grants.find(g=>g.id===target.id)).toMatchObject({status:'revoked',remainingMs:0});
+  await expect(owner.revokeGrant('nonexistent')).rejects.toMatchObject({status:404,code:'NOT_FOUND'});
+  // The public card has no contribution IDs yet: this isolated test knows its seed.
+  const contributions=JSON.parse(readFileSync(`${root}/contributions.json`,'utf8')) as Array<{id:string;field:string}>;
+  const shoe=contributions.find(c=>c.field==='shoe_size')!;
+  const revoked=await owner.revokeContribution(shoe.id);
+  expect(revoked.ok).toBe(true);
+  expect(revoked.card.card.some(c=>c.field==='shoe_size')).toBe(false);
+  await expect(client.demoReset()).rejects.toMatchObject({status:403,code:'SCOPE_DENIED'});
+  expect((await owner.getGrants()).grants.length).toBe(before.grants.length);
+  expect(await owner.demoReset()).toMatchObject({ok:true,sample:true});
+  expect((await owner.getGrants()).grants).toEqual([]);
+  expect(await owner.getMyCard()).toEqual(original);
+});
