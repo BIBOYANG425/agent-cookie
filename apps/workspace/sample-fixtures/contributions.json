@@ -1,0 +1,8 @@
+[
+  { "id": "c_0001", "userId": "u_sample", "agentId": "personal-photon", "field": "lang", "value": "zh", "basis": "stated", "createdAt": "2026-10-01T09:00:00.000Z" },
+  { "id": "c_0002", "userId": "u_sample", "agentId": "personal-photon", "field": "tone", "value": "简短", "basis": "stated", "createdAt": "2026-10-01T09:00:00.000Z" },
+  { "id": "c_0003", "userId": "u_sample", "agentId": "personal-photon", "field": "length", "value": "短", "basis": "stated", "createdAt": "2026-10-01T09:00:00.000Z" },
+  { "id": "c_0004", "userId": "u_sample", "agentId": "personal-photon", "field": "shoe_size", "value": "42", "basis": "stated", "createdAt": "2026-10-01T09:00:00.000Z" },
+  { "id": "c_0005", "userId": "u_sample", "agentId": "ucp:shoebacca.com", "field": "shoe_size", "value": "42", "basis": "observed", "createdAt": "2026-06-14T18:30:00.000Z" },
+  { "id": "c_0006", "userId": "u_sample", "agentId": "personal-photon", "field": "shipping_address", "value": "Sample User, 1234 Sample St, Apt 5, Los Angeles, CA 90024, US", "basis": "stated", "createdAt": "2026-10-01T09:05:00.000Z" }
+]
