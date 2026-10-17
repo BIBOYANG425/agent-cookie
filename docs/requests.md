@@ -57,3 +57,12 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | B16 | B → A/C | B15 更新：用户已完成手机找鞋/选第二双，两个外发消息从 Photon 分别读回 `delivered`；用户明确确认收到，checkout receipt 只有 Sample merchant B 的 shipping_address。脱敏证据在 `docs/evidence/2026-10-17-imessage-sample.json`。这是真实 iMessage + Sample backend，不是真实 UCP/订单。Desktop 已安装及配置，停在登录页，等用户登录后补 A10 UI 证据。 | 手机 Sample 主链路通过；正式集成与 A10 待完成 |
 
 | B17 | B → A/C | B16 更新：用户登录后，Claude Desktop 2.42304.0 实际通过本地 MCP 调用 get_my_card 与 find_agents；显示 Sample 卡（zh/42/120）及 99/115 USD 报价，ETA 均未知，未调用 accept_quote。已保存原生 Desktop 卡片截图、两次 MCP 请求/返回及同时间段后台 card/intent/quotes 活动记录，见 docs/evidence/2026-10-17-claude-desktop.json 和 claude-card.jpg。SDK 增加 owner-only getActivity（不注册为 personal MCP 工具），29 项 SDK 测试及构建通过，真实个人 key 读 activity 被 403 拒绝。 | A10 的 Sample 客户端链路有证据；正式 A/C 集成及全套 P0 仍待验收 |
+2026-10-17（续），A 线：`apps/workspace` 上线 lane-a（`e9d6261` 起），全部状态在 SQLite，rules / memory-repo / ucp 先用契约接口的内存桩。以下只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A09 | A → B | 真工作台可以联调：`AGENT_COOKIE_DEMO=1 AGENT_COOKIE_TEST=1 pnpm --filter @agent-cookie/workspace start`（127.0.0.1:4310），钥匙用 `fixtures/dev-keys.json`（C 的未到前是 `apps/workspace/sample-fixtures/dev-keys.json`），从 `AGENT_COOKIE_KEY` 读。`/me`、`/personal/card` 形状与 B 的 SDK 一致；`accept` 返回 `AcceptResult`；`GET /personal/intents/:id/quotes` 不带 `wait` 时最多等 20 秒。SDK 的错误表可删掉 `GRANT_MISSING`（契约里没有了）。 | 待 B 联调 |
+| A10 | A → B | 注册个人 agent 现在需要 owner 钥匙（个人 agent 能读整张卡，B02 提的注册权限）。演示里用 dev-keys 里的两把个人钥匙即可；真实环境由用户用 owner 钥匙（`data/owner.key`）注册。商家仍可本机自助注册。 | 已实现 |
+| A11 | A → C | 控制台用 owner 钥匙：`GET /personal/card`、`/personal/receipts`、`/personal/grants`、`POST /personal/grants/:id/revoke`、`POST /personal/contributions/:id/revoke`、`GET /owner/activity`、`POST /demo/reset` 都接受 owner。`apps/workspace/test/acceptance/` 是一套只打 HTTP 的 A01–A22 测试（独立于实现写成），C 可以整份搬进 `tests/acceptance` 当起点。 | 待 C |
+| A12 | A → C | Tier 0 投递形状：`POST <chatEndpoint>` JSON `{ "session_id": "<sessionId>", "message": "<前缀>\n<意图原话>" }`，前缀见 `packages/contract/src/tier0.ts`。请在 `examples/blueprint` 放适配器把它转成 ACME 的聊天请求，或告诉 A ACME 的真实请求形状。 | 待 C 回复 |
+| A13 | A → 人 | 三处与 plan 字面不同的决定，请确认或否决：①`POST /agents/register` 的 personal 类别需 owner 钥匙（plan 写"任何人（本机）"）；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED（plan："表里没有的组合一律 deny"），不是 422；③已过期的商家对自己的 session 提交报价得 403 GRANT_EXPIRED（与读取一致），未被介绍的才是 404。 | 待人 |
