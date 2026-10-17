@@ -22,8 +22,10 @@
   },
   "name": "@agent-cookie/channel-photon",
   "dependencies": {
-    "@photon-ai/api": "0.5.0",
+    "@agent-cookie/learn": "workspace:^",
     "@agent-cookie/sdk": "workspace:*",
-    "socket.io-client": "4.8.3"
+    "@photon-ai/api": "0.5.0",
+    "socket.io-client": "4.8.3",
+    "spectrum-ts": "12.11.0"
   }
 }

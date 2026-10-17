@@ -1,8 +1,29 @@
 {
-  "name": "@agent-cookie/learn", "version": "0.0.0", "private": true, "type": "module",
-  "engines": { "node": ">=22.12 <23" },
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "scripts": { "build": "tsc -p tsconfig.build.json", "typecheck": "tsc --noEmit", "test": "vitest run" },
-  "dependencies": { "zod": "3.25.76" },
-  "devDependencies": { "@types/node": "22.20.5", "typescript": "7.0.2", "vitest": "2.1.9" }
+  "name": "@agent-cookie/learn",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12 <23"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@photon-ai/otel": "3.8.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2",
+    "vitest": "2.1.9"
+  }
 }
