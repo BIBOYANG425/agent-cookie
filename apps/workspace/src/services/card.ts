@@ -1,10 +1,11 @@
 // Identity card: contributions → RulesApi.mergeCard. Recomputed on every read so time rules (180/365 days)
 // follow the workspace clock; cached in SQLite and written through to CARD.md.
 import {
-  allowedBases, canWrite, isField, purposeFields, type Basis, type Card, type Contribution, type Field,
+  allowedBases, canWrite, isField, isPrefField, PREF_FIELDS, purposeFields,
+  type Basis, type Candidate, type Card, type Contribution, type ContributionEvidence, type Field, type MergeOptions,
 } from "@agent-cookie/contract";
 import type { IntentRow, StoredContribution } from "../db.js";
-import { containsCardNumber, isTokenReference } from "../guards.js";
+import { containsCardNumber, isTokenReference, prefValueProblem } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { persist, persistStrict, writeMeta, type Ctx } from "./context.js";
@@ -20,13 +21,37 @@ export class CardService {
 
   get(userId: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
-    const merged = this.ctx.rules.mergeCard(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    const merged = this.mergePrefsStrictly(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
     // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
     const seed = this.ctx.store.seedContributions(userId);
     const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
     const card: Card = { ...merged, source: sample ? "sample" : "live" };
     this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
     return card;
+  }
+
+  /**
+   * RulesApi.mergeCard, with the learning rule for pref.*: a value is on the card only with two distinct sources or the
+   * user's own statement. mergeCard lets one newer source replace an older agreed value (the 42 → 43 rule for the
+   * original fields); for pref.* that single-source value is held back as a candidate and the merge re-run without it,
+   * so the value two sources agreed on stays.
+   */
+  private mergePrefsStrictly(all: Contribution[], opts: MergeOptions): Card {
+    const personal = new Set(opts.personalAgentIds);
+    const statedByUser = (field: string, value: string) => all.some((c) => !c.revokedAt && c.field === field && c.value === value
+      && c.basis === "stated" && personal.has(c.agentId));
+    let input = all;
+    let merged = this.ctx.rules.mergeCard(input, opts);
+    const held: Candidate[] = [];
+    for (let round = 0; round <= PREF_FIELDS.length; round++) {
+      const weak = merged.card.filter((f) => isPrefField(f.field) && f.sources.length < 2 && !statedByUser(f.field, f.value));
+      if (weak.length === 0) break;
+      for (const w of weak) held.push({ field: w.field, value: w.value, sources: w.sources, reason: "single_source" });
+      const drop = new Set(weak.map((w) => `${w.field}\u0000${w.value}`));
+      input = input.filter((c) => !drop.has(`${c.field}\u0000${c.value}`));
+      merged = this.ctx.rules.mergeCard(input, opts);
+    }
+    return held.length ? { ...merged, candidates: [...merged.candidates, ...held] } : merged;
   }
 
   /** Card values, overlaid with the public values of the intent (budget, deadline… never purpose fields). */
@@ -37,9 +62,11 @@ export class CardService {
       const intent = typeof intentOrId === "string" ? this.ctx.store.intent(intentOrId) : intentOrId;
       if (intent && intent.userId === userId) {
         for (const [k, v] of Object.entries(intent.public)) if (overridable(k) && typeof v === "string" && v !== "") out[k] = v;
-        // A size stated in this request (IntentRequest.public.size) is this intent's shoe_size.
-        const size = intent.public.size;
-        if (typeof size === "string" && size !== "" && !intent.public.shoe_size) out.shoe_size = size;
+        // A size, brand or color stated in this request is this intent's shoe_size / pref.brand / pref.color.
+        for (const [k, f] of [["size", "shoe_size"], ["brand", "pref.brand"], ["color", "pref.color"]] as const) {
+          const v = intent.public[k];
+          if (typeof v === "string" && v !== "" && !intent.public[f]) out[f] = v;
+        }
       }
     }
     return out;
@@ -50,9 +77,14 @@ export class CardService {
    * an unknown field, or a basis it may not use, is stored as its own "inferred" record: never on the card,
    * never visible to anyone else (A11). Model-supplied basis/field are parameters, not authority.
    */
-  async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis }): Promise<{ stored: Basis; contribution: StoredContribution }> {
+  async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: ContributionEvidence },
+    opts: { regenerate?: boolean } = {}): Promise<{ stored: Basis; contribution: StoredContribution }> {
     if (containsCardNumber(input.value)) fail("MISSING_FIELD", "card numbers are never stored");
     if (input.field === "payment_method" && !isTokenReference(input.value)) fail("MISSING_FIELD", "payment_method must be a provider token reference");
+    if (isPrefField(input.field)) {
+      const problem = prefValueProblem(input.value);
+      if (problem) fail("MISSING_FIELD", problem);
+    }
     let basis: Basis = input.basis;
     if (agent.role === "personal") {
       if (!isField(input.field)) fail("MISSING_FIELD", "unknown field");
@@ -60,13 +92,14 @@ export class CardService {
       basis = "inferred";
     }
     const c: StoredContribution = { id: newId("c"), userId, agentId: agent.agentId, field: input.field, value: input.value, basis, createdAt: this.ctx.clock.nowIso() };
+    if (input.evidence && Object.keys(input.evidence).length > 0) c.evidence = input.evidence;
     // Git first: an HTTP success always means the record is in the memory repo (unknown field names stay SQLite-only, A11).
     if (isField(c.field)) {
       await persistStrict(this.ctx, "contribution", agent.agentId, (r) => r.appendContribution(c as Contribution, writeMeta(this.ctx, agent.agentId, c)));
     }
     this.ctx.store.insertContribution(c);
     this.ctx.log({ event: "contribution.add", actor: agent.agentId, object: c.id, result: basis, reason: isField(c.field) ? c.field : "unknown_field" });
-    if (isField(c.field)) await this.regenerate(agent.agentId);
+    if (isField(c.field) && opts.regenerate !== false) await this.regenerate(agent.agentId);
     return { stored: basis, contribution: c };
   }
 
@@ -81,6 +114,11 @@ export class CardService {
     this.ctx.log({ event: "contribution.revoke", actor, object: id, result: "ok" });
     await this.regenerate(actor);
     return this.get(userId);
+  }
+
+  /** Regenerate CARD.md once after a batch of records written with `regenerate: false`. */
+  regenerateNow(actor: string): Promise<void> {
+    return this.regenerate(actor);
   }
 
   private async regenerate(actor: string): Promise<void> {

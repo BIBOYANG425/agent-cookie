@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allowedBases, autoFields, canRead, canWrite, purposeFields, purposesFor, readDecision, readMode } from "../src/policy.js";
-import { FIELDS } from "../src/types.js";
+import { FIELDS, isField, isPrefField, PREF_FIELDS, PREF_KEYS } from "../src/types.js";
 
 describe("policy (plan v0.3 §5)", () => {
   it("auto fields allow with any purpose or none", () => {
@@ -49,12 +49,34 @@ describe("policy (plan v0.3 §5)", () => {
 });
 
 describe("retail (UCP store proxies, 2026-10-17)", () => {
-  it("has exactly the shoe policy", () => {
+  it("has the shoe policy, plus the learned preferences (pref.*) as auto fields", () => {
     for (const f of FIELDS) {
-      expect(readMode("retail", f)).toBe(readMode("shoe", f));
+      expect(readMode("retail", f)).toBe(isPrefField(f) ? "auto" : readMode("shoe", f));
       expect(canWrite("retail", f)).toBe(canWrite("shoe", f));
       expect(purposesFor("retail", f)).toEqual(purposesFor("shoe", f));
     }
     expect(allowedBases("retail")).toEqual(allowedBases("shoe"));
+  });
+});
+
+describe("learned preferences (pref.*, 2026-10-17)", () => {
+  it("are exactly the whitelist, appended after the original eight fields", () => {
+    expect(PREF_FIELDS).toEqual(PREF_KEYS.map((k) => `pref.${k}`));
+    expect(FIELDS.slice(0, 8)).toEqual(["lang", "tone", "length", "shoe_size", "budget", "deadline", "shipping_address", "payment_method"]);
+    expect(FIELDS.slice(8)).toEqual(PREF_FIELDS);
+    for (const bad of ["pref.health", "pref.religion", "pref.income", "pref.partner", "pref.location", "pref.", "pref", "pref.brand.x"]) {
+      expect(isField(bad)).toBe(false);
+      expect(isPrefField(bad)).toBe(false);
+    }
+  });
+  it("only the user's own agents write them; shoe merchants cannot read them; retail reads them with the handshake", () => {
+    for (const f of PREF_FIELDS) {
+      expect(canWrite("personal", f)).toBe(true);
+      expect(canWrite("shoe", f)).toBe(false);
+      expect(canWrite("retail", f)).toBe(false);
+      expect(canRead("shoe", f)).toBe("deny");
+      expect(canRead("retail", f)).toBe("allow");
+    }
+    expect(autoFields("shoe")).toEqual(["lang", "tone", "length", "shoe_size", "budget", "deadline"]);
   });
 });

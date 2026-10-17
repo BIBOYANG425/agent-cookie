@@ -2,9 +2,10 @@
 //   RulesApi      → @agent-cookie/rules        (lane C)
 //   MemoryRepoApi → @agent-cookie/memory-repo  (lane C): git memory repo at MEMORY_REPO_PATH, seeded from fixtures/memory
 //   UcpApi        → @agent-cookie/ucp          (lane D): AGENT_COOKIE_UCP=fixture replays fixtures/ucp, live runs the ucp CLI
+//   LearnApi      → lane B (not landed yet): a stub that learns nothing
 // Unit tests inject in-memory stubs through createDeps(config, overrides); production never uses them.
 import { existsSync } from "node:fs";
-import type { MemoryRepoApi, RulesApi, UcpApi } from "@agent-cookie/contract";
+import type { LearnApi, MemoryRepoApi, RulesApi, UcpApi } from "@agent-cookie/contract";
 import { openMemoryRepo } from "@agent-cookie/memory-repo";
 import { rules } from "@agent-cookie/rules";
 import { createUcp } from "@agent-cookie/ucp";
@@ -16,6 +17,11 @@ export function loadRules(): RulesApi {
 
 export function loadMemoryRepoApi(): MemoryRepoApi {
   return { openMemoryRepo };
+}
+
+/** Until lane B's learner lands (docs/lane-b-learning-plan.md): no candidates, so nothing is learned. */
+export function loadLearn(): LearnApi {
+  return { extract: async () => [], extractFromConversation: async () => [] };
 }
 
 export function loadUcp(config: Config): UcpApi {

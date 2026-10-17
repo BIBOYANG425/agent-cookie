@@ -8,12 +8,13 @@ import type { IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
-import { parseAddress, parseBudgetCents, parseCount, pickSellers, type SearchConditions } from "../ucp-filter.js";
+import { parseAddress, parseBudgetCents, parseCount, pickSellers, terms, type SearchConditions } from "../ucp-filter.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
 import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { FieldService } from "./fields.js";
 import type { NoteService } from "./notes.js";
+import type { LearningService } from "./learning.js";
 import type { Introduction, SessionService } from "./sessions.js";
 
 const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
@@ -57,7 +58,7 @@ function messageText(messages: UcpMessage[]): string | undefined {
 
 export class CommerceService {
   constructor(private ctx: Ctx, private card: CardService, private sessions: SessionService, private fields: FieldService, private notes: NoteService,
-    private pinned: readonly string[] = []) {}
+    private pinned: readonly string[] = [], private learning?: LearningService) {}
 
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
@@ -112,6 +113,12 @@ export class CommerceService {
       const size = input.public.size ?? input.public.shoe_size ?? card.shoe_size;
       if (size) conditions.size = size;
       if (card.lang) conditions.lang = card.lang;
+      // Learned preferences on the card: brand and color rank (this request's own brand/color win); avoid excludes.
+      // A learned "avoid" never overrides what the user asks for now: a term this request names is not avoided this time.
+      const asked = `${input.text ?? ""} ${input.query ?? ""} ${Object.values(input.public).join(" ")}`.normalize("NFKC").toLowerCase();
+      const prefs = { brand: terms(input.public.brand ?? card["pref.brand"]), color: terms(input.public.color ?? card["pref.color"]),
+        avoid: terms(card["pref.avoid"]).filter((t) => !asked.includes(t)) };
+      if (prefs.brand.length || prefs.color.length || prefs.avoid.length) conditions.prefs = prefs;
       let offers: UcpOffer[] | undefined;
       try {
         offers = await this.ctx.ucp.searchOffers({ query, ...(intent.text ? { intentText: intent.text } : {}),
@@ -176,6 +183,8 @@ export class CommerceService {
         void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text);
       }
     }
+    // Intent history + learning (fire and forget; a learning failure is only logged).
+    this.learning?.afterIntent(personal, userId, intent);
     return { intentId: intent.id, expiresAt: intent.expiresAt, introduced: plans.length };
   }
 
@@ -226,7 +235,12 @@ export class CommerceService {
     const running = this.inflight.get(q.id);
     if (running) return running;
     if (q.result) return q.result;
-    const run = this.decide(personal, intent, q).finally(() => this.inflight.delete(q.id));
+    const run = this.decide(personal, intent, q).then((result) => {
+      // The user's choice is the strongest signal there is: learn from it once, whatever the checkout's outcome —
+      // unless policy blocked it (revoked merchant, expired offer): then nothing was chosen.
+      if (result.status !== "blocked") this.learning?.afterIntent(personal, userId, intent, this.ctx.store.quote(q.id) ?? q);
+      return result;
+    }).finally(() => this.inflight.delete(q.id));
     this.inflight.set(q.id, run);
     return run;
   }

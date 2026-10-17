@@ -45,6 +45,10 @@ describe("P1: an old database upgrades in place", () => {
     expect(cols("contributions")).toContain("origin");
     expect(cols("quotes")).toEqual(expect.arrayContaining(["source", "size_note"]));
     expect(cols("intents")).toContain("query");
+    // v4: learned-contribution evidence, the learning setting and the observation queue
+    expect(cols("contributions")).toContain("evidence");
+    expect(cols("observation_turns")).toEqual(["agent_id", "conversation_id", "seq", "text", "at"]);
+    expect(cols("settings")).toEqual(["user_id", "key", "value"]);
     // v3: UCP store proxies are retail, with no fixed kind
     expect(store.agent("ucp:old.example")).toMatchObject({ category: "retail", capabilities: [] });
     store.close();

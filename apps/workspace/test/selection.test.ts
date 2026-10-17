@@ -3,7 +3,7 @@
 // the card's) and the card's budget only rank. At most N distinct sellers. Size mismatch → sizeNote.
 import { describe, expect, it } from "vitest";
 import type { UcpOffer } from "@agent-cookie/contract";
-import { isEligible, parseCount, pickSellers, sizeMatches, type SearchConditions } from "../src/ucp-filter.js";
+import { isEligible, mentions, parseCount, pickSellers, sizeMatches, terms, type SearchConditions } from "../src/ucp-filter.js";
 
 let seq = 0;
 const offer = (seller: string, size: string | null, price: number, extra: Partial<UcpOffer> = {}): UcpOffer => ({
@@ -96,3 +96,45 @@ describe("size is soft, the stated budget is hard", () => {
     for (const bad of ["0", "6", "2.5", "two", "", "-1"]) expect(parseCount(bad, 5)).toBeUndefined();
   });
 });
+
+describe("learned preferences in ranking (pref.brand / pref.color rank, pref.avoid excludes)", () => {
+  const brands = ["Brooks", "Hoka", "Saucony", "Altra", "Nike"];
+  const colors = ["Black", "Blue", "Red", "Green"];
+  const shop = (i: number) => offer(`s${i % 6}.example`, i % 3 ? "US 8.5" : "US 10", 5000 + ((i * 977) % 9000), {
+    productTitle: `${brands[i % brands.length]} Runner ${i % 4}`, variantTitle: `${colors[(i * 7) % colors.length]} / ${i % 3 ? "US 8.5" : "US 10"}` });
+  const offers = Array.from({ length: 40 }, (_, i) => shop(i));
+  const prefSets = [
+    { brand: ["hoka"], color: [], avoid: ["nike"] },
+    { brand: ["brooks", "altra"], color: ["blue"], avoid: [] },
+    { brand: [], color: ["red"], avoid: ["saucony", "black"] },
+  ];
+  it.each(prefSets.map((p, i) => [i, p] as const))("prefs %i: avoided terms never appear; a seller offering the brand is quoted in it", (_, prefs) => {
+    const q: SearchConditions = { shipsTo: "US", size: "42", prefs };
+    const picked = pickSellers(offers, q, 4);
+    for (const { offer: o } of picked) for (const t of prefs.avoid) expect(mentions(o, t)).toBe(false);
+    const score = (x: UcpOffer) => Number(prefs.brand.some((t) => mentions(x, t))) + Number(prefs.color.some((t) => mentions(x, t)));
+    for (const { offer: o } of picked) {
+      // size first; within the wanted size, the seller's offer matching the most preferences (brand, color) is quoted
+      const sameSize = offers.filter((x) => x.sellerDomain === o.sellerDomain && isEligible(x, q) && sizeMatches(x.sizeOptions, "42"));
+      if (sameSize.length) {
+        expect(sizeMatches(o.sizeOptions, "42")).toBe(true);
+        expect(score(o)).toBe(Math.max(...sameSize.map(score)));
+      }
+    }
+  });
+  it("terms split on punctuation only (and/和 are parts of names); matching is whole-word for Latin terms", () => {
+    expect(terms("Brooks, Hoka")).toEqual(["brooks", "hoka"]);
+    expect(terms("Brooks、Hoka；Altra")).toEqual(["brooks", "hoka", "altra"]);
+    expect(terms("red / blue|green")).toEqual(["red", "blue", "green"]);
+    expect(terms("Dolce and Gabbana, 和服")).toEqual(["dolce and gabbana", "和服"]);
+    expect(terms(undefined)).toEqual([]);
+    // a Latin term next to CJK letters, and typographic apostrophes, still match (SEMA3)
+    expect(mentions(offer("z.example", "US 9", 1000, { productTitle: "Nike跑鞋 黑色" }), "nike")).toBe(true);
+    expect(mentions(offer("z.example", "US 9", 1000, { productTitle: "Men\u2019s Trail" }), "men's trail")).toBe(true);
+    const o = offer("x.example", "US 9", 1000, { productTitle: "Shredder Trail", variantTitle: "Redwood / US 9" });
+    expect(mentions(o, "red")).toBe(false);
+    expect(mentions(o, "redwood")).toBe(true);
+    expect(mentions(offer("y.example", "US 9", 1000, { productTitle: "跑鞋 黑色" }), "黑色")).toBe(true);
+  });
+});
+
