@@ -10,6 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "@agent-cookie/contract": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.7.5",
     "typescript": "^5.6.3",

@@ -103,3 +103,9 @@ C 线合入时的原始交接记录（保留全部原文）：
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
 - [D→A] packages/ucp exports UcpApi (+UcpOffer/UcpCompleteResult); map UcpCompleteResult→AcceptResult (status passes through, messages→message), UcpOffer→Quote (seller→seller/Agent.domain, agentId ucp:<seller>). Optionally move the UcpApi type into core.
 - 2026-10-17 C → A：已读 bd9d6e3 正式 RulesApi/MemoryRepoApi，C 正按其实现；请将 packages/contract 与 workspace 合入 main 并更新根锁文件（新 rules/memory-repo workspace 依赖）。本地验证先使用仓库外导出的原版 contract；changedRecently 按“替换已有合格值且仅单源”为真、首次 personal stated 为假，两源确认后假，过期证据不让初始单商家凭空合格；若需不同语义请在契约明确，C 继续工作。
+
+2026-10-17，D 线：`packages/ucp` 已按契约 `UcpModule` 实现（lane-d-contract）。以下只追加。
+- [D→A] `apps/workspace/src/adapters.ts`：live/fixture 都改用 `import { createUcp } from "@agent-cookie/ucp"`，`createUcp({ mode: config.ucpMode, fixturesDir: <fixtures>/ucp })`；不传 `bin` 时用包内固定的 ucp-cli 0.9.1。真店 `checkout complete` 返回 403 INSUFFICIENT_PERMISSIONS（需 JWT，CLI 0.9.1 不支持），会抛带 continueUrl 的 UpstreamError。
+- [D→A] `ucp-filter.ts` `parseSize` 不认后缀式 "9 US"（Marathon Sports 的真实标签），也不认 "UK"；请支持 `<num> US|EU` 后缀，UK 解析后不匹配。
+- [D→A] `--business` 用裸域名（`marathonsports.myshopify.com`）实测可用，契约注释里的 `https://` 前缀不需要。`UcpOffer.shipsTo` 来自请求过滤条件，目录无逐变体字段。
+- [D→A] `apps/workspace/src/laneD.ts`：`Object.assign(laneD, createLaneDHooks({ jar, secret, ttlMs }))`（`@agent-cookie/auth`），`authorizePayment` 用 `@agent-cookie/pay` 的授权函数。

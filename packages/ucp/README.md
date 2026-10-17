@@ -1,21 +1,27 @@
 # `@agent-cookie/ucp`
 
-Small TypeScript adapter over the pinned `@shopify/ucp-cli` 0.9.1 subprocess. `createUcp()` selects the live CLI by default; set `AGENT_COOKIE_UCP=fixture` to use the recorded envelopes in `fixtures/ucp/`. The wrapper uses the global catalog for US/USD shoe search, applies local availability, currency, budget, and size checks, and keeps the first match for up to two distinct sellers.
+Implements the frozen `UcpModule` from `@agent-cookie/contract` over the exact-pinned `@shopify/ucp-cli` 0.9.1 subprocess. The adapter normalizes catalog responses only; the workspace owns currency, availability, shipping, budget, and size filtering.
 
-## Environment and use
+## Use and environment
 
-- `AGENT_COOKIE_UCP=fixture` selects fixture mode; otherwise the adapter uses the live CLI.
-- `AGENT_COOKIE_UCP_FIXTURES` overrides the default repo-root `fixtures/ucp` directory.
-- `OPT_OUT_INSTRUMENTATION=true` is set for the CLI subprocess. Live mode initializes the local `agent` profile lazily without forcing or activating it.
+```ts
+import { createUcp } from "@agent-cookie/ucp";
 
-Run tests and typecheck with `pnpm --filter @agent-cookie/ucp test` and `pnpm --filter @agent-cookie/ucp typecheck`. Record a new safe sample with `pnpm --filter @agent-cookie/ucp record`; optional arguments are `-- --size 9 --budget 200`.
+const ucp = createUcp({ mode: "fixture" });
+```
 
-## Fixtures and recording safety
+- `mode` is required: `"live"` runs the pinned CLI; `"fixture"` reads recorded JSON envelopes.
+- `mode` is explicit; use `"fixture"` in the caller to select fixture mode.
+- `AGENT_COOKIE_UCP_FIXTURES` overrides the default repo-root `fixtures/ucp` directory when `fixturesDir` is not provided.
+- In live mode, omit `bin` to resolve the `ucp` executable from the pinned dependency and run it with Node. A supplied `bin` is executed directly. `timeoutMs` defaults to 60 seconds.
+- The subprocess receives `OPT_OUT_INSTRUMENTATION=true` and initializes the local `agent` profile once per process.
 
-Fixtures retain raw CLI envelopes, with token-like values scrubbed, under operation names such as `catalog-search.global.json`, `cart-create.<seller>.json`, and `checkout-complete.<seller>.json`. Additional search pages use `catalog-search.p2.json`; `pinned.json` records the two rehearsal offers. The recording script uses a demo email and Ferry Building address, never sends `payment.instruments`, and skips `checkout complete` for any variant marked `eligible.native_checkout`.
+Run checks with `pnpm --filter @agent-cookie/ucp test` and `pnpm --filter @agent-cookie/ucp typecheck`. Record a new sample with `pnpm --filter @agent-cookie/ucp record`; optional arguments are `-- --size 9 --budget 200`.
 
-The 0.9.1 schemas require `line_items` on checkout create/update even when create also receives `cart_id`; update also requires fulfillment `line_item_ids`. Complete requires a `payment` object, so the wrapper sends an empty object only. Profile initialization does not accept `--profile`; normal operations do. These CLI-specific differences are handled without supplying payment instruments.
+## Fixtures and safety
 
-## Limits
+Fixture names follow `<operation>.<business-or-global>.json`, for example `catalog-search.global.json`, `cart-create.marathonsports.myshopify.com.json`, and `checkout-complete.marathonsports.myshopify.com.json`; generic `<operation>.json` files are fallback fixtures. Raw envelopes are scrubbed for token-like values, including `key=` query parameters. `pinned.json` records the selected rehearsal offers.
 
-The adapter requests US shipping and rechecks availability, USD pricing, budget, and size locally; the CLI does not expose per-variant shipping eligibility. A missing delivery estimate remains unknown rather than being inferred. Checkout completion may return a merchant handoff or fail; the wrapper does not provide payment credentials or guarantee an order. The recorded merchants currently require buyer authentication for completion, so their complete calls return `INSUFFICIENT_PERMISSIONS` and no order is placed.
+The recorder selects two distinct sellers with USD, available, requested-size variants within budget. It never sends `payment.instruments` and skips `checkout complete` for any selected variant with `nativeCheckout: true`. Existing recorded fixtures are committed; the recording command is not part of the test suite.
+
+The 0.9.1 CLI needs `cart_id` and `line_items` in checkout-create input; checkout update receives the checkout ID positionally plus `line_items` and fulfillment `line_item_ids`; complete receives the ID positionally and an empty `payment` object. `--business` uses the bare seller domain. Destination updates may return a bare store origin, so the adapter preserves a better prior continuation URL. The CLI cannot authenticate to stores that require a JWT to complete checkout; those failures throw contract `UpstreamError` with the best available continuation URL.
