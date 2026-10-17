@@ -196,13 +196,12 @@ describe("intent public guard is word-based", () => {
 });
 
 describe("robustness", () => {
-  it("a failure while preparing an intent (handshake signing error) leaves no intent, session or grant behind", async () => {
+  it("a failure while preparing an intent (lane D JAR_LOCKED) leaves no intent, session or grant behind", async () => {
     const h = await harness();
-    // JAR_LOCKED falls back to an unsigned handshake (lane-d.test.ts); any other signing failure aborts the intent.
-    h.deps.laneD.signHandshake = async () => { throw new WorkspaceError("UPSTREAM_ERROR"); };
+    h.deps.laneD.signHandshake = async () => { throw new WorkspaceError("JAR_LOCKED"); };
     try {
       const r = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } }, { "idempotency-key": "jar" });
-      expect(r.body.error.code).toBe("UPSTREAM_ERROR");
+      expect(r.body.error.code).toBe("JAR_LOCKED");
       expect((await h.get("/personal/grants", KEYS.personal)).body.grants).toEqual([]);
       expect(h.deps.store.db.prepare("SELECT COUNT(*) AS n FROM intents").get()).toEqual({ n: 0 });
     } finally {

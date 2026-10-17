@@ -1,27 +1,33 @@
 // Outbound POSTs to merchants: callbacks ({type:"introduce"|"accepted"}) and Tier 0 chat deliveries.
 // Retries with backoff, never throws, never blocks other merchants (plan §4 T7). Failures go to activity.
-import {
-  buildTier0Prefix, renderTier0Prefix, TAP_CAPABILITY,
-  type Agent, type Field, type Handshake, type MerchantCallback, type TapTag,
-} from "@agent-cookie/contract";
+import { buildTier0Prefix, renderTier0Prefix, type Agent, type Field, type Handshake, type MerchantCallback } from "@agent-cookie/contract";
 import type { Log } from "../activity.js";
-import { isJarLocked, type LaneDHooks } from "../laneD.js";
+import { isJarLocked, type LaneDHooks, type TapTag } from "../laneD.js";
 
 export interface PostResult { ok: boolean; attempts: number; status?: number }
 
 const BACKOFF_MS = [200, 800, 2000];
 
-/** Extra headers computed per attempt (TAP signatures carry a fresh nonce and time on every try). */
-export type HeaderSource = () => Promise<Record<string, string>>;
-
-export async function postJson(url: string, body: unknown, opts: { timeoutMs: number; attempts: number }, extra?: HeaderSource): Promise<PostResult> {
+/** `sign` runs once per attempt (TAP signatures carry a fresh nonce and time); if it fails the request goes unsigned. */
+export async function postJson(url: string, body: unknown, opts: {
+  timeoutMs: number;
+  attempts: number;
+  sign?: () => Promise<Record<string, string> | undefined>;
+}): Promise<PostResult> {
   let status: number | undefined;
   for (let i = 0; i < opts.attempts; i++) {
     try {
-      const signed = extra ? await extra() : {};
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (opts.sign) {
+        try {
+          Object.assign(headers, await opts.sign());
+        } catch {
+          // unsigned; Delivery logs the reason
+        }
+      }
       const res = await fetch(url, {
         method: "POST",
-        headers: { ...signed, "content-type": "application/json" },
+        headers,
         body: JSON.stringify(body),
         redirect: "manual",
         signal: AbortSignal.timeout(opts.timeoutMs),
@@ -43,17 +49,13 @@ export class Delivery {
   constructor(private opts: { timeoutMs: number; attempts: number }, private log: Log, private laneD: LaneDHooks = {}) {}
 
   /**
-   * TAP (lane D): a merchant listing TAP_CAPABILITY gets every request signed with the session's pairwise jar key.
-   * Locked jar or no lane D → the request goes unsigned (logged); the merchant decides whether to accept it.
+   * TAP (lane D): with the jar wired, every request to a merchant is signed with the session's pairwise key
+   * (keyId = the handshake kid). Signing failure (the unlock expired) → the request goes unsigned, logged.
    */
-  private tapHeaders(agent: Agent, url: string, sessionId: string, tag: TapTag): HeaderSource | undefined {
-    if (!agent.capabilities.includes(TAP_CAPABILITY)) return undefined;
+  private tapSigner(agent: Agent, url: string, sessionId: string, tag: TapTag): (() => Promise<Record<string, string>>) | undefined {
+    const sign = this.laneD.signTapRequest;
+    if (!sign) return undefined;
     return async (): Promise<Record<string, string>> => {
-      const sign = this.laneD.signTapRequest;
-      if (!sign) {
-        this.safeLog({ event: "tap.sign", actor: "workspace", object: agent.agentId, result: "unsigned", reason: "lane D not configured" });
-        return {};
-      }
       const u = new URL(url);
       try {
         // Same convention as lane D's merchant verifier: @path is what the merchant sees as req.url (path + query).
@@ -89,7 +91,8 @@ export class Delivery {
   callback(agent: Agent, body: MerchantCallback): Promise<PostResult> {
     if (!agent.callbackUrl) return Promise.resolve({ ok: false, attempts: 0 });
     const tag: TapTag = body.type === "accepted" ? "agent-payer-auth" : "agent-browser-auth";
-    return this.track(postJson(agent.callbackUrl, body, this.opts, this.tapHeaders(agent, agent.callbackUrl, body.sessionId, tag)).then((r) => {
+    const sign = this.tapSigner(agent, agent.callbackUrl, body.sessionId, tag);
+    return this.track(postJson(agent.callbackUrl, body, { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: `callback.${body.type}`, actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;
@@ -108,8 +111,8 @@ export class Delivery {
     if (!agent.chatEndpoint) return Promise.resolve({ ok: false, attempts: 0 });
     const prefix = renderTier0Prefix(buildTier0Prefix(handshake, agent.category, values));
     const message = text ? `${prefix}\n${text}` : prefix;
-    const tap = this.tapHeaders(agent, agent.chatEndpoint, handshake.sessionId, "agent-browser-auth");
-    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message }, this.opts, tap).then((r) => {
+    const sign = this.tapSigner(agent, agent.chatEndpoint, handshake.sessionId, "agent-browser-auth");
+    return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message }, { ...this.opts, ...(sign ? { sign } : {}) }).then((r) => {
       this.safeLog({ event: "tier0.deliver", actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;

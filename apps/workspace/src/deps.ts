@@ -100,6 +100,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     async close() {
       await delivery.settle();
       store.close();
+      laneD.lock?.();
     },
   };
 }

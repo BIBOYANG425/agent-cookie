@@ -1,6 +1,6 @@
-// Lane D wiring: the workspace holds the jar (packages/auth), unlocks it through POST /personal/unlock, signs
-// handshakes, and TAP-signs every outbound request to a merchant listing TAP_CAPABILITY. Verified with lane D's
-// own verifier (verifyTapRequest), not by re-deriving the signature here.
+// Lane D wiring, beyond laneD-wire.test.ts (lane D's own): browse vs payer tags on a merchant quote's accept, the
+// unsigned fallback when the unlock lapses between introduction and accept (logged), JWKS scoped to real sessions.
+// Verified with lane D's own verifier (verifyTapRequest), not by re-deriving the signature here.
 import { randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { createServer, type IncomingHttpHeaders } from "node:http";
@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUnlockToken, verifyTapRequest, type PublicJwk } from "@agent-cookie/auth";
-import { TAP_CAPABILITY } from "@agent-cookie/contract";
 import { harness, KEYS } from "./harness.js";
 
 interface Hit { path: string; headers: IncomingHttpHeaders; body: any }
@@ -51,12 +50,12 @@ const verify = (hit: Hit, jwk: PublicJwk, host: string, expectedTag: "agent-brow
     path: hit.path, jwk, nowSec: Math.floor(Date.now() / 1000), seenNonces: new Set(), expectedTag });
 
 describe("lane D wiring", () => {
-  it("unlocked jar: handshake is signed and TAP merchants get verifiable browse and payer signatures", async () => {
+  it("unlocked jar: handshake is signed and the merchant gets verifiable browse and payer signatures", async () => {
     const h = await laneDHarness();
     const rec = await recorder();
     closers.push(rec.close);
     expect((await h.unlock()).status).toBe(200);
-    const m = await h.registerMerchant({ capabilities: ["trail_shoes", TAP_CAPABILITY], callbackUrl: `${rec.base}/cb` });
+    const m = await h.registerMerchant({ callbackUrl: `${rec.base}/cb?src=t` });
     const { intentId } = await h.intent();
     await h.deps.delivery.settle();
 
@@ -75,36 +74,25 @@ describe("lane D wiring", () => {
     expect(verify(accepted, jwk, host, "agent-payer-auth")).toMatchObject({ ok: true, tag: "agent-payer-auth" });
   });
 
-  it("locked jar: the introduction still goes out, unsigned, and the fallback is logged", async () => {
+  it("wired but locked: the intent fails with JAR_LOCKED; if the unlock lapses before accept, the callback goes unsigned (logged)", async () => {
     const h = await laneDHarness();
     const rec = await recorder();
     closers.push(rec.close);
-    await h.registerMerchant({ capabilities: ["trail_shoes", TAP_CAPABILITY], callbackUrl: `${rec.base}/cb` });
-    const r = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } });
-    expect(r.status).toBe(201);
-    await h.deps.delivery.settle();
-    const intro = rec.hits.find((x) => x.body?.type === "introduce")!;
-    expect(intro.body.handshake.sig).toBeUndefined();
-    expect(intro.headers["signature-input"]).toBeUndefined();
-    const events = (await h.get("/owner/activity?limit=200", KEYS.owner)).body.events as Array<{ event: string; result: string; reason: string }>;
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({ event: "handshake.sign", result: "unsigned", reason: "JAR_LOCKED" }),
-      expect.objectContaining({ event: "tap.sign", result: "unsigned", reason: "JAR_LOCKED" }),
-    ]));
-  });
+    const m = await h.registerMerchant({ callbackUrl: `${rec.base}/cb` });
+    const locked = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } });
+    expect({ status: locked.status, code: locked.body.error?.code }).toEqual({ status: 403, code: "JAR_LOCKED" });
+    expect(rec.hits).toEqual([]);
 
-  it("merchants without the tap capability get no signature headers", async () => {
-    const h = await laneDHarness();
-    const rec = await recorder();
-    closers.push(rec.close);
     await h.unlock();
-    await h.registerMerchant({ callbackUrl: `${rec.base}/cb` });
-    await h.intent();
+    const { intentId } = await h.intent();
+    const quote = await h.post("/agent/quotes", m.key, { intentId, text: "Sample", price: 9900, etaDate: null });
+    h.deps.laneD.lock!();
+    expect((await h.post(`/personal/quotes/${quote.body.id}/accept`, KEYS.personal)).body.status).toBe("handoff");
     await h.deps.delivery.settle();
-    const intro = rec.hits.find((x) => x.body?.type === "introduce")!;
-    expect(intro.body.handshake.sig).toEqual(expect.any(String));
-    expect(intro.headers["signature-input"]).toBeUndefined();
-    expect(intro.headers.signature).toBeUndefined();
+    const accepted = rec.hits.find((x) => x.body?.type === "accepted")!;
+    expect(accepted.headers["signature-input"]).toBeUndefined();
+    const events = (await h.get("/owner/activity?limit=200", KEYS.owner)).body.events as Array<{ event: string; result: string; reason: string }>;
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ event: "tap.sign", result: "unsigned", reason: "JAR_LOCKED" })]));
   });
 
   it("unlock rejects bad and replayed tokens; JWKS answers only for sessions that exist", async () => {
@@ -115,10 +103,16 @@ describe("lane D wiring", () => {
     expect((await h.get("/.well-known/agent-cookie-jwks.json?sessionId=nonexistent")).body).toEqual({ keys: [] });
   });
 
-  it("without lane D configured: unlock is 404, JWKS empty, handshakes unsigned", async () => {
+  it("without lane D configured: no handshake signature and no TAP headers", async () => {
     const h = await harness();
-    const res = await h.app.request("/personal/unlock", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    expect(res.status).toBe(404);
-    expect((await h.get("/.well-known/agent-cookie-jwks.json?sessionId=x")).body).toEqual({ keys: [] });
+    const rec = await recorder();
+    closers.push(rec.close);
+    await h.registerMerchant({ callbackUrl: `${rec.base}/cb` });
+    await h.intent();
+    await h.deps.delivery.settle();
+    const intro = rec.hits.find((x) => x.body?.type === "introduce")!;
+    expect(intro.body.handshake.sig).toBeUndefined();
+    expect(intro.headers["signature-input"]).toBeUndefined();
+    expect(intro.headers.signature).toBeUndefined();
   });
 });

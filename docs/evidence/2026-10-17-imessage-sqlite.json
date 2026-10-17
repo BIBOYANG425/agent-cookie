@@ -1,0 +1,34 @@
+{
+  "checkedAt": "2026-10-17T20:44:27.015Z",
+  "backend": "A SQLite bd9d6e3 with C fixture identities and A StubUcp",
+  "userConfirmed": "收到两条报价和交接链接",
+  "userConfirmationScope": "This turn, after switching the runtime from workspace-fake to apps/workspace",
+  "totalPersistedMessages": 4,
+  "deliveries": [
+    {
+      "phase": "sent",
+      "status": "delivered",
+      "createdAt": "2026-10-17T20:42:13.058Z",
+      "sampleLabelPresent": true,
+      "quotedPrices": [
+        "119.95",
+        "109.99"
+      ],
+      "handoffLabel": false,
+      "missingAddressNotice": false,
+      "noPaymentNotice": false
+    },
+    {
+      "phase": "sent",
+      "status": "delivered",
+      "createdAt": "2026-10-17T20:42:20.559Z",
+      "sampleLabelPresent": true,
+      "quotedPrices": [],
+      "handoffLabel": true,
+      "missingAddressNotice": true,
+      "noPaymentNotice": true
+    }
+  ],
+  "credentialsAndContactDetailsOmitted": true,
+  "realOrdersOrPayments": false
+}

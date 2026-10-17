@@ -40,7 +40,7 @@ export interface Config {
   jarKek?: string;
   unlockSecret?: string;
   jarPath?: string;
-  jarUnlockTtlMs: number;
+  unlockTtlMs: number;
 }
 
 function int(v: string | undefined, dflt: number, min: number, max: number): number {
@@ -57,6 +57,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!existsSync(resolve(fixturesDir, "users.json"))) throw new Error(`no fixtures at ${fixturesDir} (set FIXTURES_DIR)`);
   if (env.AGENT_COOKIE_UCP !== undefined && env.AGENT_COOKIE_UCP !== "live" && env.AGENT_COOKIE_UCP !== "fixture") {
     throw new Error("AGENT_COOKIE_UCP must be live or fixture");
+  }
+  const jarKek = env.AGENT_COOKIE_JAR_KEK || undefined;
+  const unlockSecret = env.AGENT_COOKIE_UNLOCK_SECRET || undefined;
+  if ((jarKek === undefined) !== (unlockSecret === undefined)) {
+    throw new Error("AGENT_COOKIE_JAR_KEK and AGENT_COOKIE_UNLOCK_SECRET must be set together");
+  }
+  if (jarKek && Buffer.from(jarKek, "base64url").length !== 32) {
+    throw new Error("AGENT_COOKIE_JAR_KEK must decode to exactly 32 bytes");
   }
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   return {
@@ -76,10 +84,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     callbackRetries: int(env.CALLBACK_RETRIES, 3, 1, 10),
     resetWaitMs: int(env.RESET_WAIT_MS, 10_000, 0, 120_000),
     sqliteBusyTimeoutMs: int(env.SQLITE_BUSY_TIMEOUT_MS, 5000, 0, 60_000),
-    ...(env.AGENT_COOKIE_JAR_KEK ? { jarKek: env.AGENT_COOKIE_JAR_KEK } : {}),
-    ...(env.AGENT_COOKIE_UNLOCK_SECRET ? { unlockSecret: env.AGENT_COOKIE_UNLOCK_SECRET } : {}),
+    ...(jarKek ? { jarKek } : {}),
+    ...(unlockSecret ? { unlockSecret } : {}),
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
-    jarUnlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
+    unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
     ...(env.SENTRY_DSN ? { sentryDsn: env.SENTRY_DSN } : {}),
     sentryEnvironment: env.SENTRY_ENVIRONMENT ?? (env.AGENT_COOKIE_DEMO === "1" ? "demo" : "development"),
     sentryTracesSampleRate: rate(env.SENTRY_TRACES_SAMPLE_RATE, 1),
