@@ -90,8 +90,8 @@ export const PINNED = {
   offers: PINNED_RAW.offers,
   sellers: PINNED_RAW.offers.map((o) => o.seller).sort(),
   variantIds: PINNED_RAW.offers.map((o) => o.variantId).sort(),
-  /** The recording's own parameters as a trail_shoes intent body. */
-  intent: { kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: `US ${PINNED_RAW.size}` } },
+  /** The recording's own parameters as a trail_shoes intent body (since lane D's B22 re-recording: EU 42 / $120, the card's own size). */
+  intent: { kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: PINNED_RAW.size } },
 } as const;
 
 /** Every seller.domain in the recorded catalog page. */

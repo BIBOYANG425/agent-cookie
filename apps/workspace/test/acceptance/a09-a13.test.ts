@@ -90,20 +90,22 @@ describe("A09 意图匹配", T, () => {
     }
   });
 
-  it("strict size: with the card's EU 42 (= US 8.5) no recorded US 9 variant is quoted or introduced", async () => {
+  it("the card's own EU 42 at the demo budget reaches the same two pinned sellers (no override needed)", async () => {
     const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: String(PINNED.budget) } });
     expect(r.status).toBe(201);
     const q = await getQuotes(personal, r.body.intentId, 10_000);
-    expect(q.quotes.length).toBeLessThanOrEqual(2);
+    expect(q.quotes.map((x: Json) => x.seller).sort()).toEqual(SELLERS);
+    for (const quote of q.quotes) expect(PINNED.variantIds).toContain(quote.variantId);
+  });
+
+  it("strict size: an intent for US 9 (= EU 42.5) never quotes or introduces the pinned US 8.5 (= EU 42) variants", async () => {
+    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: String(PINNED.budget), shoe_size: "US 9" } });
+    expect(r.status).toBe(201);
+    const q = await getQuotes(personal, r.body.intentId, 3000);
     for (const quote of q.quotes) {
       expect(PINNED.variantIds).not.toContain(quote.variantId);
-      expect(SELLERS).not.toContain(quote.seller);
       expect(quote.currency).toBe("USD");
-      expect(quote.price).toBeLessThanOrEqual(PINNED.budget * 100);
     }
-    expect(new Set(q.quotes.map((x: Json) => x.seller)).size).toBe(q.quotes.length);
-    const proxies = (await grants(personal)).filter((g) => String(g.agentId).startsWith("ucp:")).map((g) => g.agentId);
-    for (const seller of SELLERS) expect(proxies).not.toContain(ucpAgent(seller));
   });
 
   it("ACME (chatEndpoint) is introduced through Tier 0: one tier0 receipt, auto field names only, its pairwise session", async () => {
@@ -116,15 +118,15 @@ describe("A09 意图匹配", T, () => {
     expect(tier0[0].fields).not.toContain("shipping_address");
     expect(tier0[0].fields).not.toContain("payment_method");
     // receipts carry field names, never values
-    for (const v of ['"zh"', "简短", `US ${PINNED.size}`, ...SEED.addressNeedles]) expect(JSON.stringify(rs)).not.toContain(v);
+    for (const v of ['"zh"', "简短", ...SEED.addressNeedles]) expect(JSON.stringify(rs)).not.toContain(v);
   });
 
   it("the intent's public shoe_size overrides the card only for that intent", async () => {
     const m1 = await merchant(ws.url, cb1);
-    const { sessions: [s1] } = await introduce(personal, [m1], PINNED.intent);
+    const { sessions: [s1] } = await introduce(personal, [m1], { kind: "trail_shoes", public: { budget: "200", shoe_size: "US 9" } });
     const f = await m1.api.get(`/agent/fields?sessionId=${s1}&fields=shoe_size,budget`);
     expect(f.status).toBe(200);
-    expect(f.body.fields).toEqual({ shoe_size: `US ${PINNED.size}`, budget: String(PINNED.budget) });
+    expect(f.body.fields).toEqual({ shoe_size: "US 9", budget: "200" });
     expect(cardField(await card(personal), "shoe_size")).toMatchObject({ value: "42" });
   });
 

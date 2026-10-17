@@ -26,7 +26,7 @@ function expectNotSuccess(body: Json): void {
   expect(body.orderId).toBeUndefined();
 }
 
-describe("A18 UCP 失败路径（录制：complete → INSUFFICIENT_PERMISSIONS）", T, () => {
+describe("A18 UCP 失败路径（录制：complete → requires_escalation / INSUFFICIENT_PERMISSIONS）", T, () => {
   let personal: Api;
 
   beforeEach(async () => {

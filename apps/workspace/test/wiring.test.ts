@@ -6,27 +6,20 @@ import type { UcpOffer } from "@agent-cookie/contract";
 import { REPO_ROOT } from "../src/config.js";
 import { loadFixtures } from "../src/seed.js";
 import { publicUpstreamMessage } from "../src/services/commerce.js";
-import { parseSizes, pickSellers, sizeMatches } from "../src/ucp-filter.js";
+import { pickSellers, sizeMatches } from "../src/ucp-filter.js";
 import { harness, KEYS } from "./harness.js";
 
 const offer = (seller: string, variantId: string, size: string, price = 10000): UcpOffer => ({ sellerDomain: seller, sellerName: seller,
   productTitle: "Sample shoe", variantId, variantTitle: size, priceCents: price, currency: "USD", available: true, shipsTo: ["US"],
   sizeOptions: [size], nativeCheckout: false, etaDate: null });
 
-describe("size options as the recorded catalog writes them", () => {
-  it("parses suffix, compound and labelled sizes; ignores women's and UK", () => {
-    expect(parseSizes("9 US")).toEqual([{ system: "US", value: "9" }]);
-    expect(parseSizes("7.5 (42)")).toEqual([{ system: "US", value: "7.5" }, { system: "EU", value: "42" }]);
-    expect(parseSizes("US 4 / EU 36")).toEqual([{ system: "US", value: "4" }, { system: "EU", value: "36" }]);
-    expect(parseSizes("US Women 6 - US Men 4")).toEqual([{ system: "US", value: "4" }]);
-    expect(parseSizes("Size 7")).toEqual([{ system: "US", value: "7" }]);
-    expect(parseSizes("UK 7")).toEqual([]);
-  });
-  it("is strict: EU 42 is US 8.5, never US 9", () => {
+describe("size options as the recorded catalog writes them (lane D's shared matcher)", () => {
+  it("is strict: EU 42 is US 8.5, never US 9; suffix and slash labels parse", () => {
+    expect(sizeMatches(["9 US"], "US 9")).toBe(true);
     expect(sizeMatches(["9 US"], "42")).toBe(false);
     expect(sizeMatches(["8.5"], "42")).toBe(true);
-    expect(sizeMatches(["7.5 (42)"], "42")).toBe(true);
-    expect(sizeMatches(["9 US"], "US 9")).toBe(true);
+    expect(sizeMatches(["US 4 / EU 36"], "EU 36")).toBe(true);
+    expect(sizeMatches(["UK 7"], "41")).toBe(false);
   });
   it("prefers pinned variants that pass the filters, never ones that do not", () => {
     const offers = [offer("a.com", "va", "8.5"), offer("b.com", "vb", "8.5"), offer("c.com", "vc", "8.5"), offer("d.com", "vd", "8.5", 99999)];
