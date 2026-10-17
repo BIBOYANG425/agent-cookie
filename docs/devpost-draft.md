@@ -1,6 +1,6 @@
 # Devpost draft — Agent Cookie
 
-Editorial draft updated through main `1352eff` (#11 and #12 merged); the A15/A16 experiments remain pinned to `8c1a869`. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
+Editorial draft updated through main `7beb63d` (#11, #12 and #13 merged); the A15/A16 experiments remain pinned to `8c1a869`. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
 
 ## Project name and tagline
 
@@ -36,7 +36,7 @@ Sharing less context is harder than forwarding a transcript. We had to preserve 
 
 The A team reports **66 passing P0 automated checks** in `apps/workspace/test/acceptance`, using real rules and memory packages with recorded UCP responses. This does not stand in for a complete end-to-end demo: Claude Desktop and iMessage require manual evidence, and recorded failure-path gaps remain visible in the test suite. Console and package-level checks have separate evidence records.
 
-Per-session TAP signing has an interoperability record. It is not yet evidence of signed workspace-to-merchant traffic or payment execution.
+Per-session TAP signing has an interoperability record, and optional workspace auth/TAP hooks are now wired. Signing errors can still fall back to unsigned delivery. This is not yet evidence of a successful signed merchant exchange or payment execution.
 
 ## What we learned
 

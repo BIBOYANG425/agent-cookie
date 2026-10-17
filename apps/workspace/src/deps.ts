@@ -8,6 +8,7 @@ import type { Config } from "./config.js";
 import { Store } from "./db.js";
 import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
+import { wireLaneD } from "./laneD-wire.js";
 import { ensureOwnerKey, loadFixtures, seedStore, type Fixtures } from "./seed.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
@@ -70,6 +71,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   }
   card.get(fixtures.users[0]!.userId);
 
+  const unwireLaneD = wireLaneD(config);
   const gate = new Gate();
   return {
     config, store, clock, rules, ucp, repo, log, delivery, fixtures, card, sessions, fields, notes, commerce, gate,
@@ -87,6 +89,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     }),
     close() {
       store.close();
+      unwireLaneD?.();
     },
   };
 }

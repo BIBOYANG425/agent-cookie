@@ -2,7 +2,7 @@
 
 让陌生 agent 在第一条消息之前认识你，同时只拿到当前任务允许的上下文。Agent Cookie 把 agent 写入的偏好合成身份卡，为每家商家派生独立 session，并管理字段授权、有效期、撤销和回执。
 
-运行说明已同步 main `1352eff`（#11 CI、#12 B 客户端已由人合并）；A15/A16 的实际取证基线仍为 `8c1a869`，不将后续代码变化混入旧记录。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
+运行说明已同步 main `7beb63d`（#11 CI、#12 B 客户端、#13 可选 auth/TAP 接线已由人合并）；A15/A16 的实际取证基线仍为 `8c1a869`，不将后续代码变化混入旧记录。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
 
 ## 当前交付
 
@@ -13,7 +13,7 @@
 | 控制台 | [apps/console](../apps/console/README.md) | 卡片、授权、活动、reset；每 2 秒轮询，owner key 留在本机服务端 |
 | SDK / CLI / Photon / MCP | [SDK](../packages/sdk)、[CLI](../packages/cli)、[Photon](../apps/channel-photon)、[MCP](../packages/mcp) | #12 已合入 main；MCP 仅 personal stdio，商家 MCP / HTTP 4311 尚未实现 |
 | ACME retail | [blueprint](../examples/blueprint/README.md) | 外部克隆的原版通用商品 Sample 店；A15 首回、A16 安装分别留证 |
-| TAP 签名 | [互通证据](evidence/2026-10-17-tap-interop.md) | 库级互通已有记录；不表示工作台出站请求或支付已接通 |
+| TAP 签名 | [互通证据](evidence/2026-10-17-tap-interop.md) | 库级互通已有记录；#13 已接入可选握手 / 出站 TAP 签名及 unlock，签名异常仍可能无签名投递；不等于真实商家签名或支付验收通过 |
 
 自动验收由 A 线 [apps/workspace/test/acceptance](../apps/workspace/test/acceptance) 维护，报告 P0 自动项 **66/66**。A10/A17 手动证据和源码中 A18 的未录制失败路径仍需独立核对，不能将该数字称为完整 P0 全绿。C14 只收集手动证据，不在 `tests/acceptance` 重写自动测试。
 
@@ -128,7 +128,7 @@ ACME API/UI 为 8000/3000，真实聊天需 `ANTHROPIC_API_KEY`；health/catalog
 | `AGENT_COOKIE_CHANNEL_STATE` | 可选 Photon 持久状态文件；同一线路不并行启多个状态实例 |
 | `ANTHROPIC_API_KEY` | ACME 真实模型；当前 Photon 主线不调用 LLM |
 | `BLUEPRINT_DIR` / `BLUEPRINT_PYTHON` | 外部 blueprint 路径与 Python executable |
-| `AGENT_COOKIE_JAR_KEK` / `AGENT_COOKIE_UNLOCK_SECRET` | D 线 jar / unlock 配置；不表示已接入工作台 |
+| `AGENT_COOKIE_JAR_KEK` / `AGENT_COOKIE_UNLOCK_SECRET` | D 线 jar / unlock 配置；工作台同时设置两者才启用可选 auth hooks，支付授权尚未接线 |
 | `STRIPE_SECRET_KEY` / `SENTRY_DSN` | P1 支付测试 / tracing，设置变量本身不构成完成证据 |
 
 端口：工作台 4310、控制台 5173、ACME API/UI 8000/3000，第二份 Sample 店 8001/3001。MCP HTTP 4311 是计划项；unlock 4312 独立验证，不作为已完成主线。
