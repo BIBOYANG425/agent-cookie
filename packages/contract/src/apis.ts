@@ -2,10 +2,13 @@
 //   RulesApi       → packages/rules        (lane C): merge rules, pairwise session IDs, memory-repo text format
 //   MemoryRepoApi  → packages/memory-repo  (lane C): the user's git memory repo (Agent Memory Repo fork)
 //   UcpApi         → packages/ucp          (lane D): Shopify UCP via the `ucp` CLI, live or fixture
+//   LearnApi       → lane B (docs/lane-b-learning-plan.md): candidate preferences from intents and conversations
 // Frozen with types.ts. Until a package lands, the workspace runs on in-memory stubs of these interfaces
 // (apps/workspace/src/stubs). Implementations must be deterministic where marked and never read the
 // system clock: every time-aware call receives `now` / `at` explicitly.
-import type { Agent, Card, Contribution, Note, Receipt } from "./types.js";
+import type {
+  Agent, Basis, Card, Contribution, ContributionEvidence, IntentRecord, Note, ObservationTurn, Quote, Receipt,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------------------------------------
 // RulesApi — pure functions, no IO, no clock, no model.
@@ -117,6 +120,12 @@ export interface MemoryRepo {
   resetToSeed(): Promise<void>;
   /** Every contribution in contributions/*.md, for rebuilds and exports. */
   listContributions(): Promise<Contribution[]>;
+  /**
+   * Append one record to the user's intent history (additive, 2026-10-17; lane C implements). Called when an intent
+   * is created and again, with `chosenQuote`, after the user accepts a quote. Optional until lane C ships it: the
+   * workspace skips the call when it is absent.
+   */
+  appendIntent?(record: IntentRecord, meta: WriteMeta): Promise<CommitRef>;
 }
 
 export interface MemoryRepoApi {
@@ -246,4 +255,39 @@ export interface UcpOptions {
 
 export interface UcpModule {
   createUcp(opts: UcpOptions): UcpApi;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// LearnApi — lane B (docs/lane-b-learning-plan.md is the source of truth once it lands). Turns what the user said
+// into CANDIDATE contributions. The model only classifies text; everything a candidate claims is a parameter:
+// the workspace checks the field against FIELDS (pref.* whitelist), writes it as the personal agent through the
+// normal contribution path (canWrite, git first), keeps a snippet only if it is the user's own words, never trusts
+// `basis: "stated"` from here, and lets RulesApi.mergeCard decide what reaches the card (two distinct sources).
+// Until lane B lands, the workspace runs a stub that returns [].
+// ---------------------------------------------------------------------------------------------------------
+
+/** A contribution the learner proposes. `field` is a plain string: unknown names are dropped by the workspace. */
+export interface ContributionCandidate {
+  field: string;
+  value: string;
+  /** "observed" (default) or "inferred" (a guess; never reaches the card). "stated" is treated as "observed". */
+  basis?: Basis;
+  evidence?: ContributionEvidence;
+}
+
+/** What the workspace passes to LearnApi.extract: the request as the user made it, and, after an accept, the choice. */
+export interface LearnIntentInput {
+  intentId: string;
+  text?: string;
+  query?: string;
+  kind?: string;
+  public: Record<string, string>;
+  /** Set when called after POST /personal/quotes/:id/accept completed. */
+  chosenQuote?: Quote;
+}
+
+export interface LearnApi {
+  extract(input: LearnIntentInput): Promise<ContributionCandidate[]>;
+  /** Receives ONLY the user's own turns (role "user"), in order; the workspace never passes agent/other turns. */
+  extractFromConversation(turns: ObservationTurn[], context?: { conversationId: string; channel: string }): Promise<ContributionCandidate[]>;
 }

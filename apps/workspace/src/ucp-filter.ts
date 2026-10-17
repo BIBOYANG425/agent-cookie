@@ -1,6 +1,7 @@
 // Deterministic selection over UCP catalog offers (2026-10-17, human direction: search is driven by the user's words).
-// HARD filters: USD, ships to the US, available, and the budget the user stated in THIS request. Everything else
-// ranks: the wanted size (stated, else the card's), then the card's budget. Then the first N distinct sellers.
+// HARD filters: USD, ships to the US, available, the budget the user stated in THIS request, and anything the card's
+// learned `pref.avoid` names. Everything else ranks: the wanted size (stated, else the card's), then learned brand /
+// color preferences, then the card's budget. Then the first N distinct sellers.
 // No model involved. An unknown delivery date (etaDate null) never disqualifies an offer.
 import { DEFAULT_SELLER_COUNT, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
 import { parseSize, sizeMatch, sizeMatches, toSystem } from "@agent-cookie/ucp";
@@ -29,10 +30,43 @@ export interface SearchConditions {
   size?: string;
   /** Card `lang`: the language of `sizeNote`. */
   lang?: string;
+  /** Learned preferences (card pref.*), already split into terms: brand/color rank, avoid is a HARD exclusion. */
+  prefs?: { brand: string[]; color: string[]; avoid: string[] };
+}
+
+/**
+ * "Brooks, Hoka" / "Brooks、Hoka" / "Brooks/Hoka" → ["brooks", "hoka"]. Only punctuation separates terms: words like
+ * "and" or 和 are parts of names ("Dolce and Gabbana", 和服).
+ */
+export function terms(v: string | undefined): string[] {
+  if (!v) return [];
+  return [...new Set(v.split(/[,，、;；/|]/).map((t) => fold(t)).filter(Boolean))];
+}
+
+/** NFKC, lower case, one kind of apostrophe, single spaces. */
+function fold(t: string): string {
+  return t.normalize("NFKC").replace(/[\u2018\u2019\u02BC`´]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Whether the offer's title, variant or seller name mentions `term`. Latin terms match whole words, where a word
+ * boundary is anything that is not a Latin letter or digit (so "nike" is found in "Nike跑鞋"); other scripts match
+ * as substrings.
+ */
+export function mentions(o: UcpOffer, term: string): boolean {
+  const hay = fold(`${o.productTitle} ${o.variantTitle} ${o.sellerName}`);
+  const t = fold(term);
+  if (!t) return false;
+  if (/^[\p{Script=Latin}\d\s'&.-]+$/u.test(t)) {
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^\\p{Script=Latin}\\d])${escaped}($|[^\\p{Script=Latin}\\d])`, "u").test(hay);
+  }
+  return hay.includes(t);
 }
 
 /** Hard filters only. */
-export function isEligible(o: UcpOffer, q: Pick<SearchConditions, "shipsTo" | "maxPriceCents">): boolean {
+export function isEligible(o: UcpOffer, q: Pick<SearchConditions, "shipsTo" | "maxPriceCents" | "prefs">): boolean {
+  if (q.prefs?.avoid.some((t) => mentions(o, t))) return false;
   if (o.currency !== "USD") return false;
   if (!o.available) return false;
   if (!Array.isArray(o.shipsTo) || !o.shipsTo.includes(q.shipsTo)) return false;
@@ -46,7 +80,8 @@ export interface Picked { offer: UcpOffer; sizeNote?: string }
 /**
  * The first `n` eligible offers from distinct sellers (A09: only these get sessions), best first:
  * pinned rehearsal variants (fixture mode only; the caller passes none in live mode), then variants in the wanted
- * size, then within the card's budget, then catalog order. Ranking never bypasses a hard filter.
+ * size, then learned brand/color matches, then within the card's budget, then catalog order. Ranking never bypasses
+ * a hard filter (pref.avoid included).
  */
 export function pickSellers(offers: readonly UcpOffer[], q: SearchConditions, n = DEFAULT_SELLER_COUNT,
   preferVariantIds: readonly string[] = []): Picked[] {
@@ -58,7 +93,9 @@ export function pickSellers(offers: readonly UcpOffer[], q: SearchConditions, n 
     return match === "match" ? 0 : match === "no-size" ? 1 : 2;
   };
   const budgetRank = (o: UcpOffer) => (q.preferMaxPriceCents === undefined || o.priceCents <= q.preferMaxPriceCents ? 0 : 1);
-  const ranked = eligible.map((o, i) => ({ o, key: [pinRank(o), sizeRank(o), budgetRank(o), i] }))
+  // More matched preferences rank higher: −(brand matched) − (color matched).
+  const prefRank = (o: UcpOffer) => -(Number(q.prefs?.brand.some((t) => mentions(o, t)) ?? false) + Number(q.prefs?.color.some((t) => mentions(o, t)) ?? false));
+  const ranked = eligible.map((o, i) => ({ o, key: [pinRank(o), sizeRank(o), prefRank(o), budgetRank(o), i] }))
     .sort((a, b) => lexCompare(a.key, b.key));
   const out: Picked[] = [];
   const seen = new Set<string>();

@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   AGENTS, api, CATALOG_SELLERS, card, cardField, deriveSessionId, expectError, getQuotes, grants, introduce, ISO, KEYS, merchant,
-  NOT_FOUND_TEXT, PINNED, pinnedIntent, proxySessions, receipts, reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer,
+  NOT_FOUND_TEXT, PINNED, pinnedIntent, proxySessions, receipts, reset, RETAIL_AUTO_FIELDS, SEED, SHOE_AUTO_FIELDS, startCallbackServer,
   startWorkspace, ucpAgent, type Api, type CallbackServer, type Json, type Workspace,
 } from "./helpers.js";
 
@@ -89,7 +89,7 @@ describe("A09 意图匹配（性质断言：不断言店名或价格）", T, () 
       expect(g.status).toBe("live");
       expect(g.remainingMs).toBeGreaterThan(0);
       expect(g.remainingMs).toBeLessThanOrEqual(600_000);
-      for (const f of g.fields) expect(SHOE_AUTO_FIELDS as readonly string[]).toContain(f);
+      for (const f of g.fields) expect(RETAIL_AUTO_FIELDS).toContain(f);
     }
   });
 

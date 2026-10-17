@@ -24,6 +24,21 @@ export class Gate {
     }
   }
 
+  /**
+   * Background work a request starts and does not await (learning after an intent, a conversation batch): counted
+   * like the request itself, so a reset waits for it (up to maxWaitMs), and it runs in the request's generation, so
+   * once the reset has moved on its writes are refused like the request's own.
+   */
+  async hold<T>(fn: () => Promise<T>): Promise<T> {
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      if (this.active === 0) for (const w of this.idle.splice(0)) w();
+    }
+  }
+
   /** True inside a request that started before the last reset. Outside any request (startup, reset itself): false. */
   stale(): boolean {
     const ctx = this.als.getStore();

@@ -1,8 +1,12 @@
 // HTTP surface — packages/contract ENDPOINTS, shapes per docs/plan.md v0.3 §5. Every decision is made in the
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
-import { isField, NOTE_MAX_BYTES, WorkspaceError, type Basis, type Category, type Registration } from "@agent-cookie/contract";
+import {
+  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
+  type Basis, type Category, type Observation, type ObservationTurn, type Registration,
+} from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
+import { containsContactOrPayment } from "./guards.js";
 import type { Deps } from "./deps.js";
 import { fail, installErrorHandling, json, optStr, query, readJson, str, type AppEnv } from "./http.js";
 import { hashKey, mintKey, newId } from "./ids.js";
@@ -51,6 +55,29 @@ function httpsLink(v: string | undefined, name: string): string | undefined {
   const parsed = new URL(u);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) fail("MISSING_FIELD", `${name} must be an https link`);
   return u;
+}
+
+const ROLES: ReadonlySet<string> = new Set(["user", "agent", "other"]);
+
+/** POST /personal/observations body → Observation, or 422. Text limits are characters, as the contract states. */
+function observationBody(body: Record<string, unknown>): Observation {
+  const channel = str(body, "channel", { max: 64 });
+  const conversationId = str(body, "conversationId", { max: 128 });
+  // Kept as evidence and shown back to the user: an opaque id, never a chat handle (phone number, email).
+  if (containsContactOrPayment(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
+  const turns = body.turns;
+  if (!Array.isArray(turns) || turns.length === 0 || turns.length > OBSERVATION_MAX_TURNS) {
+    fail("MISSING_FIELD", `turns must be 1–${OBSERVATION_MAX_TURNS} items`);
+  }
+  const out: ObservationTurn[] = turns.map((t: unknown) => {
+    if (!t || typeof t !== "object" || Array.isArray(t)) fail("MISSING_FIELD", "invalid turn");
+    const { role, text, at } = t as Record<string, unknown>;
+    if (typeof role !== "string" || !ROLES.has(role)) fail("MISSING_FIELD", "turn role must be user, agent or other");
+    if (typeof text !== "string" || [...text].length > OBSERVATION_TURN_MAX_CHARS) fail("MISSING_FIELD", `turn text must be a string of at most ${OBSERVATION_TURN_MAX_CHARS} characters`);
+    if (typeof at !== "string" || !Number.isFinite(Date.parse(at))) fail("MISSING_FIELD", "turn at must be an ISO time");
+    return { role: role as ObservationTurn["role"], text, at };
+  });
+  return { channel, conversationId, turns: out };
 }
 
 function stringRecord(v: unknown, name: string): Record<string, string> {
@@ -192,6 +219,25 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.post("/personal/quotes/:id/accept", auth, personal, idem, async (c) => {
     return json(await deps.commerce.accept(c.get("agent"), user(), c.req.param("id")));
   });
+
+  // ---- dynamic memory (learning.ts)
+  app.get("/personal/intents", auth, personalOrOwner, (c) => {
+    const q = c.req.query("q");
+    if (q !== undefined && Buffer.byteLength(q, "utf8") > 200) fail("MISSING_FIELD", "q too long");
+    return json({ intents: deps.learning.history(user(), q, intParam(c.req.query("limit"), 20, 100)) });
+  });
+  // Accepted and queued (or discarded while paused); learning happens later and never blocks this call.
+  app.post("/personal/observations", auth, personal, async (c) => {
+    const obs = observationBody(await readJson(c));
+    return json(deps.learning.observe(c.get("agent"), user(), obs), 202);
+  });
+  app.get("/personal/learning", auth, personalOrOwner, (c) => json(deps.learning.state(user())));
+  app.put("/personal/learning", auth, personalOrOwner, async (c) => {
+    const body = await readJson(c);
+    if (typeof body.paused !== "boolean") fail("MISSING_FIELD", "paused must be true or false");
+    return json(deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
+  });
+  app.get("/personal/learned", auth, personalOrOwner, (c) => json(deps.learning.learned(user())));
 
   app.get("/personal/receipts", auth, personalOrOwner, (c) => {
     const limit = intParam(c.req.query("limit"), 50, 500);

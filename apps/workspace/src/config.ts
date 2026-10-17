@@ -32,6 +32,10 @@ export interface Config {
   resetWaitMs: number;
   /** SQLite busy_timeout: wait for another connection's write lock instead of failing with SQLITE_BUSY. */
   sqliteBusyTimeoutMs: number;
+  /** How often quiet observed conversations are checked for learning (LEARN_TICK_MS). */
+  learnTickMs: number;
+  /** A LearnApi call that takes longer is abandoned and logged as failed (LEARN_TIMEOUT_MS). */
+  learnTimeoutMs: number;
   /** Sentry tracing + logs (plan §4). Off when unset. */
   sentryDsn?: string;
   sentryEnvironment: string;
@@ -88,6 +92,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(unlockSecret ? { unlockSecret } : {}),
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
+    learnTickMs: int(env.LEARN_TICK_MS, 30_000, 1000, 3_600_000),
+    learnTimeoutMs: int(env.LEARN_TIMEOUT_MS, 30_000, 50, 600_000),
     ...(env.SENTRY_DSN ? { sentryDsn: env.SENTRY_DSN } : {}),
     sentryEnvironment: env.SENTRY_ENVIRONMENT ?? (env.AGENT_COOKIE_DEMO === "1" ? "demo" : "development"),
     sentryTracesSampleRate: rate(env.SENTRY_TRACES_SAMPLE_RATE, 1),
