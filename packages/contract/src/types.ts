@@ -1,4 +1,4 @@
-// Agent Cookie contract — frozen at T0 against docs/plan.md v0.3 §5 (2026-10-17).
+// Agent Cookie contract (@agent-cookie/contract, formerly packages/core) — frozen at T0 against docs/plan.md v0.3 §5 (2026-10-17).
 // The named types below are copied from the plan verbatim. Anything marked "additive" is not in the
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
@@ -223,7 +223,7 @@ export type MerchantCallback = IntroduceCallback | AcceptedCallback;
 
 // ---- Additive (not in plan §5's listing; used by the workspace, the fake workspace and the console) ----
 
-/** Return shape of mergeCard and of GET /personal/card. */
+/** Return shape of RulesApi.mergeCard and of GET /personal/card. */
 export interface Card {
   card: CardField[];
   candidates: Candidate[];

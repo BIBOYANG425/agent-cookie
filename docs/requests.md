@@ -24,3 +24,23 @@
 | B11 | B → A/C | 用户已确认 Photon 项目尚未创建，本轮只做本地脚手架。配置检查与 Sample demo 零外呼；真实探针默认只收，显式 --send 才回一条新 ping。Claude Desktop 手动验证、真实 Photon 收发及 A10/A17 均未完成。 | 下一步需 Photon 项目/通道与 A 工作台 |
 
 2026-10-17，B 线交付批次：本文件随 SDK、CLI、MCP、Photon 脚手架和个人 agent skill 一并提交至 `lane-b`。上文“仅本地、未推送”保留为历史快照；远端交付以本批提交为准。代码验证结果：59 项自动测试通过，四个包类型检查与构建通过，7 项命令入口检查通过。当前主要交接请求见 B08–B11；真实工作台、Claude Desktop 和 Photon 收发仍待联调。合入 main 由团队负责人处理。
+
+2026-10-17，A 线（Claude Code）交付：`packages/contract`（原 `packages/core`，冻结）+ 根工作区。按人的分工调整：A 只拥有 `packages/contract` 和 `apps/workspace`；merge/session/render 实现归 C（`packages/rules`），git 记忆库写入归 C（`packages/memory-repo`），UCP 调用归 D（`packages/ucp`），假工作台归 B（`apps/workspace-fake`），fixtures 用 C 的。以下只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A01 | A → 全部 | 契约包改名 `@agent-cookie/contract`（目录 `packages/contract`）。内容：`types.ts`（含 B10 要的冻结项：Quote.price 美分整数、currency "USD"、etaDate 可为 null + etaText、AcceptResult ordered/handoff/blocked/failed、Role 含 owner、A04 措辞）、`policy.ts`（purpose 放行还需该 session 的 intent 下有本 agent 已 accepted 的 quote，由工作台核对）、`errors.ts`（含 UpstreamError）、`endpoints.ts`、`tier0.ts`（前缀格式）、`apis.ts`（三个接口）、`fixtures.ts`（工作台读的 fixtures 文件名与形状）。请各线 `import type … from "@agent-cookie/contract"`，`"@agent-cookie/contract": "workspace:*"`，不维护第二份类型。 | 已交付 |
+| A02 | A → C | `packages/rules` 实现 `RulesApi`（`mergeCard`、`deriveSessionId`、`renderCard`、`renderContribution`、`parseContributions`），签名和规则见 `packages/contract/src/apis.ts`；`deriveSessionId` 必须通过 `SESSION_ID_VECTORS`。A 的工作台在你们到之前用 `apps/workspace/src/stubs/{merge,render,session}.ts`（lane-a 上 14 个用例全绿），可以整份拿去当起点。 | 待 C |
+| A03 | A → C | `packages/memory-repo` 实现 `MemoryRepoApi.openMemoryRepo` → `MemoryRepo`（`appendContribution`、`revokeContribution`、`regenerateCard`、`writeNote/readNote/deleteNote`、`appendReceipt`、`resetToSeed`、`listContributions`）。比人列的多两个：`revokeContribution`（`POST /personal/contributions/:id/revoke` 要用）和 `listContributions`（重建/导出）。工作台所有读都走 SQLite，记忆库是存储与溯源层，写入串行、author = 写入者、trailer `Agent-Cookie-Sig`。 | 待 C |
+| A04 | A → D | `packages/ucp` 实现 `UcpModule.createUcp(opts)` → `UcpApi`（`searchOffers`、`createCart`、`createCheckout`、`setDestination`、`complete`，每步返回 `{ status, continueUrl?, orderId?, messages }`）。status 与 messages.severity 取自 ucp CLI 0.9.1 的取值；`createCheckout` 用 `--input '{"cart_id":…,"line_items":[]}'`；失败抛 `UpstreamError`（带 continueUrl）。USD/ships_to US/available/尺码的筛选由工作台做，ucp 包只归一化不过滤。 | 待 D |
+| A05 | A → C | 工作台读 fixtures 的约定见 `packages/contract/src/fixtures.ts`：`users.json`（SeedUser[]，含 secret）、`agents.json`（Agent[]，不含钥匙）、`contributions.json`、`dev-keys.json`（`{ "<key>": { agentId, role } }`，只在 DEMO/TEST 模式加载）、`memory/`（记忆库初始 commit）、`ucp/`（录好的 ucp 响应）。origin/lane-c 上还看不到 C 的 seed（8606f9e 不在远端）；推上来后如果形状不同，告诉 A，A 改读取方，不改你们的文件。 | 待 C 推送 |
+| A06 | A → B | 回复 B08–B10：契约已冻结，见 A01。根 `pnpm-workspace.yaml` 含 `packages/*`、`apps/*`，根 `pnpm-lock.yaml` 由 A 生成；B 合入时把 `link:../sdk` 改为 `workspace:*`、删掉各包自己的锁文件，`pnpm -r build` 按依赖拓扑自动 contract → sdk → cli/mcp。真实工作台 H6 在 127.0.0.1:4310 上线，响应形状以 `@agent-cookie/contract` 为准。 | 待 B 合入 |
+| A07 | A → D | 回复 D 的请求：`PaymentAuthorization`、`SignHandshake`、`AuthorizePayment`、`Receipt.amount`、`AUTHORIZATION_USED`/`OVER_BUDGET`/`UPSTREAM_ERROR` 都已在契约里（金额统一美分）。`GET /.well-known/agent-cookie-jwks.json?sessionId=` 已按 pairwise 改了端点说明；`POST /personal/unlock` → `handleUnlock` 和两个环境变量 `AGENT_COOKIE_JAR_KEK`、`AGENT_COOKIE_UNLOCK_SECRET` 由 A 在工作台 T1 里接，D 的包合入 main 后生效。请 `packages/auth`、`packages/pay` 的 `contract.ts` 改为从 `@agent-cookie/contract` 导入。 | 进行中 |
+| A08 | A → 人 | 请把 CLAUDE.md / AGENTS.md 的目录表改成新分工（A：`packages/contract` `apps/workspace`；B 加 `apps/workspace-fake`；C 加 `packages/rules` `packages/memory-repo`；D 加 `packages/ucp`），并把 plan 里的 `packages/core` 改成 `packages/contract`。A 不改这两个文件。`docs/requests.md` 在 lane-a/b/d 上都是新增文件，合并时 add/add 冲突：保留全部行（lane-a 的版本已含 lane-b 原文，D 的五行另附在下面）。 | 待人 |
+
+D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
+- [D→A] Add `PaymentAuthorization`, `SignHandshake`, and `AuthorizePayment` to core, and add `Receipt.amount`.
+- [D→A] Add error codes `AUTHORIZATION_USED` 403, `OVER_BUDGET` 403, and `UPSTREAM_ERROR` 502.
+- [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
+- [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
+- [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.

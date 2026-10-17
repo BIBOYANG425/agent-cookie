@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, mergeCard } from "../src/merge.js";
-import type { Basis, Contribution, Field } from "../src/types.js";
+import { daysBetween, mergeCard } from "../src/stubs/merge.js";
+import type { Basis, Contribution, Field } from "@agent-cookie/contract";
 
 const NOW = "2026-10-17T12:00:00.000Z";
 const USER = "u_sample";

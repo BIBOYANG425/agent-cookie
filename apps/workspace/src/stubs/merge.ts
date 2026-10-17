@@ -1,3 +1,4 @@
+// STUB of RulesApi.mergeCard (owned by lane C, packages/rules) — delete when @agent-cookie/rules is wired.
 // Card merge rules — docs/plan.md v0.3 §4 T0 (merge bullet) and §5 "规模与时间规则" / "偏好会变，怎么办".
 // Pure and deterministic: no IO, no system clock (`now` is injected), no model.
 import {
@@ -11,7 +12,7 @@ import {
   type Contribution,
   type Field,
   type SupersededField,
-} from "./types.js";
+} from "@agent-cookie/contract";
 
 export interface MergeOptions {
   /** Injected clock, ISO string. Required: pure functions never read the system clock. */

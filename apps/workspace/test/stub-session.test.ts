@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { base32, deriveSessionId, merchantKeyFor } from "../src/session.js";
+import { merchantKeyFor, SESSION_ID_VECTORS } from "@agent-cookie/contract";
+import { base32, deriveSessionId } from "../src/stubs/session.js";
 
 const SECRET = "sample-user-secret-do-not-use";
 
-describe("session (A03, A22)", () => {
+describe("stub session (A03, A22)", () => {
+  it("matches the contract's conformance vectors", () => {
+    for (const v of SESSION_ID_VECTORS) expect(deriveSessionId(v.userSecret, v.merchantKey)).toBe(v.sessionId);
+  });
+
   it("is deterministic: same user + same merchantKey → same 8-char id, across resets and re-registrations", () => {
     const a = deriveSessionId(SECRET, "shoebacca.com");
     const b = deriveSessionId(SECRET, "shoebacca.com");

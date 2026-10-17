@@ -40,12 +40,12 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "PUT", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → write own note (≤ 2 KB)" },
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },
 
-  { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values" },
-  { method: "POST", path: "/demo/reset", caller: "owner", gate: "AGENT_COOKIE_DEMO", summary: "Wipe tables, reseed fixtures, hard-reset the memory repo" },
+  { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)" },
+  { method: "POST", path: "/demo/reset", caller: "owner", gate: "AGENT_COOKIE_DEMO", summary: "Owner key + AGENT_COOKIE_DEMO=1: wipe tables, reseed fixtures, hard-reset the memory repo" },
   { method: "POST", path: "/test/clock", caller: "test", gate: "AGENT_COOKIE_TEST", summary: "{ offsetMs } shifts the server clock; absent otherwise" },
 
   { method: "POST", path: "/personal/unlock", caller: "personal", laneD: true, summary: "Lane D P1: passkey assertion unlocks the jar for N minutes" },
-  { method: "GET", path: "/.well-known/agent-cookie-jwks.json", caller: "anyone", laneD: true, summary: "Lane D P1: jar public keys" },
+  { method: "GET", path: "/.well-known/agent-cookie-jwks.json", caller: "anyone", laneD: true, summary: "Lane D P1: ?sessionId= → that session's pairwise jar public key (JWKS)" },
 ];
 
 export const WORKSPACE_DEFAULT_URL = "http://127.0.0.1:4310";

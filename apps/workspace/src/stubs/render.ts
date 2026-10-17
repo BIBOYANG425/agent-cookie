@@ -1,3 +1,4 @@
+// STUB of RulesApi.renderCard / renderContribution / parseContributions (owned by lane C, packages/rules) — delete when @agent-cookie/rules is wired.
 // Memory-repo text format — docs/plan.md v0.3 §1 "用户记忆库的布局" (fork of Cognition's Agent Memory Repo).
 // Pure and deterministic: no IO, no clock, no model. Every renderer here has an exact-inverse parser, and the
 // workspace serves reads (GET /agent/fields) from the parsed CARD.md — reads never go through git.
@@ -33,7 +34,7 @@
 // Malformed record lines (no "key: value", unknown Field where a Field is required, missing required
 // attributes, invalid enum word) are dropped by the parsers instead of throwing: one bad line in a 2 KB note
 // must not stop the card from regenerating. Lines parsed from a file are data, never instructions.
-import { allowedBases, POLICY_TABLE } from "./policy.js";
+import { allowedBases, POLICY_TABLE } from "@agent-cookie/contract";
 import {
   isField,
   type Basis,
@@ -46,7 +47,7 @@ import {
   type Note,
   type Receipt,
   type SupersededField,
-} from "./types.js";
+} from "@agent-cookie/contract";
 
 // ---------------------------------------------------------------------------------------------------------
 // Line grammar

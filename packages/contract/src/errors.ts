@@ -28,6 +28,17 @@ export class WorkspaceError extends Error {
   }
 }
 
+/** ucp / Photon / payment provider failed. 502 UPSTREAM_ERROR; carries the upstream's continue_url when it gave one. */
+export class UpstreamError extends WorkspaceError {
+  constructor(message: string, public continueUrl?: string) {
+    super("UPSTREAM_ERROR", message);
+    this.name = "UpstreamError";
+  }
+  override toBody(): ErrorBody & { continueUrl?: string } {
+    return this.continueUrl ? { ...super.toBody(), continueUrl: this.continueUrl } : super.toBody();
+  }
+}
+
 export function isErrorBody(x: unknown): x is ErrorBody {
   return typeof x === "object" && x !== null && "error" in x
     && typeof (x as ErrorBody).error?.code === "string";
