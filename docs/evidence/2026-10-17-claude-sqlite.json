@@ -1,0 +1,172 @@
+{
+  "recordedAt": "2026-10-17",
+  "client": {
+    "name": "Claude Desktop",
+    "version": "2.42304.0",
+    "actor": "sample-personal-desktop",
+    "transport": "local MCP stdio"
+  },
+  "backend": {
+    "app": "apps/workspace",
+    "host": "127.0.0.1:4310",
+    "storage": "SQLite",
+    "fixtures": "C root seed",
+    "adapters": "A stubRules, stubMemoryRepo and StubUcp; not production C/D adapters"
+  },
+  "tools": [
+    "get_my_card",
+    "find_agents"
+  ],
+  "sample": true,
+  "observedCard": {
+    "lang": "zh",
+    "tone": "简短",
+    "shoe_size": "42"
+  },
+  "cardSourceAgent": "sample-personal-photon",
+  "cardSourceNote": "Provenance source, not the authenticated caller; owner activity identifies Desktop separately.",
+  "queryBudget": "120",
+  "cardHasBudget": false,
+  "observedQuotes": [
+    {
+      "product": "Brooks Cascadia 19 · Men’s 8.5 / Blue",
+      "seller": "shoebacca.com",
+      "price": 11995,
+      "displayPrice": "$119.95",
+      "currency": "USD",
+      "etaDate": null
+    },
+    {
+      "product": "Saucony Peregrine 15 · US 8.5 / Black",
+      "seller": "marathonsports.com",
+      "price": 10999,
+      "displayPrice": "$109.99",
+      "currency": "USD",
+      "etaDate": null
+    }
+  ],
+  "acceptCalled": false,
+  "orderPlaced": false,
+  "observations": [
+    "New completed Desktop response (message 4), not the older fake-backend response.",
+    "UI marks Sample, correctly converts cents, does not infer ETA or claim an order.",
+    "Card values verified in native accessibility tree; screenshot viewport includes shoe_size and full quote result.",
+    "Protocol log redacts method params and body; tool identity and values come from UI, correlated to backend timestamps.",
+    "Sample ACME Tier 0 delivery failed after three attempts; this does not invalidate the two UCP stub quote responses or prove merchant delivery."
+  ],
+  "protocol": [
+    {
+      "at": "2026-10-17T20:50:23.786Z",
+      "direction": "client",
+      "method": "tools/call",
+      "id": 2
+    },
+    {
+      "at": "2026-10-17T20:50:23.800Z",
+      "direction": "server",
+      "id": 2,
+      "resultBlocks": 1
+    },
+    {
+      "at": "2026-10-17T20:50:31.710Z",
+      "direction": "client",
+      "method": "tools/call",
+      "id": 3
+    },
+    {
+      "at": "2026-10-17T20:50:31.742Z",
+      "direction": "server",
+      "id": 3,
+      "resultBlocks": 1
+    }
+  ],
+  "backendActivity": [
+    {
+      "id": "61",
+      "at": "2026-10-17T20:50:32.741Z",
+      "event": "tier0.deliver",
+      "actor": "workspace",
+      "object": "sample-acme",
+      "result": "failed",
+      "reason": "attempts=3"
+    },
+    {
+      "id": "60",
+      "at": "2026-10-17T20:50:31.736Z",
+      "event": "GET /personal/intents/:id/quotes",
+      "actor": "sample-personal-desktop",
+      "object": "i_m8bc1z28",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "59",
+      "at": "2026-10-17T20:50:31.733Z",
+      "event": "POST /personal/intents",
+      "actor": "sample-personal-desktop",
+      "object": "",
+      "result": "201",
+      "reason": ""
+    },
+    {
+      "id": "58",
+      "at": "2026-10-17T20:50:31.732Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "31cahsdw",
+      "result": "ok",
+      "reason": "ucp:marathonsports.com via ucp"
+    },
+    {
+      "id": "57",
+      "at": "2026-10-17T20:50:31.731Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "sv89jg5m",
+      "result": "ok",
+      "reason": "ucp:shoebacca.com via ucp"
+    },
+    {
+      "id": "56",
+      "at": "2026-10-17T20:50:31.731Z",
+      "event": "ucp.search",
+      "actor": "workspace",
+      "object": "i_m8bc1z28",
+      "result": "ok",
+      "reason": "offers=6 picked=2"
+    },
+    {
+      "id": "55",
+      "at": "2026-10-17T20:50:31.727Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "g0mte20j",
+      "result": "ok",
+      "reason": "sample-acme via tier0"
+    },
+    {
+      "id": "54",
+      "at": "2026-10-17T20:50:31.726Z",
+      "event": "intent.create",
+      "actor": "sample-personal-desktop",
+      "object": "i_m8bc1z28",
+      "result": "ok",
+      "reason": "trail_shoes"
+    },
+    {
+      "id": "53",
+      "at": "2026-10-17T20:50:23.796Z",
+      "event": "GET /personal/card",
+      "actor": "sample-personal-desktop",
+      "object": "",
+      "result": "200",
+      "reason": ""
+    }
+  ],
+  "screenshot": {
+    "file": "2026-10-17-claude-sqlite-result.jpg",
+    "sha256": "21e5cd7c622fe3fa8d4ffb0486a677a90ecf82e75422d6c1450da95c54ca55f2",
+    "edited": false
+  },
+  "userConfirmedResultVisible": true
+}

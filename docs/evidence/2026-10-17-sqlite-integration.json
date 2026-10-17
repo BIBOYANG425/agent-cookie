@@ -1,0 +1,306 @@
+{
+  "checkedAt": "2026-10-17T20:39:11.413Z",
+  "backend": "apps/workspace SQLite / lane-a bd9d6e3",
+  "fixtures": "lane-c dacbc1e fixtures/",
+  "runtimeAdapters": {
+    "rules": "A stubRules",
+    "memory": "A in-memory stub",
+    "ucp": "A StubUcp; NOT D recorded/live adapter"
+  },
+  "sample": true,
+  "cardsMatch": true,
+  "cardFields": [
+    {
+      "field": "lang",
+      "value": "zh"
+    },
+    {
+      "field": "tone",
+      "value": "简短"
+    },
+    {
+      "field": "shoe_size",
+      "value": "42"
+    }
+  ],
+  "prices": [
+    {
+      "price": 11995,
+      "currency": "USD",
+      "etaDate": null,
+      "title": "Brooks Cascadia 19 · Men's 8.5 / Blue"
+    },
+    {
+      "price": 10999,
+      "currency": "USD",
+      "etaDate": null,
+      "title": "Saucony Peregrine 15 · US 8.5 / Black"
+    }
+  ],
+  "pairwise": [
+    {
+      "merchant": "ucp:marathonsports.com via ucp",
+      "sessionId": "31cahsdw",
+      "reused": true
+    },
+    {
+      "merchant": "ucp:shoebacca.com via ucp",
+      "sessionId": "sv89jg5m",
+      "reused": true
+    },
+    {
+      "merchant": "sample-acme via tier0",
+      "sessionId": "g0mte20j",
+      "reused": true
+    }
+  ],
+  "accept": {
+    "status": "handoff",
+    "quoteId": "q_5wne7mrw",
+    "message": "Add the shipping address on the merchant's page to finish.",
+    "continueUrl": "https://marathonsports.com/cart/sample-peregrine15-us85:1",
+    "idempotent": true
+  },
+  "checkoutReceipts": [],
+  "activity": [
+    {
+      "id": "24",
+      "at": "2026-10-17T20:39:11.411Z",
+      "event": "GET /personal/receipts",
+      "actor": "sample-personal-desktop",
+      "object": "",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "23",
+      "at": "2026-10-17T20:39:11.410Z",
+      "event": "POST /personal/quotes/:id/accept",
+      "actor": "sample-personal-desktop",
+      "object": "q_5wne7mrw",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "22",
+      "at": "2026-10-17T20:39:11.407Z",
+      "event": "POST /personal/quotes/:id/accept",
+      "actor": "sample-personal-desktop",
+      "object": "q_5wne7mrw",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "21",
+      "at": "2026-10-17T20:39:11.407Z",
+      "event": "quote.result",
+      "actor": "workspace",
+      "object": "q_5wne7mrw",
+      "result": "handoff",
+      "reason": ""
+    },
+    {
+      "id": "20",
+      "at": "2026-10-17T20:39:11.407Z",
+      "event": "fields.read",
+      "actor": "ucp:marathonsports.com",
+      "object": "31cahsdw",
+      "result": "allow",
+      "reason": "shipping_address purpose=checkout"
+    },
+    {
+      "id": "19",
+      "at": "2026-10-17T20:39:11.407Z",
+      "event": "quote.accept",
+      "actor": "sample-personal-desktop",
+      "object": "q_5wne7mrw",
+      "result": "ok",
+      "reason": "ucp:marathonsports.com"
+    },
+    {
+      "id": "18",
+      "at": "2026-10-17T20:39:11.401Z",
+      "event": "GET /personal/intents/:id/quotes",
+      "actor": "sample-personal-desktop",
+      "object": "i_yrsz2vre",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "17",
+      "at": "2026-10-17T20:39:11.399Z",
+      "event": "POST /personal/intents",
+      "actor": "sample-personal-desktop",
+      "object": "",
+      "result": "201",
+      "reason": ""
+    },
+    {
+      "id": "16",
+      "at": "2026-10-17T20:39:11.399Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "31cahsdw",
+      "result": "ok",
+      "reason": "ucp:marathonsports.com via ucp"
+    },
+    {
+      "id": "15",
+      "at": "2026-10-17T20:39:11.399Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "sv89jg5m",
+      "result": "ok",
+      "reason": "ucp:shoebacca.com via ucp"
+    },
+    {
+      "id": "14",
+      "at": "2026-10-17T20:39:11.399Z",
+      "event": "ucp.search",
+      "actor": "workspace",
+      "object": "i_yrsz2vre",
+      "result": "ok",
+      "reason": "offers=6 picked=2"
+    },
+    {
+      "id": "13",
+      "at": "2026-10-17T20:39:11.398Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "g0mte20j",
+      "result": "ok",
+      "reason": "sample-acme via tier0"
+    },
+    {
+      "id": "12",
+      "at": "2026-10-17T20:39:11.397Z",
+      "event": "intent.create",
+      "actor": "sample-personal-desktop",
+      "object": "i_yrsz2vre",
+      "result": "ok",
+      "reason": "trail_shoes"
+    },
+    {
+      "id": "11",
+      "at": "2026-10-17T20:39:11.393Z",
+      "event": "GET /personal/intents/:id/quotes",
+      "actor": "sample-personal-photon",
+      "object": "i_3xpmdbvy",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "10",
+      "at": "2026-10-17T20:39:11.390Z",
+      "event": "POST /personal/intents",
+      "actor": "sample-personal-photon",
+      "object": "",
+      "result": "201",
+      "reason": ""
+    },
+    {
+      "id": "9",
+      "at": "2026-10-17T20:39:11.389Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "31cahsdw",
+      "result": "ok",
+      "reason": "ucp:marathonsports.com via ucp"
+    },
+    {
+      "id": "8",
+      "at": "2026-10-17T20:39:11.389Z",
+      "event": "ucp.proxy",
+      "actor": "workspace",
+      "object": "ucp:marathonsports.com",
+      "result": "registered",
+      "reason": ""
+    },
+    {
+      "id": "7",
+      "at": "2026-10-17T20:39:11.389Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "sv89jg5m",
+      "result": "ok",
+      "reason": "ucp:shoebacca.com via ucp"
+    },
+    {
+      "id": "6",
+      "at": "2026-10-17T20:39:11.389Z",
+      "event": "ucp.proxy",
+      "actor": "workspace",
+      "object": "ucp:shoebacca.com",
+      "result": "registered",
+      "reason": ""
+    },
+    {
+      "id": "5",
+      "at": "2026-10-17T20:39:11.389Z",
+      "event": "ucp.search",
+      "actor": "workspace",
+      "object": "i_3xpmdbvy",
+      "result": "ok",
+      "reason": "offers=6 picked=2"
+    },
+    {
+      "id": "4",
+      "at": "2026-10-17T20:39:11.386Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "g0mte20j",
+      "result": "ok",
+      "reason": "sample-acme via tier0"
+    },
+    {
+      "id": "3",
+      "at": "2026-10-17T20:39:11.385Z",
+      "event": "intent.create",
+      "actor": "sample-personal-photon",
+      "object": "i_3xpmdbvy",
+      "result": "ok",
+      "reason": "trail_shoes"
+    },
+    {
+      "id": "2",
+      "at": "2026-10-17T20:39:11.380Z",
+      "event": "GET /personal/card",
+      "actor": "sample-personal-desktop",
+      "object": "",
+      "result": "200",
+      "reason": ""
+    },
+    {
+      "id": "1",
+      "at": "2026-10-17T20:39:11.376Z",
+      "event": "GET /personal/card",
+      "actor": "sample-personal-photon",
+      "object": "",
+      "result": "200",
+      "reason": ""
+    }
+  ],
+  "caveats": [
+    "C address.json is separate from contributions, so the card has no shipping_address; no checkout disclosure receipt is fabricated.",
+    "A backend still uses stub rules/memory/UCP. No real merchant request, payment or order was made."
+  ],
+  "stdio": {
+    "actualProcess": true,
+    "server": "built packages/mcp/dist/main.js",
+    "baseUrl": "http://127.0.0.1:4310",
+    "tools": [
+      "get_my_card",
+      "find_agents",
+      "accept_quote",
+      "list_receipts"
+    ],
+    "cardFields": [
+      "lang",
+      "tone",
+      "shoe_size"
+    ],
+    "quoteCount": 2,
+    "sampleFlagsPreserved": true,
+    "diagnosticsEmpty": true
+  }
+}

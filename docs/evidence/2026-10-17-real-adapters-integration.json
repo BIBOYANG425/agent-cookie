@@ -1,0 +1,121 @@
+{
+  "checkedAt": "2026-10-17T21:34:08.712Z",
+  "workspace": {
+    "port": 4311,
+    "ucp": "fixture",
+    "rules": "real",
+    "memoryRepo": "real Git",
+    "storage": "SQLite",
+    "isolatedFromPreviousDemo": true
+  },
+  "photonAgent": {
+    "transport": "local invocation of production respond against HTTP; no new phone delivery claimed",
+    "quoteSampleLabel": true,
+    "deadlineNotPromised": true,
+    "acceptStatus": "handoff",
+    "selectedSeller": "black-flag-outfitters-clothing.myshopify.com",
+    "checkoutReceiptCount": 1,
+    "checkoutReceiptFields": [
+      "shipping_address"
+    ],
+    "unselectedMerchantAddressDisclosure": false
+  },
+  "mcp": {
+    "transport": "built production stdio; not Claude UI",
+    "tools": [
+      "get_my_card",
+      "find_agents",
+      "list_receipts"
+    ],
+    "cardSource": "sample",
+    "cardFields": [
+      "lang",
+      "tone",
+      "shoe_size",
+      "shipping_address"
+    ],
+    "quotePricesCents": [
+      10995,
+      11200
+    ],
+    "quoteSources": [
+      "fixture",
+      "fixture"
+    ],
+    "checkoutReceiptShared": true,
+    "diagnosticsEmpty": true
+  },
+  "bothPersonalAgentsSameMerchantSession": true,
+  "memoryWriteFailures": 0,
+  "receiptCountBeforeRestart": 2,
+  "runtime": {
+    "port": 4310,
+    "restartedFrom4311": true,
+    "checkoutReceiptSurvivedRestart": true,
+    "distinctPersonalIntentGrantPairs": 2,
+    "sameMerchantSessionVerified": true,
+    "consoleConnected": true,
+    "photonPhoneDeliveryThisRound": "verified full real iMessage handoff: provider delivered, user confirmed, backend receipt matched",
+    "photonListenerReady": true
+  },
+  "phoneAcceptance": {
+    "checkedAt": "2026-10-17T21:50:16.644Z",
+    "implementationCommit": "04c6e108e43999a15cecf3093c45acd21673a74c",
+    "timezone": "America/Los_Angeles",
+    "transport": "real Photon iMessage; API readback plus persisted outbox and workspace SDK",
+    "messages": [
+      {
+        "kind": "find",
+        "inboundAt": "2026-10-17T21:43:15.696Z",
+        "inboundStatus": "received",
+        "outboundAt": "2026-10-17T21:43:16.407Z",
+        "outboundStatus": "delivered",
+        "replyMatchesOutbox": true,
+        "sampleLabel": true
+      },
+      {
+        "kind": "find",
+        "inboundAt": "2026-10-17T21:43:26.661Z",
+        "inboundStatus": "received",
+        "outboundAt": "2026-10-17T21:43:27.415Z",
+        "outboundStatus": "delivered",
+        "replyMatchesOutbox": true,
+        "sampleLabel": true
+      },
+      {
+        "kind": "select",
+        "inboundAt": "2026-10-17T21:49:54.136Z",
+        "inboundStatus": "received",
+        "outboundAt": "2026-10-17T21:49:54.920Z",
+        "outboundStatus": "delivered",
+        "replyMatchesOutbox": true,
+        "sampleLabel": true
+      }
+    ],
+    "pricesCents": [
+      10995,
+      11200
+    ],
+    "sources": [
+      "fixture",
+      "fixture"
+    ],
+    "selectedSeller": "black-flag-outfitters-clothing.myshopify.com",
+    "flowStatus": "handoff_complete",
+    "result": "handoff",
+    "acceptCount": 1,
+    "checkoutReceiptCount": 1,
+    "checkoutReceiptFields": [
+      "shipping_address"
+    ],
+    "unselectedMerchantAddressDisclosure": false,
+    "desktopCanReadSameReceipt": true,
+    "memoryWriteFailures": 0,
+    "outboxSentCount": 3,
+    "pendingOutboxCount": 0,
+    "cursor": 6775,
+    "noPaymentOrOrderClaimed": true,
+    "deviceDisplayConfirmedByUser": true,
+    "userConfirmation": "\u5df2\u53d1\u300c\u8981\u7b2c\u4e8c\u53cc\u300d\uff0c\u6536\u5230\u4ea4\u63a5\u94fe\u63a5"
+  }
+}

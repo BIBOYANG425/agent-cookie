@@ -1,6 +1,6 @@
 # Devpost draft — Agent Cookie
 
-Editorial draft based on main `8c1a869` and the available B client branch. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
+Editorial draft updated through main `1352eff` (#11 and #12 merged); the A15/A16 experiments remain pinned to `8c1a869`. Update recording links before submission. The [evidence index](evidence/README.md) owns completion status.
 
 ## Project name and tagline
 
@@ -24,7 +24,7 @@ We also use Anthropic's original ACME retail blueprint as a compatibility sample
 
 The workspace uses TypeScript, Hono, SQLite, and a Git-backed memory repository. Merge, expiration, authorization, and pairwise session derivation are deterministic code. Contributions preserve their writer and history; generated card content is derived from those records.
 
-Clients use a shared SDK. The B client branch provides a Photon iMessage channel, a CLI, and a personal MCP server for Claude Desktop. The current iMessage implementation recognizes a bounded set of shopping commands; it does not use an LLM for unrestricted intent understanding. The React / Vite console keeps the owner credential on its local server and refreshes every two seconds.
+Clients use a shared SDK. The merged B client packages provide a Photon iMessage channel, a CLI, and a personal MCP server for Claude Desktop. The current iMessage implementation recognizes a bounded set of shopping commands; it does not use an LLM for unrestricted intent understanding. The React / Vite console keeps the owner credential on its local server and refreshes every two seconds.
 
 The production workspace is connected to the rules, memory, and UCP packages. Fixture mode replays captured merchant responses for repeatable checks; live mode calls merchants through Shopify's UCP CLI. ACME stays in an external clone at a pinned upstream revision.
 

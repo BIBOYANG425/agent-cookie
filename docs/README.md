@@ -2,7 +2,7 @@
 
 让陌生 agent 在第一条消息之前认识你，同时只拿到当前任务允许的上下文。Agent Cookie 把 agent 写入的偏好合成身份卡，为每家商家派生独立 session，并管理字段授权、有效期、撤销和回执。
 
-运行基线为 main `8c1a869`，B 线客户端另见下表。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
+运行说明已同步 main `1352eff`（#11 CI、#12 B 客户端已由人合并）；A15/A16 的实际取证基线仍为 `8c1a869`，不将后续代码变化混入旧记录。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
 
 ## 当前交付
 
@@ -11,7 +11,7 @@
 | 工作台 | [apps/workspace](../apps/workspace) | 真实 rules、Git memory-repo、UCP adapter 已接入；默认 fixture 模式 |
 | 身份卡与记忆 | [rules](../packages/rules)、[memory-repo](../packages/memory-repo) | 确定性合并、商家独立 session、Git 提交与 seed reset |
 | 控制台 | [apps/console](../apps/console/README.md) | 卡片、授权、活动、reset；每 2 秒轮询，owner key 留在本机服务端 |
-| SDK / CLI / Photon / MCP | [B 线代码](https://github.com/BIBOYANG425/agent-cookie/tree/lane-b) | B 分支已有实现，当前 main 尚未包含；MCP 仅 personal stdio，商家 MCP / HTTP 4311 尚未实现 |
+| SDK / CLI / Photon / MCP | [SDK](../packages/sdk)、[CLI](../packages/cli)、[Photon](../apps/channel-photon)、[MCP](../packages/mcp) | #12 已合入 main；MCP 仅 personal stdio，商家 MCP / HTTP 4311 尚未实现 |
 | ACME retail | [blueprint](../examples/blueprint/README.md) | 外部克隆的原版通用商品 Sample 店；A15 首回、A16 安装分别留证 |
 | TAP 签名 | [互通证据](evidence/2026-10-17-tap-interop.md) | 库级互通已有记录；不表示工作台出站请求或支付已接通 |
 
@@ -58,7 +58,7 @@ pnpm demo:reset
 
 ### iMessage 与 Claude Desktop
 
-以下命令以 B 包已合入或已有完整 B 线运行目录为前提，无需切换 C 线开发分支：
+B 客户端已合入 main。以下命令在包含该合并的 checkout 中运行，无需切换 C 线开发分支：
 
 ```sh
 pnpm --filter @agent-cookie/sdk --filter @agent-cookie/mcp --filter @agent-cookie/channel-photon build
@@ -66,7 +66,7 @@ pnpm --dir apps/channel-photon check
 pnpm --dir apps/channel-photon start
 ```
 
-按 [Photon 配置说明](https://github.com/BIBOYANG425/agent-cookie/blob/lane-b/apps/channel-photon/README.md) 准备 `.env`，使用 `sample-personal-photon` 对应的 key。当前识别固定主线：“身份卡”“帮我找双越野跑鞋，120以内，周五前到”“要第二双”“回执”；是确定性文本识别，不宣称任意自然语言理解。手机实际收发以 B 线 A17 证据为准。
+按 [Photon 配置说明](../apps/channel-photon/README.md) 准备 `.env`，使用 `sample-personal-photon` 对应的 key。当前识别固定主线：“身份卡”“帮我找双越野跑鞋，120以内，周五前到”“要第二双”“回执”；是确定性文本识别，不宣称任意自然语言理解。手机实际收发以 B 线 A17 证据为准。
 
 Claude Desktop 使用独立的 `sample-personal-desktop` key。在 `packages/mcp/.env` 设置 `AGENT_COOKIE_URL`、`AGENT_COOKIE_KEY`、`AGENT_COOKIE_SAMPLE`。保留现有配置中的其他 servers，加入：
 
@@ -84,7 +84,7 @@ Claude Desktop 使用独立的 `sample-personal-desktop` key。在 `packages/mcp
 }
 ```
 
-替换为本机绝对路径并重启 Desktop。工具为 `get_my_card`、`find_agents`、`accept_quote`、`list_receipts`；A10 需真实 Desktop 调用与工作台日志，stdio 测试不能替代。见 [MCP README](https://github.com/BIBOYANG425/agent-cookie/blob/lane-b/packages/mcp/README.md)。
+替换为本机绝对路径并重启 Desktop。工具为 `get_my_card`、`find_agents`、`accept_quote`、`list_receipts`；A10 需真实 Desktop 调用与工作台日志，stdio 测试不能替代。见 [MCP README](../packages/mcp/README.md)。
 
 ### UCP 与 ACME
 
