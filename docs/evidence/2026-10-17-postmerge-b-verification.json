@@ -1,0 +1,202 @@
+{
+  "checkedAt": "2026-10-17T22:08:06.501Z",
+  "baseCommit": "1352eff495872700aa7f6cf01325f09149da8807",
+  "workspace": {
+    "port": 4310,
+    "storage": "SQLite",
+    "rules": "real",
+    "memoryRepo": "real Git",
+    "ucp": "fixture"
+  },
+  "desktop": {
+    "authenticatedAgent": "sample-personal-desktop",
+    "realDesktopToolExecution": true,
+    "events": [
+      {
+        "at": "2026-10-17T22:08:06.495Z",
+        "event": "GET /personal/receipts",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "at": "2026-10-17T22:07:44.492Z",
+        "event": "GET /personal/receipts",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "at": "2026-10-17T22:06:14.035Z",
+        "event": "GET /personal/intents/:id/quotes",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "at": "2026-10-17T22:06:14.032Z",
+        "event": "POST /personal/intents",
+        "result": "201",
+        "reason": ""
+      },
+      {
+        "at": "2026-10-17T22:06:13.841Z",
+        "event": "intent.create",
+        "result": "ok",
+        "reason": "trail_shoes"
+      },
+      {
+        "at": "2026-10-17T22:06:11.832Z",
+        "event": "GET /personal/card",
+        "result": "200",
+        "reason": ""
+      }
+    ],
+    "quotes": [
+      {
+        "title": "Brooks Men's Cascadia 18 · Brooks Men's Cascadia 18",
+        "seller": "marathonsports.myshopify.com",
+        "priceCents": 10995,
+        "currency": "USD",
+        "etaDate": null,
+        "source": "fixture"
+      },
+      {
+        "title": "Keen Men's Wander Trail Running Shoe · Keen Men's Wander Trail Running Shoe",
+        "seller": "black-flag-outfitters-clothing.myshopify.com",
+        "priceCents": 11200,
+        "currency": "USD",
+        "etaDate": null,
+        "source": "fixture"
+      }
+    ],
+    "sample": true,
+    "uiScreenshotVerified": true,
+    "mcpFrames": [
+      {
+        "at": "2026-10-17T22:06:11.767Z",
+        "direction": "client",
+        "method": "tools/call",
+        "id": "2",
+        "payload": "omitted"
+      },
+      {
+        "at": "2026-10-17T22:06:11.839Z",
+        "direction": "server",
+        "method": null,
+        "id": "2",
+        "payload": "omitted"
+      },
+      {
+        "at": "2026-10-17T22:06:13.814Z",
+        "direction": "client",
+        "method": "tools/call",
+        "id": "3",
+        "payload": "omitted"
+      },
+      {
+        "at": "2026-10-17T22:06:14.037Z",
+        "direction": "server",
+        "method": null,
+        "id": "3",
+        "payload": "omitted"
+      },
+      {
+        "at": "2026-10-17T22:09:31.659Z",
+        "direction": "client",
+        "method": "tools/call",
+        "id": "4",
+        "payload": "omitted"
+      },
+      {
+        "at": "2026-10-17T22:09:31.671Z",
+        "direction": "server",
+        "method": null,
+        "id": "4",
+        "payload": "omitted"
+      }
+    ],
+    "configVerified": true,
+    "eventAttribution": "MCP frames and backend timestamps match card, find and receipts. SDK verification reads between those calls are separate probes.",
+    "userConfirmedVisible": true,
+    "uiVisibleTools": [
+      "get_my_card",
+      "find_agents",
+      "list_receipts"
+    ],
+    "receiptScreenshot": {
+      "file": "2026-10-17-claude-real-adapters-result.jpg",
+      "sha256": "1bc3ef26d9af9ae73d36b6888d6a6c2c68d655c93dca08f176c3882e3f8c9011"
+    },
+    "cardQuoteScreenshotPending": false,
+    "mcpReceiptRead": {
+      "at": "2026-10-17T22:09:31.669Z",
+      "event": "GET /personal/receipts",
+      "result": "200"
+    },
+    "uiIntentMatchesBackend": true,
+    "uiCard": {
+      "lang": "zh",
+      "tone": "简短",
+      "shoe_size": "42",
+      "addressValueShown": false
+    },
+    "uiQuotePricesCents": [
+      10995,
+      11200
+    ],
+    "uiQuoteSources": [
+      "fixture",
+      "fixture"
+    ],
+    "cardQuoteScreenshot": {
+      "file": "2026-10-17-claude-real-adapters-card-quotes.jpg",
+      "sha256": "738dd4a634fc7c4e89646c815dfd2ef1de2a106b2712f7264efcd21ce03895e1",
+      "coverage": "Complete Sample card; find_agents header and first quote start. Second quote verified in native accessibility tree and SDK readback, below screenshot viewport."
+    },
+    "a10Result": "passed: real Desktop card/find plus UI, protocol and backend correlation"
+  },
+  "continuity": {
+    "sameMerchantSession": true,
+    "merchant": "black-flag-outfitters-clothing.myshopify.com",
+    "phoneCheckoutAt": "2026-10-17T21:49:54.388Z",
+    "desktopGrantAt": "2026-10-17T22:06:13.840Z",
+    "phoneSessionSha256": "ecd4acb50e5d6b8ccfcf39af12883fe4a741e7c66bec5c9552b1e1e42cca8b7d",
+    "desktopSessionSha256": "ecd4acb50e5d6b8ccfcf39af12883fe4a741e7c66bec5c9552b1e1e42cca8b7d",
+    "comparison": "Compared full session IDs internally; stored equal SHA-256 fingerprints only",
+    "existingPhoneReceiptStillVisible": true,
+    "newCheckoutReceipts": 0,
+    "desktopAcceptEvents": 0,
+    "actualMerchantGreetingVerified": false,
+    "blocker": "UCP proxy writes last_order on handoff but does not read it for a merchant conversation. Quote contract has no sessionId or note. C storefront session/header/SSE and model credentials are still blocked.",
+    "consoleScreenshots": [
+      {
+        "file": "2026-10-17-postmerge-same-session.jpg",
+        "sha256": "9578a0b8e641c352eb8395126a3b6fe1d2af6ed81506a441534e3f8017a514e8"
+      },
+      {
+        "file": "2026-10-17-postmerge-phone-session.jpg",
+        "sha256": "9cd4b41bfb21c1da88ba5ae7ece2becb0d0127782d27bd157ea602a83601ecf7"
+      }
+    ],
+    "consoleDisplayPrefix": "jrrg7b6g"
+  },
+  "sdk": {
+    "methods": [
+      "revokeGrant",
+      "revokeContribution",
+      "demoReset"
+    ],
+    "tests": 60,
+    "mcpTests": 7,
+    "photonTests": 39,
+    "typecheck": "passed",
+    "build": "passed",
+    "rootFrozenOfflineInstall": "passed",
+    "manifestProtocol": "workspace:*",
+    "lockVersionLinkIsGenerated": true
+  },
+  "limits": [
+    "Fixture quotes are not live inventory.",
+    "Existing handoff is not a paid order.",
+    "Actual merchant last_order greeting remains blocked; same-session proof does not substitute for it.",
+    "Desktop quote screenshot shows the first row start; both quotes were checked through native accessibility state and SDK."
+  ]
+}

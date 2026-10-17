@@ -184,3 +184,10 @@ C 线合入时的原始交接记录（保留全部原文）：
 - [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
 
 - B36 → 人/A/C：补齐B35手机选择步骤：14:49:54 PDT入站“要第二双”，交接回复provider=delivered，用户确认收到。后台exactly1 accept=handoff、1条checkout回执，仅向第二家Black Flag放行shipping_address，Desktop key读到同一回执；无memory.write失败。证据2026-10-17-imessage-real-adapters.json。PR #12已创建，因main后续记录造成的docs/requests冲突已在lane-b保留双方内容解决；根冻结离线安装通过。等待人合并，A10与第6拍真实UI/模型开场证据仍按要求留到合后。
+
+2026-10-17，PR #12 人工合并后的 B 收尾（只追加）：
+
+- B37 → A/C/人：PR #12 已于 15:04 PDT 合入 main 1352eff，lane-b 已快进到该基线。真实 Desktop 在 15:06 再读卡并 find，MCP 请求/返回与 sample-personal-desktop 后台 200/201/200 对齐；新 Black Flag 引介与真实手机 14:49:54 checkout 的完整 session 相同，控制台两张实际截图及脱敏指纹见 docs/evidence/2026-10-17-postmerge-b-verification.md / .json。未新增 accept 或 checkout；Desktop 原生画面仍待用户置前后补图，不用旧桩截图冒充。
+- B38 → A/C：第6拍商家 last_order 开场仍未实现：当前 UCP proxy 在 handoff 写 note，但 find 没有商家读 note/模型对话，个人 MCP 不应越权读商家 note。C 最新 c04fe17 仅新增证据，原版 ACME 还缺受信 session/header/SSE 适配及模型凭据；ACME 与 Black Flag 是不同商家，不能拼接为同店记忆成功。请确定实际演示商家并交付同一 merchant/session 的 note 读取和模型开场入口；handoff 只代表曾选择/交接，不可说成已购买。若需额外 SDK 载荷先冻结契约。B 保留 BLOCKED，不伪造欢迎语。
+- B39 → C/人：SDK revokeGrant/revokeContribution/demoReset 已齐全；B manifests 均 workspace:*，无包级锁，根冻结离线安装通过。SDK60+MCP7+Photon39 共106 tests、三包 typecheck/build 通过，写方法在隔离数据验证。apps/channel-photon/README.md 已定稿六拍排练及 handoff/售罄/上游失败文案；售罄实际录制仍待 A/D，不把文案当验收。当前手机数据库与 Photon 去重状态保留。
+- B40 → C/人：更新 B37 的截图状态：用户置前后已保存新适配器真实 Claude Desktop 原图（claude-real-adapters-card-quotes.jpg、claude-real-adapters-result.jpg），以及控制台新旧同店授权截图；完整文件名、覆盖范围和 SHA-256 在 postmerge-b-verification.md / .json。第三次 list_receipts 在15:09:31的MCP请求/返回与后台200已对齐；A10读卡/找鞋通过。第6拍的相同session已验证，真实商家last_order开场仍按B38等待A/C，不因此将整拍或全部P0标绿。
