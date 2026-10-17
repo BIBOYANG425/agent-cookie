@@ -1,0 +1,70 @@
+{
+  "id": "running",
+  "text": "想开始在公路上跑步，帮我找双公路跑鞋，140 美元以内。",
+  "query": "road running shoes",
+  "budgetCents": 14000,
+  "currency": "USD",
+  "productCount": 50,
+  "selected": [
+    {
+      "source": "running.json#/result/products/0/variants/0",
+      "title": "Brooks Ghost 17",
+      "variantId": "gid://shopify/ProductVariant/49936201580853",
+      "variantTitle": "Brooks Ghost 17",
+      "seller": "53c4f8-91.myshopify.com",
+      "price": {
+        "amount": 10995,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Width",
+          "label": "D"
+        },
+        {
+          "name": "Color",
+          "label": "White - Pink Clay - Gecko"
+        },
+        {
+          "name": "Size",
+          "label": "11.5"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    },
+    {
+      "source": "running.json#/result/products/7/variants/0",
+      "title": "RE-RUN | Men's Tarkine AUTOPILOT High-mileage road running shoe",
+      "variantId": "gid://shopify/ProductVariant/44240372138134",
+      "variantTitle": "RE-RUN | Men's Tarkine AUTOPILOT High-mileage road running shoe",
+      "seller": "tarkine-sport.myshopify.com",
+      "price": {
+        "amount": 10000,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Color",
+          "label": "Sand"
+        },
+        {
+          "name": "Numeric shoe size",
+          "label": "8"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    }
+  ],
+  "status": "catalog_support_ready",
+  "fullRecordedRunStatus": "BLOCKED: SDK/Photon generic intent and B continuous iMessage recording pending"
+}

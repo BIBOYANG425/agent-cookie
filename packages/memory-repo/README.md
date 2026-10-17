@@ -74,3 +74,72 @@ pnpm --filter @agent-cookie/memory-repo typecheck
 `test/lifecycle.test.ts` covers C08 regeneration/reset and the project's real
 Sample seed. These are package tests, not HTTP acceptance passes; the acceptance
 suite remains a separate HTTP-only integration task.
+
+## Provisional learning and intent history
+
+`TODO(contract)`: the shared contract has not yet published the learning API.
+The local types in `src/learning-types.ts` add `appendIntent(input, meta)` and
+`searchIntents(q)` to the existing `openMemoryRepo` result. The old `MemoryRepoApi`
+remains assignable. No workspace route or SDK method is introduced here.
+
+For dynamic preference contributions, use the explicit `openLearningMemoryRepo`
+entry with an injected `learningRules` implementation. Its append/list/revoke/
+regenerate operations preserve `pref.*`, `intentId`, `conversationId`, and
+`evidence`, and return the corresponding learning types rather than asserting
+that dynamic fields are legacy `Field` values. Use this entry consistently for
+a repository containing dynamic preferences; the legacy parser only exposes
+legacy fields. Runtime rendering and merging remain injected; this package only
+imports learning types from rules. Temporary local field/metadata guards mirror
+the agreed rules until a shared contract replaces them.
+
+```ts
+import { openLearningMemoryRepo } from '@agent-cookie/memory-repo';
+import { learningRules } from '@agent-cookie/rules';
+
+const repo = await openLearningMemoryRepo({
+  path: '/absolute/path/to/demo-memory',
+  seedDir: '/absolute/path/to/fixtures/memory',
+  userId: 'sample-user',
+  rules: learningRules,
+});
+```
+
+Intent history has a deliberately narrow projection:
+
+- Intent: `id`, repository-matching `userId`, optional structured `kind`, and
+  `expiresAt`. Missing `kind` is preserved as absent. `text`, `query`, `body`,
+  `transcript`, arbitrary `public` data, and all other properties are omitted.
+  Omitting `public` also omits structured budget values until their safe shared
+  shape is agreed; this package does not guess which arbitrary strings are prose.
+- Extracted contributions: only the contribution fields, optional revocation,
+  `intentId`, `conversationId`, and `evidence`. The source intent ID, when present,
+  must match the enclosing intent. Unknown properties are never spread or
+  serialized. For this summary record only, each value and evidence is limited
+  to 200 Unicode code points; overlong inputs reject the whole write. Ordinary
+  learning contribution values retain their existing behavior.
+- Chosen quote: only `id`, `agentId`, integer `price`, and `currency`. Quote text,
+  title, body, URLs, and other properties are omitted.
+
+Each call appends one escaped Markdown record to
+`intents/<UTC YYYY-MM-DD>-<encoded intent ID>.md`. The date comes from `meta.at`,
+because the current shared `Intent` has no `createdAt`. Indexed contribution
+attributes retain source metadata without embedding raw JSON objects. IDs use
+the existing canonical filename codec and the combined dated filename limit.
+For the provisional history format, identifiers are nonempty, whitespace-free,
+and at most 128 code points; optional `kind` is a structured token up to 64.
+Every history append requires literal `meta.author === 'personal'` and retains
+the supplied signature trailer. The same per-path queue and rollback apply.
+
+Search performs case-insensitive substring matching for every whitespace-split
+query term against generated summaries. An empty query returns no results.
+Results contain only `{ intentId, date, summary }`, in filename/append order;
+whitespace and control characters in summary text are flattened. They do not
+return stored user/source metadata or raw input. Malformed history lines are
+ignored. Queries are never persisted. Existing repositories without `intents/`
+read as empty, and reset removes new history through the same guarded seed reset.
+
+`test/intents.test.ts` covers raw-property omission, optional kind, short evidence,
+Unicode escaping, author/provenance, concurrent handles, search, and reset.
+`test/learning.test.ts` runs real rules plus temporary Git repositories to verify
+dynamic preference/source round trips and CARD regeneration. Workspace learning
+integration remains pending the shared contract and caller wiring.

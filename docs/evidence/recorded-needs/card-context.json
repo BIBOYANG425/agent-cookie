@@ -1,0 +1,53 @@
+{
+  "source": "GET /personal/card via @agent-cookie/sdk",
+  "workspace": "http://127.0.0.1:4310",
+  "capturedAt": "2026-10-17T22:17:04.679Z",
+  "dataMode": "Sample",
+  "fields": [
+    {
+      "field": "lang",
+      "value": "zh",
+      "confidence": "medium",
+      "sources": [
+        "personal-photon"
+      ],
+      "updatedAt": "2026-10-01T09:00:00.000Z",
+      "lastSupportedAt": "2026-10-01T09:00:00.000Z",
+      "changedRecently": false
+    },
+    {
+      "field": "tone",
+      "value": "简短",
+      "confidence": "medium",
+      "sources": [
+        "personal-photon"
+      ],
+      "updatedAt": "2026-10-01T09:00:00.000Z",
+      "lastSupportedAt": "2026-10-01T09:00:00.000Z",
+      "changedRecently": false
+    },
+    {
+      "field": "length",
+      "value": "短",
+      "confidence": "medium",
+      "sources": [
+        "personal-photon"
+      ],
+      "updatedAt": "2026-10-01T09:00:00.000Z",
+      "lastSupportedAt": "2026-10-01T09:00:00.000Z",
+      "changedRecently": false
+    },
+    {
+      "field": "shoe_size",
+      "value": "42",
+      "confidence": "high",
+      "sources": [
+        "personal-photon",
+        "ucp:shoebacca.com"
+      ],
+      "updatedAt": "2026-06-14T18:30:00.000Z",
+      "lastSupportedAt": "2026-10-01T09:00:00.000Z",
+      "changedRecently": false
+    }
+  ]
+}

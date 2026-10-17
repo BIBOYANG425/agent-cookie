@@ -7,5 +7,5 @@ export function createUcp(opts: UcpOptions): UcpApi {
 
 export const ucpModule: UcpModule = { createUcp };
 
-export { parseSize, sizeMatches, toSystem } from "./size.js";
+export { parseSize, sizeMatch, sizeMatches, toSystem } from "./size.js";
 export type { Size } from "./size.js";

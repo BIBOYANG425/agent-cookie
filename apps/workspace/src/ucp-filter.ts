@@ -4,7 +4,7 @@
 // color preferences, then the card's budget. Then the first N distinct sellers.
 // No model involved. An unknown delivery date (etaDate null) never disqualifies an offer.
 import { DEFAULT_SELLER_COUNT, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
-import { parseSize, sizeMatches, toSystem } from "@agent-cookie/ucp";
+import { parseSize, sizeMatch, sizeMatches, toSystem } from "@agent-cookie/ucp";
 
 // Size matching is shared with lane D (B22): one strict men's EU↔US table and one label parser, in @agent-cookie/ucp.
 // EU 42 = US 8.5, EU 42.5 = US 9; a recorded US 9 is never treated as EU 42.
@@ -73,7 +73,11 @@ export function pickSellers(offers: readonly UcpOffer[], q: SearchConditions, n 
   preferVariantIds: readonly string[] = []): Picked[] {
   const eligible = offers.filter((o) => isEligible(o, q));
   const pinRank = (o: UcpOffer) => { const i = preferVariantIds.indexOf(o.variantId); return i < 0 ? preferVariantIds.length : i; };
-  const sizeRank = (o: UcpOffer) => (q.size !== undefined && sizeMatches(o.sizeOptions ?? [], q.size) ? 0 : 1);
+  const sizeRank = (o: UcpOffer) => {
+    if (q.size === undefined) return 0;
+    const match = sizeMatch(o.sizeOptions ?? [], q.size);
+    return match === "match" ? 0 : match === "no-size" ? 1 : 2;
+  };
   const budgetRank = (o: UcpOffer) => (q.preferMaxPriceCents === undefined || o.priceCents <= q.preferMaxPriceCents ? 0 : 1);
   // More matched preferences rank higher: −(brand matched) − (color matched).
   const prefRank = (o: UcpOffer) => -(Number(q.prefs?.brand.some((t) => mentions(o, t)) ?? false) + Number(q.prefs?.color.some((t) => mentions(o, t)) ?? false));

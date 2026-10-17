@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController, remainingSeconds } from '../src/controller';
-import type { ConsoleAdapter, ConsoleSnapshot } from '../src/model';
+import type { ConsoleAdapter, ConsoleSnapshot, Contribution } from '../src/model';
 
 const at = Date.parse('2026-10-17T20:00:00.000Z');
 const empty: ConsoleSnapshot = { card: { card: [], candidates: [], superseded: [] }, contributions: null,
@@ -19,18 +19,38 @@ describe('Sample adapter', () => {
       .toEqual(['撤销授权', '重置 Sample', 'Sample 已载入']);
   });
 
-  it('revokes one source locally and reset restores all three Sample records', async () => {
+  it('revokes one source locally and reset restores the current seed records', async () => {
     const network = vi.spyOn(globalThis, 'fetch');
     const sample = createSampleAdapter(() => at);
     const before = await sample.load();
     expect(sample.mode).toBe('sample');
-    expect(before.contributions).toHaveLength(3);
+    expect(before.contributions!.length).toBeGreaterThan(0);
     expect(before.grants.every((grant) => grant.agentName.startsWith('Sample'))).toBe(true);
-    await sample.revokeContribution('sample-tone-01');
-    expect((await sample.load()).card.card.map((field) => field.field)).toEqual(['lang', 'shoe_size']);
+    const selected = before.contributions![0];
+    await sample.revokeContribution(selected.id);
+    expect((await sample.load()).contributions).toEqual(before.contributions!.filter((record) => record.id !== selected.id));
     await sample.reset();
-    expect((await sample.load()).contributions).toHaveLength(3);
+    expect((await sample.load()).contributions).toEqual(before.contributions);
     expect(network).not.toHaveBeenCalled();
+  });
+
+  it('derives Sample grant fields from the active seed and restores that seed on reset', async () => {
+    const records: Contribution[] = ['lang', 'length', 'budget', 'deadline', 'budget'].map((field, index) => ({
+      id: `seed-${index}`, userId: 'sample-user', agentId: 'sample-personal', field,
+      value: `${field}-value`, basis: 'stated', createdAt: new Date(at).toISOString(),
+    }));
+    records.push({ ...records[0], id: 'revoked-seed', field: 'tone', revokedAt: new Date(at).toISOString() });
+    const sample = createSampleAdapter(() => at, records);
+    records[0].field = 'tone'; // Mutating the caller's copy must not change the reset seed.
+    const before = await sample.load();
+    expect(before.grants.map((grant) => grant.fields)).toEqual([
+      ['lang', 'length', 'budget', 'deadline'], ['lang', 'length', 'budget', 'deadline'],
+    ]);
+    await sample.revokeGrant(before.grants[0].id);
+    await sample.revokeContribution('seed-2');
+    await sample.reset();
+    expect((await sample.load()).grants).toEqual(before.grants);
+    expect((await sample.load()).card).toEqual(before.card);
   });
 
   it('revokes only the selected Sample grant and uses server-style remaining milliseconds', async () => {
@@ -48,6 +68,30 @@ describe('Sample adapter', () => {
 });
 
 describe('live HTTP boundary', () => {
+  it('preserves multiple returned fields across the card, candidates, history and grants', async () => {
+    const card = {
+      card: ['lang', 'length', 'budget', 'deadline'].map((field) => ({
+        field, value: `${field}-value`, confidence: 'medium', sources: ['personal'],
+        updatedAt: new Date(at).toISOString(), lastSupportedAt: new Date(at).toISOString(), changedRecently: false,
+      })),
+      candidates: [{ field: 'tone', value: 'brief', sources: ['merchant'], reason: 'inferred' }],
+      superseded: [{ field: 'budget', value: '75', sources: ['personal'], lastSupportedAt: new Date(at).toISOString(), supersededBy: '90' }],
+    };
+    const grant = { ...(await createSampleAdapter(() => at).load()).grants[0], fields: ['lang', 'length', 'deadline'] };
+    const live = createLiveAdapter(async (path) => {
+      if (path.endsWith('/me')) return json({ role: 'owner' });
+      if (path.endsWith('/personal/card')) return json(card);
+      if (path.endsWith('/personal/grants')) return json({ grants: [grant] });
+      if (path.endsWith('/owner/activity')) return json({ events: [] });
+      if (path.endsWith('/personal/learned')) return json({ error: { code: 'NOT_FOUND' } }, 404);
+      throw new Error('Unexpected endpoint');
+    }, () => at);
+    const snapshot = await live.load();
+    expect(snapshot.card).toEqual(card);
+    expect(snapshot.grants).toEqual([grant]);
+    expect(snapshot.contributions).toBeNull();
+  });
+
   it('reads the real envelopes and never invents contribution IDs from card source IDs', async () => {
     const calls: { path: string; options: RequestInit }[] = [];
     const fetcher = async (path: string, options: RequestInit) => {
@@ -59,9 +103,10 @@ describe('live HTTP boundary', () => {
       throw new Error('Unexpected endpoint');
     };
     const live = createLiveAdapter(fetcher, () => at);
-    expect(await live.load()).toEqual({ ...empty, card: { ...empty.card, sample: true }, sample: true });
+    expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
       '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
+      '/workspace-api/personal/learned',
     ]);
     for (const call of calls) {
       expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });

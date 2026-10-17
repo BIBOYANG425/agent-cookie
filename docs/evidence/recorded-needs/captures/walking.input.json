@@ -1,0 +1,20 @@
+{
+  "query": "comfortable daily walking shoes",
+  "context": {
+    "intent": "最近每天走路通勤，帮我找双舒服的日常走路鞋，95 美元以内。",
+    "address_country": "US",
+    "currency": "USD"
+  },
+  "filters": {
+    "price": {
+      "max": 9500
+    },
+    "available": true,
+    "ships_to": {
+      "country": "US"
+    }
+  },
+  "pagination": {
+    "limit": 50
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "enabled": true,
+  "entries": [],
+  "stages": [
+    {
+      "id": "empty",
+      "label": "还未学习",
+      "description": "Sample · 尚未注入学习贡献，未运行模型。",
+      "entries": []
+    },
+    {
+      "id": "candidate",
+      "label": "一次闲聊",
+      "description": "Sample · 一段对话只算一个来源；徒步和防水均是候选，还未上卡。",
+      "entries": [
+        {
+          "id": "sample-learned-hike-1",
+          "field": "pref.outdoor_activity",
+          "value": "徒步",
+          "status": "candidate",
+          "createdAt": "2026-10-17T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "周末又去徒步",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-weekend",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "周末又去徒步",
+              "at": "2026-10-17T12:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "sample-learned-water-1",
+          "field": "pref.water_resistance",
+          "value": "防水",
+          "status": "candidate",
+          "createdAt": "2026-10-17T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "上次脚湿透了",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-weekend",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "上次脚湿透了",
+              "at": "2026-10-17T12:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "learned",
+      "label": "独立来源确认",
+      "description": "Sample · 加入另一段独立对话的同值证据；两源晋升 medium。这不是同一段闲聊自动生成了两个来源。",
+      "entries": [
+        {
+          "id": "sample-learned-hike-0",
+          "field": "pref.outdoor_activity",
+          "value": "徒步",
+          "status": "on_card",
+          "createdAt": "2026-10-10T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "常去徒步",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-earlier",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "常去徒步",
+              "at": "2026-10-10T12:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "sample-learned-water-0",
+          "field": "pref.water_resistance",
+          "value": "防水",
+          "status": "on_card",
+          "createdAt": "2026-10-10T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "希望鞋子防水",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-earlier",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "希望鞋子防水",
+              "at": "2026-10-10T12:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "sample-learned-hike-1",
+          "field": "pref.outdoor_activity",
+          "value": "徒步",
+          "status": "on_card",
+          "createdAt": "2026-10-17T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "周末又去徒步",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-weekend",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "周末又去徒步",
+              "at": "2026-10-17T12:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "sample-learned-water-1",
+          "field": "pref.water_resistance",
+          "value": "防水",
+          "status": "on_card",
+          "createdAt": "2026-10-17T12:00:00.000Z",
+          "basis": "inferred",
+          "evidence": "上次脚湿透了",
+          "sources": [
+            {
+              "kind": "conversation",
+              "id": "sample-conversation-weekend",
+              "agentId": "sample-personal-photon",
+              "label": "Sample · 独立演示对话",
+              "evidence": "上次脚湿透了",
+              "at": "2026-10-17T12:00:00.000Z"
+            }
+          ]
+        }
+      ],
+      "card": [
+        {
+          "field": "pref.outdoor_activity",
+          "value": "徒步",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        },
+        {
+          "field": "pref.water_resistance",
+          "value": "防水",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        }
+      ]
+    }
+  ]
+}

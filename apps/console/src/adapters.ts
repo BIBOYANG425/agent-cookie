@@ -1,9 +1,18 @@
 import fixtureContributions from '../../../fixtures/contributions.json';
 import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
+import { normalizeLearning, normalizeLearningEnabled, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
 
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
-export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapter {
+export function createSampleAdapter(now: () => number = Date.now,
+  seedContributions: readonly Contribution[] = fixtureContributions as Contribution[],
+  learningSeed: LearningSeed = { enabled: true, entries: [] }, initialLearningStage?: string): ConsoleAdapter {
+  const initialContributions = structuredClone([...seedContributions]);
+  const initialLearning = structuredClone(learningSeed);
   let contributions: Contribution[] = [];
+  let learned: LearnedEntry[] = [];
+  let learningEnabled = initialLearning.enabled;
+  let stageId = initialLearningStage ?? initialLearning.stages?.[0]?.id;
+  const stage = () => initialLearning.stages?.find((row) => row.id === stageId);
   let grants: GrantView[] = [];
   let events: ActivityEvent[] = [];
   let serial = 0;
@@ -12,16 +21,24 @@ export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapte
     actor: 'Sample · 本地控制台', object, result: 'Sample · 本地完成', reason,
   });
   const seed = () => {
-    contributions = structuredClone(fixtureContributions) as Contribution[];
+    contributions = structuredClone(initialContributions);
+    stageId = initialLearning.stages?.[0]?.id;
+    learned = structuredClone(stage()?.entries ?? initialLearning.entries);
+    learningEnabled = initialLearning.enabled;
+    const fields = [...new Set(contributions.filter((record) => !record.revokedAt).map((record) => record.field))];
     grants = ['a', 'b'].map((suffix) => ({
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
-      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: ['lang', 'tone', 'shoe_size'], purpose: 'handshake',
+      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...fields], purpose: 'handshake',
       createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 600000).toISOString(), remainingMs: 600000, status: 'live',
     }));
     events = [];
     addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
   };
   seed();
+  if (initialLearningStage && initialLearning.stages?.some((row) => row.id === initialLearningStage)) {
+    stageId = initialLearningStage;
+    learned = structuredClone(stage()!.entries);
+  }
   return {
     mode: 'sample',
     async load() {
@@ -29,17 +46,32 @@ export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapte
         field: record.field, value: record.value, confidence: 'medium', sources: [record.agentId],
         updatedAt: record.createdAt, lastSupportedAt: record.createdAt, changedRecently: false,
       })), candidates: [], superseded: [] };
+      // Only the fixture's authored card states are displayed; this adapter is not the workspace merger.
+      const scriptedCard = (stage()?.card ?? []).filter((field) => learned.some((entry) => !entry.revokedAt
+        && entry.status === 'on_card' && entry.field === field.field && entry.value === field.value));
+      card.card = [...card.card.filter((field) => !scriptedCard.some((row) => row.field === field.field)), ...scriptedCard];
+      const learning: LearningState = { ...normalizeLearning({ enabled: learningEnabled, entries: learned }), sample: true,
+        ...(stage() ? { sampleStage: stageId, sampleDescription: stage()!.description,
+          sampleStages: initialLearning.stages!.map(({ id, label }) => ({ id, label })) } : {}) };
       return structuredClone({ card, contributions: contributions.filter((record) => !record.revokedAt),
         grants: grants.map((grant) => {
           const remainingMs = Math.max(0, Date.parse(grant.expiresAt) - now());
           const status = grant.revokedAt ? 'revoked' : remainingMs === 0 ? 'expired' : 'live';
           return { ...grant, status, remainingMs: status === 'live' ? remainingMs : 0 } as GrantView;
-        }), events: [...events].reverse(), receivedAt: now() });
+        }), learning, events: [...events].reverse(), receivedAt: now() });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
-      if (!record) throw new Error('Sample 记录不存在');
-      record.revokedAt = new Date(now()).toISOString();
+      const learnedRecord = learned.find((row) => row.id === id);
+      if (!record && !learnedRecord) throw new Error('Sample 记录不存在');
+      if (record) record.revokedAt = new Date(now()).toISOString();
+      if (learnedRecord) {
+        learnedRecord.revokedAt = new Date(now()).toISOString();
+        const remaining = learned.filter((row) => !row.revokedAt && row.field === learnedRecord.field && row.value === learnedRecord.value);
+        const sources = new Set(remaining.flatMap((row) => row.sources.map((source) => JSON.stringify([source.kind, source.id]))));
+        // This Sample replay demonstrates the two-source learned preference: removing support returns it to candidate.
+        if (sources.size < 2) for (const row of remaining) row.status = 'candidate';
+      }
       addEvent('撤销来源记录', id, 'Sample 来源已撤销；仅更新本页演示身份卡。');
     },
     async revokeGrant(id) {
@@ -48,7 +80,18 @@ export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapte
       grant.revokedAt = new Date(now()).toISOString();
       addEvent('撤销授权', id, 'Sample 授权已撤销；未向真实商家或工作台发送请求。');
     },
-    async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的三条来源与两份演示授权。'); },
+    async setLearning(enabled) {
+      learningEnabled = enabled;
+      addEvent(enabled ? '恢复学习' : '暂停学习', 'sample-learning', '仅更改 Sample 开关；未调用提取器或工作台。');
+    },
+    async selectLearningStage(id) {
+      const next = initialLearning.stages?.find((row) => row.id === id);
+      if (!next) throw new Error('Sample 阶段不存在');
+      stageId = id;
+      learned = structuredClone(next.entries);
+      addEvent('切换 Sample 学习阶段', id, '加载已编写的演示记录，不代表真实提取或购物结果。');
+    },
+    async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
   };
 }
 
@@ -73,28 +116,45 @@ const validGrant = (row: unknown): boolean => object(row) && string(row.id) && s
 const validEvent = (row: unknown): boolean => object(row) && date(row.at)
   && ['id', 'event', 'actor', 'object', 'result', 'reason'].every((key) => string(row[key]));
 const malformed = () => new Error('工作台响应格式与已核对契约不一致。');
+class RequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 // The same-origin server bridge owns @agent-cookie/sdk and AGENT_COOKIE_KEY.
 // No owner credentials enter browser JavaScript. Missing SDK methods live in server/workspace.ts.
 export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = Date.now): ConsoleAdapter {
-  const request = async (path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<unknown> => {
+  const request = async (path: string, method: 'GET' | 'POST' | 'PUT', signal?: AbortSignal, body?: unknown): Promise<unknown> => {
     let response: Response;
     try {
       const timeout = AbortSignal.timeout(8000);
-      response = await fetcher(`/workspace-api${path}`, { method, headers: { 'X-Agent-Cookie-Console': '1' },
+      response = await fetcher(`/workspace-api${path}`, { method, headers: { 'X-Agent-Cookie-Console': '1',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         credentials: 'omit', cache: 'no-store', redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     } catch { throw new Error('无法连接本机工作台，或请求已超时。'); }
-    let body: unknown;
-    try { body = await response.json(); } catch { throw malformed(); }
+    let result: unknown;
+    try { result = await response.json(); } catch {
+      if (!response.ok) throw new RequestError(`工作台拒绝请求：${response.status} REQUEST_FAILED`, response.status);
+      throw malformed();
+    }
     if (!response.ok) {
-      const code = object(body) && object(body.error) && string(body.error.code) && /^[A-Z_]{1,40}$/u.test(body.error.code)
-        ? body.error.code : 'REQUEST_FAILED';
+      const code = object(result) && object(result.error) && string(result.error.code) && /^[A-Z_]{1,40}$/u.test(result.error.code)
+        ? result.error.code : 'REQUEST_FAILED';
       if (code === 'CONSOLE_KEY_MISSING') throw new Error('请在本机控制台服务设置 AGENT_COOKIE_KEY 后重新连接。');
       if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('本机控制台服务需要 owner 钥匙，请核对 AGENT_COOKIE_KEY。');
       // Server messages may contain secrets or field values; show only the error code.
-      throw new Error(`工作台拒绝请求：${response.status} ${code}`);
+      throw new RequestError(`工作台拒绝请求：${response.status} ${code}`, response.status);
     }
-    return body;
+    return result;
+  };
+  const learning = async (signal?: AbortSignal): Promise<LearningState> => {
+    try { return normalizeLearning(await request('/personal/learned', 'GET', signal)); }
+    catch (error) {
+      if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable', enabled: null,
+        entries: [], message: '工作台尚未提供学习记录接口。身份卡、授权和活动可继续使用。' };
+      return { availability: 'error', enabled: null, entries: [],
+        message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
+    }
   };
   const acknowledged = (body: unknown): body is Json => object(body) && body.ok === true;
   return {
@@ -102,13 +162,14 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
-      const [card, grantBody, activityBody] = await Promise.all([
+      const [card, grantBody, activityBody, learned] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
+        learning(signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(),
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {
@@ -122,6 +183,11 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async reset(signal) {
       const body = await request('/demo/reset', 'POST', signal);
       if (!acknowledged(body) || !date(body.seededAt)) throw malformed();
+    },
+    async setLearning(enabled, signal) {
+      // TODO(contract): provisional request/ack is { enabled: boolean }, pending A's published types.
+      const body = await request('/personal/learning', 'PUT', signal, { enabled });
+      if (normalizeLearningEnabled(body) !== enabled) throw new Error('工作台未确认所请求的学习开关状态。');
     },
   };
 }

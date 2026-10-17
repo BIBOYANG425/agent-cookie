@@ -1,16 +1,20 @@
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import agents from '../../../fixtures/agents.json';
+import learningSeed from '../../../fixtures/learning/console.json';
 import { createLiveAdapter, createSampleAdapter } from './adapters';
 import { ConsoleController, remainingSeconds } from './controller';
+import { FieldName, fieldName } from './fields';
 import type { ConsoleAdapter } from './model';
+import type { LearningSeed } from './learning';
+import { LearningPanel, LearningToggle } from './LearningPanel';
 import './style.css';
 
-const labels: Record<string, string> = { lang: '语言', tone: '说话方式', length: '回复长度', shoe_size: '鞋码',
-  budget: '预算', deadline: '时间要求', shipping_address: '收货地址', payment_method: '支付方式引用' };
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
 const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN', { hour12: false });
 const focusCard = () => document.getElementById('card-title')?.focus({ preventScroll: true });
+const createConsoleSample = () => createSampleAdapter(Date.now, undefined, learningSeed as LearningSeed,
+  new URLSearchParams(window.location.search).get('learningStage') ?? undefined);
 
 function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (next: ConsoleAdapter) => void }) {
   return <details className="connection">
@@ -18,7 +22,7 @@ function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (nex
     <p>目标：<code>127.0.0.1:4310</code>。使用本机控制台服务配置的 owner 钥匙，页面无需输入。</p>
     <button className="primary" type="button" onClick={() => change(createLiveAdapter())}>连接</button>
     <p className="muted">连接后，撤销与重置会发送给这个本机工作台。</p>
-    {adapter.mode === 'live' && <button type="button" onClick={() => change(createSampleAdapter())}>断开并返回 Sample</button>}
+    {adapter.mode === 'live' && <button type="button" onClick={() => change(createConsoleSample())}>断开并返回 Sample</button>}
   </details>;
 }
 
@@ -40,6 +44,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
     <header className="masthead">
       <a className="brand" href="#card" aria-label="Agent Cookie 首页"><span className="brand-mark" aria-hidden="true">ac</span>Agent Cookie</a>
       <div className="header-actions"><span className={`mode-badge ${sample ? 'sample' : ''}`}>{connectionState}</span>
+        <LearningToggle state={data?.learning} disabled={blocked} change={(enabled) => void controller.setLearning(enabled)} />
         <button type="button" disabled={blocked} onClick={() => void controller.reset()}>{state.pending.startsWith('重置') ? '正在重置…' : sample ? '重置 Sample' : '重置演示'}</button>
       </div>
     </header>
@@ -49,7 +54,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -59,26 +64,30 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
       <section id="card" className="panel" aria-labelledby="card-title" aria-busy={state.loading}>
         <div className="sheet-heading"><h2 id="card-title" tabIndex={-1}>身份卡</h2><span>{sample ? 'Sample · 来源可展开' : '来源可展开'}</span></div>
         {!data ? <p className="empty">{state.loading ? '正在读取身份卡…' : '尚未连接。检查工作台和钥匙后重试，或返回 Sample。'}</p>
-          : data.card.card.length === 0 ? <p className="empty">身份卡目前没有字段。{sample ? '你可以重置 Sample，恢复三条演示记录。' : 'agent 记录的合格信息将在这里显示。'}</p>
+          : data.card.card.length === 0 ? <p className="empty">身份卡目前没有字段。{sample ? '你可以重置 Sample，恢复种子演示记录。' : 'agent 记录的合格信息将在这里显示。'}</p>
           : data.card.card.map((field) => {
             const records = data.contributions?.filter((row) => row.field === field.field && row.value === field.value && !row.revokedAt);
             return <details className="field-row" key={field.field}>
-              <summary><span className="field-name">{labels[field.field] ?? field.field}</span><span className="field-value">{field.value || '（空值）'}</span><span className="source-toggle">查看来源 <span aria-hidden="true">＋</span></span></summary>
+              <summary><span className="field-name"><FieldName field={field.field} /></span><span className="field-value">{field.value || '（空值）'}</span><span className="source-toggle">查看来源 <span aria-hidden="true">＋</span></span></summary>
               <div className="source-detail">
                 <p className="field-meta">可信度：{field.confidence === 'high' ? '高' : '中'}{field.changedRecently ? ' · 最近发生变化' : ''} · 最后支持时间 {formatTime(field.lastSupportedAt)}</p>
                 {records?.map((record) => <article className="source-record" key={record.id}>
                   <h3>{name(record.agentId)}</h3>
                   <dl><div><dt>记录依据</dt><dd>{basis[record.basis]}（{record.basis}）</dd></div><div><dt>记录时间</dt><dd><time dateTime={record.createdAt}>{formatTime(record.createdAt)}</time></dd></div><div><dt>记录 ID</dt><dd>{record.id}</dd></div></dl>
-                  <button type="button" className="danger" disabled={blocked} aria-label={`撤销${labels[field.field] ?? field.field}的来源 ${record.id}`} onClick={() => void controller.revokeContribution(record.id).then(focusCard)}>撤销这条来源</button>
+                  <button type="button" className="danger" disabled={blocked} aria-label={`撤销${fieldName(field.field)}的来源 ${record.id}`} onClick={() => void controller.revokeContribution(record.id).then(focusCard)}>撤销这条来源</button>
                 </article>)}
                 {data.contributions === null && <><ul className="source-list">{field.sources.map((source) => <li key={source}>{name(source)}</li>)}</ul><p className="source-note">工作台目前只提供来源 agent ID，尚未提供贡献记录 ID；暂不能逐条撤销来源。</p></>}
                 {records?.length === 0 && <p className="source-note">此字段没有可操作的来源记录。</p>}
               </div>
             </details>;
           })}
-        {data && data.card.candidates.length > 0 && <details className="secondary-section"><summary>候选信息 · 尚未进入身份卡</summary><ul>{data.card.candidates.map((row, index) => <li key={`${row.field}-${index}`}>{labels[row.field] ?? row.field}：{row.value} · {row.reason === 'inferred' ? '推测' : '仅一个来源'}</li>)}</ul></details>}
-        {data && data.card.superseded.length > 0 && <details className="secondary-section"><summary>历史值</summary><ul>{data.card.superseded.map((row, index) => <li key={`${row.field}-${index}`}>{labels[row.field] ?? row.field}：{row.value} → {row.supersededBy || '已不在身份卡中'}</li>)}</ul></details>}
+        {data && data.card.candidates.length > 0 && <details className="secondary-section"><summary>候选信息 · 尚未进入身份卡</summary><ul>{data.card.candidates.map((row, index) => <li key={`${row.field}-${index}`}><FieldName field={row.field} />：{row.value} · {row.reason === 'inferred' ? '推测' : '仅一个来源'}</li>)}</ul></details>}
+        {data && data.card.superseded.length > 0 && <details className="secondary-section"><summary>历史值</summary><ul>{data.card.superseded.map((row, index) => <li key={`${row.field}-${index}`}><FieldName field={row.field} />：{row.value} → {row.supersededBy || '已不在身份卡中'}</li>)}</ul></details>}
       </section>
+
+      <LearningPanel state={data?.learning} sample={sample} disabled={blocked}
+        revoke={(id) => void controller.revokeContribution(id).then(() => document.getElementById('learned-title')?.focus({ preventScroll: true }))}
+        selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
 
       <section id="grants" className="panel" aria-labelledby="grants-title">
         <div className="sheet-heading"><h2 id="grants-title">授权</h2><span>到期或撤销后，商家不能继续读取</span></div>
@@ -88,7 +97,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
             const status = grant.status === 'revoked' ? '已撤销' : seconds === 0 ? '已过期' : `剩余 ${seconds} 秒`;
             return <article className="grant" key={grant.id}>
               <div className="grant-title"><div><h3>{grant.agentName}</h3><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
-              <dl><div><dt>允许字段</dt><dd>{grant.fields.map((field) => labels[field] ?? field).join('、') || '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div><div><dt>会话</dt><dd>{grant.sessionId}</dd></div><div><dt>到期时间</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
+              <dl><div><dt>允许字段</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map((field) => <li key={field}><FieldName field={field} /></li>)}</ul> : '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div><div><dt>会话</dt><dd>{grant.sessionId}</dd></div><div><dt>到期时间</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
               <button type="button" className="danger" disabled={blocked || grant.status !== 'live' || seconds === 0} aria-label={`撤销 ${grant.agentName} 的授权`} onClick={() => void controller.revokeGrant(grant.id)}>{grant.status === 'revoked' ? '已撤销' : '撤销授权'}</button>
             </article>;
           })}</div>}
@@ -109,7 +118,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
 }
 
 function App() {
-  const [adapter, setAdapter] = useState<ConsoleAdapter>(() => createSampleAdapter());
+  const [adapter, setAdapter] = useState<ConsoleAdapter>(createConsoleSample);
   return <Dashboard adapter={adapter} change={setAdapter} />;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

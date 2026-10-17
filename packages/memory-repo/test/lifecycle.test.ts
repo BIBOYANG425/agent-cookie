@@ -36,7 +36,7 @@ describe('C08 memory repository lifecycle and provenance', () => {
     expect(await repo.listContributions()).toEqual([seedContribution]);
     expect(await readFile(join(f.path, 'CARD.md'), 'utf8')).toBe(await readFile(join(f.seedDir, 'CARD.md'), 'utf8'));
     expect((await readdir(f.path)).sort()).toEqual([
-      '.git', 'CARD.md', 'MEMORY.md', 'POLICY.yaml', 'archive', 'contributions', 'notes', 'receipts.md',
+      '.git', 'CARD.md', 'MEMORY.md', 'POLICY.yaml', 'archive', 'contributions', 'notes', 'intents', 'receipts.md',
     ].sort());
   });
 
