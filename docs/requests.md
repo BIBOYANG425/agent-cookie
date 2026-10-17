@@ -29,3 +29,4 @@
 - [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
 - [D→A] packages/ucp exports UcpApi (+UcpOffer/UcpCompleteResult); map UcpCompleteResult→AcceptResult (status passes through, messages→message), UcpOffer→Quote (seller→seller/Agent.domain, agentId ucp:<seller>). Optionally move the UcpApi type into core.
+- 2026-10-17 C → A：已读 bd9d6e3 正式 RulesApi/MemoryRepoApi，C 正按其实现；请将 packages/contract 与 workspace 合入 main 并更新根锁文件（新 rules/memory-repo workspace 依赖）。本地验证先使用仓库外导出的原版 contract；changedRecently 按“替换已有合格值且仅单源”为真、首次 personal stated 为假，两源确认后假，过期证据不让初始单商家凭空合格；若需不同语义请在契约明确，C 继续工作。

@@ -1,3 +1,7 @@
 [
-  { "userId": "sample-user" }
+  {
+    "userId": "sample-user",
+    "name": "Sample User",
+    "secret": "sample-user-secret-0001"
+  }
 ]
