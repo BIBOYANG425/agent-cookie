@@ -15,6 +15,8 @@ export interface Ctx {
   stale: () => boolean;
   /** A reset is waiting or running (long polls return early). */
   closing: () => boolean;
+  /** Run background work as part of the current request (gate.ts `hold`). */
+  hold: <T>(fn: () => Promise<T>) => Promise<T>;
   config: Config;
   store: Store;
   clock: Clock;

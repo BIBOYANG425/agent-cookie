@@ -1,5 +1,5 @@
 // Field policy table — docs/plan.md v0.3 §5. Anything not listed is "deny". Deterministic; no model involved.
-import { FIELDS, type Category, type Field } from "./types.js";
+import { FIELDS, PREF_FIELDS, type Category, type Field } from "./types.js";
 
 export type ReadMode = "auto" | "purpose" | "deny";
 
@@ -7,7 +7,8 @@ export type ReadMode = "auto" | "purpose" | "deny";
 const AUTO: Record<Category, Field[]> = {
   personal: [...FIELDS],
   shoe: ["lang", "tone", "length", "shoe_size", "budget", "deadline"],
-  retail: ["lang", "tone", "length", "shoe_size", "budget", "deadline"],
+  // UCP store proxies also read the learned preferences (pref.*) with the handshake (2026-10-17).
+  retail: ["lang", "tone", "length", "shoe_size", "budget", "deadline", ...PREF_FIELDS],
 };
 
 /** Readable only when the declared purpose matches. payment_method is purpose=payment for every merchant category (lane D). */

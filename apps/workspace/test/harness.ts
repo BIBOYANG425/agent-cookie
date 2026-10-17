@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { UcpApi } from "@agent-cookie/contract";
+import type { LearnApi, UcpApi } from "@agent-cookie/contract";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { createDeps, type Deps } from "../src/deps.js";
@@ -35,12 +35,12 @@ export async function callbackServer(): Promise<{ url: string; bodies: unknown[]
   return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/cb`, bodies, close: () => server.close() };
 }
 
-export async function harness(opts: { outcome?: UcpStubOutcome; ucp?: UcpApi; env?: Record<string, string> } = {}) {
+export async function harness(opts: { outcome?: UcpStubOutcome; ucp?: UcpApi; env?: Record<string, string>; learn?: LearnApi } = {}) {
   const config = loadConfig({ PORT: "4310", SQLITE_PATH: ":memory:", FIXTURES_DIR: SAMPLE_FIXTURES_DIR, AGENT_COOKIE_DEMO: "1", AGENT_COOKIE_TEST: "1",
     CALLBACK_TIMEOUT_MS: "200", CALLBACK_RETRIES: "1", ...opts.env });
   const seed = loadFixtures(SAMPLE_FIXTURES_DIR).contributions;
   const ucp = opts.ucp ?? StubUcp.fromFile(resolve(SAMPLE_FIXTURES_DIR, "ucp-offers.json"), opts.outcome ?? "requires_escalation");
-  const deps: Deps = await createDeps(config, { ucp, memoryRepoApi: stubMemoryRepoApi(() => seed) });
+  const deps: Deps = await createDeps(config, { ucp, memoryRepoApi: stubMemoryRepoApi(() => seed), ...(opts.learn ? { learn: opts.learn } : {}) });
   const app = createApp(deps);
   const call = async (method: string, path: string, key?: string, body?: unknown, headers: Record<string, string> = {}): Promise<Res> => {
     const h: Record<string, string> = { ...headers };

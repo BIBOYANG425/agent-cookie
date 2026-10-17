@@ -1,8 +1,10 @@
 // Wires the store, clock, the three plug-in packages (stubs today) and the services.
 import { resolve } from "node:path";
-import { FIXTURE_FILES, isField, type Contribution, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi } from "@agent-cookie/contract";
+import {
+  FIXTURE_FILES, isField, type Contribution, type LearnApi, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi,
+} from "@agent-cookie/contract";
 import { activityLogger, type Log } from "./activity.js";
-import { loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
+import { loadLearn, loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
 import type { Config } from "./config.js";
 import { Store } from "./db.js";
@@ -16,6 +18,7 @@ import type { Ctx } from "./services/context.js";
 import { createLaneD, type LaneDHooks } from "./laneD.js";
 import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
+import { LearningService } from "./services/learning.js";
 import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
 import { NoteService } from "./services/notes.js";
@@ -38,6 +41,8 @@ export interface Deps {
   fields: FieldService;
   notes: NoteService;
   commerce: CommerceService;
+  /** Dynamic memory: observation queue, learning hooks, learned/history views. */
+  learning: LearningService;
   /** Requests enter it; reset takes it exclusively. */
   gate: Gate;
   /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
@@ -47,7 +52,7 @@ export interface Deps {
 }
 
 /** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
-export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks }
+export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks; learn?: LearnApi }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
   const gate = new Gate();
@@ -65,13 +70,14 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const laneD: LaneDHooks = overrides.laneD ?? createLaneD(config, clock);
   const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log, laneD);
   // Services call UCP through the Sentry wrapper (a span per call); deps.ucp stays the raw adapter for tests.
-  const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), config, store, clock, rules, ucp: tracedUcp(ucp, config.ucpMode),
-    repo: () => repo, log, delivery, laneD };
+  const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), hold: (fn) => gate.hold(fn), config, store, clock, rules,
+    ucp: tracedUcp(ucp, config.ucpMode), repo: () => repo, log, delivery, laneD };
   const card = new CardService(ctx);
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);
-  const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds);
+  const learning = new LearningService(ctx, card, overrides.learn ?? loadLearn());
+  const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
@@ -82,9 +88,12 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     ensureOwnerKey(store, config, clock.nowIso());
   }
   card.get(fixtures.users[0]!.userId);
+  // Quiet conversations are learned from on a timer (the threshold path runs as observations arrive).
+  const learnTimer = setInterval(() => { void gate.run(() => learning.flushDue()).catch(() => undefined); }, config.learnTickMs);
+  learnTimer.unref();
 
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, gate,
+    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, learning, gate,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
@@ -98,6 +107,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       return now;
     }, config.resetWaitMs),
     async close() {
+      clearInterval(learnTimer);
+      await learning.settle();
       await delivery.settle();
       store.close();
       laneD.lock?.();
@@ -115,9 +126,23 @@ async function reconcileRepo(ctx: Ctx): Promise<void> {
   if (!user) return;
   await persist(ctx, "reconcile", "workspace", async (repo) => {
     const inRepo = new Map((await repo.listContributions()).map((c) => [c.id, c]));
+    // A field the repo's text format cannot read back yet (pref.* until lane C's parser accepts dotted names,
+    // docs/requests.md A30) was written at record time but never shows up in listContributions: appending it again
+    // here would duplicate it on every start. Skip it; this turns itself off once the format round-trips.
+    const readable = new Map<string, boolean>();
+    const roundTrips = (field: string) => {
+      if (!readable.has(field)) {
+        const probe: Contribution = { id: "probe", userId: user.userId, agentId: "probe", field: field as Contribution["field"], value: "x",
+          basis: "observed", createdAt: ctx.clock.nowIso() };
+        readable.set(field, ctx.rules.parseContributions(ctx.rules.renderContribution(probe), { userId: user.userId, agentId: "probe" }).length === 1);
+      }
+      return readable.get(field)!;
+    };
     let changed = false;
+    let unreadable = 0;
     for (const c of ctx.store.contributionsForUser(user.userId)) {
       if (!isField(c.field)) continue;
+      if (!roundTrips(c.field)) { unreadable++; continue; }
       const have = inRepo.get(c.id);
       if (!have) {
         const { revokedAt: _r, ...live } = c as Contribution;
@@ -133,5 +158,6 @@ async function reconcileRepo(ctx: Ctx): Promise<void> {
       await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.personalAgentIds() },
         writeMeta(ctx, "workspace", { regenerate: ctx.clock.nowIso() }));
     }
+    if (unreadable > 0) ctx.log({ event: "reconcile", actor: "workspace", result: "skipped", reason: `unreadable=${unreadable}` });
   });
 }

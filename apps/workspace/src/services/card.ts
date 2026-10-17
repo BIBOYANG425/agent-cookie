@@ -1,7 +1,7 @@
 // Identity card: contributions → RulesApi.mergeCard. Recomputed on every read so time rules (180/365 days)
 // follow the workspace clock; cached in SQLite and written through to CARD.md.
 import {
-  allowedBases, canWrite, isField, purposeFields, type Basis, type Card, type Contribution, type Field,
+  allowedBases, canWrite, isField, purposeFields, type Basis, type Card, type Contribution, type ContributionEvidence, type Field,
 } from "@agent-cookie/contract";
 import type { IntentRow, StoredContribution } from "../db.js";
 import { containsCardNumber, isTokenReference } from "../guards.js";
@@ -50,7 +50,8 @@ export class CardService {
    * an unknown field, or a basis it may not use, is stored as its own "inferred" record: never on the card,
    * never visible to anyone else (A11). Model-supplied basis/field are parameters, not authority.
    */
-  async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis }): Promise<{ stored: Basis; contribution: StoredContribution }> {
+  async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: ContributionEvidence },
+    opts: { regenerate?: boolean } = {}): Promise<{ stored: Basis; contribution: StoredContribution }> {
     if (containsCardNumber(input.value)) fail("MISSING_FIELD", "card numbers are never stored");
     if (input.field === "payment_method" && !isTokenReference(input.value)) fail("MISSING_FIELD", "payment_method must be a provider token reference");
     let basis: Basis = input.basis;
@@ -60,13 +61,14 @@ export class CardService {
       basis = "inferred";
     }
     const c: StoredContribution = { id: newId("c"), userId, agentId: agent.agentId, field: input.field, value: input.value, basis, createdAt: this.ctx.clock.nowIso() };
+    if (input.evidence && Object.keys(input.evidence).length > 0) c.evidence = input.evidence;
     // Git first: an HTTP success always means the record is in the memory repo (unknown field names stay SQLite-only, A11).
     if (isField(c.field)) {
       await persistStrict(this.ctx, "contribution", agent.agentId, (r) => r.appendContribution(c as Contribution, writeMeta(this.ctx, agent.agentId, c)));
     }
     this.ctx.store.insertContribution(c);
     this.ctx.log({ event: "contribution.add", actor: agent.agentId, object: c.id, result: basis, reason: isField(c.field) ? c.field : "unknown_field" });
-    if (isField(c.field)) await this.regenerate(agent.agentId);
+    if (isField(c.field) && opts.regenerate !== false) await this.regenerate(agent.agentId);
     return { stored: basis, contribution: c };
   }
 
@@ -81,6 +83,11 @@ export class CardService {
     this.ctx.log({ event: "contribution.revoke", actor, object: id, result: "ok" });
     await this.regenerate(actor);
     return this.get(userId);
+  }
+
+  /** Regenerate CARD.md once after a batch of records written with `regenerate: false`. */
+  regenerateNow(actor: string): Promise<void> {
+    return this.regenerate(actor);
   }
 
   private async regenerate(actor: string): Promise<void> {
