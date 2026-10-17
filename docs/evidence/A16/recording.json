@@ -1,0 +1,9 @@
+{
+  "captureMethod": "Live native-window screenshot stream through CUA, encoded without reordering using capture intervals; no audio",
+  "scope": "Execution excerpt, not full uninterrupted A16 recording",
+  "frames": 139,
+  "firstFrameUtc": "2026-10-17T21:51:36.061000+00:00",
+  "lastFrameUtc": "2026-10-17T21:51:51.064000+00:00",
+  "video": "claude-code-contract-check.mp4",
+  "videoSha256": "a828b77d19f3ec9f5ba8598dec9327345da67f05649823030b938388a4d8ae03"
+}

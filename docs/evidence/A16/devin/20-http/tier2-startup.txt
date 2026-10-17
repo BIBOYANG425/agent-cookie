@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/ubuntu/a16/commerce-agents/examples/retail/api/main.py", line 50, in <module>
+    agent_cookie = AgentCookieAccess.connect(AGENT_COOKIE) if AGENT_COOKIE else None
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/a16/commerce-agents/examples/demo_common/agent_cookie.py", line 230, in connect
+    build_memory_store(settings)
+  File "/home/ubuntu/a16/commerce-agents/examples/demo_common/agent_cookie.py", line 147, in build_memory_store
+    raise ContractUnavailable(C11_TEXT)
+demo_common.agent_cookie.ContractUnavailable: Agent Cookie merchant HTTP cannot back a MemoryStore (C11, P1 BLOCKED); missing: note enumeration (get_facts and search_facts over every key); note deletion (delete_fact); per-merchant clear (clear); durable purge generation with a conditional write (purge_generation)

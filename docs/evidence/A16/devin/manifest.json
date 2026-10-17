@@ -1,0 +1,81 @@
+{
+  "session": "https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb",
+  "sourceArchive": "a16-evidence.tar.gz (first download, outside repository)",
+  "sourceArchiveSha256": "d122a6c4cb01df671913723922344f6fafa0043fa7e0a906ba150c79b64bc242",
+  "verdict": "29 scoped HTTP checks pass; full A16/C11 BLOCKED",
+  "scanLimit": "The original recorded-terminal no keys found scan only matches ck_; it did not cover session capability tokens. Parent redactions are listed below.",
+  "files": [
+    {
+      "source": "00-baseline/git-baseline.txt",
+      "file": "00-baseline/git-baseline.txt",
+      "sha256": "c2f3591c5851683411751f167bef2425d954eb59110c16bf53897cf50bea00cf"
+    },
+    {
+      "source": "00-baseline/pytest-full-baseline.txt",
+      "file": "00-baseline/pytest-full-baseline.txt",
+      "sha256": "05bd47abf1f234ccc7ae5d5a40fe8b06afeb5beaa909331ec644e20127a8abc4"
+    },
+    {
+      "source": "10-offline/checks-after.txt",
+      "file": "10-offline/checks-after.txt",
+      "sha256": "aa4d0504f7537c5d8982142ae38588ce5d2b4907847d4c7a1dff88718f0d709c"
+    },
+    {
+      "source": "20-http/results.json",
+      "file": "20-http/results.json",
+      "sha256": "74ddfdeb3e19d44dfa7e62e11bdda0eb306a66b43ebb1f11481aadd2ff2254aa"
+    },
+    {
+      "source": "20-http/recorded-terminal.txt",
+      "file": "20-http/recorded-terminal.txt",
+      "sha256": "d1cc63a3c0a029e842a3574884c2e6704178a11eab651e82e4e2f83a31602297"
+    },
+    {
+      "source": "20-http/tier2-startup.txt",
+      "file": "20-http/tier2-startup.txt",
+      "sha256": "17a63f0fcfcfa0378878810cab75cdc6dc7e2b684abedc9607cd6dc0255a7e04"
+    },
+    {
+      "source": "30-diff/a16-adapter.patch",
+      "file": "30-diff/a16-adapter.patch",
+      "sha256": "50766d9b97a4b47ff0ffb44d66b088d2a044a694a171649d170c8626b642ae44"
+    },
+    {
+      "source": "40-blocker/C11-blocker-and-minimum-proposal.md",
+      "file": "40-blocker/C11-blocker-and-minimum-proposal.md",
+      "sha256": "6b2118dbcb925f4dbf44d13e90d6188460b50ae47fe9fe1362a68a8a3b27ff56"
+    },
+    {
+      "source": "50-screen/live-run-summary.png",
+      "file": "50-screen/live-run-summary.png",
+      "sha256": "163d56ee0f25e1b25f089728acf2dfa9777cae15dc6f66240e79197964509218"
+    },
+    {
+      "source": "50-screen/baseline-and-diff.png",
+      "file": "50-screen/baseline-and-diff.png",
+      "sha256": "6006097a5d3046703ffbbcd6a6b6e4d495fc036de766288a071e67b271189098"
+    },
+    {
+      "source": "20-http/raw-http.log",
+      "file": "20-http/raw-http.redacted.log",
+      "originalSha256": "5831a0d69630dbf687a831b92d8e04b84bf182a5e43512196f6c1086d76336b3",
+      "sha256": "826882c4058b54e5d64dd44b0ae2d5dc3748c43458f6b7189ec6480b42f44d91",
+      "redactions": 5,
+      "redactedFields": [
+        "upstream session_id capability",
+        "X-Session-Id credential"
+      ]
+    },
+    {
+      "source": "00-baseline/retail-original-http.txt",
+      "file": "00-baseline/retail-original-http.redacted.txt",
+      "originalSha256": "65af3617e1861f6b4ab65641d5c8e337a39925aeffd4f052d1cb527f572b5ebb",
+      "sha256": "c81873e54c4460107287bbe00c2994f1751b9b2e49fd15673e6c7b39880744c8",
+      "redactions": 1,
+      "redactedFields": [
+        "upstream session_id capability",
+        "X-Session-Id credential"
+      ]
+    }
+  ]
+}
