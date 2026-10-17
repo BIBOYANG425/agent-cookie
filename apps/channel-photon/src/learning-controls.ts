@@ -1,10 +1,10 @@
 import {bounded,containsSensitive,explicitStatement} from '@agent-cookie/learn';
-import type {WorkspaceClient,LearningState} from '@agent-cookie/sdk';
+import type {WorkspaceClient,LearnedResponse} from '@agent-cookie/sdk';
 import type {ObservationSink} from './learning-capture.js';
 import {respond,type AgentWorkspace,type Conversation} from './agent.js';
 export interface LearningLocalState {paused:boolean;lastSummaryDay?:string}
-export type LearningWorkspace=Pick<WorkspaceClient,'getLearning'|'setLearning'>;
-const labels:Record<string,string>={'pref.color':'颜色','pref.material':'材质','pref.fit':'版型','pref.brand':'品牌','pref.response_style':'回复风格'};
+export type LearningWorkspace=Pick<WorkspaceClient,'getLearning'|'getLearned'|'setLearning'|'revokeContribution'>;
+const labels:Record<string,string>={'pref.color':'颜色','pref.material':'材质','pref.fit':'版型','pref.brand':'品牌','pref.style':'风格','pref.avoid':'避开','pref.occasion':'场合','pref.size_system':'尺码体系'};
 export function createLearningControls(options:{workspace:LearningWorkspace;sink:ObservationSink;state:LearningLocalState;save:()=>Promise<void>;day?:()=>string}) {
   const call=<T>(f:(signal:AbortSignal)=>Promise<T>,ms=1500)=>bounded(f,ms);
   const freeze=async()=>{options.sink.pause();options.state.paused=true;await options.save();};
@@ -13,40 +13,45 @@ export function createLearningControls(options:{workspace:LearningWorkspace;sink
       const t=text.trim();
       if(/^(?:暂停学习|pause learning)[。.!！]?$/i.test(t)){
         try{await freeze();const r=await call(signal=>options.workspace.setLearning({enabled:false},{signal}));
-          if(r.enabled)throw Error();return '已暂停学习，后台已确认。已有偏好可在控制台撤销，或回复「忘掉 颜色」。';
+          if(!r.paused)throw Error();return '已暂停学习，后台已确认。已有偏好可在控制台撤销，或回复「忘掉 颜色」。';
         }catch{return '本机已暂停学习；后台尚未确认暂停，请稍后查看控制台。';}
       }
       if(/^(?:恢复学习|resume learning)[。.!！]?$/i.test(t)){
         options.sink.pause();
-        try{const r=await call(signal=>options.workspace.setLearning({enabled:true},{signal}));if(!r.enabled)throw Error();
+        try{const r=await call(signal=>options.workspace.setLearning({enabled:true},{signal}));if(r.paused)throw Error();
           options.state.paused=false;await options.save();options.sink.resume();return '后台已确认恢复学习。只学习你的非敏感稳定偏好，可随时暂停或撤销。';
         }catch{options.state.paused=true;return '尚未确认恢复学习，本机继续暂停。';}
       }
       const forget=/^(?:忘掉|忘记|forget)\s*(.+?)[。.!！]?$/i.exec(t);
       if(!forget)return;
-      const wasPaused=options.state.paused;
+
       try{
         await freeze();
-        const before=await call(signal=>options.workspace.getLearning({signal}));
+        const paused=await call(signal=>options.workspace.setLearning({enabled:false},{signal}));
+        if(!paused.paused)throw Error();
+        const before=await call(signal=>options.workspace.getLearned({signal}));
         const target=forget[1].trim();
-        const keys=[...new Set(before.learned.filter(p=>p.key===target||labels[p.key]===target||p.value===target).map(p=>p.key))];
-        if(keys.length!==1)return keys.length?'对应多个偏好。请到控制台选择要撤销的项；本机学习暂已暂停。':'没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；本机学习暂已暂停。';
-        const r=await call(signal=>options.workspace.setLearning({forgetKeys:keys},{signal}));
-        if(!keys.every(k=>r.forgottenKeys.includes(k))||r.generation<=before.generation)throw Error();
-        if(!wasPaused&&r.enabled){options.state.paused=false;await options.save();options.sink.resume();}
-        return '后台已确认删除该偏好及相关候选和证据。';
+        const keys=[...new Set(before.learned.filter(p=>p.field===target||labels[p.field]===target||p.value===target).map(p=>p.field))];
+        if(keys.length!==1)return keys.length?'对应多个偏好。请到控制台选择要撤销的项；学习已暂停。':'没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；学习已暂停。';
+        const ids=[...new Set(before.learned.filter(p=>keys.includes(p.field)).flatMap(p=>p.evidence.map(e=>e.contributionId)))];
+        if(!ids.length)throw Error();
+        for(const id of ids)await call(signal=>options.workspace.revokeContribution(id,{signal}));
+        const after=await call(signal=>options.workspace.getLearned({signal}));
+        if(after.learned.some(p=>keys.includes(p.field)))throw Error();
+        // A exposes revoke, not a history purge or generation acknowledgement. Never claim deletion.
+        return '已从当前身份卡和候选中撤销这项偏好，学习保持暂停。后台尚未提供历史证据彻底删除的接口，因此还不能确认完全删除。';
       }catch{return '本机学习已暂停，但后台未确认删除。请到控制台核对；我不会把它说成已删除。';}
     },
     async decorate(reply:string):Promise<string>{
       const day=(options.day??(()=>new Date().toLocaleDateString('en-CA')))();
       if(options.state.paused||options.state.lastSummaryDay===day)return reply;
       try{
-        const current:LearningState=await call(signal=>options.workspace.getLearning({signal}),250);
-        if(!current.enabled){await freeze();return reply;}
-        const rows=current.learned.filter(p=>p.status==='confirmed'&&!containsSensitive(p.value)&&!containsSensitive(p.evidence));
+        const current:LearnedResponse=await call(signal=>options.workspace.getLearned({signal}),250);
+        if(current.paused){await freeze();return reply;}
+        const rows=current.learned.filter(p=>Object.hasOwn(labels,p.field)&&p.status==='card'&&!containsSensitive(p.value)&&p.evidence.every(e=>!containsSensitive(e.snippet??'')));
         if(!rows.length)return reply;
         options.state.lastSummaryDay=day;await options.save();
-        return reply+'\n\n今日偏好摘要（当前已确认）：\n'+rows.slice(0,3).map(p=>`${labels[p.key]??'偏好'}：${p.value}`).join('\n')+'\n可在控制台查看，回复「忘掉 X」或「暂停学习」。';
+        return reply+'\n\n今日偏好摘要（当前已确认）：\n'+rows.slice(0,3).map(p=>`${labels[p.field]??'偏好'}：${p.value}`).join('\n')+'\n可在控制台查看，回复「忘掉 X」或「暂停学习」。';
       }catch{return reply;}
     },
   };

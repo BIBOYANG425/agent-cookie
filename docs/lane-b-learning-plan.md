@@ -18,7 +18,7 @@
 - [x] L5：Photon 暂停/恢复/忘记控制及每日结论摘要；先阻断在途任务，后台确认才报告删除成功。
 - [x] L6：MCP observe、个人 SKILL、Claude Code UserPromptSubmit README 示例；不改全局配置、不读 transcript。
 - [x] L7：@photon-ai/otel 只记管道阶段/状态/计数/耗时，离线 exporter 验证无正文和私密值。
-- [ ] L8：隔离桩全链路及敏感/群聊/撤销竞态/每日摘要回归，保存证据、更新 A/C 请求并推 lane-b。
+- [x] L8：隔离采集 → SDK → A队列 → B解析器链路（模型/记忆为桩）及敏感/群聊/撤销竞态/每日摘要回归，保存证据并更新 A/C 请求；交付提交推 lane-b。
 - [ ] L9：A/C 接口到位后联调；本机真实模型/Sentry 凭据到位后才做真实验收，不能用桩冒充。
 
 ## B 的局部函数接口
@@ -45,38 +45,33 @@ createLearner({ policy, classify?, extract, mode?, timeoutMs?, telemetry? }): {
 
 policy 由 A 注入，空白名单零输出；不凭 `pref.*` 前缀放行。离线暂用 **Sample 提案** pref.color/material/fit/brand/response_style，不代表 A 已冻结。临时预算、健康饮食、宗教、关系、行踪等不在策略中。稳定尺码是否学由 A 决定。
 
-## A/C 接口：待冻结的提案，桩可先实现
-
-唯一已由人指定的端点是 `POST /personal/observations`。SDK 其余路径用显式 binding，默认不启用未冻结端点；不探测备用路由。
+## A/C 实际接口（A 0129f08，取代初始 B 提案）
 
 ```ts
-observe(input: {
-  source: 'photon' | 'mcp' | 'claude-code';
-  messageId: string; conversationId: string; occurredAt: string;
-  text: string; // A仅内存攒批，处理/过期即丢弃，不写jar/history
-}, idempotencyKey: string, options?: RequestOptions):
-  Promise<{ accepted: boolean; observationId?: string; reason?: string }>;
-getLearning(options?: RequestOptions): Promise<{
-  enabled: boolean; generation: number;
-  learned: Array<{ id: string; key: string; value: string; evidence: string;
-    basis: 'stated' | 'observed' | 'inferred';
-    status: 'candidate' | 'confirmed'; updatedAt: string }>;
-}>;
-setLearning(input: { enabled?: boolean; forgetKeys?: string[] }, options?: RequestOptions):
-  Promise<{ enabled: boolean; generation: number; forgottenKeys: string[] }>;
+// 来自 @agent-cookie/contract；SDK 观察调用不发未约定的幂等 header。
+observe(input: Observation, options?: RequestOptions): Promise<{queued:boolean;paused?:true}>;
+// Observation = {channel, conversationId, turns:[{role:'user'|'agent'|'other',text,at}]}
+getLearning(options?: RequestOptions): Promise<{paused:boolean}>;
+getLearned(options?: RequestOptions): Promise<LearnedResponse>;
+setLearning(input: {enabled:boolean}, options?: RequestOptions): Promise<{paused:boolean}>;
+// wire = PUT /personal/learning {paused:!enabled}
+createWorkspaceLearner(options): LearnApi;
+// extract(intent) / extractFromConversation(turns,{conversationId,channel})
 ```
 
-提议 GET/POST `/personal/learning`，等 A 确认。A 必须从凭据/受信采集映射身份，不信任模型自报 owner；Observation 要携带可去重的可信 conversation/message 来源。暂停清队列，删除按 key 撤销全部相关结论/候选/证据；持久 generation 防止迟到结果复活，返回确切 forgottenKeys。C 需要单条删除时由 A 冻结 observation ID 端点，B 再接。
+A 的白名单有10个pref字段；B使用正式白名单的安全子集，不学price_band和recipient，避免财务/关系推断。转交真实stated/observed/inferred及≤200字snippet，B不写卡。
 
-C 按不同 conversation 的独立证据晋升，同一会话多句、重放和入口镜像不算两来源；撤销后重新合卡且不恢复旧值。history 只存非敏感结论及元数据，控制台能读候选/已确认/来源并撤销。B 不直接写 SQLite/记忆库，不越界改 rules。
+当前真实闭环阻塞见B44/B45：A原文队列落SQLite、intent原文写Git、stated降级、同agent不同conversation被去重、缺持久代际和原子forget；C嵌套evidence类型尚未对齐A。SDK观察默认关闭（learning:true显式开启）；MCP/Spectrum需workspace-v1开关，只在修复后的兼容后台启用。忘记暂按实际contributionId撤销、回读并保持暂停，明确不能确认历史证据彻底删除。
+
+SDK与A真实HTTP状态/观察投递/解析调用已可隔离验证，模型使用合成响应；不把它当两来源晋升或实机学习成功。默认adapters.loadLearn仍是A空桩，A需自行import本包。
 
 ## 采集、控制和摘要
 
-接口：`observeSpectrumMessages(app.messages, adapter, sink)`；`adapter.toEvent(message)` 仅归一化本应用收到的 inbound human text。配置机主 handle 在本机核对，电话/邮箱不放入观察载荷；持久 message/conversation 标识用哈希。群聊第一版全部拒绝。
+接口：`observeSpectrumMessages(app.messages, adapter, sink)`；`adapter.toEvent(message)` 仅归一化本应用收到的 inbound human text。配置机主 handle 在本机核对，电话/邮箱不放入观察载荷；持久 message/conversation 标识用 HMAC 哈希。群聊第一版全部拒绝。
 
 `sink.enqueue(event): boolean` 不抛错到回复路径；并发1、队列最多32、内存排队TTL30秒、模型总时限10秒。满/超时就丢弃并记无内容计数；重启接受少学，不把原文做持久队列。保留原 Photon cursor/outbox。
 
-“暂停学习”先停收/abort，再请求A；后台失败只说本机暂停、后台待确认。“忘掉 X”只确定性映射已学白名单 key，不明确就澄清；先中止旧任务，后台返回 forgottenKeys 后确认删除。“恢复学习”须明确命令且后台确认。日常陈述不能一概当购物请求。
+“暂停学习”先停收/abort，再请求A；后台失败只说本机暂停、后台待确认。“忘掉 X”只确定性映射已学白名单 key，不明确就澄清；先中止旧任务，当前正式后台没有forgottenKeys/generation；按真实贡献ID撤销后只确认当前卡/候选撤销，不确认历史删除。“恢复学习”须明确命令且后台确认。日常陈述不能一概当购物请求。
 
 每日摘要用后台当前有效结论模板生成，每个本地日最多一次，附在机主当天下一条正常交互回复中；不新建主动发短信的定时器。不再提撤销值，不调额外模型。
 
@@ -125,3 +120,9 @@ L5 验证：12项采集/控制测试及Photon typecheck/build通过；Spectrum�
 L6 验证：MCP协议11项测试和typecheck/build通过。observe不接受模型身份/来源参数；hooks仅README例子，未写任何全局配置或读取transcript。
 
 L7 验证：learn共35项测试及typecheck/build通过；实际Photon OTel向本机OTLP接收器导出了trace/log，金丝雀正文/电话/邮箱/偏好值/字段key均未出现。Sentry外部接收尚未配置。
+
+接口变更说明：L3/L5早期验证记录针对当时明确标记的B提案；以上A正式接口已取代它，删除完成与迟到写防护仍归L9阻塞，不能沿用旧桩成功声明。
+
+L8 验证（16:10 PDT）：learn43、Photon69、MCP13、fake6、SDK78通过；SDK另1项真实C记忆写回归失败（SCOPE_DENIED，B46）。SDK跨线typecheck被C evidence类型差异阻断（B45）；4个主要B包build和原生Node MCP/Photon入口加载通过，learn完整typecheck通过。隔离A队列已实际调用B解析器，不等同C两来源晋升或A原文存储合规。详见 docs/evidence/2026-10-17-learning-b-verification.md。
+
+人的追问 OpenRouter：已增加 `createHaikuExtractor({provider:'openrouter',apiKey})` 可选入口，规则/zod/权限边界不变。OpenRouter使用 `anthropic/claude-haiku-4.5` 别名（不能声称是精确dated snapshot），限定Anthropic、结构化输出、拒绝收集与ZDR、无fallback；不可用则零输出。只做了合成协议验证，没有真实模型调用或产生费用。参考 packages/learn/README.md。

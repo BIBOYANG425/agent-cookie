@@ -22,8 +22,8 @@ const pii = /[\w.+-]+@[\w.-]+\.[a-z]{2,}|(?:\+?\d[\d\s().-]{7,}\d)|https?:\/\//i
 export function containsSensitive(text: string): boolean { return sensitive.test(text.normalize('NFKC')) || pii.test(text); }
 const untrusted = /[“”「」『』"<>]|他说|她说|他们|转发|引用|商家说|朋友说|忽略.*(?:指令|规则)|系统提示|\b(?:said|says|quoted?|forwarded|ignore.*instructions?|system prompt|pretend|roleplay)\b/iu;
 export function explicitStatement(text: string): boolean {
-  return /(?:我|本人).{0,8}(?:一直|通常|总是|更|最)?(?:喜欢|偏好|爱穿|爱用|习惯)|\bI (?:always |usually |generally |really )?(?:prefer|like|love)\b/iu.test(text)
-    && !/(?:如果|假如|可能|也许|不喜欢|不确定|今天|这次)|\b(?:if|maybe|perhaps|today|this time|don't|do not|not sure)\b/iu.test(text);
+  return /(?:我|本人).{0,8}(?:一直|通常|总是|更|最)?(?:喜欢|偏好|爱穿|爱用|习惯|不穿|不用|避免)|\bI (?:always |usually |generally |really |don't |do not |never )?(?:prefer|like|love|dislike|avoid|wear|use)\b/iu.test(text)
+    && !/(?:如果|假如|可能|也许|不确定|今天|这次)|\b(?:if|maybe|perhaps|today|this time|not sure)\b/iu.test(text);
 }
 export function filterTurn(turn: LearningTurn): LearningReason | undefined {
   if (turn.speaker !== 'owner' || turn.isGroup !== false || !['photon','mcp','claude-code'].includes(turn.source)
@@ -126,5 +126,6 @@ export function createLearner(options: {
   };
 }
 
-export { createHaikuExtractor, createJevClassifier, HAIKU_MODEL } from "./models.js";
+export { createHaikuExtractor, createJevClassifier, HAIKU_MODEL, OPENROUTER_HAIKU_MODEL } from "./models.js";
 export { createLearningTelemetry, type PipelineMetric } from './telemetry.js';
+export { createWorkspaceLearner, DEFAULT_LEARNING_POLICY } from './workspace.js';

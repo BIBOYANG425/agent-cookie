@@ -26,7 +26,7 @@ export type CaptureMetric=(status:'queued'|'dropped'|'accepted'|'unavailable',de
 
 /** Best-effort, memory-only observations. No raw-text persistence or retry outbox. */
 export function createObservationSink(options:{
-  observe:(input:ObservationInput,key:string,options?:RequestOptions)=>Promise<ObserveResult>;
+  observe:(input:ObservationInput,options?:RequestOptions)=>Promise<ObserveResult>;
   capacity?:number;ttlMs?:number;timeoutMs?:number;now?:()=>number;metric?:CaptureMetric;
 }) {
   const capacity=options.capacity??32,ttl=options.ttlMs??30000,timeout=options.timeoutMs??10000;
@@ -43,9 +43,9 @@ export function createObservationSink(options:{
       controller=new AbortController();
       try{
         const t=item.turn;
-        const body:ObservationInput={text:t.text,messageId:t.messageId,conversationId:t.conversationId,occurredAt:t.occurredAt,source:t.source};
-        const result=await bounded(s=>options.observe(body,`observe:${t.messageId}`,{signal:s}),timeout,controller.signal);
-        metric(item.generation===generation&&result.accepted?'accepted':'dropped');
+        const body:ObservationInput={channel:'imessage',conversationId:t.conversationId,turns:[{role:'user',text:t.text,at:t.occurredAt}]};
+        const result=await bounded(s=>options.observe(body,{signal:s}),timeout,controller.signal);
+        metric(item.generation===generation&&result.queued?'accepted':'dropped');
       }catch{metric('unavailable');}
       finally{controller=undefined;}
     }}finally{active=false;}
@@ -53,7 +53,7 @@ export function createObservationSink(options:{
   return {
     enqueue(turn:LearningTurn):boolean {
       try{
-        if(!enabled||filterTurn(turn)||seen.has(turn.messageId)||queue.length>=capacity){metric('dropped');return false;}
+        if(!enabled||Array.from(turn.text).length>2000||filterTurn(turn)||seen.has(turn.messageId)||queue.length>=capacity){metric('dropped');return false;}
         seen.add(turn.messageId);if(seen.size>2048)seen.delete(seen.values().next().value!);
         queue.push({turn:{...turn},at:now(),generation});metric('queued');void pump();return true;
       }catch{metric('dropped');return false;}

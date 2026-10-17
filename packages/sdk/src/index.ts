@@ -1,5 +1,5 @@
 import type { AcceptResult, ActivityEvent, Card, Grant, IntentRequest, Quote, Receipt } from '@agent-cookie/contract';
-import { validateBinding, observationBody, observeResult, learningState, controlBody, controlResult, type LearningBinding, type ObservationInput, type LearningControl } from './learning.js';
+import { observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
 export * from './learning.js';
 export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
 export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
@@ -26,8 +26,8 @@ export interface WorkspaceConfig {
   key: string;
   /** Explicitly label local demo/stub data when the backend omits Sample metadata. */
   sample?: boolean;
-  /** Explicit proposal binding; omit until A's compatible learning service is available. */
-  learning?: LearningBinding;
+  /** Explicit observation enablement; omit until A's compatible learning service is available. */
+  learning?: boolean;
 }
 
 // These are the GET /me wire fields from plan v0.3, not a second domain model.
@@ -93,20 +93,20 @@ export class WorkspaceClient {
   #config: WorkspaceConfig;
   #fetch: typeof fetch;
   #timeoutMs: number;
-  #learning?: LearningBinding;
+  #learning?: boolean;
 
   constructor(options: WorkspaceConfig & { fetch?: typeof fetch; timeoutMs?: number }) {
     this.#config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: options.baseUrl, AGENT_COOKIE_KEY: options.key,
       AGENT_COOKIE_SAMPLE: options.sample ? '1' : undefined });
     this.#fetch = options.fetch ?? globalThis.fetch;
-    this.#learning = options.learning ? validateBinding(options.learning) : undefined;
+    this.#learning = options.learning === true;
     this.#timeoutMs = options.timeoutMs ?? 25_000;
     if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs < 1 || this.#timeoutMs > 120_000) {
       throw new Error('Workspace timeout must be between 1 and 120000 milliseconds.');
     }
   }
 
-  async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}): Promise<unknown> {
+  async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}, method?: 'PUT'): Promise<unknown> {
     if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
     const cancelled = () => new DOMException('The workspace request was cancelled.', 'AbortError');
     if (options.signal?.aborted) throw cancelled();
@@ -114,7 +114,7 @@ export class WorkspaceClient {
     let payload: unknown;
     try {
       response = await this.#fetch(new URL(path, this.#config.baseUrl), {
-        method: body === undefined ? 'GET' : 'POST',
+        method: method ?? (body === undefined ? 'GET' : 'POST'),
         headers: { Accept: 'application/json', Authorization: `Bearer ${this.#config.key}`,
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
@@ -153,20 +153,18 @@ export class WorkspaceClient {
   }
 
   get learningAvailable(): boolean { return !!this.#learning; }
-  #learningPath(kind:keyof LearningBinding):string {
-    if(!this.#learning) throw new Error('Learning service is not configured.');
-    return this.#learning[kind];
-  }
-  async observe(input:ObservationInput,idempotencyKey:string,options?:RequestOptions) {
-    const path=this.#learningPath('observations');
-    return observeResult(await this.#request(path,observationBody(input),idempotencyKey,options));
+  async observe(input:ObservationInput,options?:RequestOptions) {
+    if(!this.#learning)throw new Error('Learning observations are not enabled.');
+    return observeResult(await this.#request('/personal/observations',observationBody(input),undefined,options));
   }
   async getLearning(options?:RequestOptions) {
-    return learningState(await this.#request(this.#learningPath('status'),undefined,undefined,options));
+    return learningState(await this.#request('/personal/learning',undefined,undefined,options));
+  }
+  async getLearned(options?:RequestOptions) {
+    return learnedResponse(await this.#request('/personal/learned',undefined,undefined,options));
   }
   async setLearning(input:LearningControl,options?:RequestOptions) {
-    const path=this.#learningPath('control');
-    return controlResult(await this.#request(path,controlBody(input),undefined,options));
+    return learningState(await this.#request('/personal/learning',controlBody(input),undefined,options,'PUT'));
   }
 
   async getMyCard(options?: RequestOptions): Promise<unknown> {

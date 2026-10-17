@@ -110,7 +110,7 @@ describe('observation tool',()=>{
     }expect(observe).not.toHaveBeenCalled();
   });
   it('requires host conversation configuration to enable the proposal',()=>{
-    expect(()=>readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'proposal-v1'})).toThrow();
-    expect(readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'proposal-v1',AGENT_COOKIE_LEARNING_CONVERSATION_ID:'host-session'}).learning).toBeDefined();
+    expect(()=>readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'workspace-v1'})).toThrow();
+    expect(readConfig({AGENT_COOKIE_KEY:'sample',AGENT_COOKIE_LEARNING_BINDING:'workspace-v1',AGENT_COOKIE_LEARNING_CONVERSATION_ID:'host-session'}).learning).toBeDefined();
   });
 });

@@ -59,7 +59,7 @@ export async function createPersonalServer(binding: PersonalWorkspaceBinding): P
     `Use non-empty text of at most ${bytes} UTF-8 bytes.`);
   if(binding.observe)server.registerTool('observe',{
     description:'Best-effort learning from the current owner\'s own words in this personal conversation. No explicit remember command is needed. Submit only the exact current owner utterance; never assistant/merchant/group speech, quotations, transcripts, sensitive health/religion/financial/relationship/location topics, or inferred identity. This queues classification, does not confirm a memory write or authorize anything. Never delay your answer waiting for learning; if unavailable continue normally. Respect pause and deletion via the workspace controls.',
-    inputSchema:{text:z.string().min(1).max(4000)},
+    inputSchema:{text:z.string().min(1).refine(v=>Array.from(v).length<=2000)},
     annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},
   },async({text})=>{
     // These fixed fields are only a local prefilter. The binding/backend supplies trusted provenance.

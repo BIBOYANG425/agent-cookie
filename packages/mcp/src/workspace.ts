@@ -5,6 +5,7 @@ import {bounded} from '@agent-cookie/learn';
 
 export function bindWorkspace(config: WorkspaceConfig): PersonalWorkspaceBinding {
   const client = new WorkspaceClient(config);
+  const observed=new Set<string>();
   return {
     getAuthenticatedRole: async () => (await client.getMe()).role,
     getMyCard: () => client.getMyCard(),
@@ -14,9 +15,12 @@ export function bindWorkspace(config: WorkspaceConfig): PersonalWorkspaceBinding
     ...(client.learningAvailable&&config.learningConversationId?{observe:async(text:string)=>{
       const hash=(value:string)=>createHmac('sha256',config.key).update(value).digest('hex');
       const conversationId=hash('mcp:'+config.learningConversationId);
-      // Stable per host-bound conversation+utterance: model retries cannot create extra sources.
-      const messageId=hash(conversationId+'\0'+text);
-      return bounded(signal=>client.observe({source:'mcp',messageId,conversationId,occurredAt:new Date().toISOString(),text},`observe:${messageId}`,{signal}),1500);
+      const fingerprint=hash(conversationId+'\0'+text);
+      if(observed.has(fingerprint))return {queued:false};
+      observed.add(fingerprint);if(observed.size>2048)observed.delete(observed.values().next().value!);
+      // No server idempotency contract yet; local best-effort dedup only.
+
+      return bounded(signal=>client.observe({channel:'desktop',conversationId,turns:[{role:'user',text,at:new Date().toISOString()}]},{signal}),1500);
     }}:{}),
   };
 }

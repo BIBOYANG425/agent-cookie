@@ -133,3 +133,20 @@ Photon `SEND_OUTCOME_UNKNOWN` 属于通道发件状态，不是订单状态。�
 控制台写方法 `revokeGrant(id, options?)`、`revokeContribution(id, options?)`、`demoReset(options?)` 已在 `@agent-cookie/sdk` 中实现，支持 `AbortSignal`；`demoReset` 只用于明确授权的 owner 演示重置。验证这些写方法使用隔离测试，不操作当前手机演示数据。
 
 B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm install --frozen-lockfile`。根 `pnpm-lock.yaml` 的 `version: link:../sdk` / `link:../../packages/sdk` 是 pnpm 正常生成的本地解析值，不应手动改成 `workspace:*`，也不建立 B 包独立锁文件。
+
+## 对话旁听学习（B 已实现，真实启用受 B44/B45 阻塞）
+
+新入口 `node --env-file=.env dist/main.js serve-spectrum` 使用官方 `spectrum-ts` 12.11.0 云 provider 的 `app.messages`，不安装或使用 `@spectrum-ts/imessage-local`。当前线上演示仍是旧 Socket.IO 入口，尚未迁移；两种入口共用同一个运行锁和状态文件，不能同时回复，不能通过换状态文件绕过锁。Spectrum Cloud 的 projectId/projectSecret 与现有 Photon Beta API key 不视为同一种凭据。
+
+仅在 A/C 修复 B44/B45 后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
+
+采集：受信 provider inbound + configured owner + dm + text → adapter.toEvent → 机主/敏感过滤 → 有界内存队列 → SDK Observation。全部群聊保守忽略；DM conversationId稳定，不靠时间切片/进程重启造两份来源。队列最多32个等待项、并发1、TTL30秒、10秒总超时；采集失败不影响回复、不落原文、不重试未知请求。正常已发送消息的持久去重仍保留。A目前没有messageId/幂等契约，跨入口去重待A补齐。
+
+用户日常偏好不再自动触发购物；新入口的普通聊天回复为确定性确认，不冒充完整聊天模型。购物搜索仍使用原来的工作台逻辑。可试「我一直喜欢黑色衣服」「这件棉质的摸起来更舒服」；前者应直接上卡、后者为候选，是目标验收，不是当前A已通过的声明。
+
+- `暂停学习`：立即停本机队列/中止在途观察，再PUT后台 paused=true；失败明确说“后台尚未确认”。
+- `恢复学习`：只在后台明确 paused=false 后恢复本机采集；A的持久代际竞态修复前不做真实启用。
+- `忘掉 颜色` / `忘掉 黑色`：只匹配后台真实条目，先暂停，按实际贡献ID逐项撤销再回读。当前只确认从卡/候选撤销，并明确“后台尚未提供历史证据彻底删除的接口”，保持暂停；歧义则请用户在控制台选择。不能把revoke说成完全删除。
+- 每日摘要：用户下一次正常交互时，最多附加一次当前有效card状态的结论；不发主动定时短信，不调模型，不含证据原文。暂停时不摘要；读取失败保留正常回复。
+
+可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Spectrum自身telemetry关闭、SDK日志silent，不采集第三方自动正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿Haiku/Jev密钥。

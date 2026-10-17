@@ -47,6 +47,10 @@ describe('owner preference extraction boundary',()=>{
   it('has no implicit whitelist',async()=>{
     const extract=vi.fn();expect((await createLearner({policy:{},extract}).learn(turn)).reason).toBe('disabled');expect(extract).not.toHaveBeenCalled();
   });
+  it('recognizes an explicit negative preference without confusing it with uncertainty',async()=>{
+    const text='我一直不喜欢黑色衣服。';
+    expect((await createLearner({policy,extract:async()=>({...response,preferences:[{...response.preferences[0],value:'避免黑色',evidence:text}]})}).learn({...turn,text})).reason).toBe('learned');
+  });
   it('bounds uncooperative adapters and discards cancelled late results',async()=>{
     const learner=createLearner({policy,timeoutMs:10,extract:()=>new Promise(()=>{})});
     expect((await learner.learn(turn)).reason).toBe('unavailable');

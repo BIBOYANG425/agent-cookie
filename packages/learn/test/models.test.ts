@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {it,expect,vi} from 'vitest';
 import {createLearner,type LearningTurn} from '../src/index.js';
-import {createHaikuExtractor,createJevClassifier,HAIKU_MODEL} from '../src/models.js';
+import {createHaikuExtractor,createJevClassifier,HAIKU_MODEL,OPENROUTER_HAIKU_MODEL} from '../src/models.js';
 const fixtures=JSON.parse(readFileSync(new URL('./fixtures/model-responses.json',import.meta.url),'utf8'));
 const policy={'pref.color':{description:'Clothing color preference'}};
 const turn:LearningTurn={text:'我一直更喜欢黑色衣服。',messageId:'msg1',conversationId:'conv1',occurredAt:'2026-10-17T22:00:00Z',source:'photon',speaker:'owner',isGroup:false};
@@ -35,4 +35,23 @@ it('sensitive and group recordings produce no provider requests',async()=>{
   await learner.learn({...turn,text:'我有哮喘，最近药费很贵；我喜欢蓝色。'});
   await learner.learn({...turn,isGroup:true,speaker:'other',text:'我喜欢红色'});
   expect(mock).not.toHaveBeenCalled();
+});
+it('uses OpenRouter structured Haiku with restricted routing and identical local validation',async()=>{
+  const mock=vi.fn(async()=>Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:fixtures.haiku.content[0].text}}]}));
+  const result=await createLearner({policy,extract:createHaikuExtractor({apiKey:'synthetic-key',provider:'openrouter',fetch:mock})}).learn(turn);
+  expect(result.preferences[0]).toMatchObject({key:'pref.color',value:'黑色',basis:'stated'});
+  const [url,init]=(mock.mock.calls as any)[0];const body=JSON.parse(init.body);
+  expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+  expect(body.model).toBe(OPENROUTER_HAIKU_MODEL);
+  expect(body.provider).toEqual({only:['anthropic'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true});
+  expect(body.response_format.json_schema.strict).toBe(true);
+  expect(body.messages[1].content).toBe(turn.text);expect(body).not.toHaveProperty('user');
+});
+it.each([
+  {choices:[{finish_reason:'length',message:{role:'assistant',content:fixtures.haiku.content[0].text}}]},
+  {choices:[{finish_reason:'stop',message:{role:'assistant',content:fixtures.haiku.content[0].text,refusal:'private refusal'}}]},
+  {error:{message:'private provider failure'}},
+])('fails closed on incomplete, refused or unavailable OpenRouter responses',async raw=>{
+  const extract=createHaikuExtractor({apiKey:'synthetic-key',provider:'openrouter',fetch:async()=>Response.json(raw)});
+  expect(await createLearner({policy,extract}).learn(turn)).toEqual({preferences:[],reason:'unavailable'});
 });

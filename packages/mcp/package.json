@@ -21,7 +21,7 @@
   },
   "name": "@agent-cookie/mcp",
   "dependencies": {
-    "@agent-cookie/learn": "workspace:^",
+    "@agent-cookie/learn": "workspace:*",
     "@agent-cookie/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "4.6.7"

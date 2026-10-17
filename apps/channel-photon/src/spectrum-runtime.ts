@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
-import {WorkspaceClient,workspaceConfigFromEnv,PROPOSED_LEARNING_BINDING} from '@agent-cookie/sdk';
+import {WorkspaceClient,workspaceConfigFromEnv} from '@agent-cookie/sdk';
 import {createLearningAdapter,createObservationSink,observeSpectrumMessages,type SpectrumMessage} from './learning-capture.js';
 import {createLearningControls,respondWithLearning,type LearningLocalState} from './learning-controls.js';
 import {openState,ChannelFailure} from './state.js';
@@ -10,28 +10,31 @@ import {createLearningTelemetry} from '@agent-cookie/learn';
 
 /** Explicit cloud migration entry; never started alongside the existing Socket.IO loop. */
 export async function serveSpectrum(env:NodeJS.ProcessEnv){
-  if(env.AGENT_COOKIE_LEARNING_BINDING!=='proposal-v1')throw Error('A compatible learning binding is required.');
+  if(env.AGENT_COOKIE_LEARNING_BINDING!=='workspace-v1')throw Error('A compatible learning binding is required.');
   const projectId=env.SPECTRUM_PROJECT_ID,projectSecret=env.SPECTRUM_PROJECT_SECRET;
   if(!projectId||!projectSecret)throw Error('Spectrum cloud credentials are required.');
   const config=readConfig(env),base=workspaceConfigFromEnv(env);
-  const workspace=new WorkspaceClient({...base,learning:PROPOSED_LEARNING_BINDING});
+  const workspace=new WorkspaceClient({...base,learning:true});
   if((await workspace.getMe()).role!=='personal')throw new ChannelFailure('PERSONAL_KEY_REQUIRED');
   // Exactly the old channel lock/binding: switching cannot discard cursor/outbox or create a second sender.
   const binding=createHash('sha256').update(JSON.stringify([config.projectId,config.testSender,config.agentHandle,base])).digest('hex');
   const store=await openState(resolve(env.AGENT_COOKIE_CHANNEL_STATE??'.runtime/channel-state.json'),binding);
   let app:{stop():Promise<void>}|undefined;
-  const telemetry=createLearningTelemetry({endpoint:env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT,
-    ...(env.AGENT_COOKIE_LEARNING_OTLP_TOKEN?{headers:{Authorization:`Bearer ${env.AGENT_COOKIE_LEARNING_OTLP_TOKEN}`}}:{})});
-  const sink=createObservationSink({observe:(input,key,options)=>workspace.observe(input,key,options),
+  let telemetry:ReturnType<typeof createLearningTelemetry>={metric:()=>{},shutdown:async()=>{}};
+  const sink=createObservationSink({observe:(input,options)=>workspace.observe(input,options),
     metric:(status,depth)=>telemetry.metric({stage:'capture',status,count:depth,durationMs:0})});
   sink.pause();
   try{
+    telemetry=createLearningTelemetry({endpoint:env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT,
+      ...(env.AGENT_COOKIE_LEARNING_OTLP_TOKEN?{headers:{Authorization:`Bearer ${env.AGENT_COOKIE_LEARNING_OTLP_TOKEN}`}}:{})});
     if(Object.values(store.state.messages).some(m=>m.phase!=='sent'))throw new ChannelFailure('PENDING_LEGACY_OUTBOX');
     const remote=await workspace.getLearning();
-    const local:LearningLocalState=store.state.learning??={paused:!remote.enabled};
-    local.paused=local.paused||!remote.enabled;if(!local.paused)sink.resume();await store.save();
+    const local:LearningLocalState=store.state.learning??={paused:remote.paused};
+    local.paused=local.paused||remote.paused;if(!local.paused)sink.resume();await store.save();
     const controls=createLearningControls({workspace,sink,state:local,save:store.save});
-    const adapter=createLearningAdapter({ownerHandle:config.testSender,identifierSalt:createHash('sha256').update(base.key).digest('hex')});
+    const normalizer=createLearningAdapter({ownerHandle:config.testSender,identifierSalt:createHash('sha256').update(base.key).digest('hex')});
+    const adapter={toEvent(message:SpectrumMessage){const event=normalizer.toEvent(message);
+      return event&&store.state.messages['spectrum:'+event.messageId]?.phase!=='sent'?event:null;}};
     const {Spectrum}=await import('spectrum-ts');const {imessage}=await import('spectrum-ts/providers/imessage');
     const cloud=await Spectrum({projectId,projectSecret,providers:[imessage.config()],telemetry:false,options:{logLevel:'silent'}});app=cloud;
     const stop=()=>{sink.pause();void cloud.stop();};
@@ -61,5 +64,5 @@ export async function serveSpectrum(env:NodeJS.ProcessEnv){
         row.phase='sent';delete row.text;await store.save();
       });
     }finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
-  }finally{sink.pause();try{await app?.stop();}finally{await telemetry.shutdown();await store.close();}}
+  }finally{sink.pause();try{await app?.stop();}finally{try{await telemetry.shutdown();}finally{await store.close();}}}
 }

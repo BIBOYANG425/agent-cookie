@@ -28,3 +28,9 @@ it('does not retry rejected observations or propagate adapter/observer errors',a
  async function* messages():AsyncGenerator<[{},SpectrumMessage]>{yield [{},msg];yield [{},msg];}
  await observeSpectrumMessages(messages(),adapter,sink,reply);expect(reply).toHaveBeenCalledTimes(2);expect(observe).toHaveBeenCalledOnce();
 });
+it('drops a late acknowledgement after pause without treating it as accepted',async()=>{
+ let finish!:(v:{queued:boolean})=>void;const metric=vi.fn();
+ const sink=createObservationSink({observe:()=>new Promise(r=>{finish=r}),metric});
+ sink.enqueue(adapter.toEvent(msg)!);await Promise.resolve();sink.pause();sink.resume();finish({queued:true});
+ await new Promise(r=>setTimeout(r,5));expect(metric.mock.calls.some(c=>c[0]==='accepted')).toBe(false);expect(sink.pending).toBe(0);
+});
