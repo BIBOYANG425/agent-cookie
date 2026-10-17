@@ -107,7 +107,7 @@ dd { margin: 0; min-width: 0; }
 .learned-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
 .learned-value { margin: 8px 0 12px; font-size: 24px; color: #203353; white-space: pre-wrap; }
 .learned-status { flex-shrink: 0; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: #edf1ff; color: #304c9a; }
-.learned-status.on_card { background: #e3efe8; color: #315646; }
+.learned-status.card { background: #e3efe8; color: #315646; }
 .learned-evidence { margin: 12px 0; padding: 8px 12px; border-left: 3px solid #bdc9de; background: #f7f9fc; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .learned-sources { margin: 16px 0; font-size: 13px; }
 .learned-sources summary { cursor: pointer; min-height: 44px; padding: 10px 0; color: #254fd8; }

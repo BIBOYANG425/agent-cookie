@@ -14,7 +14,7 @@ describe('provisional learning memory integration', () => {
     const opts = { ...f.opts, rules: learningRules };
     const repo = await openLearningMemoryRepo(opts);
     const records: LearningContribution[] = [1, 2].map((n) => ({
-      ...contribution(`learning-${n}`), field: 'pref.terrain', value: 'trail',
+      ...contribution(`learning-${n}`), field: 'pref.style', value: 'trail',
       intentId: `intent-${n}`, conversationId: `chat-${n}`, evidence: 'short; [%0A]\n证据\u2028\u2029',
     }));
     for (const c of records) await repo.appendContribution(c, meta());
@@ -22,8 +22,8 @@ describe('provisional learning memory integration', () => {
     const merge = { now: AT, personalAgentIds: ['sample-personal'] };
     const regenerated = await repo.regenerateCard(merge, meta('workspace'));
     expect(regenerated.card).toEqual(learningRules.mergeCard(records, merge));
-    expect(regenerated.card.card[0]).toMatchObject({ field: 'pref.terrain', value: 'trail' });
-    expect(await readFile(join(f.path, 'CARD.md'), 'utf8')).toContain('pref.terrain');
+    expect(regenerated.card.card[0]).toMatchObject({ field: 'pref.style', value: 'trail' });
+    expect(await readFile(join(f.path, 'CARD.md'), 'utf8')).toContain('pref.style');
     await repo.revokeContribution('learning-1', AT, meta());
     const expected = [{ ...records[0]!, revokedAt: AT }, records[1]!];
     const reopened = await openLearningMemoryRepo(opts);
@@ -35,7 +35,7 @@ describe('provisional learning memory integration', () => {
   it('keeps the history cap separate from ordinary contribution values and refuses invalid evidence', async () => {
     const f = await fixture(); temps.push(f.temp);
     const repo = await openLearningMemoryRepo({ ...f.opts, rules: learningRules });
-    const record: LearningContribution = { ...contribution(), field: 'pref.description', value: 'long value '.repeat(30), evidence: 'short evidence' };
+    const record: LearningContribution = { ...contribution(), field: 'pref.material', value: 'long value '.repeat(30), evidence: 'short evidence' };
     await repo.appendContribution(record, meta());
     expect(await repo.listContributions()).toEqual([record]);
     const before = await repoGit(f.path).revparse(['HEAD']);

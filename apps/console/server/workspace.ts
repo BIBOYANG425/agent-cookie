@@ -5,7 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const upstream = 'http://127.0.0.1:4310';
 const prefix = '/workspace-api';
-type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning';
+type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned';
 type RevokeName = 'revokeGrant' | 'revokeContribution';
 export type SdkClient = Partial<Record<ReadName, () => Promise<unknown>>
   & Record<RevokeName, (id: string) => Promise<unknown>>
@@ -42,7 +42,7 @@ function route(method: string | undefined, path: string): SdkRoute | undefined {
   if (method === 'GET') {
     const names: Record<string, ReadName> = { '/me': 'getMe', '/personal/card': 'getMyCard',
       '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity',
-      '/personal/learned': 'getLearning' };
+      '/personal/learned': 'getLearned', '/personal/learning': 'getLearning' };
     if (names[path]) return { name: names[path] };
   }
   if (method === 'POST') {
@@ -59,8 +59,8 @@ function route(method: string | undefined, path: string): SdkRoute | undefined {
   return undefined;
 }
 
-async function readLearningChange(request: IncomingMessage): Promise<{ enabled: boolean }> {
-  // TODO(contract): provisional write shape until A publishes the learning contract.
+async function readLearningChange(request: IncomingMessage): Promise<{ paused: boolean }> {
+  // A 0129f08: learning state is separate from the grouped learned records.
   if (!request.headers['content-type']?.startsWith('application/json')) throw new BridgeError(400, 'MISSING_FIELD');
   const parts: Buffer[] = [];
   let bytes = 0;
@@ -72,10 +72,10 @@ async function readLearningChange(request: IncomingMessage): Promise<{ enabled: 
   }
   let body: unknown;
   try { body = JSON.parse(Buffer.concat(parts).toString('utf8')); } catch { throw new BridgeError(400, 'MISSING_FIELD'); }
-  if (!object(body) || typeof body.enabled !== 'boolean' || Object.keys(body).some((key) => key !== 'enabled')) {
+  if (!object(body) || typeof body.paused !== 'boolean' || Object.keys(body).some((key) => key !== 'paused')) {
     throw new BridgeError(400, 'MISSING_FIELD');
   }
-  return { enabled: body.enabled };
+  return { paused: body.paused };
 }
 
 // Only these existing workspace paths are reachable. No generic credentialed proxy.
@@ -115,7 +115,7 @@ export function createWorkspaceBridge(options: {
       const client = factory?.({ key, fetch: fetcher, timeoutMs: 8000, baseUrl: upstream, sample: options.sample });
       const direct = async (endpoint: string, method: string, payload?: unknown): Promise<unknown> => {
         // TODO(sdk): remove only when the corresponding method exists in B's installed package.
-        // A bd9d6e3 HTTP contract. No fallback after an SDK method throws.
+        // A bd9d6e3 core HTTP contract; learning routes use A 0129f08. No fallback after an SDK method throws.
         const result = await fetcher(`${upstream}${endpoint}`, { method,
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json',
             ...(['POST', 'PUT'].includes(method) ? { 'Content-Type': 'application/json' } : {}) },
@@ -136,13 +136,14 @@ export function createWorkspaceBridge(options: {
       };
       const me = client?.getMe ? await client.getMe() : await direct('/me', 'GET');
       if (!object(me) || me.role !== 'owner') throw new BridgeError(403, 'CONSOLE_OWNER_REQUIRED');
-      // TODO(contract): B 35f6b38 proposes getLearning()/setLearning({enabled}); the user's HTTP paths remain authoritative.
+      // A 0129f08 wire uses { paused }; B e24957c SDK LearningControl instead takes { enabled }.
+      // getLearning is state and getLearned is the grouped record list.
       // TODO(sdk): remove the direct path only when B's installed SDK provides the corresponding method.
       let body: unknown;
       if (selected.name === 'getMe') body = me;
       else if (selected.name === 'setLearning') {
         const payload = await readLearningChange(request);
-        body = client?.setLearning ? await client.setLearning(payload) : await direct(path, request.method!, payload);
+        body = client?.setLearning ? await client.setLearning({ enabled: !payload.paused }) : await direct(path, request.method!, payload);
       } else if (selected.name === 'revokeGrant' || selected.name === 'revokeContribution') {
         body = client?.[selected.name] ? await client[selected.name]!(selected.id) : await direct(path, request.method!);
       } else {

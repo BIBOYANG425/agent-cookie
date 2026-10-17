@@ -14,7 +14,7 @@ async function setup() {
 afterEach(async () => { await Promise.all(temps.splice(0).map((path) => rm(path, { recursive: true, force: true }))); });
 
 const extracted = (evidence = '用户明确偏好越野鞋'): LearningContribution => ({
-  ...contribution('learning-1'), field: 'pref.terrain', value: 'trail',
+  ...contribution('learning-1'), field: 'pref.style', value: 'trail',
   intentId: 'need-1', conversationId: 'conversation-1', evidence,
 });
 const input = (): AppendIntentInput => ({
@@ -41,7 +41,7 @@ describe('C18 sanitized intent history', () => {
     expect(markdown.trimEnd().split('\n')).toHaveLength(1);
     expect(markdown).toContain('- intent: need-1 [');
     expect(markdown).toContain('conversationId: conversation-1');
-    expect(markdown).toContain('pref.terrain');
+    expect(markdown).toContain('pref.style');
     expect(markdown).not.toContain(raw);
     expect(markdown).not.toContain('raw budget prose');
     expect(markdown).not.toContain('1999-01-01');
@@ -67,7 +67,7 @@ describe('C18 sanitized intent history', () => {
     expect(markdown).not.toContain('PRIVATE_REQUEST_RAW_TEXT');
     const found = await repo.searchIntents('trail');
     expect(found).toHaveLength(1);
-    expect(found[0]!.summary).toContain('pref.terrain=trail');
+    expect(found[0]!.summary).toContain('pref.style=trail');
     expect(found[0]!.summary).not.toContain('shopping');
   });
 
@@ -116,7 +116,7 @@ describe('C18 sanitized intent history', () => {
     await repo.appendIntent(a, meta('personal'));
     await repo.appendIntent(b, meta('personal'));
     expect((await readdir(join(f.path, 'intents'))).sort()).toEqual(['2026-10-17-..%2F%41.md', '2026-10-17-..%2Fa.md'].sort());
-    await expect(repo.appendIntent({ ...input(), extracted: [{ ...extracted(), field: 'pref.BAD' }] }, meta('personal')))
+    await expect(repo.appendIntent({ ...input(), extracted: [{ ...extracted(), field: 'pref.BAD' as LearningContribution['field'] }] }, meta('personal')))
       .rejects.toMatchObject({ code: 'MISSING_FIELD' });
     await repo.resetToSeed();
     expect(await repo.searchIntents('shopping')).toEqual([]);

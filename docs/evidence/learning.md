@@ -1,50 +1,53 @@
 # C17–C20 · 动态记忆与对话旁听学习
 
-状态：组件与 Sample 演练已验证，**真实 B learn → A 工作台 → 报价排序尚未通过**。本页不会用预写 fixtures 证明模型完成了提取。
+状态：**A 的学习端点、C 的持久化/展示/撤销已实连；C20 的真实模型学习与偏好排序仍未通过。** 两家真实 catalog 报价已录下，不能用这份未验证学习影响的基线证明排序成功。
 
-## 已确认的接线缺口
+## 本轮核对的版本
 
-2026-10-17，读取本机真实工作台 `127.0.0.1:4310`：`GET /me` 返回 200、role=owner；同一服务 `GET /personal/learned` 返回 404、`NOT_FOUND`。未发送学习、暂停或 reset 写请求。钥匙来自进程环境或本机 Sample owner 绑定，不写入证据。
+2026-10-17，PR #18 / `lane-c`。A 最新 `0129f085e297942ad174b34f02b26ab28d789822`；B 在本轮推进到 `e24957c9261e06da779ba57cc0adfbc9c1e83a89`。提交前再次检查：B最新 `4dfa81c` 仅新增 OpenRouter 本机配置检查脚本和文档，学习 SDK/learner 源码与上述 e24957c 相同；A无新提交，open PR仍只有C的#18。当前 main `843666b` 尚未包含学习契约。已读取 [B 学习计划](https://github.com/BIBOYANG425/agent-cookie/blob/e24957c/docs/lane-b-learning-plan.md) 和实际代码；未把早期 B 提案继续当作正式响应。
 
-已读取 B 后续提交的 [学习计划（35f6b38）](https://github.com/BIBOYANG425/agent-cookie/blob/35f6b38/docs/lane-b-learning-plan.md)。A `b824139` 尚无动态学习正式类型。接口缺口已追加 [requests](../requests.md)。C 的本地扩展与响应投影都标 `TODO(contract)`。
+- `Contribution.evidence` 是 `{ intentId?, conversationId?, snippet? }`；pref 字段严格使用 A 的十项白名单。
+- `GET /personal/learned` 返回 `{ paused, learned }`，按 field/value 分组。`sources` 是作者 agentId；独立学习来源从 evidence 的 conversationId/intentId 计算，不能把两个作者算成两段对话。
+- B `getLearned()` 读列表，`getLearning()` 读暂停状态，`setLearning({ enabled })` 转为 HTTP `{ paused: !enabled }`。控制台逐条撤销使用真实 `evidence.contributionId`，不制造组 ID。
+- 默认 rules/parser/memory 入口已支持嵌套 evidence。A 的 flat `IntentRecord` 由 memory-repo 接收，作者用实际 personal agentId；自由文本 text/query/public、商品 title/seller 不写入 Git 历史，仅存结构化摘要。旧 C 预览格式保持可读。
+- 剩余 `TODO(contract)` 主要是 main 尚无共享类型时的结构化投影和导入迁移；运行时载荷已对齐，不再等待端点名称或猜测 confirmed/id 的含义。冲突语义另列 requests，未擅改 A/B。
 
-B 的 SDK 提案是 `getLearning()` / `setLearning({ enabled })`，C 已按该参数形式接线。人的明确 HTTP 要求 `GET /personal/learned`、`PUT /personal/learning` 优先于 B 计划里尚待冻结的 GET/POST 提案；缺 SDK 方法时，HTTP 回退只访问人指定的路径。B 的 `confirmed` 不是已冻结的 `on_card`，`id` 也尚未承诺是 contributionId：界面保留“已确认、上卡状态待对齐”，逐条撤销禁用并说明缺 ID 映射；不会伪造来源或操作 ID。正式契约到达后再解除这些限制。
+## 实际 HTTP 与 catalog 证据
 
-B 的白名单/敏感内容过滤在学习入口；C 的 `pref.*` 语法校验不等于允许模型学习或允许商家读取该字段。这里的徒步/防水字段只是人的演示要求对应的 Sample，尚不是 A 已批准的生产白名单。
+工作台监听 `127.0.0.1:4310`，运行 A `0129f08` 加本次 C 包；独立临时数据，`AGENT_COOKIE_DEMO=1`、`AGENT_COOKIE_UCP=live`、`AGENT_COOKIE_TEST=0`、`LEARN_TICK_MS=1000`。身份和初始卡为 **Sample**；UCP 商品查询为实际 live。没有接受报价或付款。应用仍由 A 的默认 `loadLearn` 启动，它返回空结果。
 
-## 演示步骤与判定
+| 材料 | 可证明的结果 | 不证明什么 |
+| --- | --- | --- |
+| [learning-backend-http.json](learning-backend-http.json) | 23:15 UTC 的身份核对、学习读取、暂停及恢复、人工 stated 贡献一次上卡、真实 contributionId 撤销并回读确认；两句观察 HTTP 202；两家 live 报价 | 人工贡献不是模型抽取；queued 不代表已学会；报价顺序不是偏好生效证据 |
+| [learning-console-bridge.json](learning-console-bridge.json) | 5173 控制台服务端到 4310，owner key 来自服务端环境，读取/暂停/恢复均 200 | 该次记录使用旧 SDK 缺方法时的 HTTP fallback；不代表新 B SDK 或浏览器截图 |
+| [learning-sdk-bridge.json](learning-sdk-bridge.json) | 23:21 UTC，重启5173加载B e24957c真实SDK；身份卡/授权/回执/活动/学习读取及暂停恢复，共10请求200；暂停状态恢复原值 | 没有模型提取或截图；demoReset/revokeGrant只核对方法存在，本次未调用 |
+| [learning-idle-observation.json](learning-idle-observation.json) | 两句输入后超过5分钟静默，读取200、paused=false、learned仍为空 | 空响应不是C20通过 |
+| [learning-backend-probe.mjs](../../tests/acceptance/learning-backend-probe.mjs) | 可重跑的 HTTP-only 记录器；只清理本次唯一人工贡献，未知写入结果不谎报清理成功 | 不负责生成模型结论，也不会自动把 C20 标绿 |
 
-1. 从空“学到的”视图开始，开关为允许学习。
-2. 对个人 agent 说：“周末又去徒步，上次脚湿透了”。同一个 conversationId 下，`pref.outdoor_activity` 和 `pref.water_resistance` 各自只有一个来源，均应是**候选**。重复这句话不构成第二个来源。
-3. 说：“帮我找双鞋”。这句话不构成“偏爱防水”的独立佐证；个人 agent 可以结合当前对话上下文查找，但不能因此谎称防水偏好已双源上卡。
-4. 核对真实报价：≤2 家、价格不超本次用户预算；尺码不匹配/无法校验时有说明；有明确 catalog 属性证实防水命中的合格商品，在其他排序条件相同时优先。截图必须包含本次输入、相关学习条目、实际报价顺序和数据模式，不能用商品名猜防水属性。
-5. 单独演示晋升：加入另一段独立对话中同字段同值的证据后，才成为 medium 身份卡条目。撤销其中一条贡献后，剩余单源退回候选。
-6. 暂停学习后再聊几句，读取快照不得出现新贡献或被替换的证据；恢复开关的结果以工作台确认值为准。当前端点未到，这一步只有本地 Sample 开关验证，不能声称真实提取器已停。
+本次请求没有预算，因此只核对最多两家、不同商家，不套用旧 $120 或固定尺码。实际返回的商品和价格保留在 JSON 作为观察结果，不成为测试常量。报价缺结构化尺码说明，故本轮不声称已验证尺码适配、缺码说明、地址隔离或完整 checkout。
 
-## Sample 演练材料
+对话探针通过 HTTP 投递“周末又去徒步，上次脚湿透了”，再投递“帮我找双鞋”；这不是 iMessage/个人 agent 的录屏。正文不保存为运行日志；仓库里的上述短句是用户指定的演示输入。
 
-输入是 [fixtures/learning/console.json](../../fixtures/learning/console.json) 中的合成贡献。`empty` / `candidate` / `learned` 三阶段是明确的 Sample 状态；其中 `learned` 另有较早的独立 Sample 对话，绝非把本次闲聊复制到 intent 凑两源。
+## C20 仍缺的真实环节
 
-控制台使用 `?learningStage=candidate` 或 `?learningStage=learned` 载入对应 Sample 阶段；暂停、撤销只作用于页面内存。进入真实模式不会自动换成 Sample，缺端点会显示尚未提供学习接口。
+1. B 已交 `createWorkspaceLearner`、Haiku 提取器、SDK observe 和 Spectrum 采集；A 默认 `loadLearn` 仍恒返空。用户本轮明确：**OpenRouter 凭据和模型接线由 B 线处理，尚未完成。** C 不继续等待凭据，不把模型桩当实录。
+2. A `LearningService.apply` 仍把 stated 降为 observed，并按同 agent+field+value 全局去重，第二段独立对话会被丢掉。C 的单源/双源规则已修好，不能替 A 的写入语义打勾。
+3. A 的偏好排序目前只有 pref.brand/color，pref.avoid 用于排除；原预览中的防水/徒步字段不在正式白名单。不能凭商品名猜防水，也不能把“帮我找双鞋”当成第二份独立偏好证据。需要 A/B 确认允许提取的字段和相应 catalog 排序属性。
+4. B 的短期原文策略与 A 的 SQLite 观察队列、暂停/忘记代际语义仍有跨线缺口。已追加 [requests](../requests.md)，C 没有改 A/B 目录或承诺彻底删除历史。
+5. 浏览器工具拒绝本地控制台刷新，原因为 URL 协议策略，本轮未获取新截图；没有换浏览器或其他路径绕过。HTTP 证据可继续核验，不能代替实际界面/排序录屏。
 
-| 材料 | 状态 |
-| --- | --- |
-| [空状态](learning-empty.png)、[候选](learning-candidate.png)、[已上卡](learning-learned.png)、[暂停](learning-paused.png) | Chrome 实际渲染的 Sample 截图，未请求商家或运行提取器 |
-| rules 独立来源/衰减/撤销/格式往返 | 针对性测试通过，见下方验证记录 |
-| memory-repo 意图摘要、Git author/commit、检索与无原文 | 24 项真实临时 Git 测试通过 |
-| B 实际模型提取日志 | 待 B learn 与 A 端点；没有用 fixture 代替 |
-| 真实报价排序截图 | 待 B 排序与 A 端点；没有编造报价或名次 |
+## Sample 与真实证据的边界
 
-## 性质检查
+[fixtures/learning/console.json](../../fixtures/learning/console.json) 已改为正式白名单中的 `pref.material` / `pref.color`，使用 A 分组载荷。empty/candidate/learned 均明确标 **Sample**；暂停、撤销只操作页面内存。真实模式不会自动切换 Sample。
 
-[learning-properties.ts](../../tests/acceptance/learning-properties.ts) 只处理 HTTP 响应/人工提供的实际观察，不读取工作台、SDK、SQLite 或记忆库。覆盖同源重复、双源晋升、≤200 Unicode 字符证据、暂停前后变化、撤销和受控候选集排序。预算、商家数量、尺码说明继续使用已有 [properties.ts](../../tests/acceptance/properties.ts)。所有断言使用该次响应的 ID 和约束，不固定店名、商品、尺码或价格。
+旧 [空状态](learning-empty.png)、[候选](learning-candidate.png)、[已上卡](learning-learned.png)、[暂停](learning-paused.png) 是上一版预览 fixture 的历史截图，含当时未冻结的示例字段；**不能用于证明本轮正式契约的界面或真实 C20**。新的端点已不是 404，旧说明由本页本轮结果取代。
 
-`learning-http.test.ts` 是显式开启的 HTTP 观察用例。当前学习端点 404，因此默认标 skipped；启用后遇 404 或没有实际对话数据会失败，不能把未接线算绿。该用例需要 A 返回可核验的贡献 basis、来源及 card 状态；B 当前仅含 confirmed 的提案不能单独证明晋升。C 不重复 A 的 P0 套件。
+## 验证与复跑
 
-## 验证记录
+- 使用 Node 22，在保持 main `843666b` 契约逐字节不变的临时副本运行：根 typecheck 通过；根测试 545 passed（另 1 skipped、4 既有 todo）；console build 通过。rules 52、memory-repo 29、console 35，覆盖嵌套 evidence、独立来源、平面意图脱敏、实际作者及 SDK 参数。
+- B `e24957c` 加当前 C 的隔离副本：rules 52、memory-repo 29、learn 43、SDK 79 通过，四包和 workspace typecheck 通过。SDK 包含实际 A SQLite + C Git 集成；旧纯 A overlay 的 UCP 类型错配在 B 的整合契约中已消失。A workspace 全套214 passed、4既有todo；最新console bridge11与实际SDK→A桥接1项复验通过。无模型调用。
+- 学习性质/通用性质与配置日志保护共 19 项通过（6 项配置回归先红后绿）；独立 acceptance typecheck 通过。错误 URL/key 仅输出固定错误码，两次真实 Vitest 负向入口检查均未泄露 sentinel。它们检查响应性质，不固定店名、价格或尺码，不复制 A 的 P0 自动项。
+- 针对真实 4310 单独运行 `learning-http.test.ts`：只读契约 smoke 通过，空 learned 合法；该 smoke 明确不计 C20。真正的 C20 用例要求非空真实短证据及来源，不能靠 200 或手工注入通过。
+- 曾误将带 URL 的完整历史 acceptance 套件运行在这个专用实例：12 个旧执行项因 `/test/clock` 未启用而失败，并执行了 reset hooks；这不是本轮学习验证结果。结束后重新执行限定文件与全新 HTTP 探针，以上 JSON 来自重跑。不要在此服务运行未限定文件的旧套件。
 
-- `tests/acceptance`：5 项新学习性质检查先失败后实现通过；连同 4 项已有性质检查共 9 passed，1 项真实学习 HTTP 用例 skipped；类型检查通过。
-- `packages/rules`：47 passed，类型检查通过；既有 27 项保留。`packages/memory-repo`：24 passed，类型检查通过；真实 Git 覆盖提交、作者、摘要投影、重开与 reset。`apps/console`：32 passed，类型检查及 Vite 生产构建通过。
-- 浏览器实际操作：空 → 一次闲聊（两候选，无 pref 上卡）→ 独立来源确认（四贡献、两个 pref 上卡）→ 暂停（开关已暂停且已有记录保留）→ 撤销一条徒步贡献（另一条退回候选，卡移除徒步、保留防水）。暂停失败保持旧状态由控制器测试验证，不声称浏览器进行了故障注入。
-- 独立审查发现并修复了来源别名重复计数与验收缺失 basis/未来时间校验；回归先失败再通过。队列的 C20 保持未勾选，直到真实对话与排序证据齐全。
-- PR CI 发现共享 SDK 桥接签名把旧撤销方法的 string 参数扩宽成学习对象联合类型；已按方法分别声明签名并保留 SDK 实例调用上下文，新增上下文类型推断回归先失败再通过。
+C20 只有在真实通道/模型提取、可核验的学习状态、受控合格候选集的排序效果和实际界面证据齐全后才勾选。

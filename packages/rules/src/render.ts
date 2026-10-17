@@ -1,5 +1,5 @@
-import { isField, type Contribution, type RulesApi } from "@agent-cookie/contract";
-import { isLearningField, isLearningContributionMetadata, type LearningCard, type LearningContribution, type LearningMetadata } from './learning-types.js';
+import { type Contribution, type RulesApi } from "@agent-cookie/contract";
+import { isLearningField, isLearningContributionMetadata, type LearningCard, type LearningContribution, type LearningEvidence, type LearningMetadata } from './learning-types.js';
 
 // One physical line per record. Percent escapes protect grammar delimiters and CR/LF;
 // Unicode, backslashes, empty strings and leading/trailing whitespace remain data.
@@ -64,7 +64,12 @@ export const renderContribution = (contribution: LearningContribution): string =
   return record(contribution.field, contribution.value, [
     ["id", contribution.id], ["basis", contribution.basis],
     ["at", contribution.createdAt], ["revoked", contribution.revokedAt],
-    ['intentId', contribution.intentId], ['conversationId', contribution.conversationId], ['evidence', contribution.evidence],
+    ['intentId', contribution.intentId], ['conversationId', contribution.conversationId],
+    ['evidence', typeof contribution.evidence === 'string' ? contribution.evidence : undefined],
+    ['evidenceFormat', typeof contribution.evidence === 'object' ? 'nested' : undefined],
+    ['evidenceIntentId', typeof contribution.evidence === 'object' ? contribution.evidence.intentId : undefined],
+    ['evidenceConversationId', typeof contribution.evidence === 'object' ? contribution.evidence.conversationId : undefined],
+    ['evidenceSnippet', typeof contribution.evidence === 'object' ? contribution.evidence.snippet : undefined],
   ]);
 };
 
@@ -91,7 +96,7 @@ export function parseContributions(markdown: string, owner: Owner, options?: { l
     // The required final attribute block disambiguates values that contain ": ".
     // Do not trim: the spaces on either side of the value can belong to the value.
     const match = /^- ([a-z0-9_.]+): (.*) \[([^\[\]\r\n]*)\]$/su.exec(line);
-    if (!match || !isLearningField(match[1]) || (!options?.learning && !isField(match[1]))) continue;
+    if (!match || !isLearningField(match[1])) continue;
     const attributes = parseAttributes(match[3]!);
     if (!attributes) continue;
     const id = attributes.get("id");
@@ -110,6 +115,16 @@ export function parseContributions(markdown: string, owner: Owner, options?: { l
       const value = attributes.get(key);
       if (value !== undefined) contribution[key] = value;
     }
+    const nested = attributes.get('evidenceFormat');
+    if (nested !== undefined) {
+      if (nested !== 'nested' || contribution.evidence !== undefined) continue;
+      const evidence: LearningEvidence = {};
+      for (const [attribute, key] of [['evidenceIntentId', 'intentId'], ['evidenceConversationId', 'conversationId'], ['evidenceSnippet', 'snippet']] as const) {
+        const value = attributes.get(attribute);
+        if (value !== undefined) evidence[key] = value;
+      }
+      contribution.evidence = evidence;
+    } else if (['evidenceIntentId', 'evidenceConversationId', 'evidenceSnippet'].some(key => attributes.has(key))) continue;
     if (!isLearningContributionMetadata(contribution)) continue;
     contributions.push(contribution);
   }

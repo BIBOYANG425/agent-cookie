@@ -1,0 +1,53 @@
+{
+  "at": "2026-10-17T23:14:35.794Z",
+  "workspace": "A 0129f08 + C PR18 working patch",
+  "origin": "http://127.0.0.1:5173",
+  "upstream": "http://127.0.0.1:4310",
+  "note": "Actual console server bridge with server environment owner key; isolated Sample identity; learning methods use TODO(sdk) HTTP fallback; no browser screenshot or model extraction claim",
+  "requests": [
+    {
+      "path": "/me",
+      "method": "GET",
+      "status": 200,
+      "role": "owner",
+      "sample": true
+    },
+    {
+      "path": "/personal/learning",
+      "method": "GET",
+      "status": 200,
+      "paused": false,
+      "sample": true
+    },
+    {
+      "path": "/personal/learning",
+      "method": "PUT",
+      "status": 200,
+      "paused": true,
+      "sample": true
+    },
+    {
+      "path": "/personal/learned",
+      "method": "GET",
+      "status": 200,
+      "paused": true,
+      "learnedCount": 0,
+      "sample": true
+    },
+    {
+      "path": "/personal/learning",
+      "method": "PUT",
+      "status": 200,
+      "paused": false,
+      "sample": true
+    },
+    {
+      "path": "/personal/learned",
+      "method": "GET",
+      "status": 200,
+      "paused": false,
+      "learnedCount": 0,
+      "sample": true
+    }
+  ]
+}

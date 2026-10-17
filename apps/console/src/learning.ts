@@ -1,77 +1,87 @@
 import type { CardField } from './model';
 
-// TODO(contract): A has not published GET /personal/learned or PUT /personal/learning response types.
-// These are provisional console view types, not additions to the shared workspace contract.
-// Only this normalizer interprets the provisional { enabled, entries } response.
-export interface LearnedSource {
-  kind: 'conversation' | 'intent'; id: string; agentId?: string; label?: string; evidence?: string; at?: string;
+// Local wire projection of A 0129f085e297942ad174b34f02b26ab28d789822:
+// packages/contract/src/types.ts (LearningState, LearnedResponse, LearnedEntry, LearnedEvidence, PREF_KEYS).
+// TODO(contract): import these exports after A's contract is merged; main currently lacks them.
+export const LEARNED_FIELDS = ['pref.brand', 'pref.color', 'pref.material', 'pref.style', 'pref.fit',
+  'pref.avoid', 'pref.occasion', 'pref.recipient', 'pref.price_band', 'pref.size_system'] as const;
+export type LearnedField = typeof LEARNED_FIELDS[number];
+export interface LearnedEvidence {
+  contributionId: string; agentId: string; basis: 'observed' | 'stated' | 'inferred'; createdAt: string;
+  intentId?: string; conversationId?: string; snippet?: string;
 }
 export interface LearnedEntry {
-  id: string; field: string; value: string; status: 'candidate' | 'on_card' | 'confirmed';
-  createdAt?: string; updatedAt?: string; evidence?: string; sources: LearnedSource[]; revokedAt?: string;
-  basis?: 'stated' | 'observed' | 'inferred';
-  /** Only present when the response shape identifies an actual contribution ID, not a proposed observation ID. */
-  contributionId?: string;
+  field: LearnedField; value: string; status: 'card' | 'candidate'; sources: string[]; evidence: LearnedEvidence[];
 }
+export interface LearnedResponse { paused: boolean; learned: LearnedEntry[] }
+
+// Console view state. No record/group IDs are fabricated for the revoke API.
 export interface LearningState {
-  availability: 'ready' | 'unavailable' | 'error'; enabled: boolean | null; entries: LearnedEntry[];
+  availability: 'ready' | 'unavailable' | 'error'; paused: boolean | null; entries: LearnedEntry[];
   message?: string; sample?: boolean;
   sampleStages?: Array<{ id: string; label: string }>;
   sampleStage?: string; sampleDescription?: string;
 }
-export interface LearningSeed {
-  enabled: boolean; entries: LearnedEntry[];
-  stages?: Array<{ id: string; label: string; description: string; entries: LearnedEntry[]; card?: CardField[] }>;
+export interface LearningSeed extends LearnedResponse {
+  stages?: Array<{ id: string; label: string; description: string; learned: LearnedEntry[]; card?: CardField[] }>;
 }
 
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown): v is string => typeof v === 'string';
+const identifier = (v: unknown): v is string => text(v) && v.length > 0;
 const date = (v: unknown): v is string => text(v) && Number.isFinite(Date.parse(v));
-const optionalText = (v: unknown) => v === undefined || text(v);
-const optionalDate = (v: unknown) => v === undefined || date(v);
-const malformed = () => new Error('学习响应尚未符合已约定的临时格式，请等待接口契约对齐。');
+const malformed = () => new Error('学习响应格式与 A 线已核对契约不一致。');
 
-export function normalizeLearningEnabled(body: unknown): boolean {
-  if (!object(body) || typeof body.enabled !== 'boolean') throw malformed();
-  return body.enabled;
+export function normalizeLearningPaused(body: unknown): boolean {
+  if (!object(body) || typeof body.paused !== 'boolean') throw malformed();
+  return body.paused;
 }
 
 export function normalizeLearning(body: unknown): LearningState {
-  const enabled = normalizeLearningEnabled(body);
-  if (!object(body)) throw malformed();
-  // TODO(contract): B's 35f6b38 proposal calls these `learned`/`key`/`confirmed`/`updatedAt`.
-  // Confirmed is not silently promoted to on_card; no sources, creation time or revoke ID are invented.
-  const proposal = body.entries === undefined && Array.isArray(body.learned);
-  if (proposal && (typeof body.generation !== 'number' || !Number.isSafeInteger(body.generation) || body.generation < 0)) throw malformed();
-  const records = proposal ? body.learned : body.entries;
-  if (!Array.isArray(records)) throw malformed();
+  const paused = normalizeLearningPaused(body);
+  if (!object(body) || !Array.isArray(body.learned)) throw malformed();
+  const groups = new Set<string>();
   const ids = new Set<string>();
-  const entries = records.map((row): LearnedEntry => {
-    if (!object(row)) throw malformed();
-    const field = proposal ? row.key : row.field;
-    const rawSources = proposal ? [] : row.sources;
-    if (!text(row.id) || !row.id || ids.has(row.id) || !text(field) || !field
-      || !text(row.value) || !(proposal ? ['candidate', 'confirmed'] : ['candidate', 'on_card']).includes(String(row.status))
-      || !(proposal ? date(row.updatedAt) : date(row.createdAt))
-      || !optionalText(row.evidence) || !optionalDate(row.revokedAt) || !Array.isArray(rawSources)
-      || (row.basis !== undefined && !['stated', 'observed', 'inferred'].includes(String(row.basis)))) throw malformed();
-    if (proposal && (!text(row.evidence) || !['stated', 'observed', 'inferred'].includes(String(row.basis)))) throw malformed();
-    ids.add(row.id);
-    const unique = new Map<string, LearnedSource>();
-    for (const source of rawSources) {
-      if (!object(source) || !['conversation', 'intent'].includes(String(source.kind)) || !text(source.id) || !source.id
-        || !optionalText(source.agentId) || !optionalText(source.label) || !optionalText(source.evidence) || !optionalDate(source.at)) throw malformed();
-      const value = source as unknown as LearnedSource;
-      // Repeated messages within the same conversation/intent remain one source; never imply corroboration.
-      const key = JSON.stringify([value.kind, value.id]);
-      const previous = unique.get(key);
-      if (!previous) unique.set(key, { ...value });
-      else unique.set(key, { ...value, ...previous, evidence: previous.evidence ?? value.evidence });
+  const entries = body.learned.map((row): LearnedEntry => {
+    if (!object(row) || !LEARNED_FIELDS.includes(row.field as LearnedField) || !text(row.value)
+      || !['card', 'candidate'].includes(String(row.status)) || !Array.isArray(row.sources) || !row.sources.every(identifier)
+      || !Array.isArray(row.evidence)) throw malformed();
+    const group = JSON.stringify([row.field, row.value]);
+    if (groups.has(group)) throw malformed();
+    groups.add(group);
+    const evidence = row.evidence.map((item): LearnedEvidence => {
+      if (!object(item) || !identifier(item.contributionId) || ids.has(item.contributionId) || !identifier(item.agentId)
+        || !['observed', 'stated', 'inferred'].includes(String(item.basis)) || !date(item.createdAt)
+        || (item.intentId !== undefined && !identifier(item.intentId))
+        || (item.conversationId !== undefined && !identifier(item.conversationId))
+        || (item.snippet !== undefined && (!text(item.snippet) || [...item.snippet].length > 200))) throw malformed();
+      ids.add(item.contributionId);
+      return { contributionId: item.contributionId, agentId: item.agentId, basis: item.basis as LearnedEvidence['basis'], createdAt: item.createdAt,
+        ...(text(item.intentId) ? { intentId: item.intentId } : {}), ...(text(item.conversationId) ? { conversationId: item.conversationId } : {}),
+        ...(text(item.snippet) ? { snippet: item.snippet } : {}) };
+    });
+    return { field: row.field as LearnedField, value: row.value, status: row.status as LearnedEntry['status'],
+      sources: [...new Set(row.sources as string[])], evidence };
+  });
+  return { availability: 'ready', paused, entries, ...(body.sample === true ? { sample: true } : {}) };
+}
+
+/** Display-only source count. Both IDs on one evidence item are aliases, including aliases shared across items. */
+export function countEvidenceSources(evidence: readonly LearnedEvidence[]): number {
+  const components: Set<string>[] = [];
+  for (const item of evidence) {
+    const aliases = [item.conversationId && `conversation:${item.conversationId}`, item.intentId && `intent:${item.intentId}`]
+      .filter((id): id is string => !!id);
+    if (aliases.length === 0) aliases.push(`agent:${item.agentId}`);
+    const combined = new Set(aliases);
+    for (let index = components.length - 1; index >= 0; index--) {
+      const component = components[index];
+      if ([...component].some((id) => combined.has(id))) {
+        for (const id of component) combined.add(id);
+        components.splice(index, 1);
+      }
     }
-    return { id: row.id, field, value: row.value, status: row.status as LearnedEntry['status'],
-      ...(proposal ? { updatedAt: row.updatedAt as string } : { createdAt: row.createdAt as string, contributionId: row.id }),
-      ...(row.basis ? { basis: row.basis as LearnedEntry['basis'] } : {}), sources: [...unique.values()],
-      ...(text(row.evidence) ? { evidence: row.evidence } : {}), ...(date(row.revokedAt) ? { revokedAt: row.revokedAt } : {}) };
-  }).sort((a, b) => Date.parse(b.updatedAt ?? b.createdAt!) - Date.parse(a.updatedAt ?? a.createdAt!));
-  return { availability: 'ready', enabled, entries, ...(body.sample === true ? { sample: true } : {}) };
+    components.push(combined);
+  }
+  return components.length;
 }

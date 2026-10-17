@@ -12,7 +12,7 @@ describe('learning Markdown provenance · TODO(contract)', () => {
     expect(parseLearningContributions(line, owner)).toEqual([row]);
     expect(parseLearningContributions(line, { userId: 'real', agentId: 'writer' })).toEqual([{ ...row, userId: 'real', agentId: 'writer' }]);
     expect(parseContributions(line, owner, { learning: true })).toEqual([row]);
-    expect(parseContributions(line, owner)).toEqual([]);
+    expect(parseContributions(line, owner)).toEqual([row]);
   });
 
   it('keeps new metadata for canonical fields through the existing parser', () => {

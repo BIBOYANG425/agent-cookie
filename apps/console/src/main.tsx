@@ -44,7 +44,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
     <header className="masthead">
       <a className="brand" href="#card" aria-label="Agent Cookie 首页"><span className="brand-mark" aria-hidden="true">ac</span>Agent Cookie</a>
       <div className="header-actions"><span className={`mode-badge ${sample ? 'sample' : ''}`}>{connectionState}</span>
-        <LearningToggle state={data?.learning} disabled={blocked} change={(enabled) => void controller.setLearning(enabled)} />
+        <LearningToggle state={data?.learning} disabled={blocked} change={(paused) => void controller.setLearning(paused)} />
         <button type="button" disabled={blocked} onClick={() => void controller.reset()}>{state.pending.startsWith('重置') ? '正在重置…' : sample ? '重置 Sample' : '重置演示'}</button>
       </div>
     </header>

@@ -1,6 +1,6 @@
 import { FIELDS, type Contribution } from '@agent-cookie/contract';
 import { mergeLegacyCard } from './legacy-merge.js';
-import { isLearningContributionMetadata, isLearningField, learningSourceId,
+import { isLearningContributionMetadata, isLearningField, LEARNING_PREF_FIELDS, learningEvidence, learningSourceId,
   type LearningCard, type LearningContribution, type LearningField, type LearningMergeOptions } from './learning-types.js';
 
 const YEAR = 365 * 86400000;
@@ -27,9 +27,10 @@ function sourceComponents(rows: readonly LearningContribution[]) {
     return result;
   };
   for (const row of rows) {
-    if (row.intentId === undefined || row.conversationId === undefined) continue;
-    const intent = root(`intent:${row.intentId}`);
-    const conversation = root(`conversation:${row.conversationId}`);
+    const evidence = learningEvidence(row);
+    if (evidence.intentId === undefined || evidence.conversationId === undefined) continue;
+    const intent = root(`intent:${evidence.intentId}`);
+    const conversation = root(`conversation:${evidence.conversationId}`);
     if (intent !== conversation) {
       // Stable roots make alias resolution independent of input order.
       const [first, second] = [intent, conversation].sort(compare);
@@ -44,8 +45,8 @@ function sourceComponents(rows: readonly LearningContribution[]) {
 
 /**
  * TODO(contract): latest qualified value wins; a personal statement is a time barrier,
- * so replacing it requires two independent inferred sources strictly after it.
- * Inferred agreement is medium even when several independent conversations agree.
+ * so replacing it requires two independent learned sources strictly after it.
+ * Learned agreement is medium even when several independent conversations agree.
  * Card.sources remains writer agentIds; source units live in the contribution metadata.
  */
 export function mergeLearningCard(input: readonly LearningContribution[], options: LearningMergeOptions): LearningCard {
@@ -57,22 +58,23 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
   const sourceOf = sourceComponents(identified);
   const rows = identified.filter(row => row.revokedAt === undefined);
   const personalIds = new Set(options.personalAgentIds);
-  const dynamic = [...new Set(rows.map(row => row.field).filter(field => field.startsWith('pref.')))].sort(compare);
   const result: LearningCard = { card: [], candidates: [], superseded: [] };
-  for (const field of [...FIELDS, ...dynamic] as LearningField[]) {
+  for (const field of [...new Set([...FIELDS, ...LEARNING_PREF_FIELDS])] as LearningField[]) {
     const entries = rows.filter(row => row.field === field);
     const barrier = entries.filter(row => row.basis === 'stated' && personalIds.has(row.agentId) && now - at(row) <= YEAR)
       .sort((a, b) => at(a) - at(b) || compare(a.value, b.value) || compare(a.agentId, b.agentId) || compare(a.id, b.id)).at(-1);
     // Reuse all existing observed/stated conflict and time rules, including for pref.*.
     // The temporary field is confined to this call; ownership and provenance never change.
-    const trusted = mergeLegacyCard(entries.map(row => ({ ...row, field: 'tone' } as Contribution)), options);
+    const learned = entries.filter(row => row.basis === 'inferred' || (row.basis === 'observed' && sourceOf(row) !== undefined));
+    const learnedSet = new Set(learned);
+    const trusted = mergeLegacyCard(entries.filter(row => !learnedSet.has(row)).map(row => ({ ...row, field: 'tone' } as Contribution)), options);
     const base = trusted.card[0];
     result.card.push(...trusted.card.map(row => ({ ...row, field })));
     result.candidates.push(...trusted.candidates.filter(row => row.reason !== 'inferred').map(row => ({ ...row, field })));
     result.superseded.push(...trusted.superseded.map(row => ({ ...row, field })));
 
     const grouped = new Map<string, LearningContribution[]>();
-    for (const row of entries.filter(row => row.basis === 'inferred')) {
+    for (const row of learned) {
       grouped.set(row.value, [...(grouped.get(row.value) ?? []), row]);
     }
     const groups = [...grouped.entries()].map(([value, all]) => {
@@ -110,7 +112,8 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
         }
         result.candidates = result.candidates.filter(row => row.field !== field || row.value !== group.value);
       } else if (group.live.length && !result.candidates.some(row => row.field === field && row.value === group.value)) {
-        result.candidates.push({ field, value: group.value, sources: writers(group.live), reason: 'inferred' });
+        result.candidates.push({ field, value: group.value, sources: writers(group.live),
+          reason: group.live.some(row => row.basis === 'observed') ? 'single_source' : 'inferred' });
       }
     }
   }

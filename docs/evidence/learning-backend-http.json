@@ -1,0 +1,72 @@
+{
+  "at": "2026-10-17T23:15:36.927Z",
+  "runId": "63da017b-7f45-4fe5-9631-bddd67af09b3",
+  "mode": "real-workspace-http",
+  "automaticLearningVerified": false,
+  "rankingEffectVerified": false,
+  "checks": {
+    "read": {
+      "paused": false,
+      "learnedCount": 0
+    },
+    "pause": "confirmed by state and learned endpoints",
+    "manualStatement": {
+      "source": "manual Sample statement, not automatic learning",
+      "entry": {
+        "field": "pref.color",
+        "value": "Sample integration 63da017b-7f45-4fe5-9631-bddd67af09b3",
+        "status": "card",
+        "sources": [
+          "sample-personal-photon"
+        ],
+        "evidence": [
+          {
+            "contributionId": "c_6v0zq51w",
+            "agentId": "sample-personal-photon",
+            "basis": "stated",
+            "createdAt": "2026-10-17T23:15:36.968Z"
+          }
+        ]
+      }
+    },
+    "manualCleanup": {
+      "status": "confirmed",
+      "revoked": 1
+    },
+    "revoke": "contribution absent from learned response",
+    "dialogue": {
+      "attempted": true,
+      "transport": "HTTP, not B personal-agent channel",
+      "turnCount": 2,
+      "queued": {
+        "queued": true
+      },
+      "learnedImmediately": 0
+    },
+    "quotes": {
+      "count": 2,
+      "requestBudget": null,
+      "reason": "No budget was stated in this request; no fixed price assertion",
+      "ranking": "baseline only; no automatically learned preference has been verified"
+    }
+  },
+  "quotes": [
+    {
+      "id": "q_89ww2kg3",
+      "seller": "lemsshoes.myshopify.com",
+      "title": "Men's Primal Zen Suede · Men's Primal Zen Suede",
+      "price": 14000,
+      "currency": "USD",
+      "source": "live"
+    },
+    {
+      "id": "q_wmaf1her",
+      "seller": "saguaroshoesus.myshopify.com",
+      "title": "Luck Ⅰ - Barefoot Shoes · Luck Ⅰ - Barefoot Shoes",
+      "price": 5699,
+      "currency": "USD",
+      "source": "live"
+    }
+  ],
+  "intentId": "i_cf43fp2h"
+}

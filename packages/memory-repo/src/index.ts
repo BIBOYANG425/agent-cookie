@@ -8,7 +8,7 @@ import {
 import type { LearningCard, LearningContribution, LearningMergeOptions } from '@agent-cookie/rules';
 import {
   filename, metadata, ownerFromFilename, parseNotes, renderNotes, renderReceipt,
-  text, timestamp, validateContribution, validateNote,
+  text, timestamp, validateNote,
 } from './codec.js';
 import {
   assertRepository, canonicalRoot, commitFiles, exclusive, initialize,
@@ -16,14 +16,14 @@ import {
 } from './storage.js';
 import type { IntentHistoryApi, LearningMemoryRepo, MemoryRepoWithIntents, OpenLearningMemoryRepoOptions } from './learning-types.js';
 import { intentFilename, parseIntent, projectIntent, renderIntent, summarizeIntent, validateLearningContribution } from './intent-history.js';
-export type { AppendIntentInput, IntentSummary, IntentHistoryApi, MemoryRepoWithIntents } from './learning-types.js';
+export type { AppendIntentInput, WorkspaceIntentRecord, IntentSummary, IntentHistoryApi, MemoryRepoWithIntents } from './learning-types.js';
 export type { LearningMemoryRepo, OpenLearningMemoryRepoOptions } from './learning-types.js';
 
 export const openLearningMemoryRepo = (opts: OpenLearningMemoryRepoOptions): Promise<LearningMemoryRepo> =>
   openRepository<LearningContribution, LearningCard, LearningMergeOptions>(opts, validateLearningContribution);
 
 export const openMemoryRepo = (opts: OpenMemoryRepoOptions): Promise<MemoryRepoWithIntents> =>
-  openRepository<Contribution, Card, MergeOptions>(opts, validateContribution);
+  openRepository<Contribution, Card, MergeOptions>(opts, validateLearningContribution);
 
 type MergeInput = { readonly now: string; readonly personalAgentIds: readonly string[] };
 interface StorageRules<C, K, M> {
@@ -32,7 +32,7 @@ interface StorageRules<C, K, M> {
   mergeCard(contributions: readonly C[], merge: M): K;
   renderCard(card: K, meta: Parameters<RulesApi['renderCard']>[1]): string;
 }
-type Repository<C, K, M> = Omit<MemoryRepo, 'appendContribution' | 'listContributions' | 'regenerateCard'> & IntentHistoryApi & {
+type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard'> & IntentHistoryApi & {
   appendContribution(c: C, meta: WriteMeta): Promise<CommitRef>;
   listContributions(): Promise<C[]>;
   regenerateCard(merge: M, meta: WriteMeta): Promise<{ card: K; commit: CommitRef }>;
@@ -66,8 +66,8 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
     appendIntent(input, meta) {
       return perform(async () => {
         metadata(meta);
-        if (meta.author !== 'personal') throw new WorkspaceError('SCOPE_DENIED');
         const record = projectIntent(input, userId, meta.at);
+        if (meta.author !== (record.agentId ?? 'personal')) throw new WorkspaceError('SCOPE_DENIED');
         const path = `intents/${intentFilename(record.intent.id, meta.at)}`;
         const previous = (await optionalFile(join(root, path)))?.toString('utf8') ?? '';
         const content = `${previous}${previous && !previous.endsWith('\n') ? '\n' : ''}${renderIntent(record)}\n`;

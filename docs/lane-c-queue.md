@@ -22,9 +22,11 @@
 
 ## 动态记忆 + 对话旁听学习（人的要求，2026-10-17）
 
-循环：C17 → C18 → C19 → C20；每项实现、针对性验证、记录证据，再检查 A/B 接口是否已到并替换 `TODO(contract)`。B 线主导，最终以 `docs/lane-b-learning-plan.md` 和 A 的契约为准。本轮已读取 B 后续发布的计划 35f6b38；A b824139 暂无正式学习类型。下面勾选表示 C 的组件/桩已交付，不代表 A/B 真实链路通过；C20 真实出口单列保持未完成。
+循环：C17 → C18 → C19 → C20；实现、针对性验证、记录证据后再核对 A/B。已读 A `0129f08` 契约与 B `e24957c` 学习计划/实现；B最新`4dfa81c`仅增OpenRouter配置检查，不改接口，运行时载荷已对齐；main 未合并的共享类型仍保留少量导入迁移 `TODO(contract)`。下列组件完成不等于真实 C20 完成。
 
-- [x] C17 晋升规则：证据按 intentId / conversationId 及两者别名连通关系去重；personal stated 立即 medium；inferred 单源候选、两个独立来源晋升 observed/medium；pref.* 同样衰减。显式 now、最新合格值、同值刷新、未来时间排除、格式往返与别名回归共 47 tests，类型检查通过；正式类型待 A 对齐。
-- [x] C18 意图记忆：appendIntent({ intent, extracted, chosenQuote? }, meta) → intents/<YYYY-MM-DD>-<id>.md，searchIntents(q) 全文摘要；结构化白名单及 ≤200 字证据，不存对话原文。每写一次一个 personal commit；openLearningMemoryRepo 支持 pref 贡献与 CARD 重建。24 个真实 Git 测试与类型检查通过；本地扩展 TODO(contract)，不代表 A 已接线。
-- [x] C19 学到的视图组件：GET /personal/learned、PUT /personal/learning、SDK getLearning/setLearning({enabled}) 接缝；候选/上卡、来源/证据/时间、已知贡献 ID 撤销、暂停与 2 秒轮询。32 tests、类型/构建检查和 Sample 浏览器操作通过，含既有 SDK 撤销方法类型兼容回归。B confirmed/未知 ID 保守展示并禁用逐条撤销；真实 4310 learned=404，正式 C19 联调待 A 契约，缺方法保留 TODO(sdk)/TODO(contract)。
-- [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、4 张 Sample 界面图、9 个响应性质检查（另 1 HTTP 用例显式跳过）。真实“闲聊→帮我找双鞋”的 B learn、A 端点及报价排序截图仍待接线；不固定店名，不把候选凑成双源，不因 Sample 已跑就勾完。
+- [x] C17 晋升规则：默认 rules/parser 接受 A 的 pref 白名单与嵌套 evidence；按 intentId/conversationId 别名连通关系去重，personal stated 立即 medium，observed/inferred 两个独立来源晋升 medium；同对话重复不算第二源，衰减后掉卡。52 tests，main/A/B 契约类型验证通过；已修复 A 扩展 FIELDS 导致 pref 卡重复的问题。
+- [x] C18 意图记忆：默认 openMemoryRepo 支持嵌套 evidence 和 A 的 flat IntentRecord；作者使用实际 personal agentId，保留旧 C wrapper；仅写结构化摘要和 ≤200 字证据，剔除 text/query/public/title/seller 自由文本。append/list/revoke/reopen、commit author、检索与原文排除共 29 个真实 Git tests；main 与 B 整合契约类型检查通过。
+- [x] C19 学到的视图：正式 `{paused,learned}` 分组，逐 evidence 用真实 contributionId 撤销，来源/短摘句/时间及暂停、2 秒轮询。SDK getLearned/getLearning 与 setLearning({enabled:!paused}) 已接真实 4310；5173 控制台通过 B e24957c SDK 的 10 个读取/暂停/恢复请求均200，owner key仅在服务端。35 tests、typecheck/build通过；正式载荷 fixture 使用 pref.material/color，旧截图只作历史 Sample。缺 SDK 方法才走标注 fallback。
+- [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、真实 HTTP/SDK/延时读取 JSON、两家 live 报价基线、19 项性质/配置日志保护检查。两句目标对话被接受202，五分钟静默后 learned仍为空；未验证模型或偏好排序，未有本轮界面录屏。用户已明确 OpenRouter 配置由B处理且尚未完成；A默认learner接线、stated保留、跨对话去重及允许字段的排序映射仍见 requests。接口连通不计C20完成。
+
+本轮验证：main 契约副本全量 545 passed（另1 skipped、4 todo），根typecheck与console build通过；B e24957c整合副本 rules52 / memory29 / learn43 / SDK79 / workspace214通过，workspace另4 todo，相关类型检查通过。没有复制A的P0验收，也未改plan.md。

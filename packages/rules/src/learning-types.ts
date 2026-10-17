@@ -1,9 +1,15 @@
-// TODO(contract): provisional local learning types until A publishes the shared contract.
+// Structural projection of lane A 0129f08 while main still has the previous contract.
+// TODO(contract): import these additive types once that contract lands on main.
 import { isField, type Card, type CardField, type Candidate, type Contribution, type Field, type MergeOptions, type RulesApi } from '@agent-cookie/contract';
 
-export type LearningField = Field | `pref.${string}`;
-export interface LearningMetadata { intentId?: string; conversationId?: string; evidence?: string }
-export type LearningContribution = Omit<Contribution, 'field'> & LearningMetadata & { field: LearningField };
+export const LEARNING_PREF_KEYS = ['brand', 'color', 'material', 'style', 'fit', 'avoid', 'occasion', 'recipient', 'price_band', 'size_system'] as const;
+export type LearningPrefField = `pref.${typeof LEARNING_PREF_KEYS[number]}`;
+export const LEARNING_PREF_FIELDS: readonly LearningPrefField[] = LEARNING_PREF_KEYS.map(key => `pref.${key}` as const);
+export type LearningField = Field | LearningPrefField;
+export interface LearningEvidence { intentId?: string; conversationId?: string; snippet?: string }
+/** Top-level IDs and string evidence remain readable for already-written C preview records. */
+export interface LearningMetadata { intentId?: string; conversationId?: string; evidence?: string | LearningEvidence }
+export type LearningContribution = Omit<Contribution, 'field' | 'evidence'> & LearningMetadata & { field: LearningField };
 export type LearningCardField = Omit<CardField, 'field'> & { field: LearningField };
 export type LearningCandidate = Omit<Candidate, 'field'> & { field: LearningField };
 export type LearningSuperseded = Omit<Card['superseded'][number], 'field'> & { field: LearningField };
@@ -19,8 +25,7 @@ export type LearningRulesApi = Omit<RulesApi, 'mergeCard' | 'renderCard' | 'rend
 };
 
 export function isLearningField(value: unknown): value is LearningField {
-  return isField(value) || (typeof value === 'string' && value.length <= 128
-    && /^pref\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/u.test(value));
+  return isField(value) || (typeof value === 'string' && (LEARNING_PREF_FIELDS as readonly string[]).includes(value));
 }
 
 /** Evidence is never truncated; 200 Unicode code points, including punctuation/whitespace. */
@@ -30,13 +35,31 @@ export function isLearningContributionMetadata(value: unknown): value is Learnin
   for (const key of ['intentId', 'conversationId']) {
     if (metadata[key] !== undefined && (typeof metadata[key] !== 'string' || !metadata[key].trim())) return false;
   }
-  return metadata.evidence === undefined || (typeof metadata.evidence === 'string' && [...metadata.evidence].length <= 200);
+  if (metadata.evidence === undefined) return true;
+  if (typeof metadata.evidence === 'string') return [...metadata.evidence].length <= 200;
+  if (typeof metadata.evidence !== 'object' || metadata.evidence === null || Array.isArray(metadata.evidence)) return false;
+  const evidence = metadata.evidence as Record<string, unknown>;
+  if (Object.keys(evidence).some(key => !['intentId', 'conversationId', 'snippet'].includes(key))) return false;
+  for (const key of ['intentId', 'conversationId']) {
+    if (evidence[key] !== undefined && (typeof evidence[key] !== 'string' || !evidence[key].trim())) return false;
+    // A preview alias must not disagree with its canonical nested identifier.
+    if (metadata[key] !== undefined && evidence[key] !== undefined && metadata[key] !== evidence[key]) return false;
+  }
+  return evidence.snippet === undefined || (typeof evidence.snippet === 'string' && [...evidence.snippet].length <= 200);
+}
+
+export function learningEvidence(record: LearningMetadata): LearningEvidence {
+  const nested = typeof record.evidence === 'object' && record.evidence !== null ? record.evidence : {};
+  return { ...(record.intentId === undefined ? {} : { intentId: record.intentId }),
+    ...(record.conversationId === undefined ? {} : { conversationId: record.conversationId }), ...nested,
+    ...(typeof record.evidence === 'string' ? { snippet: record.evidence } : {}) };
 }
 
 /** Single-record handle; merge resolves both IDs' transitive aliases before counting. Never use agentId as fallback. */
 export function learningSourceId(record: LearningMetadata): string | undefined {
   if (!isLearningContributionMetadata(record)) return undefined;
-  if (record.conversationId !== undefined) return `conversation:${record.conversationId}`;
-  if (record.intentId !== undefined) return `intent:${record.intentId}`;
+  const evidence = learningEvidence(record);
+  if (evidence.conversationId !== undefined) return `conversation:${evidence.conversationId}`;
+  if (evidence.intentId !== undefined) return `intent:${evidence.intentId}`;
   return undefined;
 }

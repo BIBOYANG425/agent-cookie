@@ -75,71 +75,18 @@ pnpm --filter @agent-cookie/memory-repo typecheck
 Sample seed. These are package tests, not HTTP acceptance passes; the acceptance
 suite remains a separate HTTP-only integration task.
 
-## Provisional learning and intent history
+## Learning and intent history · TODO(contract)
 
-`TODO(contract)`: the shared contract has not yet published the learning API.
-The local types in `src/learning-types.ts` add `appendIntent(input, meta)` and
-`searchIntents(q)` to the existing `openMemoryRepo` result. The old `MemoryRepoApi`
-remains assignable. No workspace route or SDK method is introduced here.
+Local structural types match lane A commit `0129f08` while main retains the earlier contract. Both `openMemoryRepo` with `rules` and the preview `openLearningMemoryRepo` with `learningRules` preserve A's exact ten preference fields and nested `evidence: { intentId?, conversationId?, snippet? }`. Older C preview top-level source IDs and string evidence remain readable. Append, list, revoke, reopen and CARD regeneration use the injected rules. Runtime dependency on rules is still type-only. No route or SDK method is introduced here.
 
-For dynamic preference contributions, use the explicit `openLearningMemoryRepo`
-entry with an injected `learningRules` implementation. Its append/list/revoke/
-regenerate operations preserve `pref.*`, `intentId`, `conversationId`, and
-`evidence`, and return the corresponding learning types rather than asserting
-that dynamic fields are legacy `Field` values. Use this entry consistently for
-a repository containing dynamic preferences; the legacy parser only exposes
-legacy fields. Runtime rendering and merging remain injected; this package only
-imports learning types from rules. Temporary local field/metadata guards mirror
-the agreed rules until a shared contract replaces them.
+`appendIntent` accepts A's flat `IntentRecord` and the earlier C wrapper. `searchIntents(q)` remains a C additive method; A's current contract does not expose it.
 
-```ts
-import { openLearningMemoryRepo } from '@agent-cookie/memory-repo';
-import { learningRules } from '@agent-cookie/rules';
+The flat record projection retains `id`, repository-matching `userId`, `agentId`, `createdAt`, optional structured `kind`, and optional quote `id`, integer `price` and `currency`. The write author must exactly match `record.agentId`; the workspace authenticates that agent's personal role. All `text`, `query`, arbitrary `public`, quote title/seller and unknown properties are omitted. The contract has no typed safe public summary, so even public values that look structured are not persisted.
 
-const repo = await openLearningMemoryRepo({
-  path: '/absolute/path/to/demo-memory',
-  seedDir: '/absolute/path/to/fixtures/memory',
-  userId: 'sample-user',
-  rules: learningRules,
-});
-```
+The preview wrapper retains intent `id`, `userId`, optional `kind` and `expiresAt`; extracted contribution values and evidence; and quote `id`, `agentId`, integer `price` and `currency`. Its compatibility author remains literal `personal`. Extracted source intent IDs, including nested IDs, must match the enclosing intent. Values and evidence snippets are limited to 200 Unicode code points; an overlong input rejects the entire write. Unknown properties and raw conversation properties are never spread into stored data. Ordinary contribution values retain their existing size behavior. Provenance strings must round-trip through UTF-8 and cannot contain NUL.
 
-Intent history has a deliberately narrow projection:
+Each append creates one Git commit and one escaped Markdown record in `intents/<UTC YYYY-MM-DD>-<encoded intent ID>.md`. The filename date comes from `meta.at`; flat records additionally retain their original `createdAt`. A format marker distinguishes flat records from existing preview history. Nested evidence uses indexed attributes, not raw JSON. IDs are nonempty, whitespace-free, at most 128 code points, and subject to the canonical filename limit; optional `kind` is a structured token of at most 64 code points. The supplied signature trailer, queue and write rollback apply normally.
 
-- Intent: `id`, repository-matching `userId`, optional structured `kind`, and
-  `expiresAt`. Missing `kind` is preserved as absent. `text`, `query`, `body`,
-  `transcript`, arbitrary `public` data, and all other properties are omitted.
-  Omitting `public` also omits structured budget values until their safe shared
-  shape is agreed; this package does not guess which arbitrary strings are prose.
-- Extracted contributions: only the contribution fields, optional revocation,
-  `intentId`, `conversationId`, and `evidence`. The source intent ID, when present,
-  must match the enclosing intent. Unknown properties are never spread or
-  serialized. For this summary record only, each value and evidence is limited
-  to 200 Unicode code points; overlong inputs reject the whole write. Ordinary
-  learning contribution values retain their existing behavior.
-- Chosen quote: only `id`, `agentId`, integer `price`, and `currency`. Quote text,
-  title, body, URLs, and other properties are omitted.
+Search matches every whitespace-split query term case-insensitively against generated summaries. Flat summaries contain only structured kind and numeric quote facts; preview summaries can also contain validated extracted values and short evidence. Results expose only `{ intentId, date, summary }`, in filename/append order. Whitespace/control characters are flattened, empty queries return no results, malformed history lines are ignored, and queries are never persisted. Existing repositories without `intents/` read as empty. Guarded seed reset removes new history.
 
-Each call appends one escaped Markdown record to
-`intents/<UTC YYYY-MM-DD>-<encoded intent ID>.md`. The date comes from `meta.at`,
-because the current shared `Intent` has no `createdAt`. Indexed contribution
-attributes retain source metadata without embedding raw JSON objects. IDs use
-the existing canonical filename codec and the combined dated filename limit.
-For the provisional history format, identifiers are nonempty, whitespace-free,
-and at most 128 code points; optional `kind` is a structured token up to 64.
-Every history append requires literal `meta.author === 'personal'` and retains
-the supplied signature trailer. The same per-path queue and rollback apply.
-
-Search performs case-insensitive substring matching for every whitespace-split
-query term against generated summaries. An empty query returns no results.
-Results contain only `{ intentId, date, summary }`, in filename/append order;
-whitespace and control characters in summary text are flattened. They do not
-return stored user/source metadata or raw input. Malformed history lines are
-ignored. Queries are never persisted. Existing repositories without `intents/`
-read as empty, and reset removes new history through the same guarded seed reset.
-
-`test/intents.test.ts` covers raw-property omission, optional kind, short evidence,
-Unicode escaping, author/provenance, concurrent handles, search, and reset.
-`test/learning.test.ts` runs real rules plus temporary Git repositories to verify
-dynamic preference/source round trips and CARD regeneration. Workspace learning
-integration remains pending the shared contract and caller wiring.
+`test/intents.test.ts`, `test/learning.test.ts` and `test/a-learning-contract.test.ts` exercise actual temporary Git repositories: raw-property omission, both history formats, nested evidence, exact writer/owner checks, source-count promotion, revocation, reopen, commits and reset. Tests and typechecks also run against an isolated A `0129f08` contract overlay. These package results do not claim production model extraction or HTTP learning acceptance.

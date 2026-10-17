@@ -29,6 +29,6 @@ export interface ConsoleAdapter {
   revokeContribution(id: string, signal?: AbortSignal): Promise<void>;
   revokeGrant(id: string, signal?: AbortSignal): Promise<void>;
   reset(signal?: AbortSignal): Promise<void>;
-  setLearning(enabled: boolean, signal?: AbortSignal): Promise<void>;
+  setLearning(paused: boolean, signal?: AbortSignal): Promise<void>;
   selectLearningStage?(id: string): Promise<void>;
 }

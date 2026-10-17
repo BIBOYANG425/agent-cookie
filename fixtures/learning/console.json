@@ -1,53 +1,51 @@
 {
-  "enabled": true,
-  "entries": [],
+  "paused": false,
+  "learned": [],
   "stages": [
     {
       "id": "empty",
       "label": "还未学习",
-      "description": "Sample · 尚未注入学习贡献，未运行模型。",
-      "entries": []
+      "description": "Sample · 尚未载入学习贡献；这是本地界面演示，未运行模型。",
+      "learned": []
     },
     {
       "id": "candidate",
       "label": "一次闲聊",
-      "description": "Sample · 一段对话只算一个来源；徒步和防水均是候选，还未上卡。",
-      "entries": [
+      "description": "Sample · 预设的一段对话提供棉质和黑色候选，均未上卡；不代表真实提取。",
+      "learned": [
         {
-          "id": "sample-learned-hike-1",
-          "field": "pref.outdoor_activity",
-          "value": "徒步",
+          "field": "pref.material",
+          "value": "棉质",
           "status": "candidate",
-          "createdAt": "2026-10-17T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "周末又去徒步",
           "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
             {
-              "kind": "conversation",
-              "id": "sample-conversation-weekend",
+              "contributionId": "sample-learned-material-1",
               "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "周末又去徒步",
-              "at": "2026-10-17T12:00:00.000Z"
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "棉质摸起来更舒服"
             }
           ]
         },
         {
-          "id": "sample-learned-water-1",
-          "field": "pref.water_resistance",
-          "value": "防水",
+          "field": "pref.color",
+          "value": "黑色",
           "status": "candidate",
-          "createdAt": "2026-10-17T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "上次脚湿透了",
           "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
             {
-              "kind": "conversation",
-              "id": "sample-conversation-weekend",
+              "contributionId": "sample-learned-color-1",
               "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "上次脚湿透了",
-              "at": "2026-10-17T12:00:00.000Z"
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "我平时更常选黑色"
             }
           ]
         }
@@ -56,91 +54,70 @@
     {
       "id": "learned",
       "label": "独立来源确认",
-      "description": "Sample · 加入另一段独立对话的同值证据；两源晋升 medium。这不是同一段闲聊自动生成了两个来源。",
-      "entries": [
+      "description": "Sample · 预设的两个独立 agent 对话支持同值偏好；上卡状态为演示脚本，不代表工作台真实学习或报价排序。",
+      "learned": [
         {
-          "id": "sample-learned-hike-0",
-          "field": "pref.outdoor_activity",
-          "value": "徒步",
-          "status": "on_card",
-          "createdAt": "2026-10-10T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "常去徒步",
+          "field": "pref.material",
+          "value": "棉质",
+          "status": "card",
           "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
             {
-              "kind": "conversation",
-              "id": "sample-conversation-earlier",
+              "contributionId": "sample-learned-material-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "还是喜欢棉质"
+            },
+            {
+              "contributionId": "sample-learned-material-1",
               "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "常去徒步",
-              "at": "2026-10-10T12:00:00.000Z"
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "棉质摸起来更舒服"
             }
           ]
         },
         {
-          "id": "sample-learned-water-0",
-          "field": "pref.water_resistance",
-          "value": "防水",
-          "status": "on_card",
-          "createdAt": "2026-10-10T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "希望鞋子防水",
+          "field": "pref.color",
+          "value": "黑色",
+          "status": "card",
           "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
             {
-              "kind": "conversation",
-              "id": "sample-conversation-earlier",
-              "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "希望鞋子防水",
-              "at": "2026-10-10T12:00:00.000Z"
-            }
-          ]
-        },
-        {
-          "id": "sample-learned-hike-1",
-          "field": "pref.outdoor_activity",
-          "value": "徒步",
-          "status": "on_card",
-          "createdAt": "2026-10-17T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "周末又去徒步",
-          "sources": [
+              "contributionId": "sample-learned-color-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "这次也选黑色"
+            },
             {
-              "kind": "conversation",
-              "id": "sample-conversation-weekend",
+              "contributionId": "sample-learned-color-1",
               "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "周末又去徒步",
-              "at": "2026-10-17T12:00:00.000Z"
-            }
-          ]
-        },
-        {
-          "id": "sample-learned-water-1",
-          "field": "pref.water_resistance",
-          "value": "防水",
-          "status": "on_card",
-          "createdAt": "2026-10-17T12:00:00.000Z",
-          "basis": "inferred",
-          "evidence": "上次脚湿透了",
-          "sources": [
-            {
-              "kind": "conversation",
-              "id": "sample-conversation-weekend",
-              "agentId": "sample-personal-photon",
-              "label": "Sample · 独立演示对话",
-              "evidence": "上次脚湿透了",
-              "at": "2026-10-17T12:00:00.000Z"
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "我平时更常选黑色"
             }
           ]
         }
       ],
       "card": [
         {
-          "field": "pref.outdoor_activity",
-          "value": "徒步",
+          "field": "pref.material",
+          "value": "棉质",
           "confidence": "medium",
           "sources": [
+            "sample-personal-assistant",
             "sample-personal-photon"
           ],
           "updatedAt": "2026-10-17T12:00:00.000Z",
@@ -148,10 +125,11 @@
           "changedRecently": false
         },
         {
-          "field": "pref.water_resistance",
-          "value": "防水",
+          "field": "pref.color",
+          "value": "黑色",
           "confidence": "medium",
           "sources": [
+            "sample-personal-assistant",
             "sample-personal-photon"
           ],
           "updatedAt": "2026-10-17T12:00:00.000Z",
