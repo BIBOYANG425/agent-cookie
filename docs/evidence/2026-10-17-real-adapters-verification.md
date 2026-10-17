@@ -52,3 +52,10 @@ This round's local Photon function test is **not a new iPhone delivery test**. T
 - C still needs the formal SDK dependency/fallback cleanup; contribution record IDs/list payload and Tier 2 delete/generation contracts remain A/C coordination items.
 
 See appended B30–B34 in `docs/requests.md`. No main merge was performed.
+
+
+## Fresh phone readback, 14:48 PDT
+
+The previous “no fresh inbound” observation is now superseded. Photon confirms two new **find** messages at **14:43:15 and 14:43:26 PDT**, each followed by a quote reply with provider status **delivered**. Both replies match the persisted outbox text, show Sample, and quote $109.95 / $112.00. Cursor advanced from 6466 to 6729; no outbound message remains pending.
+
+Both inputs were searches, not a find/select pair. No new selection, accept or checkout receipt exists for this round yet. The user has been asked to send “要第二双” in the same conversation. This validates real iMessage quotation delivery, but does not yet close the phone handoff step. See [redacted Photon/API and backend readback](2026-10-17-imessage-real-adapters.json).

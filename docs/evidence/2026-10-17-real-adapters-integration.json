@@ -55,15 +55,55 @@
     "distinctPersonalIntentGrantPairs": 2,
     "sameMerchantSessionVerified": true,
     "consoleConnected": true,
-    "photonPhoneDeliveryThisRound": "user reported success, but no new server-side message found; clarification pending",
+    "photonPhoneDeliveryThisRound": "two fresh searches verified received, two quote replies delivered; awaiting selection",
     "photonListenerReady": true
   },
   "phoneAcceptance": {
-    "userReportedTwoOffersAndLink": true,
-    "serverConfirmedThisRound": false,
-    "providerLatestInboundAt": "2026-10-17T20:42:19.853Z",
-    "newMessagesAfterSwitch": 0,
-    "outboxEntriesStill": 4,
-    "cursorStill": 6466
+    "checkedAt": "2026-10-17T21:48:59.026Z",
+    "implementationCommit": "04c6e108e43999a15cecf3093c45acd21673a74c",
+    "timezone": "America/Los_Angeles",
+    "transport": "real Photon iMessage; API readback plus persisted outbox and workspace SDK",
+    "messages": [
+      {
+        "kind": "find",
+        "inboundAt": "2026-10-17T21:43:15.696Z",
+        "inboundStatus": "received",
+        "outboundAt": "2026-10-17T21:43:16.407Z",
+        "outboundStatus": "delivered",
+        "replyMatchesOutbox": true,
+        "sampleLabel": true
+      },
+      {
+        "kind": "find",
+        "inboundAt": "2026-10-17T21:43:26.661Z",
+        "inboundStatus": "received",
+        "outboundAt": "2026-10-17T21:43:27.415Z",
+        "outboundStatus": "delivered",
+        "replyMatchesOutbox": true,
+        "sampleLabel": true
+      }
+    ],
+    "pricesCents": [
+      10995,
+      11200
+    ],
+    "sources": [
+      "fixture",
+      "fixture"
+    ],
+    "flowStatus": "quotes_delivered_awaiting_selection",
+    "result": null,
+    "acceptCount": 0,
+    "checkoutReceiptCount": 0,
+    "checkoutReceiptFields": [],
+    "unselectedMerchantAddressDisclosure": false,
+    "desktopCanReadSameReceipt": false,
+    "memoryWriteFailures": 0,
+    "outboxSentCount": 2,
+    "pendingOutboxCount": 0,
+    "cursor": 6729,
+    "noPaymentOrOrderClaimed": true,
+    "deviceDisplayConfirmedByUser": false,
+    "secondOfferSeller": "black-flag-outfitters-clothing.myshopify.com"
   }
 }
