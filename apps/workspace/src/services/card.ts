@@ -37,6 +37,9 @@ export class CardService {
       const intent = typeof intentOrId === "string" ? this.ctx.store.intent(intentOrId) : intentOrId;
       if (intent && intent.userId === userId) {
         for (const [k, v] of Object.entries(intent.public)) if (overridable(k) && typeof v === "string" && v !== "") out[k] = v;
+        // A size stated in this request (IntentRequest.public.size) is this intent's shoe_size.
+        const size = intent.public.size;
+        if (typeof size === "string" && size !== "" && !intent.public.shoe_size) out.shoe_size = size;
       }
     }
     return out;

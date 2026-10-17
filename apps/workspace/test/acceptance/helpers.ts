@@ -90,8 +90,11 @@ export const PINNED = {
   offers: PINNED_RAW.offers,
   sellers: PINNED_RAW.offers.map((o) => o.seller).sort(),
   variantIds: PINNED_RAW.offers.map((o) => o.variantId).sort(),
-  /** The recording's own parameters as a trail_shoes intent body (since lane D's B22 re-recording: EU 42 / $120, the card's own size). */
-  intent: { kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: PINNED_RAW.size } },
+  /**
+   * The recording's own parameters as an intent body (EU 42 / $120, the card's own size). `text` is the user's
+   * sentence (IntentRequest); `kind` is the optional hint that also introduces registered trail_shoes merchants.
+   */
+  intent: { text: "找一双越野跑鞋 · Sample", kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: PINNED_RAW.size } },
 } as const;
 
 /**
@@ -105,7 +108,7 @@ export interface Scenario {
   pinned: { size: string; budget: number; offers: PinnedOffer[] };
   /** Every non-empty message content in the scenario's cart/checkout envelopes (what must reach the user verbatim). */
   messages: Array<{ type: string; content: string; file: string }>;
-  intent: { kind: "trail_shoes"; public: { budget: string; shoe_size: string } };
+  intent: { text: string; public: { budget: string; size: string } };
 }
 export function loadScenario(name: "sold-out" | "requires-escalation"): Scenario | undefined {
   const dir = path.join(FIXTURES_DIR, "ucp", "scenarios", name);
@@ -117,7 +120,7 @@ export function loadScenario(name: "sold-out" | "requires-escalation"): Scenario
     const ms = (env?.result?.messages ?? env?.messages ?? []) as Json[];
     for (const m of ms) if (typeof m?.content === "string" && m.content.trim()) messages.push({ type: String(m.type), content: m.content, file });
   }
-  return { dir, pinned, messages, intent: { kind: "trail_shoes", public: { budget: String(pinned.budget), shoe_size: String(pinned.size) } } };
+  return { dir, pinned, messages, intent: { text: "Sample · recorded scenario", public: { budget: String(pinned.budget), size: String(pinned.size) } } };
 }
 
 /** Every seller.domain in the recorded catalog page. */

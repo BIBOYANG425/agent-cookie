@@ -11,7 +11,7 @@ import { isJarLocked } from "./laneD.js";
 import { requestSpan } from "./telemetry.js";
 import { theUser } from "./services/context.js";
 
-const CATEGORIES: Category[] = ["personal", "shoe"];
+const CATEGORIES: Category[] = ["personal", "shoe", "retail"];
 const MAX_CLOCK_OFFSET_MS = 10 * 365 * 86_400_000;
 
 /** "2026-10-21" or a full ISO timestamp whose calendar date really exists (no 2026-02-31). */
@@ -168,12 +168,17 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ ok: true, card });
   });
 
+  // IntentRequest (contract): `text` = the user's words, required. Transition: a request with only the old `kind` is
+  // still accepted (it searches for the kind's words) until lanes B's SDK/MCP/channel send `text` (docs/requests.md).
   app.post("/personal/intents", auth, personal, idem, async (c) => {
     const body = await readJson(c);
-    const kind = str(body, "kind", { max: 64 });
-    if (!/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
-    const text = optStr(body, "text", { max: 1000 });
-    const out = await deps.commerce.createIntent(c.get("agent"), user(), { kind, public: stringRecord(body.public, "public"), ...(text ? { text } : {}) });
+    const text = optStr(body, "text", { max: 1000 })?.trim() || undefined;
+    const query = optStr(body, "query", { max: 200 })?.trim() || undefined;
+    const kind = optStr(body, "kind", { max: 64 });
+    if (kind !== undefined && !/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
+    if (!text && !kind) fail("MISSING_FIELD", "missing text");
+    const out = await deps.commerce.createIntent(c.get("agent"), user(), { public: stringRecord(body.public, "public"),
+      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(kind ? { kind } : {}) });
     return json(out, 201);
   });
 

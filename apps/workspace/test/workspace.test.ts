@@ -70,7 +70,11 @@ describe("A04 握手只有字段名", () => {
     const hs = await h.get(`/agent/handshake?sessionId=${s.sessionId}`, m.key);
     expect(Object.keys(hs.body).sort()).toEqual(["available", "expiresAt", "jar", "lang", "length", "sessionId", "tone", "v"]);
     expect(hs.body.available).toEqual(expect.arrayContaining(["shoe_size", "shipping_address"]));
-    expect(hs.text).not.toMatch(/42|Sample St|Sample User|@/);
+    // No card VALUE beyond the handshake's own lang/tone/length (B31: match values, not the serialized text, whose
+    // timestamps and session id may contain "42" by chance).
+    const { expiresAt: _e, sessionId: _s, ...rest } = hs.body;
+    for (const v of Object.values(rest).flat()) expect(String(v)).not.toMatch(/^42$|Sample St|Sample User|@/);
+    expect(Object.values(rest).flat()).not.toContain("42");
   });
 });
 

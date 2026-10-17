@@ -1,7 +1,7 @@
 // Live UCP smoke (plan T4/T8): against a RUNNING workspace started with AGENT_COOKIE_UCP=live.
 //   two real quotes → accept one → handoff link; and the Sample-address guard: while the card holds a Sample
 //   address, accept must hand off WITHOUT reading it (no shipping_address receipt) — it is never sent to a real store.
-// Usage: AGENT_COOKIE_URL=http://127.0.0.1:4310 AGENT_COOKIE_KEY=<personal key> pnpm --filter @agent-cookie/workspace smoke:live [--out file.json]
+// Usage: AGENT_COOKIE_URL=http://127.0.0.1:4310 AGENT_COOKIE_KEY=<personal key> pnpm --filter @agent-cookie/workspace smoke:live [--text "..."] [--out file.json]
 // Prints a redacted JSON summary (sellers, prices, statuses, continue URL host); never prints keys or the address.
 // Exit 0 = all checks passed; 1 = a check failed; 2 = could not run (no live quotes: network, CLI, catalog).
 import { writeFileSync } from "node:fs";
@@ -44,16 +44,21 @@ summary.cardAddressSource = address ? (address.source ?? card.body.source ?? "un
 const sampleAddress = Boolean(address && /\bsample\b/i.test(String(address.value)));
 summary.cardAddressIsSample = sampleAddress;
 
-const intent = await call("POST", "/personal/intents", { kind: "trail_shoes", text: "live smoke: trail running shoes" });
+// The user's sentence drives the search (IntentRequest.text); pass your own with --text "...".
+const textIdx = process.argv.indexOf("--text");
+const sentence = textIdx > 0 ? process.argv[textIdx + 1]! : "trail running shoes under $150";
+const intent = await call("POST", "/personal/intents", { text: sentence, public: { budget: "150" } });
 summary.intent = { status: intent.status, introduced: intent.body?.introduced, error: intent.body?.error?.code };
 if (intent.status !== 201) finish(2);
 const quotes = await call("GET", `/personal/intents/${intent.body.intentId}/quotes?wait=20000`);
 const ucpQuotes = ((quotes.body?.quotes ?? []) as Json[]).filter((q) => q.seller);
-summary.quotes = ucpQuotes.map((q) => ({ seller: q.seller, title: q.title, price: q.price, source: q.source, variantId: q.variantId }));
+summary.quotes = ucpQuotes.map((q) => ({ seller: q.seller, title: q.title, price: q.price, source: q.source, variantId: q.variantId,
+  ...(q.sizeNote ? { sizeNote: q.sizeNote } : {}) }));
 if (ucpQuotes.length === 0) { summary.error = "no UCP quotes (live catalog unreachable or empty)"; finish(2); }
 if (!check("all quotes are live (not fixture)", ucpQuotes.every((q) => q.source === "live"),
   ucpQuotes.map((q) => q.source).join(","))) finish(1);
 check("two quotes from two different sellers", ucpQuotes.length >= 2 && new Set(ucpQuotes.map((q) => q.seller)).size >= 2);
+check("every quote is within the stated budget", ucpQuotes.every((q) => q.price <= 15_000));
 
 const chosen = ucpQuotes[0];
 const accept = await call("POST", `/personal/quotes/${chosen.id}/accept`);

@@ -36,13 +36,17 @@ describe("P1: an old database upgrades in place", () => {
     old.exec(OLD_SCHEMA);
     old.prepare("INSERT INTO users VALUES ('u_sample', 'Sample User', 'sample-user-secret-0001', '2026-10-17T00:00:00.000Z')").run();
     old.prepare(`INSERT INTO contributions VALUES ('c_0001', 'u_sample', 'personal-photon', 'lang', 'zh', 'stated', '2026-10-01T09:00:00.000Z', NULL, 1)`).run();
+    old.prepare(`INSERT INTO agents VALUES ('ucp:old.example', 'Old (UCP proxy)', 'shoe', '["trail_shoes"]', NULL, NULL, 'old.example', '2026-10-01T00:00:00.000Z')`).run();
     old.close();
 
     const store = new Store(path);
     expect(store.schemaVersion()).toBe(SCHEMA_VERSION);
     const cols = (t: string) => (store.db.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((c) => c.name);
     expect(cols("contributions")).toContain("origin");
-    expect(cols("quotes")).toContain("source");
+    expect(cols("quotes")).toEqual(expect.arrayContaining(["source", "size_note"]));
+    expect(cols("intents")).toContain("query");
+    // v3: UCP store proxies are retail, with no fixed kind
+    expect(store.agent("ucp:old.example")).toMatchObject({ category: "retail", capabilities: [] });
     store.close();
 
     const config = loadConfig({ PORT: "4310", SQLITE_PATH: path, FIXTURES_DIR: SAMPLE_FIXTURES_DIR, AGENT_COOKIE_DEMO: "1", AGENT_COOKIE_TEST: "1", AGENT_COOKIE_DATA_DIR: dir });

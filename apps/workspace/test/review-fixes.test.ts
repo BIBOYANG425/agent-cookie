@@ -210,11 +210,13 @@ describe("robustness", () => {
     const retry = await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { budget: "120" } }, { "idempotency-key": "jar" });
     expect(retry.status).toBe(201);
   });
-  it("prototype-named kinds, fractional limits and pathological bodies are 4xx, not 500 or a UCP match", async () => {
+  it("prototype-named kinds, fractional limits and pathological bodies are 4xx, not 500 or a registry match", async () => {
     const h = await harness();
-    const proto = await h.post("/personal/intents", KEYS.personal, { kind: "constructor" });
-    expect(proto.body.introduced).toBe(0);
-    expect((await h.get("/personal/grants", KEYS.personal)).body.grants).toEqual([]);
+    // Every intent searches UCP with the user's words now; a prototype-named kind hint must still match no registered merchant.
+    const proto = await h.post("/personal/intents", KEYS.personal, { text: "anything", kind: "constructor" });
+    expect(proto.status).toBe(201);
+    const grants = (await h.get("/personal/grants", KEYS.personal)).body.grants as Array<{ agentId: string }>;
+    expect(grants.filter((g) => !g.agentId.startsWith("ucp:"))).toEqual([]);
     expect((await h.post("/personal/intents", KEYS.personal, { kind: "Trail Shoes!" })).status).toBe(422);
     expect((await h.post("/personal/intents", KEYS.personal, { kind: "trail_shoes", public: { constructor: "x" } })).status).toBe(422);
     expect((await h.get("/personal/receipts?limit=1.5", KEYS.personal)).status).toBe(200);

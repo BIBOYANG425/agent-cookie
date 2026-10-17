@@ -5,8 +5,13 @@
 
 export type Basis = "observed" | "stated" | "inferred";
 
-/** pharmacy and hotel were cut on 2026-10-17; they come back after the hackathon, not before. */
-export type Category = "personal" | "shoe";
+/**
+ * pharmacy and hotel were cut on 2026-10-17; they come back after the hackathon, not before.
+ * "retail" (2026-10-17, human direction: search is driven by the user's own words): the category of UCP store
+ * proxies (`ucp:<domain>`), whatever they sell. Same policy as "shoe" (policy.ts). "shoe" stays for registered
+ * merchants that declared it.
+ */
+export type Category = "personal" | "shoe" | "retail";
 
 /**
  * category === "personal" ? "personal" : "merchant" for registered agents.
@@ -16,6 +21,10 @@ export type Category = "personal" | "shoe";
  */
 export type Role = "personal" | "merchant" | "owner";
 
+/**
+ * Card fields. `shoe_size` keeps its name (lanes B/C/D store and classify it); it is the card's size hint for any
+ * retail search. A size stated in one request goes in IntentRequest.public.size and only applies to that request.
+ */
 export const FIELDS = [
   "lang", "tone", "length",
   "shoe_size", "budget", "deadline",
@@ -111,6 +120,34 @@ export interface Handshake {
   kid?: string;
 }
 
+/**
+ * POST /personal/intents body (2026-10-17, human direction: search is driven by the user's sentence; replaces the
+ * fixed trail_shoes / EU 42 / $120 / pinned-store demo).
+ *  - text   — the user's own words, verbatim. Required. The UCP query when `query` is absent; the chat message for
+ *             Tier 0 merchants. Never sent in introduce callbacks.
+ *  - query  — what to search for, when the personal agent extracted it (e.g. English keywords for UCP).
+ *  - public — conditions the user stated in THIS request; sent to introduced merchants. Known keys:
+ *      budget   USD, "120" / "$120" / "100-160" (upper bound). HARD: offers above it are dropped.
+ *      size     e.g. "42", "US 9". SOFT: ranks matching variants first; never excludes. A quote whose variant does
+ *               not match carries `sizeNote` ("没有 42，有 41、43"). `shoe_size` is accepted as an alias.
+ *      count    how many different sellers to quote, 1–5 (default 2).
+ *      color, deadline, … other public conditions, passed through.
+ *    Not stated → the card's budget / shoe_size are used to RANK only, never to exclude.
+ *  - kind   — optional hint, not an enum: registered merchants listing it in `capabilities` are introduced too.
+ */
+export interface IntentRequest {
+  text: string;
+  query?: string;
+  public?: Record<string, string>;
+  kind?: string;
+}
+export const DEFAULT_SELLER_COUNT = 2;
+export const MAX_SELLER_COUNT = 5;
+
+/**
+ * An intent as merchants see it (introduce callback). Merchants are only introduced through a matching `kind`
+ * hint, so `kind` is always set here. The user's `text` and `query` are not part of it.
+ */
 export interface Intent {
   id: string;
   userId: string;
@@ -149,6 +186,11 @@ export interface Quote {
   checkoutUrl?: string;
   /** Set by the workspace on every quote it returns (additive, B20). */
   source?: DataSource;
+  /**
+   * UCP quotes, when the wanted size (stated in the request, else the card's) is not this variant's: what the
+   * store has instead, e.g. "没有 42，有 41、43" / "No 42; has 41, 43". Absent when sizes match or do not apply.
+   */
+  sizeNote?: string;
 }
 
 /**

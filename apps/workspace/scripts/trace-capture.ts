@@ -32,7 +32,7 @@ const call = async (method: string, path: string, body?: unknown) => {
   return res.json() as Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 const pinned = JSON.parse(readFileSync(join(config.ucpFixturesDir, "pinned.json"), "utf8"));
-const intent = await call("POST", "/personal/intents", { kind: "trail_shoes", public: { budget: String(pinned.budget), shoe_size: pinned.size } });
+const intent = await call("POST", "/personal/intents", { text: "trail running shoes", public: { budget: String(pinned.budget), size: pinned.size } });
 const { quotes } = await call("GET", `/personal/intents/${intent.intentId}/quotes?wait=5000`);
 const quote = quotes.find((q: { seller?: string }) => q.seller === pinned.offers[0].seller);
 const accept = await call("POST", `/personal/quotes/${quote.id}/accept`);

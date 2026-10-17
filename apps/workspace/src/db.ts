@@ -12,7 +12,8 @@ export interface UserRow { userId: string; name: string; secret: string; created
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
 /** Grant plus the intent it was issued under (purpose grounding needs it). */
 export interface GrantRow extends Grant { intentId?: string; createdAt: string }
-export interface IntentRow extends Intent { agentId: string; text?: string; createdAt: string }
+/** `kind` is the optional hint; `text` is absent only on legacy kind-only requests (see app.ts). */
+export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId: string; text?: string; query?: string; createdAt: string }
 export type Channel = "ucp" | "callback" | "tier0";
 export interface IntentSessionRow { intentId: string; sessionId: string; agentId: string; channel: Channel }
 export type QuoteStatus = "open" | "accepted" | AcceptResult["status"];
@@ -33,12 +34,13 @@ CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
-  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT);
 CREATE TABLE IF NOT EXISTS intent_sessions (intent_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, channel TEXT NOT NULL,
   PRIMARY KEY (intent_id, session_id));
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL,
   price INTEGER NOT NULL, currency TEXT NOT NULL, eta_date TEXT, eta_text TEXT, title TEXT, seller TEXT, variant_id TEXT, checkout_url TEXT,
-  status TEXT NOT NULL, created_at TEXT NOT NULL, accepted_at TEXT, result TEXT, seq INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'live');
+  status TEXT NOT NULL, created_at TEXT NOT NULL, accepted_at TEXT, result TEXT, seq INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'live',
+  size_note TEXT);
 CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL,
   basis TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, origin TEXT NOT NULL DEFAULT 'live');
 CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, computed_at TEXT NOT NULL);
@@ -56,8 +58,10 @@ CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, 
 const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string; ddl: string }> = [
   { version: 2, table: "quotes", column: "source", ddl: "ALTER TABLE quotes ADD COLUMN source TEXT NOT NULL DEFAULT 'live'" },
   { version: 2, table: "contributions", column: "origin", ddl: "ALTER TABLE contributions ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'" },
+  { version: 3, table: "intents", column: "query", ddl: "ALTER TABLE intents ADD COLUMN query TEXT" },
+  { version: 3, table: "quotes", column: "size_note", ddl: "ALTER TABLE quotes ADD COLUMN size_note TEXT" },
 ];
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency"] as const;
@@ -81,9 +85,11 @@ function toGrant(r: Row): GrantRow {
   return g;
 }
 function toIntent(r: Row): IntentRow {
-  const i: IntentRow = { id: String(r.id), userId: String(r.user_id), agentId: String(r.agent_id), kind: String(r.kind),
+  const i: IntentRow = { id: String(r.id), userId: String(r.user_id), agentId: String(r.agent_id),
     public: JSON.parse(String(r.public)) as Record<string, string>, expiresAt: String(r.expires_at), createdAt: String(r.created_at) };
+  if (r.kind) i.kind = String(r.kind);
   if (r.text) i.text = String(r.text);
+  if (r.query) i.query = String(r.query);
   return i;
 }
 function toQuote(r: Row): QuoteRow {
@@ -91,7 +97,7 @@ function toQuote(r: Row): QuoteRow {
     text: String(r.text), price: Number(r.price), currency: "USD", etaDate: s(r.eta_date) ?? null, status: r.status as QuoteStatus,
     createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource };
   for (const [k, col] of [["etaText", "eta_text"], ["title", "title"], ["seller", "seller"], ["variantId", "variant_id"],
-    ["checkoutUrl", "checkout_url"], ["acceptedAt", "accepted_at"]] as const) {
+    ["checkoutUrl", "checkout_url"], ["acceptedAt", "accepted_at"], ["sizeNote", "size_note"]] as const) {
     const v = s(r[col]);
     if (v !== undefined) (q as unknown as Record<string, string>)[k] = v;
   }
@@ -146,6 +152,8 @@ export class Store {
         const cols = (this.db.prepare(`PRAGMA table_info(${m.table})`).all() as Array<{ name: string }>).map((c) => c.name);
         if (!cols.includes(m.column)) this.db.exec(m.ddl);
       }
+      // v3: UCP store proxies are "retail" (any product), no longer "shoe" with a fixed kind.
+      if (current < 3) this.db.exec("UPDATE agents SET category = 'retail', capabilities = '[]' WHERE domain IS NOT NULL AND category = 'shoe'");
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     })();
   }
@@ -278,7 +286,8 @@ export class Store {
 
   // ---- intents
   insertIntent(i: IntentRow): void {
-    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, i.id, i.userId, i.agentId, i.kind, JSON.stringify(i.public), i.text ?? null, i.createdAt, i.expiresAt);
+    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt);
   }
   intent(id: string): IntentRow | undefined {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Row | undefined;
@@ -298,9 +307,9 @@ export class Store {
   // ---- quotes
   insertQuote(q: QuoteRow): void {
     this.exec(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
-      checkout_url, status, created_at, accepted_at, result, seq, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
+      checkout_url, status, created_at, accepted_at, result, seq, source, size_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
         q.seller ?? null, q.variantId ?? null, q.checkoutUrl ?? null, q.status, q.createdAt, q.acceptedAt ?? null,
-        q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live");
+        q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live", q.sizeNote ?? null);
   }
   quote(id: string): QuoteRow | undefined {
     const r = this.db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as Row | undefined;
