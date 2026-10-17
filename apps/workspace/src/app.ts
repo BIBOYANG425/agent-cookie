@@ -74,12 +74,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   // Every request but the reset itself passes the reset barrier.
   app.use("*", async (c, next) => {
     if (c.req.path === "/demo/reset") return next();
-    await deps.gate.enter();
-    try {
-      await next();
-    } finally {
-      deps.gate.leave();
-    }
+    await deps.gate.run(() => next());
   });
 
   // Activity row for every request (never values). Reading the activity log itself is not logged.

@@ -6,9 +6,10 @@ import { loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
 import type { Config } from "./config.js";
 import { Store } from "./db.js";
+import { fail } from "./http.js";
 import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
-import { ensureOwnerKey, loadFixtures, seedStore, type Fixtures } from "./seed.js";
+import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
@@ -37,16 +38,20 @@ export interface Deps {
   gate: Gate;
   /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
   reset(): Promise<string>;
-  close(): void;
+  /** Waits for in-flight deliveries (they log their result), then closes SQLite. */
+  close(): Promise<void>;
 }
 
 /** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
 export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
-  const store = new Store(config.sqlitePath);
+  const gate = new Gate();
+  const store = new Store(config.sqlitePath, { busyTimeoutMs: config.sqliteBusyTimeoutMs });
+  // A request overtaken by a reset must not write anything (gate.ts); it hears "not found", like any vanished object.
+  store.setWriteGuard(() => { if (gate.stale()) fail("NOT_FOUND"); });
   const clock = new Clock();
-  const log = activityLogger(store, clock);
+  const log = activityLogger(store, clock, () => gate.stale());
   const fixtures = loadFixtures(config.fixturesDir);
   const rules = overrides.rules ?? loadRules();
   const ucp = overrides.ucp ?? loadUcp(config);
@@ -54,7 +59,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     path: config.memoryRepoPath, seedDir: resolve(config.fixturesDir, FIXTURE_FILES.memory), userId: fixtures.users[0]!.userId, rules,
   });
   const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log);
-  const ctx: Ctx = { config, store, clock, rules, ucp, repo: () => repo, log, delivery };
+  const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), config, store, clock, rules, ucp, repo: () => repo, log, delivery };
   const card = new CardService(ctx);
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
@@ -62,6 +67,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
+  else upgradeSeed(store, fixtures, config, clock.nowIso());
   await reconcileRepo(ctx);
   // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
   if (!config.demo && !config.test) {
@@ -70,7 +76,6 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   }
   card.get(fixtures.users[0]!.userId);
 
-  const gate = new Gate();
   return {
     config, store, clock, rules, ucp, repo, log, delivery, fixtures, card, sessions, fields, notes, commerce, gate,
     reset: () => gate.exclusive(async () => {
@@ -84,8 +89,9 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       card.get(fixtures.users[0]!.userId);
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
-    }),
-    close() {
+    }, config.resetWaitMs),
+    async close() {
+      await delivery.settle();
       store.close();
     },
   };

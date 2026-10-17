@@ -4,7 +4,7 @@ import { NOTE_MAX_BYTES, NOTE_TTL_DAYS, type Note } from "@agent-cookie/contract
 import type { NoteRow } from "../db.js";
 import { containsCardNumber } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
-import { persist, writeMeta, type Ctx } from "./context.js";
+import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { SessionService } from "./sessions.js";
 
 const KEY = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -17,16 +17,16 @@ export class NoteService {
     if (!KEY.test(key)) fail("MISSING_FIELD", "invalid note key");
     if (containsCardNumber(value)) fail("MISSING_FIELD", "card numbers are never stored");
     const { session } = this.sessions.access(agent, sessionId);
+    if (Buffer.byteLength(value, "utf8") > NOTE_MAX_BYTES) fail("MISSING_FIELD", "note too large");
     const now = this.ctx.clock.nowIso();
     this.ctx.store.deleteExpiredNotes(now);
-    const others = this.ctx.store.notesFor(agent.agentId, session.userId).filter((n) => n.key !== key);
-    const bytes = Buffer.byteLength(JSON.stringify([...others.map((n) => [n.key, n.value]), [key, value]]), "utf8");
-    if (bytes > NOTE_MAX_BYTES) fail("MISSING_FIELD", "note too large");
     const row: NoteRow = { agentId: agent.agentId, userId: session.userId, key, value, sessionId, updatedAt: now, expiresAt: this.ctx.clock.isoIn(TTL_MS) };
+    const { sessionId: _s, ...note } = row;
+    // The memory repo is the one authority on the 2 KB note file (it measures the rendered file). Write it first;
+    // if it refuses (MISSING_FIELD) or fails, the request fails and SQLite keeps the previous note.
+    await persistStrict(this.ctx, "note", agent.agentId, (r) => r.writeNote(sessionId, note, writeMeta(this.ctx, agent.agentId, { sessionId, key, value })));
     this.ctx.store.upsertNote(row);
     this.ctx.log({ event: "note.write", actor: agent.agentId, object: sessionId, result: "ok", reason: key });
-    const { sessionId: _s, ...note } = row;
-    await persist(this.ctx, "note", agent.agentId, (r) => r.writeNote(sessionId, note, writeMeta(this.ctx, agent.agentId, { sessionId, key, value })));
     return note;
   }
 

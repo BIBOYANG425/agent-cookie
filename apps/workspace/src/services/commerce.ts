@@ -11,7 +11,7 @@ import { containsCardNumber, publicEntryProblem } from "../guards.js";
 import { parseAddress, parseBudgetCents, pickSellers } from "../ucp-filter.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
-import { persist, writeMeta, type Ctx } from "./context.js";
+import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { FieldService } from "./fields.js";
 import type { NoteService } from "./notes.js";
 import type { Introduction, SessionService } from "./sessions.js";
@@ -144,8 +144,15 @@ export class CommerceService {
         void this.ctx.delivery.callback(p.agent, { type: "introduce", sessionId: p.session.sessionId, handshake: p.handshake,
           intent: { id: intent.id, kind: intent.kind, public: intent.public, expiresAt: intent.expiresAt } });
       } else if (p.channel === "tier0" && p.receipt) {
+        // The Tier 0 prefix carries values: deliver only once its receipt is durable in git.
         const receipt = p.receipt;
-        await persist(this.ctx, "receipt", "workspace", (r) => r.appendReceipt(receipt, writeMeta(this.ctx, "workspace", receipt)));
+        try {
+          await persistStrict(this.ctx, "receipt", "workspace", (r) => r.appendReceipt(receipt, writeMeta(this.ctx, "workspace", receipt)));
+        } catch (err) {
+          if (err instanceof WorkspaceError && err.code === "NOT_FOUND") throw err;
+          this.ctx.log({ event: "tier0.deliver", actor: "workspace", object: p.agent.agentId, result: "skipped", reason: "receipt not durable" });
+          continue;
+        }
         void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text);
       }
     }
@@ -162,7 +169,7 @@ export class CommerceService {
       const rows = this.ctx.store.quotesForIntent(intentId);
       const quoted = new Set(rows.map((q) => q.agentId));
       const complete = [...expected].every((a) => quoted.has(a));
-      if (complete || Date.now() - started >= wait) return { intentId, quotes: rows.map(toQuote), complete };
+      if (complete || this.ctx.closing() || Date.now() - started >= wait) return { intentId, quotes: rows.map(toQuote), complete };
       await new Promise((r) => setTimeout(r, Math.min(250, wait - (Date.now() - started))));
     }
   }

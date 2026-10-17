@@ -14,8 +14,7 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 
 const shutdown = async () => {
   server.close();
-  await deps.delivery.settle();
-  deps.close();
+  await deps.close();
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

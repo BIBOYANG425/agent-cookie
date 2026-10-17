@@ -26,6 +26,10 @@ export interface Config {
   test: boolean;
   callbackTimeoutMs: number;
   callbackRetries: number;
+  /** POST /demo/reset waits this long for in-flight requests before cutting them off (they then cannot write). */
+  resetWaitMs: number;
+  /** SQLite busy_timeout: wait for another connection's write lock instead of failing with SQLITE_BUSY. */
+  sqliteBusyTimeoutMs: number;
   /** Lane D (P1), passed through to packages/auth when it is wired. */
   jarKek?: string;
   unlockSecret?: string;
@@ -61,6 +65,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     test: env.AGENT_COOKIE_TEST === "1",
     callbackTimeoutMs: int(env.CALLBACK_TIMEOUT_MS, 5000, 50, 60_000),
     callbackRetries: int(env.CALLBACK_RETRIES, 3, 1, 10),
+    resetWaitMs: int(env.RESET_WAIT_MS, 10_000, 0, 120_000),
+    sqliteBusyTimeoutMs: int(env.SQLITE_BUSY_TIMEOUT_MS, 5000, 0, 60_000),
     jarKek: env.AGENT_COOKIE_JAR_KEK,
     unlockSecret: env.AGENT_COOKIE_UNLOCK_SECRET,
   };

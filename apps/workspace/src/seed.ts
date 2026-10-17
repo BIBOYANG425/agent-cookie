@@ -74,3 +74,21 @@ export function ensureOwnerKey(store: Store, config: Config, now: string): void 
     console.log(`[workspace] owner key written to ${path}`);
   }
 }
+
+/**
+ * A database created by an older workspace (or a restart on a file database): add fixture agents it lacks, load the
+ * Sample keys in demo/test mode, mark the fixture contributions as Sample seed (origin, B20) and add seed
+ * contributions it never had (the address, B21). A seed id that exists — even revoked — is left alone.
+ */
+export function upgradeSeed(store: Store, f: Fixtures, config: Config, now: string): void {
+  store.tx(() => {
+    for (const a of f.agents) if (!store.agent(a.agentId)) store.insertAgent(a);
+    if (config.demo || config.test) {
+      for (const [key, who] of Object.entries(f.devKeys)) store.insertKey({ keyHash: hashKey(key), agentId: who.agentId, role: who.role, createdAt: now });
+    }
+    for (const c of f.contributions) {
+      if (store.contribution(c.id)) store.markSeed(c.id);
+      else store.insertContribution(c, "seed");
+    }
+  });
+}

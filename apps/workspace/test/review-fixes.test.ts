@@ -166,18 +166,19 @@ describe("keys, clock, inputs", () => {
     expect(parseBudgetCents("120 以内")).toBe(12000);
     expect(parseBudgetCents("1,200")).toBe(120000);
   });
-  it("reset waits for an in-flight long poll instead of racing it", async () => {
+  it("a long poll in flight returns as soon as a reset starts, and the reset then runs", async () => {
     const h = await harness();
     const cb = await callbackServer();
     await h.registerMerchant({ callbackUrl: cb.url });
     const { intentId } = await h.intent();
-    const poll = h.get(`/personal/intents/${intentId}/quotes?wait=600`, KEYS.personal);
+    const poll = h.get(`/personal/intents/${intentId}/quotes?wait=5000`, KEYS.personal);
     await new Promise((r) => setTimeout(r, 50));
     const t0 = Date.now();
-    const reset = await h.post("/demo/reset", KEYS.owner);
+    const [reset, polled] = await Promise.all([h.post("/demo/reset", KEYS.owner), poll]);
     expect(reset.status).toBe(200);
-    expect((await poll).status).toBe(200);
-    expect(Date.now() - t0).toBeGreaterThanOrEqual(400);
+    expect(polled.status).toBe(200);
+    expect(polled.body.complete).toBe(false);
+    expect(Date.now() - t0).toBeLessThan(2000);
     cb.close();
   });
 });
@@ -234,7 +235,7 @@ describe("robustness", () => {
     cb.close();
   });
   it("deliveries never reject, even when logging fails", async () => {
-    const d = new Delivery({ timeoutMs: 100, attempts: 1 }, () => { throw new Error("SQLITE_BUSY"); });
+    const d = new Delivery({ timeoutMs: 100, attempts: 1 }, () => { throw new Error("simulated activity-log failure (test)"); });
     const r = await d.callback({ agentId: "a", name: "a", category: "shoe", capabilities: [], createdAt: "", callbackUrl: "http://127.0.0.1:9/x" },
       { type: "accepted", sessionId: "s", quoteId: "q" });
     expect(r.ok).toBe(false);
@@ -246,10 +247,10 @@ describe("robustness", () => {
     const stubs = { ucp: StubUcp.fromFile(join(SAMPLE_FIXTURES_DIR, "ucp-offers.json"), "requires_escalation"), memoryRepoApi: stubMemoryRepoApi(() => []) };
     const first = await createDeps(loadConfig({ ...env, AGENT_COOKIE_TEST: "1" }), stubs);
     expect((await createApp(first).request("/me", { headers: { authorization: `Bearer ${KEYS.owner}` } })).status).toBe(200);
-    first.close();
+    await first.close();
     const second = await createDeps(loadConfig(env), stubs);
     expect((await createApp(second).request("/me", { headers: { authorization: `Bearer ${KEYS.owner}` } })).status).toBe(401);
     expect(existsSync(join(dir, "owner.key"))).toBe(true);
-    second.close();
+    await second.close();
   });
 });

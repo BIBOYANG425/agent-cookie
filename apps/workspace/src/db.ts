@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, 
   body TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scope, key));
 `;
 
+/** Columns added after the first schema, applied to existing databases (CREATE TABLE IF NOT EXISTS never alters). */
+const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string; ddl: string }> = [
+  { version: 2, table: "quotes", column: "source", ddl: "ALTER TABLE quotes ADD COLUMN source TEXT NOT NULL DEFAULT 'live'" },
+  { version: 2, table: "contributions", column: "origin", ddl: "ALTER TABLE contributions ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'" },
+];
+export const SCHEMA_VERSION = 2;
+
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency"] as const;
 
@@ -112,15 +119,49 @@ export class Store {
   readonly db: Database.Database;
   private seq = 0;
 
-  constructor(path: string) {
+  /** Set by the workspace: throws when the calling request started before the last reset (gate.ts). */
+  private guard: () => void = () => undefined;
+
+  constructor(path: string, opts: { busyTimeoutMs?: number } = {}) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
+    // Another connection (a second process, a console tool, a backup) may hold the write lock briefly:
+    // wait for it instead of failing with SQLITE_BUSY. WAL lets readers proceed during a write.
+    this.db.pragma(`busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
     if (path !== ":memory:") this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
+    this.migrate();
     for (const t of ["grants", "quotes", "contributions", "receipts"]) {
       const m = this.db.prepare(`SELECT COALESCE(MAX(seq), 0) AS m FROM ${t}`).get() as { m: number };
       this.seq = Math.max(this.seq, m.m);
     }
+  }
+
+  /** Add columns that an older database lacks, then record the schema version. Idempotent. */
+  private migrate(): void {
+    const current = Number(this.db.pragma("user_version", { simple: true }));
+    if (current >= SCHEMA_VERSION) return;
+    this.db.transaction(() => {
+      for (const m of MIGRATIONS) {
+        const cols = (this.db.prepare(`PRAGMA table_info(${m.table})`).all() as Array<{ name: string }>).map((c) => c.name);
+        if (!cols.includes(m.column)) this.db.exec(m.ddl);
+      }
+      this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    })();
+  }
+
+  schemaVersion(): number {
+    return Number(this.db.pragma("user_version", { simple: true }));
+  }
+
+  setWriteGuard(guard: () => void): void {
+    this.guard = guard;
+  }
+
+  /** Every write goes through here so a stale request (started before a reset) can never write. */
+  private exec(sql: string, ...params: unknown[]): Database.RunResult {
+    this.guard();
+    return this.db.prepare(sql).run(...params);
   }
 
   /** Monotonic insertion order (timestamps can tie, and the test clock can move backwards). */
@@ -133,7 +174,7 @@ export class Store {
   }
 
   clearAll(): void {
-    this.tx(() => { for (const t of TABLES) this.db.prepare(`DELETE FROM ${t}`).run(); });
+    this.tx(() => { for (const t of TABLES) this.exec(`DELETE FROM ${t}`); });
   }
 
   close(): void {
@@ -142,7 +183,7 @@ export class Store {
 
   // ---- users
   insertUser(u: UserRow): void {
-    this.db.prepare("INSERT OR REPLACE INTO users (user_id, name, secret, created_at) VALUES (?, ?, ?, ?)").run(u.userId, u.name, u.secret, u.createdAt);
+    this.exec("INSERT OR REPLACE INTO users (user_id, name, secret, created_at) VALUES (?, ?, ?, ?)", u.userId, u.name, u.secret, u.createdAt);
   }
   user(userId: string): UserRow | undefined {
     const r = this.db.prepare("SELECT * FROM users WHERE user_id = ?").get(userId) as Row | undefined;
@@ -155,8 +196,8 @@ export class Store {
 
   // ---- agents
   insertAgent(a: Agent): void {
-    this.db.prepare(`INSERT OR REPLACE INTO agents (agent_id, name, category, capabilities, callback_url, chat_endpoint, domain, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(a.agentId, a.name, a.category, JSON.stringify(a.capabilities), a.callbackUrl ?? null,
+    this.exec(`INSERT OR REPLACE INTO agents (agent_id, name, category, capabilities, callback_url, chat_endpoint, domain, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, a.agentId, a.name, a.category, JSON.stringify(a.capabilities), a.callbackUrl ?? null,
       a.chatEndpoint ?? null, a.domain ?? null, a.createdAt);
   }
   agent(agentId: string): Agent | undefined {
@@ -176,14 +217,14 @@ export class Store {
 
   // ---- keys
   insertKey(k: KeyRow): void {
-    this.db.prepare("INSERT OR REPLACE INTO keys (key_hash, agent_id, role, created_at) VALUES (?, ?, ?, ?)").run(k.keyHash, k.agentId, k.role, k.createdAt);
+    this.exec("INSERT OR REPLACE INTO keys (key_hash, agent_id, role, created_at) VALUES (?, ?, ?, ?)", k.keyHash, k.agentId, k.role, k.createdAt);
   }
   keyByHash(keyHash: string): KeyRow | undefined {
     const r = this.db.prepare("SELECT * FROM keys WHERE key_hash = ?").get(keyHash) as Row | undefined;
     return r && { keyHash: String(r.key_hash), agentId: String(r.agent_id), role: r.role as Role, createdAt: String(r.created_at) };
   }
   deleteKey(keyHash: string): void {
-    this.db.prepare("DELETE FROM keys WHERE key_hash = ?").run(keyHash);
+    this.exec("DELETE FROM keys WHERE key_hash = ?", keyHash);
   }
   hasOwnerKey(): boolean {
     return this.db.prepare("SELECT 1 FROM keys WHERE role = 'owner' LIMIT 1").get() !== undefined;
@@ -192,7 +233,7 @@ export class Store {
   // ---- sessions
   /** Idempotent per sessionId. Returns the stored row (which may predate this call). */
   upsertSession(sessionId: string, userId: string, agentId: string, now: string): Session {
-    this.db.prepare("INSERT OR IGNORE INTO sessions (session_id, user_id, agent_id, created_at) VALUES (?, ?, ?, ?)").run(sessionId, userId, agentId, now);
+    this.exec("INSERT OR IGNORE INTO sessions (session_id, user_id, agent_id, created_at) VALUES (?, ?, ?, ?)", sessionId, userId, agentId, now);
     return this.session(sessionId)!;
   }
   session(sessionId: string): Session | undefined {
@@ -206,8 +247,8 @@ export class Store {
 
   // ---- grants
   insertGrant(g: GrantRow): void {
-    this.db.prepare(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
+    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
       g.expiresAt, g.revokedAt ?? null, this.next());
   }
   grant(id: string): GrantRow | undefined {
@@ -223,11 +264,11 @@ export class Store {
     return (this.db.prepare("SELECT * FROM grants WHERE session_id = ? ORDER BY seq DESC").all(sessionId) as Row[]).map(toGrant);
   }
   revokeGrant(id: string, at: string): void {
-    this.db.prepare("UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(at, id);
+    this.exec("UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", at, id);
   }
   /** Revokes every not-yet-revoked grant of the session. */
   revokeSessionGrants(sessionId: string, at: string): void {
-    this.db.prepare("UPDATE grants SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL").run(at, sessionId);
+    this.exec("UPDATE grants SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL", at, sessionId);
   }
   grantsForUser(userId: string, limit = 200): Array<GrantRow & { agentId: string }> {
     const rows = this.db.prepare(`SELECT g.*, s.agent_id AS s_agent FROM grants g JOIN sessions s ON s.session_id = g.session_id
@@ -237,16 +278,14 @@ export class Store {
 
   // ---- intents
   insertIntent(i: IntentRow): void {
-    this.db.prepare(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(i.id, i.userId, i.agentId, i.kind, JSON.stringify(i.public), i.text ?? null, i.createdAt, i.expiresAt);
+    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, i.id, i.userId, i.agentId, i.kind, JSON.stringify(i.public), i.text ?? null, i.createdAt, i.expiresAt);
   }
   intent(id: string): IntentRow | undefined {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Row | undefined;
     return r && toIntent(r);
   }
   addIntentSession(x: IntentSessionRow): void {
-    this.db.prepare("INSERT OR IGNORE INTO intent_sessions (intent_id, session_id, agent_id, channel) VALUES (?, ?, ?, ?)")
-      .run(x.intentId, x.sessionId, x.agentId, x.channel);
+    this.exec("INSERT OR IGNORE INTO intent_sessions (intent_id, session_id, agent_id, channel) VALUES (?, ?, ?, ?)", x.intentId, x.sessionId, x.agentId, x.channel);
   }
   intentSessions(intentId: string): IntentSessionRow[] {
     return (this.db.prepare("SELECT * FROM intent_sessions WHERE intent_id = ? ORDER BY rowid").all(intentId) as Row[]).map((r) => ({
@@ -258,9 +297,8 @@ export class Store {
 
   // ---- quotes
   insertQuote(q: QuoteRow): void {
-    this.db.prepare(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
-      checkout_url, status, created_at, accepted_at, result, seq, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
+    this.exec(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
+      checkout_url, status, created_at, accepted_at, result, seq, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
         q.seller ?? null, q.variantId ?? null, q.checkoutUrl ?? null, q.status, q.createdAt, q.acceptedAt ?? null,
         q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live");
   }
@@ -272,10 +310,10 @@ export class Store {
     return (this.db.prepare("SELECT * FROM quotes WHERE intent_id = ? ORDER BY seq").all(intentId) as Row[]).map(toQuote);
   }
   markQuoteAccepted(id: string, at: string): void {
-    this.db.prepare("UPDATE quotes SET status = 'accepted', accepted_at = ? WHERE id = ? AND accepted_at IS NULL").run(at, id);
+    this.exec("UPDATE quotes SET status = 'accepted', accepted_at = ? WHERE id = ? AND accepted_at IS NULL", at, id);
   }
   setQuoteResult(id: string, result: AcceptResult): void {
-    this.db.prepare("UPDATE quotes SET status = ?, result = ? WHERE id = ?").run(result.status, JSON.stringify(result), id);
+    this.exec("UPDATE quotes SET status = ?, result = ? WHERE id = ?", result.status, JSON.stringify(result), id);
   }
   /** Purpose grounding: has the user accepted a quote by this agent, on this session, under this intent? */
   hasAcceptedQuote(intentId: string, sessionId: string, agentId: string): boolean {
@@ -290,8 +328,10 @@ export class Store {
 
   // ---- contributions and the card cache
   insertContribution(c: StoredContribution, origin: "seed" | "live" = "live"): void {
-    this.db.prepare(`INSERT INTO contributions (id, user_id, agent_id, field, value, basis, created_at, revoked_at, seq, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(c.id, c.userId, c.agentId, c.field, c.value, c.basis, c.createdAt, c.revokedAt ?? null, this.next(), origin);
+    this.exec(`INSERT INTO contributions (id, user_id, agent_id, field, value, basis, created_at, revoked_at, seq, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.id, c.userId, c.agentId, c.field, c.value, c.basis, c.createdAt, c.revokedAt ?? null, this.next(), origin);
+  }
+  markSeed(id: string): void {
+    this.exec("UPDATE contributions SET origin = 'seed' WHERE id = ?", id);
   }
   /** Non-revoked Sample seed contributions of the user (card provenance, B20). */
   seedContributions(userId: string): StoredContribution[] {
@@ -305,10 +345,10 @@ export class Store {
     return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? ORDER BY seq").all(userId) as Row[]).map(toContribution);
   }
   revokeContribution(id: string, at: string): void {
-    this.db.prepare("UPDATE contributions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(at, id);
+    this.exec("UPDATE contributions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", at, id);
   }
   saveCard(userId: string, card: Card, at: string): void {
-    this.db.prepare("INSERT OR REPLACE INTO cards (user_id, card, computed_at) VALUES (?, ?, ?)").run(userId, JSON.stringify(card), at);
+    this.exec("INSERT OR REPLACE INTO cards (user_id, card, computed_at) VALUES (?, ?, ?)", userId, JSON.stringify(card), at);
   }
   card(userId: string): Card | undefined {
     const r = this.db.prepare("SELECT card FROM cards WHERE user_id = ?").get(userId) as Row | undefined;
@@ -320,20 +360,18 @@ export class Store {
     return (this.db.prepare("SELECT * FROM notes WHERE agent_id = ? AND user_id = ? ORDER BY key").all(agentId, userId) as Row[]).map(toNote);
   }
   upsertNote(n: NoteRow): void {
-    this.db.prepare(`INSERT OR REPLACE INTO notes (agent_id, user_id, key, session_id, value, updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(n.agentId, n.userId, n.key, n.sessionId, n.value, n.updatedAt, n.expiresAt);
+    this.exec(`INSERT OR REPLACE INTO notes (agent_id, user_id, key, session_id, value, updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, n.agentId, n.userId, n.key, n.sessionId, n.value, n.updatedAt, n.expiresAt);
   }
   touchNote(agentId: string, userId: string, key: string, expiresAt: string): void {
-    this.db.prepare("UPDATE notes SET expires_at = ? WHERE agent_id = ? AND user_id = ? AND key = ?").run(expiresAt, agentId, userId, key);
+    this.exec("UPDATE notes SET expires_at = ? WHERE agent_id = ? AND user_id = ? AND key = ?", expiresAt, agentId, userId, key);
   }
   deleteExpiredNotes(now: string): number {
-    return this.db.prepare("DELETE FROM notes WHERE expires_at <= ?").run(now).changes;
+    return this.exec("DELETE FROM notes WHERE expires_at <= ?", now).changes;
   }
 
   // ---- receipts
   insertReceipt(r: ReceiptRow): void {
-    this.db.prepare(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next());
+    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next());
   }
   receiptsForUser(userId: string, limit: number): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE user_id = ? ORDER BY seq DESC LIMIT ?").all(userId, limit) as Row[]).map(toReceipt);
@@ -345,7 +383,7 @@ export class Store {
 
   // ---- activity
   insertActivity(e: Omit<ActivityEvent, "id">): void {
-    this.db.prepare("INSERT INTO activity (at, event, actor, object, result, reason) VALUES (?, ?, ?, ?, ?, ?)").run(e.at, e.event, e.actor, e.object, e.result, e.reason);
+    this.exec("INSERT INTO activity (at, event, actor, object, result, reason) VALUES (?, ?, ?, ?, ?, ?)", e.at, e.event, e.actor, e.object, e.result, e.reason);
   }
   activity(limit: number): ActivityEvent[] {
     return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((r) => ({
@@ -359,7 +397,6 @@ export class Store {
     return r && { requestHash: String(r.request_hash), status: Number(r.status), body: String(r.body) };
   }
   saveIdempotent(scope: string, key: string, requestHash: string, status: number, body: string, at: string): void {
-    this.db.prepare("INSERT OR REPLACE INTO idempotency (scope, key, request_hash, status, body, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(scope, key, requestHash, status, body, at);
+    this.exec("INSERT OR REPLACE INTO idempotency (scope, key, request_hash, status, body, created_at) VALUES (?, ?, ?, ?, ?, ?)", scope, key, requestHash, status, body, at);
   }
 }
