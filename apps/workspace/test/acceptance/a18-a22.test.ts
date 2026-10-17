@@ -1,93 +1,86 @@
-// A18, A22 (+ the manual A10, A17) — plan v0.3 §2 验收清单. Black box: HTTP only.
+// A18, A22 (+ the manual A10, A17) — plan v0.3 §2 验收清单. Black box: HTTP only, against the real wiring (lane C
+// seed, git memory repo, lane D's adapter replaying fixtures/ucp recordings).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { SESSION_ID_VECTORS } from "@agent-cookie/contract";
 import {
-  api, getQuotes, grants, introduce, KEYS, merchant, reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer,
-  startWorkspace, type Api, type CallbackServer, type Json, type Workspace,
+  AGENTS, api, deriveSessionId, grants, introduce, KEYS, merchant, PINNED, pinnedIntent, receipts, reset, SEED,
+  SHOE_AUTO_FIELDS, startCallbackServer, startWorkspace, ucpAgent, type Api, type CallbackServer, type Json,
+  type Workspace,
 } from "./helpers.js";
 
-let ws: Workspace; // UCP_STUB_COMPLETE unset → requires_escalation
-let soldOut: Workspace; // UCP_STUB_COMPLETE=sold_out
-let upstreamError: Workspace; // UCP_STUB_COMPLETE=error
+let ws: Workspace;
 let cb1: CallbackServer;
 
 beforeAll(async () => {
-  [ws, soldOut, upstreamError, cb1] = await Promise.all([
-    startWorkspace(),
-    startWorkspace({ UCP_STUB_COMPLETE: "sold_out" }),
-    startWorkspace({ UCP_STUB_COMPLETE: "error" }),
-    startCallbackServer(),
-  ]);
-}, 90_000);
+  [ws, cb1] = await Promise.all([startWorkspace(), startCallbackServer()]);
+}, 60_000);
 
 afterAll(async () => {
-  await Promise.all([ws?.stop(), soldOut?.stop(), upstreamError?.stop(), cb1?.close()]);
+  await Promise.all([ws?.stop(), cb1?.close()]);
 });
 
-const T = { timeout: 30_000 };
-
-/** trail_shoes intent on `w`, then accept the quote of `seller`. */
-async function acceptSeller(w: Workspace, seller: string): Promise<{ status: number; body: Json; quote: Json }> {
-  const personal = api(w.url, KEYS.personal);
-  const r = await personal.post("/personal/intents", { kind: "trail_shoes", public: { budget: "120" } });
-  expect(r.status).toBe(201);
-  const q = await getQuotes(personal, r.body.intentId, 10_000);
-  const quote = q.quotes.find((x: Json) => x.seller === seller);
-  expect(quote, `no quote from ${seller}`).toBeDefined();
-  const a = await personal.post(`/personal/quotes/${quote.id}/accept`);
-  return { status: a.status, body: a.body, quote };
-}
+const T = { timeout: 45_000 };
+const LOCAL_LEAKS = ["/home/", "/tmp/", "ENOENT", "fixtures", "/private/", "node_modules"];
 
 function expectNotSuccess(body: Json): void {
   expect(body.status).not.toBe("ordered");
   expect(body.orderId).toBeUndefined();
 }
 
-describe("A18 UCP 失败路径", T, () => {
+describe("A18 UCP 失败路径（录制：complete → INSUFFICIENT_PERMISSIONS）", T, () => {
+  let personal: Api;
+
   beforeEach(async () => {
-    await Promise.all([reset(ws.url), reset(soldOut.url), reset(upstreamError.url)]);
+    await reset(ws.url);
+    personal = api(ws.url, KEYS.personal);
   });
 
-  it("default (requires_escalation): status handoff with a continueUrl, never ordered", async () => {
-    for (const seller of ["shoebacca.com", "marathonsports.com"]) {
-      const { status, body, quote } = await acceptSeller(ws, seller);
-      expect(status).toBe(200);
-      expect(body.status).toBe("handoff");
-      expect(body.quoteId).toBe(quote.id);
-      expect(typeof body.continueUrl).toBe("string");
-      expect(body.continueUrl).toMatch(/^https?:\/\//);
-      expectNotSuccess(body);
-    }
-  });
+  for (const offer of PINNED.offers) {
+    it(`accepting ${offer.seller}: cart → checkout → address read → destination → complete hands off honestly`, async () => {
+      const other = PINNED.offers.find((o) => o.seller !== offer.seller)!;
+      const { quotes } = await pinnedIntent(personal);
+      const quote = quotes.quotes.find((x: Json) => x.seller === offer.seller);
+      expect(quote, `no quote from ${offer.seller}`).toBeDefined();
+      expect(quote.variantId).toBe(offer.variantId);
 
-  it("sold out: status failed with the upstream message, never ordered", async () => {
-    const { status, body, quote } = await acceptSeller(soldOut, "shoebacca.com");
-    expect(status).toBe(200);
-    expect(body.status).toBe("failed");
-    expect(body.quoteId).toBe(quote.id);
-    expect(body.code).toBe("UPSTREAM_ERROR");
-    expect(typeof body.message).toBe("string");
-    expect(body.message.trim().length).toBeGreaterThan(0);
-    if (body.continueUrl !== undefined) expect(body.continueUrl).toMatch(/^https?:\/\//);
-    expectNotSuccess(body);
-    // asking again does not turn it into a success
-    const again = await api(soldOut.url, KEYS.personal).post(`/personal/quotes/${quote.id}/accept`);
-    expect(again.body.status).toBe("failed");
-    expectNotSuccess(again.body);
-  });
+      const a = await personal.post(`/personal/quotes/${quote.id}/accept`);
+      expect(a.status).toBe(200);
+      expect(a.body.quoteId).toBe(quote.id);
+      // The recorded complete is INSUFFICIENT_PERMISSIONS (the store wants the buyer signed in). UCP's guidance for
+      // AUTH_REQUIRED is to hand off to the continue URL, so this is a handoff (user pays on the store page, A17 in
+      // docs/requests.md) — never "ordered", never an order id.
+      expect(a.body.status).toBe("handoff");
+      expect(a.body.code).toBeUndefined();
+      expectNotSuccess(a.body);
+      expect(typeof a.body.continueUrl).toBe("string");
+      expect(a.body.continueUrl).toMatch(/^https:\/\//);
+      expect(typeof a.body.message).toBe("string");
+      expect(a.body.message.trim().length).toBeGreaterThan(0);
+      for (const leak of LOCAL_LEAKS) expect(a.text, `accept body leaks ${leak}`).not.toContain(leak);
+      for (const n of SEED.addressNeedles) expect(a.text).not.toContain(n);
 
-  it("upstream error: status failed, code UPSTREAM_ERROR, never ordered", async () => {
-    const { status, body } = await acceptSeller(upstreamError, "shoebacca.com");
-    expect(status).toBe(200);
-    expect(body.status).toBe("failed");
-    expect(body.code).toBe("UPSTREAM_ERROR");
-    expectNotSuccess(body);
-  });
+      // the address was read for checkout by the chosen seller only, with a receipt
+      const rs = await receipts(personal);
+      const addressReads = rs.filter((x) => (x.fields as string[]).includes("shipping_address"));
+      expect(addressReads.map((x) => x.agentId)).toEqual([ucpAgent(offer.seller)]);
+      expect(addressReads[0]).toMatchObject({ fields: ["shipping_address"], purpose: "checkout" });
+      expect(rs.some((x) => x.agentId === ucpAgent(other.seller) && (x.fields as string[]).includes("shipping_address"))).toBe(false);
+
+      // asking again returns the identical stored result and does not read the address again
+      const again = await personal.post(`/personal/quotes/${quote.id}/accept`);
+      expect(again.status).toBe(200);
+      expect(again.text).toBe(a.text);
+      expect((await receipts(personal)).filter((x) => (x.fields as string[]).includes("shipping_address"))).toHaveLength(1);
+    });
+  }
+
+  it.todo("sold-out warning: no recorded sold-out response in fixtures/ucp yet (see fixtures/ucp/README.md); needs a real failure recording");
+  it.todo("requires_escalation → handoff with continue_url: no recorded requires_escalation response in fixtures/ucp yet");
 });
 
 describe("A22 回头客", T, () => {
   let photon: Api;
   let desktop: Api;
+  const seller = PINNED.offers[0]!.seller;
 
   beforeEach(async () => {
     cb1.clear();
@@ -96,16 +89,16 @@ describe("A22 回头客", T, () => {
     desktop = api(ws.url, KEYS.desktop);
   });
 
-  async function shoebaccaSessions(): Promise<string[]> {
-    return (await grants(photon)).filter((g) => g.agentId === SEED.shoebacca).map((g) => g.sessionId as string);
+  async function sellerSessions(): Promise<string[]> {
+    return (await grants(photon)).filter((g) => g.agentId === ucpAgent(seller)).map((g) => g.sessionId as string);
   }
 
-  it("the Shoebacca session ID is identical from ck_personal_sample and ck_personal_desktop_sample intents", async () => {
-    expect((await photon.post("/personal/intents", { kind: "trail_shoes" })).status).toBe(201);
-    const [viaPhoton] = await shoebaccaSessions();
+  it(`the ${seller} session ID is identical from both personal agents' pinned intents`, async () => {
+    await pinnedIntent(photon);
+    const [viaPhoton] = await sellerSessions();
     expect(typeof viaPhoton).toBe("string");
-    expect((await desktop.post("/personal/intents", { kind: "trail_shoes" })).status).toBe(201);
-    const all = await shoebaccaSessions();
+    await pinnedIntent(desktop);
+    const all = await sellerSessions();
     expect(all).toHaveLength(2);
     expect(new Set(all)).toEqual(new Set([viaPhoton]));
   });
@@ -118,15 +111,14 @@ describe("A22 回头客", T, () => {
     expect(b).toBe(a);
   });
 
-  it("the Shoebacca session ID survives POST /demo/reset", async () => {
-    expect((await photon.post("/personal/intents", { kind: "trail_shoes" })).status).toBe(201);
-    const [before] = await shoebaccaSessions();
+  it(`the ${seller} session ID survives POST /demo/reset and equals the contract derivation`, async () => {
+    await pinnedIntent(photon);
+    const [before] = await sellerSessions();
     await reset(ws.url);
-    expect((await desktop.post("/personal/intents", { kind: "trail_shoes" })).status).toBe(201);
-    const [after] = await shoebaccaSessions();
+    await pinnedIntent(desktop);
+    const [after] = await sellerSessions();
     expect(after).toBe(before);
-    const vector = SESSION_ID_VECTORS.find((v) => v.userSecret === SEED.userSecret && v.merchantKey === "shoebacca.com");
-    expect(after).toBe(vector?.sessionId);
+    expect(after).toBe(deriveSessionId(SEED.userSecret, seller));
   });
 
   it("no handshake or fields body carries an email, a phone number, the user's name or a global ID", async () => {
@@ -145,7 +137,7 @@ describe("A22 回头客", T, () => {
     }
     for (const b of bodies) {
       expect(b.text).not.toContain("@");
-      for (const id of [SEED.userName, SEED.userId, SEED.userSecret, "personal-photon", "personal-desktop"]) {
+      for (const id of [SEED.userName, SEED.userId, SEED.userSecret, AGENTS.photon, AGENTS.desktop]) {
         expect(b.text).not.toContain(id);
       }
       // drop the parts that are legitimately numeric (session ID, jar URL with its port, ISO timestamps)

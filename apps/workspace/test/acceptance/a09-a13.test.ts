@@ -1,9 +1,10 @@
-// A09, A11, A12, A13 (plan v0.3 §2 验收清单). Black box: HTTP only.
+// A09, A11, A12, A13 (plan v0.3 §2 验收清单). Black box: HTTP only, against the real wiring (lane C seed, git memory
+// repo, lane D's adapter replaying fixtures/ucp recordings).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  api, card, cardField, expectError, getQuotes, grants, introduce, ISO, KEYS, merchant, NOT_FOUND_TEXT, receipts,
-  reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer, startWorkspace, type Api, type CallbackServer, type Json,
-  type Workspace,
+  AGENTS, api, CATALOG_SELLERS, card, cardField, deriveSessionId, expectError, getQuotes, grants, introduce, ISO, KEYS, merchant,
+  NOT_FOUND_TEXT, PINNED, pinnedIntent, proxySessions, receipts, reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer,
+  startWorkspace, ucpAgent, type Api, type CallbackServer, type Json, type Workspace,
 } from "./helpers.js";
 
 let ws: Workspace;
@@ -26,18 +27,12 @@ beforeEach(async () => {
   await reset(ws.url);
 });
 
-const T = { timeout: 30_000 };
-const SELLERS = ["marathonsports.com", "shoebacca.com"];
+const T = { timeout: 45_000 };
+const SELLERS = PINNED.sellers;
+const OTHER_SELLERS = CATALOG_SELLERS.filter((d) => !SELLERS.includes(d));
 
 async function postIntent(who: Api, body: Record<string, unknown>, headers?: Record<string, string>) {
   return who.post("/personal/intents", body, headers);
-}
-
-/** Proxy sessions by seller domain, from GET /personal/grants. */
-async function proxySessions(who: Api): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  for (const g of await grants(who)) if (String(g.agentId).startsWith("ucp:")) out[String(g.agentId).slice(4)] = g.sessionId;
-  return out;
 }
 
 /** Card without timestamps, for before/after comparisons. */
@@ -48,8 +43,8 @@ function projection(c: Json) {
 }
 
 describe("A09 意图匹配", T, () => {
-  it("trail_shoes through the UCP catalog yields exactly two quotes: shoebacca.com and marathonsports.com", async () => {
-    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: "120" }, text: "找一双越野跑鞋 · Sample" });
+  it("trail_shoes with the recording's parameters yields exactly the two pinned offers (seller, variant, cents, USD, source fixture)", async () => {
+    const r = await postIntent(personal, { ...PINNED.intent, text: "找一双越野跑鞋 · Sample" });
     expect(r.status).toBe(201);
     expect(typeof r.body.intentId).toBe("string");
     expect(String(r.body.expiresAt)).toMatch(ISO);
@@ -61,28 +56,31 @@ describe("A09 意图匹配", T, () => {
     expect(q.complete).toBe(true);
     expect(q.quotes).toHaveLength(2);
     expect(q.quotes.map((x: Json) => x.seller).sort()).toEqual(SELLERS);
+    expect(q.quotes.map((x: Json) => x.variantId).sort()).toEqual(PINNED.variantIds);
     for (const quote of q.quotes) {
+      const pinned = PINNED.offers.find((o) => o.seller === quote.seller)!;
       expect(quote.intentId).toBe(r.body.intentId);
-      expect(quote.agentId).toBe(`ucp:${quote.seller}`);
+      expect(quote.agentId).toBe(ucpAgent(quote.seller));
+      expect(quote.variantId).toBe(pinned.variantId);
       expect(Number.isInteger(quote.price)).toBe(true);
+      expect(quote.price).toBe(pinned.price);
       expect(quote.currency).toBe("USD");
       expect(quote.etaDate).toBeNull();
+      expect(quote.source).toBe("fixture");
       expect(typeof quote.text).toBe("string");
     }
-    const bySeller = Object.fromEntries(q.quotes.map((x: Json) => [x.seller, x.price]));
-    expect(bySeller).toEqual({ "shoebacca.com": 11995, "marathonsports.com": 10999 });
-    for (const s of SEED.excludedSellers) expect(JSON.stringify(q)).not.toContain(s);
+    for (const other of OTHER_SELLERS) expect(JSON.stringify(q)).not.toContain(other);
   });
 
-  it("only those two proxies get a session and a grant; no other catalog result does", async () => {
-    const r = await postIntent(personal, { kind: "trail_shoes" });
+  it("only those two proxies get a session and a grant; no other recorded seller does", async () => {
+    const r = await postIntent(personal, PINNED.intent);
     expect(r.status).toBe(201);
     await getQuotes(personal, r.body.intentId, 10_000);
     const gs = await grants(personal);
     const proxies = gs.filter((g) => String(g.agentId).startsWith("ucp:"));
-    expect(proxies.map((g) => g.agentId).sort()).toEqual([SEED.marathon, SEED.shoebacca]);
+    expect(proxies.map((g) => g.agentId).sort()).toEqual(SELLERS.map(ucpAgent));
     const text = JSON.stringify(gs);
-    for (const s of SEED.excludedSellers) expect(text).not.toContain(s);
+    for (const other of OTHER_SELLERS) expect(text).not.toContain(other);
     for (const g of proxies) {
       expect(g.status).toBe("live");
       expect(typeof g.sessionId).toBe("string");
@@ -92,11 +90,52 @@ describe("A09 意图匹配", T, () => {
     }
   });
 
+  it("strict size: with the card's EU 42 (= US 8.5) no recorded US 9 variant is quoted or introduced", async () => {
+    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: String(PINNED.budget) } });
+    expect(r.status).toBe(201);
+    const q = await getQuotes(personal, r.body.intentId, 10_000);
+    expect(q.quotes.length).toBeLessThanOrEqual(2);
+    for (const quote of q.quotes) {
+      expect(PINNED.variantIds).not.toContain(quote.variantId);
+      expect(SELLERS).not.toContain(quote.seller);
+      expect(quote.currency).toBe("USD");
+      expect(quote.price).toBeLessThanOrEqual(PINNED.budget * 100);
+    }
+    expect(new Set(q.quotes.map((x: Json) => x.seller)).size).toBe(q.quotes.length);
+    const proxies = (await grants(personal)).filter((g) => String(g.agentId).startsWith("ucp:")).map((g) => g.agentId);
+    for (const seller of SELLERS) expect(proxies).not.toContain(ucpAgent(seller));
+  });
+
+  it("ACME (chatEndpoint) is introduced through Tier 0: one tier0 receipt, auto field names only, its pairwise session", async () => {
+    await pinnedIntent(personal);
+    const rs = await receipts(personal);
+    const tier0 = rs.filter((x) => x.purpose === "tier0");
+    expect(tier0.map((x) => x.agentId)).toEqual([AGENTS.acme]);
+    expect(tier0[0].sessionId).toBe(deriveSessionId(SEED.userSecret, AGENTS.acme));
+    for (const f of tier0[0].fields) expect(SHOE_AUTO_FIELDS as readonly string[]).toContain(f);
+    expect(tier0[0].fields).not.toContain("shipping_address");
+    expect(tier0[0].fields).not.toContain("payment_method");
+    // receipts carry field names, never values
+    for (const v of ['"zh"', "简短", `US ${PINNED.size}`, ...SEED.addressNeedles]) expect(JSON.stringify(rs)).not.toContain(v);
+  });
+
+  it("the intent's public shoe_size overrides the card only for that intent", async () => {
+    const m1 = await merchant(ws.url, cb1);
+    const { sessions: [s1] } = await introduce(personal, [m1], PINNED.intent);
+    const f = await m1.api.get(`/agent/fields?sessionId=${s1}&fields=shoe_size,budget`);
+    expect(f.status).toBe(200);
+    expect(f.body.fields).toEqual({ shoe_size: `US ${PINNED.size}`, budget: String(PINNED.budget) });
+    expect(cardField(await card(personal), "shoe_size")).toMatchObject({ value: "42" });
+  });
+
   it("intents are personal-only; someone else's or an unknown intent is 404", async () => {
     expectError(await api(ws.url, KEYS.acme).post("/personal/intents", { kind: "trail_shoes" }), 403, "SCOPE_DENIED");
     const nf = await personal.get("/personal/intents/i_does_not_exist/quotes?wait=0");
     expectError(nf, 404, "NOT_FOUND");
     expect(nf.text).toBe(NOT_FOUND_TEXT);
+    const { intentId } = await pinnedIntent(personal);
+    const foreign = await api(ws.url, KEYS.acme).get(`/personal/intents/${intentId}/quotes?wait=0`);
+    expectError(foreign, 403, "SCOPE_DENIED");
   });
 });
 
@@ -146,7 +185,7 @@ describe("A11 注入", T, () => {
       expect(r.body.stored).toBe("inferred");
     }
     const c = await card(personal);
-    expect(cardField(c, "shoe_size")).toMatchObject({ value: "42", confidence: "high" });
+    expect(cardField(c, "shoe_size")).toMatchObject({ value: "42", confidence: "medium" });
     expect(cardField(c, "shipping_address")).toMatchObject({ value: SEED.address });
     expect(cardField(c, "lang")).toMatchObject({ value: "zh" });
     expect(JSON.stringify(c.card)).not.toMatch(/VIP|Injected/);
@@ -168,12 +207,11 @@ describe("A11 注入", T, () => {
 
 describe("A12 重置复演", T, () => {
   async function runDemo(): Promise<{ sellers: string[]; sessions: Record<string, string>; accept: Json }> {
-    const r = await postIntent(personal, { kind: "trail_shoes", public: { budget: "120" } });
-    expect(r.status).toBe(201);
-    const q = await getQuotes(personal, r.body.intentId, 10_000);
+    const { quotes: q } = await pinnedIntent(personal);
     const sellers = q.quotes.map((x: Json) => x.seller).sort();
-    const shoebacca = q.quotes.find((x: Json) => x.seller === "shoebacca.com");
-    const a = await personal.post(`/personal/quotes/${shoebacca.id}/accept`);
+    const chosen = q.quotes.find((x: Json) => x.seller === PINNED.offers[0]!.seller);
+    expect(chosen).toBeDefined();
+    const a = await personal.post(`/personal/quotes/${chosen.id}/accept`);
     expect(a.status).toBe(200);
     return { sellers, sessions: await proxySessions(personal), accept: a.body };
   }
@@ -182,6 +220,7 @@ describe("A12 重置复演", T, () => {
     const seedCard = projection(await card(personal));
     const first = await runDemo();
     expect(first.sellers).toEqual(SELLERS);
+    // recorded complete → INSUFFICIENT_PERMISSIONS (A18): handoff to the store page, never ordered
     expect(first.accept.status).toBe("handoff");
 
     // dirty the state
@@ -189,7 +228,7 @@ describe("A12 重置复演", T, () => {
     const { sessions: [s1] } = await introduce(personal, [m1]);
     await m1.api.post("/agent/contributions", { sessionId: s1, field: "shoe_size", value: "44", basis: "observed" });
     await personal.post("/personal/contributions", { field: "shoe_size", value: "44" });
-    await personal.post("/personal/contributions/c_0006/revoke");
+    expect((await personal.post(`/personal/contributions/${SEED.contribution.tone}/revoke`)).status).toBe(200);
     expect(projection(await card(personal))).not.toEqual(seedCard);
 
     const r = await api(ws.url, KEYS.owner).post("/demo/reset");
@@ -220,7 +259,7 @@ describe("A12 重置复演", T, () => {
   it("reset clears the test clock", async () => {
     expect((await api(ws.url).post("/test/clock", { offsetMs: 601_000 })).status).toBe(200);
     await reset(ws.url);
-    expect((await postIntent(personal, { kind: "trail_shoes" })).status).toBe(201);
+    expect((await postIntent(personal, PINNED.intent)).status).toBe(201);
     const gs = await grants(personal);
     expect(gs.length).toBeGreaterThan(0);
     for (const g of gs) {
@@ -250,7 +289,7 @@ describe("A12 重置复演", T, () => {
 });
 
 describe("A13 并发与幂等", T, () => {
-  const body = { kind: "trail_shoes", public: { budget: "120" } };
+  const body = PINNED.intent;
 
   it("same Idempotency-Key + same body → same intentId and no extra grants", async () => {
     const first = await postIntent(personal, body, { "Idempotency-Key": "idem-a13-1" });
@@ -269,7 +308,7 @@ describe("A13 并发与幂等", T, () => {
     const first = await postIntent(personal, body, { "Idempotency-Key": "idem-a13-2" });
     expect(first.status).toBe(201);
     const n = (await grants(personal)).length;
-    const conflict = await postIntent(personal, { kind: "trail_shoes", public: { budget: "200" } }, { "Idempotency-Key": "idem-a13-2" });
+    const conflict = await postIntent(personal, { kind: "trail_shoes", public: { ...PINNED.intent.public, budget: "150" } }, { "Idempotency-Key": "idem-a13-2" });
     expectError(conflict, 409, "IDEMPOTENCY_CONFLICT");
     expect((await grants(personal)).length).toBe(n);
   });
@@ -303,7 +342,8 @@ describe("A13 并发与幂等", T, () => {
   it("accepting twice (same key, or again later) returns the stored result and checks out once", async () => {
     const r = await postIntent(personal, body);
     const q = await getQuotes(personal, r.body.intentId, 10_000);
-    const quote = q.quotes.find((x: Json) => x.seller === "shoebacca.com");
+    const quote = q.quotes.find((x: Json) => x.seller === PINNED.offers[0]!.seller);
+    expect(quote).toBeDefined();
     const a1 = await personal.post(`/personal/quotes/${quote.id}/accept`, undefined, { "Idempotency-Key": "idem-a13-6" });
     const a2 = await personal.post(`/personal/quotes/${quote.id}/accept`, undefined, { "Idempotency-Key": "idem-a13-6" });
     const a3 = await personal.post(`/personal/quotes/${quote.id}/accept`);
@@ -313,7 +353,7 @@ describe("A13 并发与幂等", T, () => {
     expect(a3.status).toBe(200);
     expect(a3.body.status).toBe(a1.body.status);
     expect(a3.body.continueUrl).toBe(a1.body.continueUrl);
-    const checkout = (await receipts(personal)).filter((x) => x.purpose === "checkout" && x.agentId === SEED.shoebacca);
+    const checkout = (await receipts(personal)).filter((x) => x.purpose === "checkout" && x.agentId === ucpAgent(PINNED.offers[0]!.seller));
     expect(checkout).toHaveLength(1);
   });
 

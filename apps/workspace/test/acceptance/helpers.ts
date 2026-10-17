@@ -1,10 +1,14 @@
 // Black-box helpers for the workspace acceptance suite. Everything here talks HTTP to a spawned
-// `tsx src/server.ts`; nothing imports apps/workspace/src. Keys are read from sample-fixtures/dev-keys.json
-// and are never printed (not in assertion messages, not in logs).
+// `tsx src/server.ts`; nothing imports apps/workspace/src. The server runs on the REAL wiring: lane C's seed
+// (<repo>/fixtures), a real git memory repo (@agent-cookie/memory-repo) in a fresh temp dir, and lane D's UCP
+// adapter replaying fixtures/ucp recordings (AGENT_COOKIE_UCP=fixture). Keys are read from fixtures/dev-keys.json
+// by agentId and are never printed (not in assertion messages, not in logs).
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { createHmac } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
@@ -15,8 +19,12 @@ export type Json = any;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const WORKSPACE_DIR = path.resolve(HERE, "../..");
-export const FIXTURES_DIR = path.join(WORKSPACE_DIR, "sample-fixtures");
+export const REPO_DIR = path.resolve(WORKSPACE_DIR, "../..");
+/** Lane C's Sample seed. */
+export const FIXTURES_DIR = path.join(REPO_DIR, "fixtures");
 const TSX = path.join(WORKSPACE_DIR, "node_modules/.bin/tsx");
+
+const readFixture = (rel: string): Json => JSON.parse(readFileSync(path.join(FIXTURES_DIR, rel), "utf8"));
 
 // ---- dev keys (Sample) ----
 
@@ -29,29 +37,98 @@ function devKey(what: string, pred: (v: { agentId: string; role: string }) => bo
   return hit[0];
 }
 
-export const KEYS = {
-  personal: devKey("personal-photon", (v) => v.agentId === "personal-photon"),
-  desktop: devKey("personal-desktop", (v) => v.agentId === "personal-desktop"),
-  owner: devKey("owner", (v) => v.role === "owner"),
-  acme: devKey("shoe-acme", (v) => v.agentId === "shoe-acme"),
+export const AGENTS = {
+  photon: "sample-personal-photon",
+  desktop: "sample-personal-desktop",
+  owner: "owner",
+  acme: "sample-acme",
 } as const;
 
-// ---- seed facts (sample-fixtures, Sample) ----
+export const KEYS = {
+  personal: devKey(AGENTS.photon, (v) => v.agentId === AGENTS.photon && v.role === "personal"),
+  desktop: devKey(AGENTS.desktop, (v) => v.agentId === AGENTS.desktop && v.role === "personal"),
+  owner: devKey(AGENTS.owner, (v) => v.agentId === AGENTS.owner && v.role === "owner"),
+  acme: devKey(AGENTS.acme, (v) => v.agentId === AGENTS.acme && v.role === "merchant"),
+} as const;
+
+// ---- seed facts (fixtures/, Sample) ----
+
+const USER: { userId: string; name: string; secret: string } = readFixture("users.json")[0];
+const CONTRIBUTIONS: Array<{ id: string; field: string; value: string; agentId: string }> = readFixture("contributions.json");
+const ADDRESS: { field: string; value: string } = readFixture("address.json");
+
+function seedContributionId(field: string): string {
+  const c = CONTRIBUTIONS.find((x) => x.field === field);
+  if (!c) throw new Error(`fixtures/contributions.json has no ${field} record`);
+  return c.id;
+}
 
 export const SEED = {
-  userId: "u_sample",
-  userName: "Sample User",
-  userSecret: JSON.parse(readFileSync(path.join(FIXTURES_DIR, "users.json"), "utf8"))[0].secret as string,
-  address: "Sample User, 1234 Sample St, Apt 5, Los Angeles, CA 90024, US",
-  shoebacca: "ucp:shoebacca.com",
-  marathon: "ucp:marathonsports.com",
-  /** Catalog sellers that must never get a session for the default trail_shoes intent (A09). */
-  excludedSellers: ["runwarehouse.com", "trailrunner.eu", "bigpeakoutfitters.com"],
+  userId: USER.userId,
+  userName: USER.name,
+  userSecret: USER.secret,
+  /** fixtures/address.json, imported by the workspace as a personal stated contribution (B21). */
+  address: ADDRESS.value,
+  /** Substrings of the address that must never leak outside a checkout read. */
+  addressNeedles: ["Example Lane", "Sample Recipient", "90024"],
+  /** Seed contribution ids (fixtures/contributions.json), for revoke calls. */
+  contribution: {
+    lang: seedContributionId("lang"),
+    tone: seedContributionId("tone"),
+    shoe_size: seedContributionId("shoe_size"),
+  },
 } as const;
+
+// ---- UCP recordings (fixtures/ucp, recorded sample replayed by AGENT_COOKIE_UCP=fixture) ----
+
+export interface PinnedOffer { variantId: string; seller: string; title: string; price: number; size: string }
+const PINNED_RAW: { size: string; budget: number; offers: PinnedOffer[] } = readFixture("ucp/pinned.json");
+
+export const PINNED = {
+  size: PINNED_RAW.size,
+  budget: PINNED_RAW.budget,
+  offers: PINNED_RAW.offers,
+  sellers: PINNED_RAW.offers.map((o) => o.seller).sort(),
+  variantIds: PINNED_RAW.offers.map((o) => o.variantId).sort(),
+  /** The recording's own parameters as a trail_shoes intent body. */
+  intent: { kind: "trail_shoes", public: { budget: String(PINNED_RAW.budget), shoe_size: `US ${PINNED_RAW.size}` } },
+} as const;
+
+/** Every seller.domain in the recorded catalog page. */
+export const CATALOG_SELLERS: readonly string[] = [
+  ...new Set(
+    (readFixture("ucp/catalog-search.global.json").result.products as Json[])
+      .flatMap((p) => (p.variants as Json[]).map((v) => String(v.seller?.domain))),
+  ),
+].sort();
+
+export const ucpAgent = (seller: string) => `ucp:${seller}`;
+
+// ---- pairwise session IDs (contract apis.ts normative algorithm; checked against SESSION_ID_VECTORS) ----
+
+const CROCKFORD = "0123456789abcdefghjkmnpqrstvwxyz";
+export function deriveSessionId(userSecret: string, merchantKey: string): string {
+  const mac = createHmac("sha256", Buffer.from(userSecret, "utf8")).update(Buffer.from(merchantKey, "utf8")).digest();
+  let bits = 0;
+  let acc = 0;
+  let out = "";
+  for (const byte of mac) {
+    acc = (acc << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += CROCKFORD[(acc >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    acc &= (1 << bits) - 1;
+  }
+  if (bits > 0) out += CROCKFORD[(acc << (5 - bits)) & 31];
+  return out.slice(0, 8);
+}
 
 export const FIELD_NAMES: readonly string[] = FIELDS;
 export const SHOE_AUTO_FIELDS = ["lang", "tone", "length", "shoe_size", "budget", "deadline"] as const;
 export const NOT_FOUND_TEXT = '{"error":{"code":"NOT_FOUND","message":"not found"}}';
+export const DATA_SOURCES = ["sample", "fixture", "live"] as const;
 
 // ---- ports ----
 
@@ -82,11 +159,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Spawn the workspace exactly as `pnpm --filter @agent-cookie/workspace start` would (tsx src/server.ts,
- * cwd = apps/workspace) on a free port, with an in-memory database and the Sample fixtures. Inherited
- * AGENT_COOKIE_* / UCP_* / VITEST* variables are dropped so a developer's shell cannot change the run.
+ * cwd = apps/workspace) on a free port, with an in-memory database, lane C's fixtures, a fresh git memory repo
+ * and the recorded UCP adapter. Inherited AGENT_COOKIE_* / UCP_* / VITEST* variables are dropped so a developer's
+ * shell cannot change the run. The memory repo's temp dir is removed on stop().
  */
 export async function startWorkspace(env: Record<string, string> = {}): Promise<Workspace> {
   const port = await freePort();
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "agent-cookie-acceptance-"));
+  const cleanup = () => { try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ } };
   const base: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
@@ -98,6 +178,7 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
     PORT: String(port),
     SQLITE_PATH: ":memory:",
     FIXTURES_DIR,
+    MEMORY_REPO_PATH: path.join(tmp, "memory"),
     AGENT_COOKIE_UCP: "fixture",
     AGENT_COOKIE_DEMO: "1",
     AGENT_COOKIE_TEST: "1",
@@ -124,7 +205,7 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
     if (exited || child.pid === undefined) return;
     try { process.kill(-child.pid, sig); } catch { try { child.kill(sig); } catch { /* gone */ } }
   };
-  const onParentExit = () => killGroup("SIGKILL");
+  const onParentExit = () => { killGroup("SIGKILL"); cleanup(); };
   process.once("exit", onParentExit);
 
   const url = `http://127.0.0.1:${port}`;
@@ -132,6 +213,7 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
   for (;;) {
     if (exited) {
       process.removeListener("exit", onParentExit);
+      cleanup();
       throw new Error(`workspace exited before answering (code ${exited.code}, signal ${exited.signal}). stderr:\n${errOut.trim() || "(empty)"}\nstdout:\n${out.trim() || "(empty)"}`);
     }
     try {
@@ -140,6 +222,7 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
       if (res.status === 401) break;
       killGroup("SIGKILL");
       process.removeListener("exit", onParentExit);
+      cleanup();
       throw new Error(`GET /me without a key answered ${res.status}, expected 401`);
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("GET /me")) throw e;
@@ -147,6 +230,7 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
     if (Date.now() > deadline) {
       killGroup("SIGKILL");
       process.removeListener("exit", onParentExit);
+      cleanup();
       throw new Error(`workspace did not answer GET /me with 401 within 30 s. stderr:\n${errOut.trim() || "(empty)"}`);
     }
     await sleep(150);
@@ -158,10 +242,12 @@ export async function startWorkspace(env: Record<string, string> = {}): Promise<
     output: () => `${out}\n${errOut}`,
     async stop() {
       process.removeListener("exit", onParentExit);
-      if (exited) return;
-      killGroup("SIGTERM");
-      const done = await Promise.race([exitPromise.then(() => true), sleep(5000).then(() => false)]);
-      if (!done) { killGroup("SIGKILL"); await Promise.race([exitPromise, sleep(2000)]); }
+      if (!exited) {
+        killGroup("SIGTERM");
+        const done = await Promise.race([exitPromise.then(() => true), sleep(5000).then(() => false)]);
+        if (!done) { killGroup("SIGKILL"); await Promise.race([exitPromise, sleep(2000)]); }
+      }
+      cleanup();
     },
   };
 }
@@ -305,7 +391,7 @@ export async function introduce(
   if (r.status !== 201) throw new Error(`POST /personal/intents → ${r.status} ${r.text.slice(0, 200)}`);
   const intentId = r.body.intentId as string;
   const intros = await Promise.all(
-    merchants.map((m) => m.cb.waitFor((b) => b?.type === "introduce" && b?.intent?.id === intentId, 5000)),
+    merchants.map((m) => m.cb.waitFor((b) => b?.type === "introduce" && b?.intent?.id === intentId, 10_000)),
   );
   return { intentId, intent: r.body, intros, sessions: intros.map((b) => b.sessionId as string) };
 }
@@ -336,6 +422,21 @@ export async function card(who: Api): Promise<Json> {
 
 export function cardField(c: Json, field: string): Json | undefined {
   return (c.card as Json[]).find((f) => f.field === field);
+}
+
+/** POST /personal/intents with the recording's own parameters (PINNED.intent), then wait for its quotes. */
+export async function pinnedIntent(who: Api, wait = 10_000): Promise<{ intentId: string; intent: Json; quotes: Json }> {
+  const r = await who.post("/personal/intents", PINNED.intent);
+  if (r.status !== 201) throw new Error(`POST /personal/intents (pinned) → ${r.status} ${r.text.slice(0, 200)}`);
+  const quotes = await getQuotes(who, r.body.intentId, wait);
+  return { intentId: r.body.intentId, intent: r.body, quotes };
+}
+
+/** Proxy sessions by seller domain, from GET /personal/grants. */
+export async function proxySessions(who: Api): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const g of await grants(who)) if (String(g.agentId).startsWith("ucp:")) out[String(g.agentId).slice(4)] = g.sessionId;
+  return out;
 }
 
 // ---- assertions ----
