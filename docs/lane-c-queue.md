@@ -1,5 +1,5 @@
 - [x] C01 fixtures 种子与 dev-keys 对齐 v0.3（Category 只有 personal|shoe） — ff01d0b
-- [ ] C02 fixtures/ucp 录好 catalog search、两家 discover、cart create，并记两个在库变体 ID
+- [x] C02 fixtures/ucp 录好 catalog search、两家 discover、cart create，并记两个在库变体 ID — 8606f9e（本轮重新运行 verify.mjs 通过）
 - [ ] C03 tests/acceptance A01–A22 的 it.todo 空壳（A10、A17 指向 docs/evidence）
 - [ ] C04 packages/rules：deriveSessionId + 3 个测试
 - [ ] C05 packages/rules：mergeCard（全部规则，显式 now）+ 测试

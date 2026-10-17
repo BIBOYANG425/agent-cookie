@@ -66,3 +66,5 @@ The original cart response contained capability access keys in `result.id` and `
 The profile-init response only contains the CLI-created temporary path, profile name, protocol version, and public profile URL; the profile files themselves are not included. The cart's merchant-supplied `buyer.consent` defaults are preserved as upstream data and do not represent a consent decision made by Agent Cookie.
 
 Official sources: [Shopify UCP CLI repository](https://github.com/Shopify/ucp-cli), [npm package](https://www.npmjs.com/package/@shopify/ucp-cli). The installed package README/source and the recorded live schemas were used for command and payload details.
+
+C02 queue check (2026-10-17): `node fixtures/ucp/verify.mjs` revalidated the existing recording directory: 8 recorded operations, two available USD variants at or below $120, and a confirmed cart line. This checks the captured evidence; it does not claim that inventory is still available now.
