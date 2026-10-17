@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-10-17T19:52:07.577757+00:00",
+  "mode": "bootstrap_only",
+  "workspace_connected": false,
+  "llm_tested": false,
+  "a08": "not tested",
+  "pairwise_ids": "awaiting frozen workspace contract",
+  "instances": [
+    {
+      "name": "a",
+      "api_port": 8000,
+      "web_port": 3000,
+      "health": 200,
+      "storefront": 200,
+      "catalog": 200,
+      "session_created": true,
+      "sample_subject": true,
+      "own_session": 200,
+      "other_instance_session": 401
+    },
+    {
+      "name": "b",
+      "api_port": 8001,
+      "web_port": 3001,
+      "health": 200,
+      "storefront": 200,
+      "catalog": 200,
+      "session_created": true,
+      "sample_subject": true,
+      "own_session": 200,
+      "other_instance_session": 401
+    }
+  ],
+  "passed": true
+}

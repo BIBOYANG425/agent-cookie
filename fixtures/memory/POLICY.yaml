@@ -1,0 +1,49 @@
+# Generated from @agent-cookie/contract POLICY_TABLE. Sample seed.
+{
+  "auto": {
+    "personal": [
+      "lang",
+      "tone",
+      "length",
+      "shoe_size",
+      "budget",
+      "deadline",
+      "shipping_address",
+      "payment_method"
+    ],
+    "shoe": [
+      "lang",
+      "tone",
+      "length",
+      "shoe_size",
+      "budget",
+      "deadline"
+    ]
+  },
+  "purpose": {
+    "personal": {},
+    "shoe": {
+      "shipping_address": [
+        "checkout"
+      ],
+      "payment_method": [
+        "payment"
+      ]
+    }
+  },
+  "write": {
+    "personal": [
+      "lang",
+      "tone",
+      "length",
+      "shoe_size",
+      "budget",
+      "deadline",
+      "shipping_address",
+      "payment_method"
+    ],
+    "shoe": [
+      "shoe_size"
+    ]
+  }
+}
