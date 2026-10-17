@@ -1,24 +1,29 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  UpstreamError,
+  type UcpDestination,
+  type UcpCheckout,
+  type UcpModule,
+} from "@agent-cookie/contract";
 import { describe, expect, it } from "vitest";
-import { createUcp, UcpError } from "../src/index.js";
-import { createLiveRunner } from "../src/internal.js";
-import type { UcpRunner } from "../src/index.js";
+import { createUcp, ucpModule } from "../src/index.js";
+import { createLiveRunner, createUcpInternal, type UcpRunner } from "../src/internal.js";
 
 type JsonRecord = Record<string, any>;
-
 const fixturesDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../fixtures/ucp");
+const moduleCheck: UcpModule = ucpModule;
+void moduleCheck;
 
 function loadFixture(name: string): JsonRecord {
   return JSON.parse(readFileSync(resolve(fixturesDir, name), "utf8")) as JsonRecord;
 }
 
 function trimSearchEnvelope(envelope: JsonRecord): JsonRecord {
-  const result = envelope.result as JsonRecord;
   return {
     result: {
-      products: (result.products as JsonRecord[]).map((product) => ({
+      products: (envelope.result.products as JsonRecord[]).map((product) => ({
         id: product.id,
         title: product.title,
         variants: (product.variants as JsonRecord[]).map((variant) => ({
@@ -31,363 +36,328 @@ function trimSearchEnvelope(envelope: JsonRecord): JsonRecord {
           eligible: variant.eligible,
           ...Object.fromEntries(
             Object.entries(variant).filter(([key]) =>
-              /^(eta_date|etaDate|delivery_date|deliveryDate|estimated_delivery_date|estimatedDeliveryDate|delivery_estimate_date|deliveryEstimateDate|delivery_estimate|deliveryEstimate|delivery|eta|eta_text|etaText|delivery_estimate_text|deliveryEstimateText)$/.test(key)
+              /^(eta_date|etaDate|delivery_date|deliveryDate|estimated_delivery_date|estimatedDeliveryDate|delivery_estimate_date|deliveryEstimateDate|delivery_estimate|deliveryEstimate|delivery|eta)$/.test(key)
             ),
           ),
+          ...(variant.url ? { url: variant.url } : {}),
+          ...(variant.checkout_url ? { checkout_url: variant.checkout_url } : {}),
         })),
       })),
-      pagination: result.pagination,
     },
   };
 }
 
-const searchPages = [
-  trimSearchEnvelope(loadFixture("catalog-search.global.json")),
-  trimSearchEnvelope(loadFixture("catalog-search.p2.json")),
-];
+const realSearch = trimSearchEnvelope(loadFixture("catalog-search.global.json"));
+const rawVariants = (realSearch.result.products as JsonRecord[]).flatMap((product) =>
+  (product.variants as JsonRecord[]).map((variant) => ({ product, variant }))
+);
 
-function allVariants(envelopes: JsonRecord[]): Array<{ product: JsonRecord; variant: JsonRecord }> {
-  return envelopes.flatMap((envelope) =>
-    (envelope.result.products as JsonRecord[]).flatMap((product) =>
-      (product.variants as JsonRecord[]).map((variant) => ({ product, variant }))
-    )
-  );
-}
-
-const realVariants = allVariants(searchPages);
-const marathon = realVariants.find(({ variant }) => variant.id === "gid://shopify/ProductVariant/42550028075069")!;
-const capra = realVariants.find(({ variant }) => variant.id === "gid://shopify/ProductVariant/42418551193643")!;
-
-function envelopeFor(...items: Array<{ product: JsonRecord; variant: JsonRecord }>): JsonRecord {
-  return {
-    result: {
-      products: items.map(({ product, variant }) => ({
-        id: product.id,
-        title: product.title,
-        variants: [variant],
-      })),
-      pagination: { has_next_page: false },
-    },
-  };
-}
-
-function clientFor(envelopes: JsonRecord[]) {
-  let index = 0;
-  const calls: string[][] = [];
-  const run: UcpRunner = async (args) => {
+function runnerFor(response: unknown, calls: string[][] = []): UcpRunner {
+  return async (args) => {
     calls.push(args);
-    return envelopes[index++]!;
+    return response;
   };
-  return { api: createUcp({ mode: "live", run }), calls };
 }
 
-function completeApi(response: unknown) {
-  return createUcp({
-    mode: "live",
-    run: async () => response,
-  }).complete({ seller: "shop.example", checkoutId: "checkout-1" });
+function parseInput(args: string[]): JsonRecord {
+  return JSON.parse(args[args.indexOf("--input") + 1]!) as JsonRecord;
 }
 
-describe("UcpApi search", () => {
-  it("parses trimmed live envelopes, locally filters, and keeps the first two distinct sellers", async () => {
-    const { api, calls } = clientFor(searchPages);
-    const offers = await api.searchOffers({ shoe_size: "9", budget: 200 });
+function checkout(
+  fields: Partial<{
+    status: UcpCheckout["status"];
+    continueUrl: string;
+    orderId: string;
+  }> = {},
+): UcpCheckout {
+  return {
+    checkoutId: "checkout-1",
+    sellerDomain: "shop.example",
+    status: fields.status ?? "incomplete",
+    ...(fields.continueUrl ? { continueUrl: fields.continueUrl } : {}),
+    ...(fields.orderId ? { orderId: fields.orderId } : {}),
+    messages: [],
+  };
+}
 
-    expect(offers.map(({ seller, size }) => [seller, size])).toEqual([
-      ["marathonsports.myshopify.com", "9 US"],
-      ["capra-run.myshopify.com", "9"],
-    ]);
-    expect(new Set(offers.map((offer) => offer.seller)).size).toBe(2);
-    expect(offers.every((offer) => offer.currency === "USD" && offer.price <= 20_000)).toBe(true);
-    expect(offers.every((offer) => offer.etaDate === null)).toBe(true);
-    const input = JSON.parse(calls[0]![calls[0]!.indexOf("--input") + 1]!) as JsonRecord;
-    expect(input).toEqual({
-      query: "trail running shoes",
-      context: { address_country: "US", currency: "USD" },
-      filters: {
-        available: true,
-        ships_to: { country: "US" },
-        price: { max: 20_000 },
-      },
-      pagination: { limit: 50 },
-    });
-  });
-
-  it("excludes real NZD, unavailable, over-budget, and UK 4.5 variants", async () => {
-    const nzd = realVariants.find(({ variant }) =>
-      variant.price?.currency === "NZD"
-      && variant.options?.some((option: JsonRecord) => option.label === "9 US")
-    )!;
-    expect(nzd).toBeDefined();
-    expect(await clientFor([envelopeFor(nzd)]).api.searchOffers({ shoe_size: "9" })).toEqual([]);
-
-    const unavailable = {
-      ...marathon.variant,
-      availability: { available: false },
-    };
-    const overBudget = {
-      ...capra.variant,
-      price: { ...capra.variant.price, amount: 20_001 },
-    };
-    expect(await clientFor([envelopeFor(
-      { product: marathon.product, variant: unavailable },
-      { product: capra.product, variant: overBudget },
-    )]).api.searchOffers({ shoe_size: "9", budget: 200 })).toEqual([]);
-
-    const uk = realVariants.find(({ variant }) =>
-      variant.options?.some((option: JsonRecord) => option.label === "UK 4.5")
-    )!;
-    expect(uk).toBeDefined();
-    expect(await clientFor([envelopeFor(uk)]).api.searchOffers({ shoe_size: "4.5" })).toEqual([]);
-  });
-
-  it("matches EU 42 labels and drops only dates later than the deadline", async () => {
-    const eu42 = realVariants.find(({ variant }) =>
-      variant.options?.some((option: JsonRecord) => option.label === "42")
-    )!;
-    expect(eu42).toBeDefined();
-    const first: JsonRecord = {
-      ...eu42.variant,
-      price: { amount: 12_000, currency: "USD" },
-      seller: { ...eu42.variant.seller, domain: "eu42.example" },
-    };
-    const combined: JsonRecord = {
-      ...first,
-      id: `${first.id}-combined`,
-      options: [{ name: "Size", label: "9 US / 42 EU" }],
-      seller: { ...first.seller, domain: "combined-size.example" },
-    };
-    const euOffers = await clientFor([envelopeFor(
-      { product: eu42.product, variant: first },
-      { product: eu42.product, variant: combined },
-    )]).api.searchOffers({ shoe_size: "42" });
-    expect(euOffers.map((offer) => offer.size)).toEqual(["42", "9 US / 42 EU"]);
-
-    const late = {
-      ...marathon.variant,
-      eta_date: "2030-01-01",
-    };
-    expect(await clientFor([envelopeFor({ product: marathon.product, variant: late })])
-      .api.searchOffers({ shoe_size: "9", deadline: "2029-12-31" })).toEqual([]);
-    const unknownEta = await clientFor([envelopeFor(marathon)])
-      .api.searchOffers({ shoe_size: "9", deadline: "2020-01-01" });
-    expect(unknownEta[0]?.etaDate).toBeNull();
-  });
-
-  it("follows the cursor while fewer than two sellers match", async () => {
-    let index = 0;
-    const calls: string[][] = [];
-    const run: UcpRunner = async (args) => {
-      calls.push(args);
-      if (index++ === 0) {
-        return {
-          ...envelopeFor(marathon),
-          result: {
-            ...envelopeFor(marathon).result,
-            pagination: { has_next_page: true, cursor: "cursor-next" },
-          },
-        };
-      }
-      return envelopeFor(capra);
-    };
-    const offers = await createUcp({ mode: "live", run })
-      .searchOffers({ shoe_size: "9", budget: 200 });
-    expect(offers).toHaveLength(2);
-    const secondInput = JSON.parse(calls[1]![calls[1]!.indexOf("--input") + 1]!) as JsonRecord;
-    expect(secondInput.pagination).toEqual({ cursor: "cursor-next", limit: 50 });
+describe("contract module", () => {
+  it("exports a value assignable to the frozen UcpModule", () => {
+    const module: UcpModule = ucpModule;
+    expect(module.createUcp).toBe(createUcp);
   });
 });
 
-describe("UcpApi complete", () => {
-  it("maps completed and escalation responses and preserves warnings", async () => {
-    const warning = {
-      type: "warning",
-      code: "sold_out",
-      content: "This item is sold out.",
-      extension: { source: "merchant" },
-    };
-    await expect(completeApi({
-      result: { status: "completed", order: { id: "order-1" }, messages: [warning] },
-    })).resolves.toEqual({ status: "ordered", orderId: "order-1", messages: [warning] });
-    await expect(completeApi({
-      result: { status: "requires_escalation", continue_url: "https://shop.example/checkout", messages: [warning] },
-    })).resolves.toEqual({
-      status: "handoff",
-      continueUrl: "https://shop.example/checkout",
-      messages: [warning],
+describe("searchOffers normalization", () => {
+  it("preserves all catalog variants and normalizes size, currency, native checkout, ETA, and shipsTo", async () => {
+    const marathon = rawVariants.find(({ variant }) => variant.id === "gid://shopify/ProductVariant/42550028075069")!;
+    const nzd = rawVariants.find(({ variant }) => variant.price?.currency === "NZD")!;
+    const unavailable = rawVariants.find(({ variant }) => variant.availability?.available === false)!;
+    const envelope = structuredClone(realSearch);
+    const product = envelope.result.products[0];
+    product.variants.push(
+      { ...marathon.variant, id: "variant-no-product", price: { amount: 100, currency: "USD" } },
+      { ...marathon.variant, id: undefined },
+      { ...marathon.variant, id: "variant-no-domain", seller: { name: "No domain" } },
+      { ...marathon.variant, id: "variant-unavailable", availability: { available: false } },
+    );
+    const calls: string[][] = [];
+    const api = createUcpInternal({ mode: "live" }, runnerFor(envelope, calls));
+    const offers = await api.searchOffers({
+      query: "trail shoes",
+      intentText: "Need wide fit",
+      shipsTo: "US",
+      maxPriceCents: 12_345,
+      limit: 17,
     });
-    await expect(completeApi({
-      result: { status: "requires_escalation", messages: [warning] },
-    })).resolves.toEqual({ status: "failed", messages: [warning] });
+
+    expect(calls).toHaveLength(1);
+    expect(parseInput(calls[0]!)).toEqual({
+      query: "trail shoes",
+      context: { address_country: "US", currency: "USD", intent: "Need wide fit" },
+      filters: { available: true, ships_to: { country: "US" }, price: { max: 12_345 } },
+      pagination: { limit: 17 },
+    });
+    expect(offers.find((offer) => offer.variantId === marathon.variant.id)).toMatchObject({
+      sellerDomain: "marathonsports.myshopify.com",
+      sizeOptions: ["9 US"],
+      nativeCheckout: false,
+      etaDate: null,
+      shipsTo: ["US"],
+    });
+    expect(offers.find((offer) => offer.variantId === nzd.variant.id)?.currency).toBe("NZD");
+    expect(offers.find((offer) => offer.variantId === "variant-unavailable")?.available).toBe(false);
+    expect(offers.some((offer) => offer.variantId === "variant-no-product")).toBe(true);
+    expect(offers.some((offer) => offer.variantId === "variant-no-domain")).toBe(false);
+    expect(offers.some((offer) => offer.variantId === undefined)).toBe(false);
   });
 
-  it("maps error envelopes and runner throws to failed without throwing", async () => {
-    const availabilityWarning = { type: "warning", content: "Still available in store" };
-    await expect(completeApi({
-      code: "INSUFFICIENT_PERMISSIONS",
-      message: "A valid JWT is required.",
-      messages: [availabilityWarning],
-    })).resolves.toEqual({
-      status: "failed",
-      messages: [
-        availabilityWarning,
-        { type: "error", code: "INSUFFICIENT_PERMISSIONS", content: "A valid JWT is required." },
-      ],
+  it("keeps missing budgets omitted and maps every size-like label verbatim", async () => {
+    const api = createUcpInternal({ mode: "live" }, runnerFor(realSearch));
+    const offers = await api.searchOffers({ query: "shoes", shipsTo: "CA" });
+    expect(offers.find((offer) => offer.sizeOptions.includes("UK 4.5"))?.sizeOptions).toContain("UK 4.5");
+    expect(offers.find((offer) => offer.sizeOptions.includes("9 US"))?.sizeOptions).toContain("9 US");
+  });
+});
+
+describe("checkout CLI arguments and destination mapping", () => {
+  it("uses cart_id plus line_items, positional checkout IDs, bare business domains, and optional buyer email", async () => {
+    const calls: string[][] = [];
+    const lineItem = { id: "line-1", item: { id: "variant-1" }, quantity: 1 };
+    const run: UcpRunner = async (args) => {
+      calls.push(args);
+      if (args[0] === "cart") {
+        return { result: { id: "cart-1", continue_url: "https://shop.example/cart/c/1", line_items: [lineItem], messages: [] } };
+      }
+      if (args[1] === "create") {
+        return { result: {
+          id: "checkout-1",
+          status: "incomplete",
+          continue_url: "https://shop.example/cart/c/1",
+          line_items: [lineItem],
+          fulfillment: { methods: [{ id: "ship-1", type: "shipping", line_item_ids: ["line-1"] }] },
+          messages: [],
+        } };
+      }
+      if (args[1] === "update") {
+        return { result: { status: "ready_for_complete", continue_url: "https://shop.example/", messages: [] } };
+      }
+      return { result: { status: "completed", order_id: "order-1", messages: [] } };
+    };
+    const api = createUcpInternal({ mode: "live" }, run);
+    const cart = await api.createCart({ sellerDomain: "shop.example", variantId: "variant-1" });
+    const created = await api.createCheckout(cart);
+    const address: UcpDestination = {
+      name: "Agent Cookie Demo",
+      line1: "1 Ferry Building",
+      line2: "Suite 2",
+      city: "San Francisco",
+      region: "CA",
+      postalCode: "94111",
+      country: "US",
+      raw: "ignored by the CLI payload",
+    };
+    const updated = await api.setDestination(created, address);
+    const completed = await api.complete(updated);
+
+    for (const args of calls) {
+      expect(args.slice(args.indexOf("--profile"), args.indexOf("--profile") + 2))
+        .toEqual(["--profile", "agent"]);
+      expect(args.slice(args.indexOf("--business"), args.indexOf("--business") + 2))
+        .toEqual(["--business", "shop.example"]);
+    }
+    expect(parseInput(calls[0]!)).toEqual({
+      line_items: [{ item: { id: "variant-1" }, quantity: 1 }],
     });
-    const warning = { type: "warning", content: "Try again" };
-    const api = createUcp({
-      mode: "live",
-      run: async () => {
-        throw new UcpError("CLI failed", {
-          stdout: JSON.stringify({ continue_url: "https://shop.example/continue", messages: [warning] }),
-        });
+    expect(calls[1]!.slice(0, 2)).toEqual(["checkout", "create"]);
+    expect(calls[1]).not.toContain("--cart-id");
+    expect(parseInput(calls[1]!)).toEqual({ cart_id: "cart-1", line_items: [lineItem] });
+    expect(calls[2]!.slice(0, 3)).toEqual(["checkout", "update", "checkout-1"]);
+    expect(parseInput(calls[2]!)).toEqual({
+      line_items: [lineItem],
+      fulfillment: { methods: [{
+        type: "shipping",
+        id: "ship-1",
+        line_item_ids: ["line-1"],
+        destinations: [{
+          street_address: "1 Ferry Building",
+          extended_address: "Suite 2",
+          address_locality: "San Francisco",
+          address_region: "CA",
+          postal_code: "94111",
+          address_country: "US",
+          first_name: "Agent",
+          last_name: "Cookie Demo",
+        }],
+      }] },
+    });
+    expect(parseInput(calls[2]!)).not.toHaveProperty("buyer");
+    expect(calls[3]!.slice(0, 3)).toEqual(["checkout", "complete", "checkout-1"]);
+    expect(parseInput(calls[3]!)).toEqual({ payment: {} });
+    expect(updated.continueUrl).toBe("https://shop.example/cart/c/1");
+    expect(completed).toMatchObject({ status: "completed", orderId: "order-1" });
+  });
+
+  it("includes buyer email only when provided and falls back to the first token as last name", async () => {
+    let updateInput: JsonRecord | undefined;
+    const api = createUcpInternal({ mode: "live" }, async (args) => {
+      if (args[1] === "update") {
+        updateInput = parseInput(args);
+        return { result: { status: "incomplete", messages: [] } };
+      }
+      return { result: { id: "checkout-1", status: "incomplete", line_items: [], fulfillment: { methods: [] } } };
+    });
+    const checkout = await api.createCheckout({
+      cartId: "cart-1",
+      sellerDomain: "shop.example",
+      messages: [],
+    });
+    await api.setDestination(checkout, {
+      name: "Agent",
+      line1: "1 Main",
+      city: "Town",
+      region: "CA",
+      postalCode: "00000",
+      country: "US",
+      raw: "ignored",
+    }, { email: "buyer@example.test" });
+    expect(updateInput?.buyer).toEqual({ email: "buyer@example.test" });
+    expect(updateInput?.fulfillment.methods[0].destinations[0]).toMatchObject({
+      first_name: "Agent",
+      last_name: "Agent",
+    });
+  });
+});
+
+describe("complete and upstream failures", () => {
+  it("passes completed and requires_escalation statuses through unchanged", async () => {
+    const completed = createUcpInternal({ mode: "live" }, runnerFor({
+      result: { status: "completed", order: { id: "order-1" }, messages: [] },
+    }));
+    await expect(completed.complete(checkout())).resolves.toMatchObject({
+      status: "completed",
+      orderId: "order-1",
+    });
+
+    const escalation = createUcpInternal({ mode: "live" }, runnerFor({
+      result: {
+        status: "requires_escalation",
+        continue_url: "https://shop.example/cart/c/1",
+        messages: [{ type: "info", content: "Review and pay on the merchant page." }],
       },
+    }));
+    await expect(escalation.complete(checkout())).resolves.toMatchObject({
+      status: "requires_escalation",
+      continueUrl: "https://shop.example/cart/c/1",
+      messages: [{ type: "info", content: "Review and pay on the merchant page." }],
     });
-    await expect(api.complete({ seller: "shop.example", checkoutId: "checkout-1" }))
-      .resolves.toEqual({
-        status: "failed",
-        continueUrl: "https://shop.example/continue",
-        messages: [
-          warning,
-          { type: "error", code: "UPSTREAM_ERROR", content: "CLI failed" },
-        ],
+  });
+
+  it("throws contract UpstreamError for error envelopes and runner failures with the best URL", async () => {
+    const fallback = "https://shop.example/cart/c/checkout-1";
+    const envelopeClient = createUcpInternal({ mode: "live" }, runnerFor({
+      code: "INSUFFICIENT_PERMISSIONS",
+      message: "JWT required",
+      continue_url: "https://shop.example/",
+    }));
+    await expect(envelopeClient.complete(checkout({ continueUrl: fallback })))
+      .rejects.toMatchObject({
+        message: "ucp checkout-complete: INSUFFICIENT_PERMISSIONS: JWT required",
+        continueUrl: fallback,
       });
+
+    const thrownClient = createUcpInternal({ mode: "live" }, async () => {
+      throw new Error("runner failed");
+    });
+    await expect(thrownClient.complete(checkout({ continueUrl: fallback })))
+      .rejects.toBeInstanceOf(UpstreamError);
+    await expect(thrownClient.complete(checkout({ continueUrl: fallback })))
+      .rejects.toMatchObject({ message: "runner failed", continueUrl: fallback });
+  });
+
+  it("throws on any operation error envelope rather than filtering or converting it", async () => {
+    const api = createUcpInternal({ mode: "live" }, runnerFor({
+      code: "CATALOG_UNAVAILABLE",
+      message: "Catalog unavailable",
+    }));
+    await expect(api.searchOffers({ query: "shoes", shipsTo: "US" }))
+      .rejects.toBeInstanceOf(UpstreamError);
   });
 });
 
 describe("live profile initialization", () => {
-  it("retries after a failed profile init", async () => {
+  it("retries after profile init fails and honors a supplied binary and timeout", async () => {
     let profileAttempts = 0;
-    const runner = createLiveRunner({}, async (args) => {
-      if (args[0] === "profile") {
-        profileAttempts += 1;
-        if (profileAttempts === 1) throw new Error("temporary profile init failure");
-        return {
-          stdout: JSON.stringify({ name: "agent", created: false, activated: false }),
-          stderr: "",
-        };
-      }
-      return { stdout: JSON.stringify({ result: { ok: true } }), stderr: "" };
+    const calls: Array<{ args: string[]; bin?: string; timeoutMs: number }> = [];
+    const runner = createLiveRunner({}, {
+      bin: "/custom/ucp",
+      timeoutMs: 1234,
+      execute: async (args, _env, timeoutMs, bin) => {
+        calls.push({ args, bin, timeoutMs });
+        if (args[0] === "profile") {
+          profileAttempts += 1;
+          if (profileAttempts === 1) throw new Error("temporary profile init failure");
+          return { stdout: JSON.stringify({ name: "agent" }), stderr: "" };
+        }
+        return { stdout: JSON.stringify({ result: { ok: true } }), stderr: "" };
+      },
     });
 
     await expect(runner(["catalog", "search"])).rejects.toThrow("temporary profile init failure");
     await expect(runner(["catalog", "search"])).resolves.toEqual({ result: { ok: true } });
     expect(profileAttempts).toBe(2);
+    expect(calls.every((call) => call.bin === "/custom/ucp" && call.timeoutMs === 1234)).toBe(true);
+    expect(calls[0]!.args).not.toContain("--profile");
   });
 });
 
-describe("UCP operation arguments", () => {
-  it("passes cart and checkout identifiers in the CLI's expected locations", async () => {
-    const calls: string[][] = [];
-    const lineItem = { id: "line-1", item: { id: "variant-1" }, quantity: 1 };
-    const run: UcpRunner = async (args) => {
-      calls.push(args);
-      if (args[0] === "cart") return { result: { id: "cart-1", line_items: [lineItem], messages: [] } };
-      if (args[1] === "create") {
-        return {
-          result: {
-            id: "checkout-1",
-            line_items: [lineItem],
-            fulfillment: { methods: [] },
-            continue_url: "https://shop.example/checkout",
-            messages: [],
-          },
-        };
-      }
-      if (args[1] === "update") return { result: { messages: [] } };
-      return { result: { status: "completed", order_id: "order-1", messages: [] } };
-    };
-    const api = createUcp({ mode: "live", run });
-    const cart = await api.createCart({ seller: "shop.example", variantId: "variant-1" });
-    await api.createCheckout({ seller: "shop.example", cartId: cart.cartId });
-    await api.setDestination({
-      seller: "shop.example",
-      checkoutId: "checkout-1",
-      email: "demo@agent-cookie.dev",
-      address: {
-        firstName: "Agent",
-        lastName: "Cookie",
-        streetAddress: "1 Ferry Building",
-        locality: "San Francisco",
-        region: "CA",
-        postalCode: "94111",
-        country: "US",
-      },
+describe("committed fixture mode", () => {
+  it("normalizes both pinned offers and throws with the checkout handoff URL on live-shape failure", async () => {
+    const api = createUcp({ mode: "fixture" });
+    const pinned = loadFixture("pinned.json");
+    const offers = await api.searchOffers({
+      query: "trail running shoes",
+      shipsTo: "US",
+      maxPriceCents: 20_000,
+      limit: 50,
     });
-    await api.complete({ seller: "shop.example", checkoutId: "checkout-1" });
-
-    for (const args of calls) {
-      expect(args.slice(args.indexOf("--profile"), args.indexOf("--profile") + 2))
-        .toEqual(["--profile", "agent"]);
-      expect(args.slice(args.indexOf("--format"), args.indexOf("--format") + 2))
-        .toEqual(["--format", "json"]);
+    for (const item of pinned.offers as JsonRecord[]) {
+      expect(offers.some((offer) => offer.variantId === item.variantId)).toBe(true);
     }
-    const createCheckout = calls[1]!;
-    const createInput = JSON.parse(createCheckout[createCheckout.indexOf("--input") + 1]!) as JsonRecord;
-    expect(createCheckout.slice(0, 2)).toEqual(["checkout", "create"]);
-    expect(createCheckout).not.toContain("--cart-id");
-    expect(createInput).toMatchObject({ cart_id: "cart-1", line_items: [lineItem] });
-
-    const update = calls[2]!;
-    const updateInput = JSON.parse(update[update.indexOf("--input") + 1]!) as JsonRecord;
-    expect(update.slice(0, 3)).toEqual(["checkout", "update", "checkout-1"]);
-    expect(update.slice(update.indexOf("--business"), update.indexOf("--business") + 2))
-      .toEqual(["--business", "shop.example"]);
-    expect(updateInput.line_items).toEqual([lineItem]);
-    expect(updateInput.fulfillment.methods[0].line_item_ids).toEqual(["line-1"]);
-
-    const complete = calls[3]!;
-    const completeInput = JSON.parse(complete[complete.indexOf("--input") + 1]!) as JsonRecord;
-    expect(complete.slice(0, 3)).toEqual(["checkout", "complete", "checkout-1"]);
-    expect(complete.slice(complete.indexOf("--business"), complete.indexOf("--business") + 2))
-      .toEqual(["--business", "shop.example"]);
-    expect(completeInput).toEqual({ payment: {} });
-    expect(completeInput).not.toHaveProperty("payment.instruments");
-  });
-});
-
-describe("fixture mode", () => {
-  it("runs the recorded search, cart, checkout, destination, and complete flow", async () => {
-    const api = createUcp({ mode: "fixture", fixturesDir });
-    const offers = await api.searchOffers({ shoe_size: "9", budget: 200 });
-    expect(offers.map((offer) => offer.variantId)).toEqual([
-      "gid://shopify/ProductVariant/42550028075069",
-      "gid://shopify/ProductVariant/42418551193643",
-    ]);
-    for (const offer of offers) {
-      const cart = await api.createCart({ seller: offer.seller, variantId: offer.variantId });
-      const checkout = await api.createCheckout({ seller: offer.seller, cartId: cart.cartId });
-      const destination = await api.setDestination({
-        seller: offer.seller,
-        checkoutId: checkout.checkoutId,
-        email: "demo@agent-cookie.dev",
-        address: {
-          firstName: "Agent",
-          lastName: "Cookie",
-          streetAddress: "1 Ferry Building",
-          locality: "San Francisco",
-          region: "CA",
-          postalCode: "94111",
-          country: "US",
-        },
-      });
-      expect(destination.messages[0]?.code).toBe("buyer_identity_email_is_invalid");
-      const result = await api.complete({ seller: offer.seller, checkoutId: checkout.checkoutId });
-      if (offer.seller === "marathonsports.myshopify.com") {
-        const completeError = loadFixture("checkout-complete.marathonsports.myshopify.com.json");
-        expect(destination.continueUrl).toBe(checkout.continueUrl);
-        expect(result).toEqual({
-          status: "failed",
-          continueUrl: checkout.continueUrl,
-          messages: [{
-            type: "error",
-            code: completeError.code,
-            content: completeError.message,
-          }],
-        });
-      } else {
-        expect(result.status).toBe("failed");
-      }
-    }
+    const marathon = offers.find((offer) => offer.sellerDomain === "marathonsports.myshopify.com")!;
+    const cart = await api.createCart(marathon);
+    const created = await api.createCheckout(cart);
+    const updated = await api.setDestination(created, {
+      name: "Agent Cookie Demo",
+      line1: "1 Ferry Building",
+      line2: "Ferry Building",
+      city: "San Francisco",
+      region: "CA",
+      postalCode: "94111",
+      country: "US",
+      raw: "ignored",
+    }, { email: "demo@agent-cookie.dev" });
+    await expect(api.complete(updated)).rejects.toMatchObject({
+      continueUrl: expect.stringContaining("/cart/c/"),
+    });
   });
 });
