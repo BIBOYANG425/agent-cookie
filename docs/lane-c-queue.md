@@ -10,7 +10,7 @@
 - [x] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询 — d58babb（12 测试、类型/构建检查、浏览器实连通过）
 - [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现
 - [ ] C12 skills/add-agent-cookie/SKILL.md
-- [ ] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明
+- [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
 - [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试
 - [ ] C15 README：agent 名、启动命令、环境变量表
 - [ ] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度
