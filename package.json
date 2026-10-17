@@ -7,6 +7,8 @@
   "scripts": {
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "fake": "pnpm --filter @agent-cookie/workspace-fake start"
+    "fake": "pnpm --filter @agent-cookie/workspace-fake start",
+    "workspace": "pnpm --filter @agent-cookie/workspace start",
+    "demo:reset": "curl -s -X POST \"${AGENT_COOKIE_URL:-http://127.0.0.1:4310}/demo/reset\""
   }
 }

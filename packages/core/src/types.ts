@@ -1,29 +1,47 @@
-// Agent Cookie contract v0.1 — frozen at T0 (2026-10-17). Changing anything here needs two lanes' agreement.
-// Source: docs/plan.md §5.
+// Agent Cookie contract — frozen at T0 against docs/plan.md v0.3 §5 (2026-10-17).
+// The named types below are copied from the plan verbatim. Anything marked "additive" is not in the
+// plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
+// needs two lanes' agreement (CLAUDE.md).
 
 export type Basis = "observed" | "stated" | "inferred";
 
-export type Category = "personal" | "shoe" | "pharmacy" | "hotel";
+/** pharmacy and hotel were cut on 2026-10-17; they come back after the hackathon, not before. */
+export type Category = "personal" | "shoe";
+
+/**
+ * category === "personal" ? "personal" : "merchant" for registered agents.
+ * "owner" is the user's own console/CLI key: it alone may call /owner/activity and /demo/reset
+ * (/demo/reset additionally requires AGENT_COOKIE_DEMO=1). Owner keys are not tied to a category;
+ * the fake workspace maps them from fixtures/dev-keys.json, the real one mints them at seed time.
+ */
+export type Role = "personal" | "merchant" | "owner";
 
 export const FIELDS = [
   "lang", "tone", "length",
   "shoe_size", "budget", "deadline",
-  "shipping_address", "date_of_birth", "allergies", "diet",
+  "shipping_address",
   "payment_method", // a payment-provider token reference, never a card number
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
-export type Role = "personal" | "merchant" | "owner";
+export function isField(x: unknown): x is Field {
+  return typeof x === "string" && (FIELDS as readonly string[]).includes(x);
+}
+
+export function roleOf(category: Category): Role {
+  return category === "personal" ? "personal" : "merchant";
+}
 
 export interface Agent {
   agentId: string;
   name: string;
   category: Category;
   capabilities: string[];
-  /** Merchant agents with their own HTTP callback (introduce / accepted events). */
   callbackUrl?: string;
-  /** Tier-0 merchants: a plain chat endpoint that receives the handshake as a text prefix. */
+  /** Present → Tier 0: the handshake is delivered as a text prefix to this chat endpoint (ACME). */
   chatEndpoint?: string;
+  /** UCP proxy agents: the seller.domain. Session IDs are derived from it (merchantKey). */
+  domain?: string;
   createdAt: string;
 }
 
@@ -55,11 +73,6 @@ export interface Candidate {
   reason: "single_source" | "inferred";
 }
 
-export interface Card {
-  card: CardField[];
-  candidates: Candidate[];
-}
-
 export interface Session {
   sessionId: string;
   userId: string;
@@ -70,19 +83,22 @@ export interface Session {
 export interface Grant {
   id: string;
   sessionId: string;
-  /** Fields readable with the handshake (policy "auto"). */
+  /** Fields readable with this grant without a purpose (the category's auto fields). */
   fields: Field[];
-  /** Fields readable only with a matching purpose (policy "purpose"). */
-  purposeFields: Field[];
   purpose: string;
   expiresAt: string;
   revokedAt?: string;
 }
 
+/**
+ * A04 wording: lang / tone / length ARE three values — they say "how to talk to me" and travel with every
+ * handshake. "No values in the handshake" means `available` lists field NAMES only; every other value is
+ * fetched through GET /agent/fields and checked against policy, grant and purpose at read time.
+ */
 export interface Handshake {
   v: 1;
   sessionId: string;
-  /** Workspace API base URL. The merchant calls this; no discovery needed. */
+  /** Workspace API base URL. The merchant calls this; no discovery mechanism needed. */
   jar: string;
   lang: string;
   tone: string;
@@ -100,7 +116,6 @@ export interface Intent {
   userId: string;
   kind: string;
   public: Record<string, string>;
-  createdAt: string;
   expiresAt: string;
 }
 
@@ -108,16 +123,45 @@ export interface Quote {
   id: string;
   intentId: string;
   agentId: string;
-  sessionId: string;
   text: string;
-  price: number; // minor units (cents)
+  /** Integer, minor units of `currency` (cents): 11995 means $119.95. Same convention as UCP. */
+  price: number;
   currency: "USD";
-  etaDate: string;
-  /** UCP routing, when the merchant is a real Shopify store. */
-  sellerDomain?: string;
+  /**
+   * ISO date when the merchant committed to one; null when unknown. Not knowing the arrival date is the
+   * normal case (UCP catalog results carry no delivery estimate) — never invent one. Put the merchant's
+   * own wording, if any, in `etaText`.
+   */
+  etaDate?: string | null;
+  etaText?: string;
+  // UCP quotes
+  title?: string;
+  /** seller.domain of the UCP store (the proxy agent's `domain`). */
+  seller?: string;
   variantId?: string;
   checkoutUrl?: string;
-  status: "open" | "accepted" | "ordered" | "lost" | "blocked";
+}
+
+/**
+ * Response of POST /personal/quotes/:id/accept.
+ *  ordered  = checkout completed; `orderId` set.
+ *  handoff  = UCP `requires_escalation`: the user pays on the merchant's page; `continueUrl` is mandatory.
+ *             This is the DEFAULT outcome — UCP stores mostly report native_checkout=false, so "can pay for
+ *             you" is never promised.
+ *  blocked  = policy refused a step (e.g. shipping_address → PURPOSE_MISMATCH); `code` set, nothing ordered.
+ *  failed   = upstream (ucp / Photon / payment provider) failed; `code` = UPSTREAM_ERROR; `continueUrl`
+ *             included whenever the upstream gave one. Never dressed up as success (A18).
+ */
+export interface AcceptResult {
+  status: "ordered" | "handoff" | "blocked" | "failed";
+  quoteId: string;
+  orderId?: string;
+  continueUrl?: string;
+  /** Human-readable, passed through to the user verbatim (sold-out warnings, escalation reasons). */
+  message?: string;
+  code?: ErrorCode;
+  /** Receipts written during this accept (who read which field for which purpose) — for telling the user. */
+  receipts?: Receipt[];
 }
 
 export interface Receipt {
@@ -126,11 +170,76 @@ export interface Receipt {
   agentId: string;
   fields: Field[];
   purpose: string;
-  result: "allowed" | "denied";
-  code?: ErrorCode;
+  /** Filled by lane D's payment authorization. */
+  amount?: number;
   createdAt: string;
 }
 
+// ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
+
+export interface PaymentAuthorization {
+  id: string;
+  sessionId: string;
+  quoteId: string;
+  amount: number;
+  currency: "USD";
+  status: "authorized" | "declined" | "used";
+  createdAt: string;
+}
+export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
+export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
+
+// ---- Error codes (plan §5 错误契约) ----
+
+export type ErrorCode =
+  | "AUTH_REQUIRED"          // 401
+  | "SCOPE_DENIED"           // 403
+  | "GRANT_EXPIRED"          // 403
+  | "GRANT_REVOKED"          // 403
+  | "PURPOSE_MISMATCH"       // 403
+  | "NOT_FOUND"              // 404 — does not exist, or the caller may not know whether it exists
+  | "IDEMPOTENCY_CONFLICT"   // 409
+  | "MISSING_FIELD"          // 422
+  | "UPSTREAM_ERROR"         // 502 — ucp / Photon / payment provider failed
+  | "JAR_LOCKED"             // 403 — lane D
+  | "AUTHORIZATION_USED"     // 403 — lane D
+  | "OVER_BUDGET";           // 403 — lane D
+
+// ---- Callback payloads a merchant's callbackUrl receives (plan §5, "商家的 callbackUrl 收到两种 POST") ----
+
+export interface IntroduceCallback {
+  type: "introduce";
+  sessionId: string;
+  handshake: Handshake;
+  /** Only the public part of the intent. */
+  intent: Pick<Intent, "id" | "kind" | "public" | "expiresAt">;
+}
+export interface AcceptedCallback {
+  type: "accepted";
+  sessionId: string;
+  quoteId: string;
+}
+export type MerchantCallback = IntroduceCallback | AcceptedCallback;
+
+// ---- Additive (not in plan §5's listing; used by the workspace, the fake workspace and the console) ----
+
+/** Return shape of mergeCard and of GET /personal/card. */
+export interface Card {
+  card: CardField[];
+  candidates: Candidate[];
+  /** Values that used to be on the card and were replaced by a newer qualified value. History, not card. */
+  superseded: SupersededField[];
+}
+
+export interface SupersededField {
+  field: Field;
+  value: string;
+  sources: string[];
+  lastSupportedAt: string;
+  supersededBy: string;
+}
+
+/** A merchant's own cookie note. Isolated by (agentId, userId, key). */
 export interface Note {
   agentId: string;
   userId: string;
@@ -140,7 +249,9 @@ export interface Note {
   expiresAt: string;
 }
 
+/** One activity row. Never contains field values. */
 export interface ActivityEvent {
+  id: string;
   at: string;
   event: string;
   actor: string;
@@ -149,20 +260,29 @@ export interface ActivityEvent {
   reason: string;
 }
 
-export type ErrorCode =
-  | "AUTH_REQUIRED"
-  | "SCOPE_DENIED"
-  | "PURPOSE_MISMATCH"
-  | "GRANT_MISSING"
-  | "GRANT_EXPIRED"
-  | "GRANT_REVOKED"
-  | "NOT_FOUND"
-  | "MISSING_FIELD"
-  | "IDEMPOTENCY_CONFLICT"
-  | "JAR_LOCKED";
+/** Wire shape of every error response. Never includes field names the caller is not allowed to know. */
+export interface ErrorBody {
+  error: { code: ErrorCode; message: string };
+}
+
+/** Response of POST /agents/register. The key is shown once; callers keep it in AGENT_COOKIE_KEY, never in chat or commits. */
+export interface Registration {
+  agentId: string;
+  key: string;
+  category: Category;
+  role: Role;
+}
+
+/** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */
+export interface Me {
+  agentId: string;
+  category: Category;
+  role: Role;
+}
 
 export const GRANT_TTL_MS = 10 * 60 * 1000;
 export const NOTE_MAX_BYTES = 2048;
 export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;
 export const CARD_DROP_DAYS = 365;
+export const QUOTE_POLL_MAX_MS = 20_000;
