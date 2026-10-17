@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createPersonalServer, type PersonalWorkspaceBinding } from '../src/server.js';
@@ -10,8 +10,8 @@ const sampleCard = { sample: true, card: [
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => { await Promise.all(closers.splice(0).map(close => close())); });
 
-async function connect(read: PersonalWorkspaceBinding['getMyCard']) {
-  const server = await createPersonalServer({ getAuthenticatedRole: async () => 'personal', getMyCard: read });
+async function connect(read: PersonalWorkspaceBinding['getMyCard'], extra: Partial<PersonalWorkspaceBinding> = {}) {
+  const server = await createPersonalServer({ getAuthenticatedRole: async () => 'personal', getMyCard: read, ...extra });
   const client = new Client({ name: 'B-lane-test', version: '0.0.0' });
   const [left, right] = InMemoryTransport.createLinkedPair();
   await server.connect(left);
@@ -53,6 +53,33 @@ describe('personal MCP boundary', () => {
     expect(failed.isError).toBe(true);
     expect(JSON.stringify(failed)).toContain('WORKSPACE_UNAVAILABLE');
     expect(JSON.stringify(failed)).not.toContain('private-test-key');
+  });
+});
+
+describe('generic shopping MCP protocol',()=>{
+  it('advertises original request and optional extraction fields without a category default',async()=>{
+    const client=await connect(async()=>sampleCard,{find:vi.fn()});
+    const tool=(await client.listTools()).tools.find(t=>t.name==='find_agents')!;
+    expect(Object.keys(tool.inputSchema.properties!)).toEqual(['request','query','budget','size','color','deadline']);
+    expect(tool.inputSchema.required).toEqual(['request']);
+    expect(tool.description).toContain('sizeNote verbatim');
+    expect(tool.description).not.toContain('trail-shoe');
+  });
+  it('maps supplied fields, preserves request and sizeNote, and omits unextracted conditions',async()=>{
+    const payload={intentId:'i',sample:true,quotes:[{sizeNote:'没有 M，有 S、L'}]};
+    const find=vi.fn<NonNullable<PersonalWorkspaceBinding['find']>>().mockResolvedValue(payload);
+    const client=await connect(async()=>sampleCard,{find});
+    const request='  找件黑色外套，M码，100到160美元，周五前到。\n';
+    const args={request,query:'black jacket',budget:'100-160',size:'M',color:'黑色',deadline:'周五前到'};
+    const result=await client.callTool({name:'find_agents',arguments:args});
+    expect(result.isError).not.toBe(true);
+    expect(find.mock.calls[0][0]).toEqual({text:request,query:args.query,public:{budget:args.budget,size:args.size,color:args.color,deadline:args.deadline}});
+    expect(result.content).toEqual([{type:'text',text:JSON.stringify(payload)}]);
+    await client.callTool({name:'find_agents',arguments:{request:'给朋友挑个礼物'}});
+    expect(find.mock.calls[1][0]).toEqual({text:'给朋友挑个礼物'});
+    expect(find.mock.calls[1][1]).not.toBe(find.mock.calls[0][1]);
+    const old=await client.callTool({name:'find_agents',arguments:{kind:'trail_shoes'}});
+    expect(old.isError).toBe(true);expect(find).toHaveBeenCalledTimes(2);
   });
 });
 

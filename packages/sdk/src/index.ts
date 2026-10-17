@@ -1,6 +1,6 @@
-import type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
+import type { AcceptResult, ActivityEvent, Card, Grant, IntentRequest, Quote, Receipt } from '@agent-cookie/contract';
 export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
-export interface FindInput { kind: 'trail_shoes'; public: Record<string, string> }
+export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
@@ -156,9 +156,16 @@ export class WorkspaceClient {
   }
 
   async createIntent(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<{ intentId: string; sample: boolean }> {
-    if (input.kind !== 'trail_shoes' || !isObject(input.public) || Object.entries(input.public).some(([k,v]) =>
-      !['budget', 'deadline'].includes(k) || typeof v !== 'string' || v.length > 100)) throw new Error('Invalid shopping intent.');
-    const payload = await this.#request('/personal/intents', input, idempotencyKey, options);
+    // Match A's HTTP byte limits. Do not normalize the user's sentence or invent optional conditions.
+    const text = (v: unknown, max: number) => typeof v === 'string' && !!v.trim() && new TextEncoder().encode(v).length <= max;
+    if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
+      || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
+        || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
+          || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))) throw new Error('Invalid shopping intent.');
+    // Explicit wire shape: arbitrary runtime properties are not identity/authority, nor a legacy kind fallback.
+    const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
+      ...(input.public !== undefined ? { public: input.public } : {}) };
+    const payload = await this.#request('/personal/intents', body, idempotencyKey, options);
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
     return { intentId: payload.intentId, sample: payload.sample === true };
   }
@@ -168,7 +175,8 @@ export class WorkspaceClient {
     if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => isObject(q)
       && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
       && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
-      && (q.etaDate == null || typeof q.etaDate === 'string'))) throw new Error('Invalid quote response.');
+      && (q.etaDate == null || typeof q.etaDate === 'string')
+      && (q.sizeNote === undefined || typeof q.sizeNote === 'string'))) throw new Error('Invalid quote response.');
     return { quotes: payload.quotes as Quote[], sample: payload.sample === true };
   }
 

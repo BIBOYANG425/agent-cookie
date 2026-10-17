@@ -16,7 +16,7 @@ let server: Server | undefined;
 let deps: Deps | undefined;
 afterEach(async () => {
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
-  if (deps) { await deps.delivery.settle(); deps.close(); }
+  if (deps) { await deps.delivery.settle(); await deps.close(); }
   if (temp) await rm(temp,{recursive:true,force:true});
 });
 
@@ -31,7 +31,7 @@ it('routes all eight C console methods through the actual SDK into isolated A SQ
   const app=createApp(deps);
   const upstream: typeof fetch=async (input,init)=>app.request(String(input),init);
   await new WorkspaceClient({baseUrl:'http://127.0.0.1:4310',key:personal,fetch:upstream})
-    .find({kind:'trail_shoes',public:{budget:'120'}},'bridge:seed');
+    .find({text:'trail shoes',public:{budget:'120'}},'bridge:seed');
   const calls:string[]=[];
   const sdk=async (options: ConstructorParameters<typeof WorkspaceClient>[0]) => new WorkspaceClient(options);
   const bridge=createWorkspaceBridge({key:()=>key,fetcher:upstream,sample:true,sdk:Promise.resolve(options=>{

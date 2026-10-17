@@ -52,12 +52,19 @@ export async function createPersonalServer(binding: PersonalWorkspaceBinding): P
       return toolError(error);
     }
   });
+  const boundedText = (bytes: number) => z.string().refine(value => !!value.trim() && new TextEncoder().encode(value).length <= bytes,
+    `Use non-empty text of at most ${bytes} UTF-8 bytes.`);
   if (binding.find) server.registerTool('find_agents', {
-    description: 'Find trail-shoe offers through the workspace. This shares the task intent with external merchants in live mode. Use saved shoe size; preserve Sample labels and unknown delivery dates.',
-    inputSchema: { kind: z.literal('trail_shoes'), budget: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), deadline: z.string().max(100).optional() },
+    description: 'Search for products through the workspace. Put the user\'s exact original sentence in request. Extract query (search keywords), budget (USD amount or range), size, color and deadline only when supported by that sentence; omit fields you cannot extract. Do not assume a product category or copy saved card values into the request. In live mode the task is shared with external merchants. Preserve Sample labels and unknown delivery dates, and tell the user any quote sizeNote verbatim; never claim an unverified fit.',
+    inputSchema: { request: boundedText(1000).describe('The user\'s original words, unchanged.'),
+      query: boundedText(200).optional(), budget: boundedText(256).optional(), size: boundedText(256).optional(),
+      color: boundedText(256).optional(), deadline: boundedText(256).optional() },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-  }, async ({kind,budget,deadline}) => {
-    try { return { content:[{type:'text' as const,text:JSON.stringify(await binding.find!({kind,public:{...(budget?{budget}:{}),...(deadline?{deadline}:{})}},`mcp:find:${randomUUID()}`))}] }; }
+  }, async ({request,query,budget,size,color,deadline}) => {
+    const conditions = Object.fromEntries(Object.entries({budget,size,color,deadline}).filter(([,value]) => value !== undefined)) as Record<string,string>;
+    const input: FindInput = { text: request, ...(query !== undefined ? {query} : {}),
+      ...(Object.keys(conditions).length ? {public: conditions} : {}) };
+    try { return { content:[{type:'text' as const,text:JSON.stringify(await binding.find!(input,`mcp:find:${randomUUID()}`))}] }; }
     catch(error) {return toolError(error);}
   });
   if (binding.accept) server.registerTool('accept_quote', {
