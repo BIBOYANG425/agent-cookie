@@ -119,6 +119,13 @@ export interface Intent {
   expiresAt: string;
 }
 
+/**
+ * Where a response's data comes from (lane B, B20). "sample" = Sample seed/demo data (fixtures); "fixture" = recorded
+ * upstream responses replayed (AGENT_COOKIE_UCP=fixture); "live" = real upstream calls or real agent input.
+ * Clients label "sample" and "fixture" data as Sample and never present them as live inventory or identity.
+ */
+export type DataSource = "sample" | "fixture" | "live";
+
 export interface Quote {
   id: string;
   intentId: string;
@@ -140,12 +147,16 @@ export interface Quote {
   seller?: string;
   variantId?: string;
   checkoutUrl?: string;
+  /** Set by the workspace on every quote it returns (additive, B20). */
+  source?: DataSource;
 }
 
 /**
  * Response of POST /personal/quotes/:id/accept.
  *  ordered  = checkout completed; `orderId` set.
- *  handoff  = UCP `requires_escalation`: the user pays on the merchant's page; `continueUrl` is mandatory.
+ *  handoff  = UCP `requires_escalation`, or the store refusing to complete without the buyer signed in
+ *             (INSUFFICIENT_PERMISSIONS / AUTH_REQUIRED; A17, confirmed): the user pays on the merchant's page;
+ *             `continueUrl` is mandatory for UCP quotes.
  *             This is the DEFAULT outcome — UCP stores mostly report native_checkout=false, so "can pay for
  *             you" is never promised.
  *  blocked  = policy refused a step (e.g. shipping_address → PURPOSE_MISMATCH); `code` set, nothing ordered.
@@ -229,6 +240,8 @@ export interface Card {
   candidates: Candidate[];
   /** Values that used to be on the card and were replaced by a newer qualified value. History, not card. */
   superseded: SupersededField[];
+  /** Set by the workspace on GET /personal/card (additive, B20): "sample" whenever a card value rests on Sample seed data. RulesApi.mergeCard does not set it. */
+  source?: DataSource;
 }
 
 export interface SupersededField {

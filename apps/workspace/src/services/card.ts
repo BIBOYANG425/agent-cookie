@@ -3,7 +3,8 @@
 import {
   allowedBases, canWrite, isField, purposeFields, type Basis, type Card, type Contribution, type Field,
 } from "@agent-cookie/contract";
-import type { StoredContribution } from "../db.js";
+import type { IntentRow, StoredContribution } from "../db.js";
+import { containsCardNumber, isTokenReference } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
@@ -19,17 +20,21 @@ export class CardService {
 
   get(userId: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
-    const card = this.ctx.rules.mergeCard(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    const merged = this.ctx.rules.mergeCard(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
+    const seed = this.ctx.store.seedContributions(userId);
+    const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
+    const card: Card = { ...merged, source: sample ? "sample" : "live" };
     this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
     return card;
   }
 
-  /** Card values, overlaid with the public values of `intentId` (budget, deadline… never purpose fields). */
-  values(userId: string, intentId?: string): Partial<Record<Field, string>> {
+  /** Card values, overlaid with the public values of the intent (budget, deadline… never purpose fields). */
+  values(userId: string, intentOrId?: string | IntentRow): Partial<Record<Field, string>> {
     const out: Partial<Record<Field, string>> = {};
     for (const f of this.get(userId).card) out[f.field] = f.value;
-    if (intentId) {
-      const intent = this.ctx.store.intent(intentId);
+    if (intentOrId) {
+      const intent = typeof intentOrId === "string" ? this.ctx.store.intent(intentOrId) : intentOrId;
       if (intent && intent.userId === userId) {
         for (const [k, v] of Object.entries(intent.public)) if (overridable(k) && typeof v === "string" && v !== "") out[k] = v;
       }
@@ -43,6 +48,8 @@ export class CardService {
    * never visible to anyone else (A11). Model-supplied basis/field are parameters, not authority.
    */
   async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis }): Promise<{ stored: Basis; contribution: StoredContribution }> {
+    if (containsCardNumber(input.value)) fail("MISSING_FIELD", "card numbers are never stored");
+    if (input.field === "payment_method" && !isTokenReference(input.value)) fail("MISSING_FIELD", "payment_method must be a provider token reference");
     let basis: Basis = input.basis;
     if (agent.role === "personal") {
       if (!isField(input.field)) fail("MISSING_FIELD", "unknown field");

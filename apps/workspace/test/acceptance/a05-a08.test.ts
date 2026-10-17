@@ -1,9 +1,10 @@
-// A05–A08 (plan v0.3 §2 验收清单). Black box: HTTP only.
+// A05–A08 (plan v0.3 §2 验收清单). Black box: HTTP only, against the real wiring (lane C seed, git memory repo,
+// recorded UCP adapter).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  api, expectError, expectNoFieldNames, getQuotes, grants, introduce, ISO, KEYS, merchant, NOT_FOUND_TEXT, receipts,
-  reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer, startWorkspace, type Api, type CallbackServer, type Merchant,
-  type Json, type Workspace,
+  api, DATA_SOURCES, expectError, expectNoFieldNames, grants, introduce, ISO, KEYS, merchant,
+  NOT_FOUND_TEXT, PINNED, pinnedIntent, receipts, reset, SEED, SHOE_AUTO_FIELDS, startCallbackServer, startWorkspace,
+  ucpAgent, type Api, type CallbackServer, type Merchant, type Json, type Workspace,
 } from "./helpers.js";
 
 let ws: Workspace;
@@ -39,12 +40,19 @@ beforeEach(async () => {
   intentId = intro.intentId;
 });
 
-const T = { timeout: 30_000 };
+const T = { timeout: 45_000 };
+
+/** No substring of the Sample address appears in `text`. */
+function expectNoAddress(text: string): void {
+  for (const n of SEED.addressNeedles) expect(text).not.toContain(n);
+}
 
 async function acceptOwnQuote(m: Merchant, checkoutUrl = "https://merchant.example/checkout/sample-1"): Promise<{ quote: Json; result: Json }> {
   const q = await m.api.post("/agent/quotes", { intentId, text: "Sample trail shoe, EU 42", price: 12000, etaDate: null, checkoutUrl });
   expect(q.status).toBe(201);
   expect(q.body).toMatchObject({ intentId, agentId: m.agentId, price: 12000, currency: "USD" });
+  // B20: the workspace labels every quote it returns with its data source
+  expect(DATA_SOURCES as readonly string[]).toContain(q.body.source);
   const a = await personal.post(`/personal/quotes/${q.body.id}/accept`);
   expect(a.status).toBe(200);
   return { quote: q.body, result: a.body };
@@ -55,7 +63,8 @@ describe("A05 按用途读字段", T, () => {
     const r = await m1.api.get(`/agent/fields?sessionId=${s1}&fields=shoe_size,lang,tone,length`);
     expect(r.status).toBe(200);
     expect(r.body.sessionId).toBe(s1);
-    expect(r.body.fields).toEqual({ shoe_size: "42", lang: "zh", tone: "简短", length: "短" });
+    // Seed (Sample) has no length value → absent
+    expect(r.body.fields).toEqual({ shoe_size: "42", lang: "zh", tone: "简短" });
   });
 
   it("auto fields without a value are absent, not invented", async () => {
@@ -77,7 +86,7 @@ describe("A05 按用途读字段", T, () => {
       expectError(r, 403, "PURPOSE_MISMATCH");
       expectNoFieldNames(r.body.error.message);
       expectNoFieldNames(r.text);
-      expect(r.text).not.toContain("Sample St");
+      expectNoAddress(r.text);
     }
   });
 
@@ -85,7 +94,7 @@ describe("A05 按用途读字段", T, () => {
     const r = await m1.api.get(`/agent/fields?sessionId=${s1}&fields=shipping_address&purpose=checkout`);
     expectError(r, 403, "PURPOSE_MISMATCH");
     expectNoFieldNames(r.text);
-    expect(r.text).not.toContain("Sample St");
+    expectNoAddress(r.text);
   });
 
   it("all-or-nothing: an auto field asked together with a refused purpose field returns no values", async () => {
@@ -108,7 +117,7 @@ describe("A05 按用途读字段", T, () => {
     const rs = await receipts(personal);
     expect(rs[0]).toMatchObject({ sessionId: s1, agentId: m1.agentId, fields: ["shipping_address"], purpose: "checkout" });
     expect(String(rs[0].createdAt)).toMatch(ISO);
-    expect(JSON.stringify(rs)).not.toContain("Sample St");
+    expectNoAddress(JSON.stringify(rs));
   });
 
   it("only the merchant whose quote was accepted gets the address", async () => {
@@ -116,20 +125,27 @@ describe("A05 按用途读字段", T, () => {
     expect((await m1.api.get(`/agent/fields?sessionId=${s1}&fields=shipping_address&purpose=checkout`)).status).toBe(200);
     const r = await m2.api.get(`/agent/fields?sessionId=${s2}&fields=shipping_address&purpose=checkout`);
     expectError(r, 403, "PURPOSE_MISMATCH");
-    expect(r.text).not.toContain("Sample St");
+    expectNoAddress(r.text);
     const checkout = (await receipts(personal)).filter((x) => x.purpose === "checkout");
     expect(checkout.map((x) => x.agentId)).toEqual([m1.agentId]);
   });
 
-  it("UCP accept: the address goes into the chosen proxy's checkout only, with a receipt", async () => {
-    const { quotes } = await getQuotes(personal, intentId, 1500);
-    const chosen = quotes.find((q: Json) => q.agentId === SEED.shoebacca);
-    expect(chosen).toBeDefined();
+  it("UCP accept (recorded): the address goes into the chosen proxy's checkout only, with a receipt", async () => {
+    // the two callback merchants of beforeEach are introduced too and never quote → bounded wait
+    const { quotes } = await pinnedIntent(personal, 3000);
+    const chosenSeller = PINNED.offers[0]!.seller;
+    const chosen = quotes.quotes.find((q: Json) => q.seller === chosenSeller);
+    expect(chosen, `no quote from ${chosenSeller}`).toBeDefined();
     const a = await personal.post(`/personal/quotes/${chosen.id}/accept`);
     expect(a.status).toBe(200);
-    expect(a.body.receipts).toContainEqual(expect.objectContaining({ agentId: SEED.shoebacca, fields: ["shipping_address"], purpose: "checkout" }));
+    expect(a.body.status).not.toBe("ordered");
+    if (a.body.receipts !== undefined) {
+      expect(a.body.receipts).toContainEqual(expect.objectContaining({ agentId: ucpAgent(chosenSeller), fields: ["shipping_address"], purpose: "checkout" }));
+    }
+    expectNoAddress(a.text);
     const checkout = (await receipts(personal)).filter((x) => x.purpose === "checkout");
-    expect(checkout.map((x) => x.agentId)).toEqual([SEED.shoebacca]);
+    expect(checkout.map((x) => x.agentId)).toEqual([ucpAgent(chosenSeller)]);
+    expect(checkout[0]).toMatchObject({ fields: ["shipping_address"], sessionId: (await grants(personal)).find((g) => g.agentId === ucpAgent(chosenSeller))?.sessionId });
   });
 
   it("policy outside the merchant's scope → 403 SCOPE_DENIED, exactly {error:{code,message}}, no field names", async () => {
@@ -163,7 +179,7 @@ describe("A05 按用途读字段", T, () => {
     expect(g.remainingMs).toBeGreaterThan(0);
     expect(g.remainingMs).toBeLessThanOrEqual(600_000);
     const text = JSON.stringify(gs);
-    for (const v of ["Sample St", "简短", "\"zh\""]) expect(text).not.toContain(v);
+    for (const v of [...SEED.addressNeedles, "简短", "\"zh\""]) expect(text).not.toContain(v);
   });
 });
 

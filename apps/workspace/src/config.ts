@@ -7,9 +7,6 @@ import { WORKSPACE_PORT } from "@agent-cookie/contract";
 const here = dirname(fileURLToPath(import.meta.url));
 export const WORKSPACE_DIR = resolve(here, "..");
 export const REPO_ROOT = resolve(here, "../../..");
-export const SAMPLE_FIXTURES_DIR = resolve(WORKSPACE_DIR, "sample-fixtures");
-
-export type UcpStubOutcome = "requires_escalation" | "completed" | "sold_out" | "error";
 
 export interface Config {
   host: "127.0.0.1";
@@ -21,8 +18,8 @@ export interface Config {
   memoryRepoPath: string;
   fixturesDir: string;
   ucpMode: "live" | "fixture";
-  ucpBin: string;
-  ucpStubComplete: UcpStubOutcome;
+  /** Only when UCP_BIN is set; otherwise lane D's package runs its pinned CLI. */
+  ucpBin?: string;
   /** AGENT_COOKIE_DEMO=1: POST /demo/reset exists, dev keys load. */
   demo: boolean;
   /** AGENT_COOKIE_TEST=1: POST /test/clock exists, dev keys load. */
@@ -44,10 +41,11 @@ function int(v: string | undefined, dflt: number, min: number, max: number): num
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = int(env.PORT, WORKSPACE_PORT, 0, 65535);
   const dataDir = resolve(env.AGENT_COOKIE_DATA_DIR ?? resolve(WORKSPACE_DIR, "data"));
-  const repoFixtures = resolve(REPO_ROOT, "fixtures");
-  const fixturesDir = resolve(env.FIXTURES_DIR ?? (existsSync(resolve(repoFixtures, "users.json")) ? repoFixtures : SAMPLE_FIXTURES_DIR));
-  const outcome = (env.UCP_STUB_COMPLETE ?? "requires_escalation") as UcpStubOutcome;
-  if (!["requires_escalation", "completed", "sold_out", "error"].includes(outcome)) throw new Error(`invalid UCP_STUB_COMPLETE: ${outcome}`);
+  const fixturesDir = resolve(env.FIXTURES_DIR ?? resolve(REPO_ROOT, "fixtures"));
+  if (!existsSync(resolve(fixturesDir, "users.json"))) throw new Error(`no fixtures at ${fixturesDir} (set FIXTURES_DIR)`);
+  if (env.AGENT_COOKIE_UCP !== undefined && env.AGENT_COOKIE_UCP !== "live" && env.AGENT_COOKIE_UCP !== "fixture") {
+    throw new Error("AGENT_COOKIE_UCP must be live or fixture");
+  }
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   return {
     host: "127.0.0.1",
@@ -55,11 +53,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     jarUrl: env.AGENT_COOKIE_URL ?? `http://127.0.0.1:${port}`,
     dataDir,
     sqlitePath: env.SQLITE_PATH ?? resolve(dataDir, "workspace.sqlite"),
-    memoryRepoPath: resolve(env.MEMORY_REPO_PATH ?? resolve(dataDir, "memory-u_sample")),
+    memoryRepoPath: resolve(env.MEMORY_REPO_PATH ?? resolve(dataDir, "memory")),
     fixturesDir,
     ucpMode,
-    ucpBin: env.UCP_BIN ?? "ucp",
-    ucpStubComplete: outcome,
+    ...(env.UCP_BIN ? { ucpBin: env.UCP_BIN } : {}),
     demo: env.AGENT_COOKIE_DEMO === "1",
     test: env.AGENT_COOKIE_TEST === "1",
     callbackTimeoutMs: int(env.CALLBACK_TIMEOUT_MS, 5000, 50, 60_000),

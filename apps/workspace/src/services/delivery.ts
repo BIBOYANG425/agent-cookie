@@ -34,11 +34,20 @@ export class Delivery {
   private pending = new Set<Promise<unknown>>();
   constructor(private opts: { timeoutMs: number; attempts: number }, private log: Log) {}
 
-  /** Fire and track; `settle()` awaits everything in flight (tests, shutdown). */
-  private track<T>(p: Promise<T>): Promise<T> {
-    this.pending.add(p);
-    void p.finally(() => this.pending.delete(p));
-    return p;
+  /** Fire and track; `settle()` awaits everything in flight (tests, shutdown). The tracked promise never rejects. */
+  private track(p: Promise<PostResult>): Promise<PostResult> {
+    const safe = p.catch((): PostResult => ({ ok: false, attempts: 0 }));
+    this.pending.add(safe);
+    void safe.finally(() => this.pending.delete(safe)).catch(() => undefined);
+    return safe;
+  }
+
+  private safeLog(e: Parameters<Log>[0]): void {
+    try {
+      this.log(e);
+    } catch (err) {
+      console.error("[workspace] activity log failed:", err);
+    }
   }
 
   async settle(): Promise<void> {
@@ -48,7 +57,7 @@ export class Delivery {
   callback(agent: Agent, body: MerchantCallback): Promise<PostResult> {
     if (!agent.callbackUrl) return Promise.resolve({ ok: false, attempts: 0 });
     return this.track(postJson(agent.callbackUrl, body, this.opts).then((r) => {
-      this.log({ event: `callback.${body.type}`, actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
+      this.safeLog({ event: `callback.${body.type}`, actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;
     }));
@@ -67,7 +76,7 @@ export class Delivery {
     const prefix = renderTier0Prefix(buildTier0Prefix(handshake, agent.category, values));
     const message = text ? `${prefix}\n${text}` : prefix;
     return this.track(postJson(agent.chatEndpoint, { session_id: handshake.sessionId, message }, this.opts).then((r) => {
-      this.log({ event: "tier0.deliver", actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
+      this.safeLog({ event: "tier0.deliver", actor: "workspace", object: agent.agentId, result: r.ok ? "ok" : "failed",
         reason: `attempts=${r.attempts}${r.status ? ` status=${r.status}` : ""}` });
       return r;
     }));

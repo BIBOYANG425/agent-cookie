@@ -1,4 +1,4 @@
-// In-memory stub of UcpApi until packages/ucp (lane D) lands. Serves offers from sample-fixtures/ucp-offers.json
+// Unit-test stub of UcpApi (the workspace runs lane D's @agent-cookie/ucp). Serves offers from test/fixtures/sample/ucp-offers.json
 // (normalised UcpOffer[], not CLI output) and simulates cart → checkout → complete. `complete` returns
 // requires_escalation by default (native_checkout is false almost everywhere); UCP_STUB_COMPLETE switches it.
 import { readFileSync } from "node:fs";
@@ -6,7 +6,7 @@ import {
   UpstreamError,
   type UcpApi, type UcpCart, type UcpCheckout, type UcpDestination, type UcpOffer, type UcpSearchQuery,
 } from "@agent-cookie/contract";
-import type { UcpStubOutcome } from "../config.js";
+export type UcpStubOutcome = "requires_escalation" | "completed" | "sold_out" | "error";
 
 export interface StubUcpCall { op: string; sellerDomain?: string; destination?: UcpDestination }
 

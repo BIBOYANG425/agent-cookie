@@ -11,6 +11,17 @@ import { laneD } from "./laneD.js";
 import { theUser } from "./services/context.js";
 
 const CATEGORIES: Category[] = ["personal", "shoe"];
+const MAX_CLOCK_OFFSET_MS = 10 * 365 * 86_400_000;
+
+/** "2026-10-21" or a full ISO timestamp whose calendar date really exists (no 2026-02-31). */
+function isCalendarDate(v: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(T.*)?$/.exec(v);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return false;
+  return m[4] === undefined || !Number.isNaN(Date.parse(v));
+}
 const BASES: Basis[] = ["observed", "stated", "inferred"];
 
 function httpUrl(v: string | undefined, name: string): string | undefined {
@@ -25,6 +36,22 @@ function httpUrl(v: string | undefined, name: string): string | undefined {
   return u.toString();
 }
 
+function intParam(v: string | undefined, dflt: number, max: number): number {
+  if (v === undefined || v === "") return dflt;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(Math.max(Math.trunc(n), 1), max);
+}
+
+/** A link handed to the user (quote checkout URL) must be https without credentials, like UCP's. */
+function httpsLink(v: string | undefined, name: string): string | undefined {
+  const u = httpUrl(v, name);
+  if (u === undefined) return undefined;
+  const parsed = new URL(u);
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) fail("MISSING_FIELD", `${name} must be an https link`);
+  return u;
+}
+
 function stringRecord(v: unknown, name: string): Record<string, string> {
   if (v === undefined || v === null) return {};
   if (typeof v !== "object" || Array.isArray(v)) fail("MISSING_FIELD", `invalid ${name}`);
@@ -32,7 +59,8 @@ function stringRecord(v: unknown, name: string): Record<string, string> {
   if (entries.length > 20) fail("MISSING_FIELD", `${name} has too many keys`);
   const out: Record<string, string> = {};
   for (const [k, val] of entries) {
-    if (typeof val !== "string" || k.length > 64 || Buffer.byteLength(val, "utf8") > 256) fail("MISSING_FIELD", `invalid ${name}`);
+    if (typeof val !== "string" || k.length === 0 || k.length > 64 || Buffer.byteLength(val, "utf8") > 256) fail("MISSING_FIELD", `invalid ${name}`);
+    if (k === "__proto__" || k === "constructor" || k === "prototype") fail("MISSING_FIELD", `invalid ${name}`);
     out[k] = val;
   }
   return out;
@@ -42,6 +70,17 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   const { store, clock, config } = deps;
   const app = new Hono<AppEnv>();
   installErrorHandling(app);
+
+  // Every request but the reset itself passes the reset barrier.
+  app.use("*", async (c, next) => {
+    if (c.req.path === "/demo/reset") return next();
+    await deps.gate.enter();
+    try {
+      await next();
+    } finally {
+      deps.gate.leave();
+    }
+  });
 
   // Activity row for every request (never values). Reading the activity log itself is not logged.
   app.use("*", async (c, next) => {
@@ -128,6 +167,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.post("/personal/intents", auth, personal, idem, async (c) => {
     const body = await readJson(c);
     const kind = str(body, "kind", { max: 64 });
+    if (!/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
     const text = optStr(body, "text", { max: 1000 });
     const out = await deps.commerce.createIntent(c.get("agent"), user(), { kind, public: stringRecord(body.public, "public"), ...(text ? { text } : {}) });
     return json(out, 201);
@@ -145,7 +185,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   });
 
   app.get("/personal/receipts", auth, personalOrOwner, (c) => {
-    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 50, 1), 500);
+    const limit = intParam(c.req.query("limit"), 50, 500);
     return json({ receipts: store.receiptsForUser(user(), limit).map(({ userId: _u, ...r }) => r) });
   });
 
@@ -177,12 +217,12 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     if (body.currency !== undefined && body.currency !== "USD") fail("MISSING_FIELD", "currency must be USD");
     let etaDate: string | null = null;
     if (body.etaDate !== undefined && body.etaDate !== null) {
-      if (typeof body.etaDate !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(body.etaDate) || Number.isNaN(Date.parse(body.etaDate))) fail("MISSING_FIELD", "invalid etaDate");
+      if (typeof body.etaDate !== "string" || !isCalendarDate(body.etaDate)) fail("MISSING_FIELD", "invalid etaDate");
       etaDate = body.etaDate;
     }
     const etaText = optStr(body, "etaText", { max: 200 });
     const title = optStr(body, "title", { max: 200 });
-    const checkoutUrl = httpUrl(optStr(body, "checkoutUrl", { max: 2000 }), "checkoutUrl");
+    const checkoutUrl = httpsLink(optStr(body, "checkoutUrl", { max: 2000 }), "checkoutUrl");
     const quote = await deps.commerce.submitQuote(c.get("agent"), { intentId: str(body, "intentId", { max: 64 }), text: str(body, "text", { max: 1000 }), price, etaDate,
       ...(etaText ? { etaText } : {}), ...(title ? { title } : {}), ...(checkoutUrl ? { checkoutUrl } : {}) });
     return json(quote, 201);
@@ -207,7 +247,9 @@ export function createApp(deps: Deps): Hono<AppEnv> {
       userId = uid;
     }
     const { stored, contribution } = await deps.card.record(agent, userId, { field, value, basis });
-    return json({ stored, contribution }, 201);
+    // Never hand a merchant the user's global id: only its own record, without userId (A22, 命题 6).
+    const { userId: _u, ...own } = contribution;
+    return json({ stored, contribution: own }, 201);
   });
 
   app.put("/agent/notes/:key", auth, merchant, async (c) => {
@@ -226,7 +268,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
 
   // ---- owner, demo, test
   app.get("/owner/activity", auth, owner, (c) => {
-    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 200) || 200, 1), 1000);
+    const limit = intParam(c.req.query("limit"), 200, 1000);
     return json({ events: store.activity(limit) });
   });
 
@@ -238,7 +280,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     app.post("/test/clock", async (c) => {
       const body = await readJson(c);
       const offsetMs = body.offsetMs;
-      if (typeof offsetMs !== "number" || !Number.isFinite(offsetMs)) fail("MISSING_FIELD", "invalid offsetMs");
+      if (typeof offsetMs !== "number" || !Number.isFinite(offsetMs) || Math.abs(offsetMs) > MAX_CLOCK_OFFSET_MS) fail("MISSING_FIELD", "invalid offsetMs");
       clock.setOffset(offsetMs);
       return json({ now: clock.nowIso(), offsetMs });
     });

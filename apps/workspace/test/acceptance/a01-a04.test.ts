@@ -1,9 +1,11 @@
-// A01–A04 (plan v0.3 §2 验收清单). Black box: HTTP only.
+// A01–A04 (plan v0.3 §2 验收清单). Black box: HTTP only, against the real wiring (lane C seed, git memory repo,
+// recorded UCP adapter).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isField, SESSION_ID_VECTORS } from "@agent-cookie/contract";
 import {
-  api, card, cardField, expectError, grants, introduce, ISO, KEYS, merchant, NOT_FOUND_TEXT, registerAgent, reset,
-  SEED, startCallbackServer, startWorkspace, type CallbackServer, type Workspace,
+  AGENTS, api, card, cardField, deriveSessionId, expectError, grants, introduce, ISO, KEYS, merchant, NOT_FOUND_TEXT,
+  PINNED, proxySessions, registerAgent, reset, SEED, startCallbackServer, startWorkspace, ucpAgent,
+  type CallbackServer, type Json, type Workspace,
 } from "./helpers.js";
 
 let ws: Workspace;
@@ -24,7 +26,7 @@ beforeEach(async () => {
   await reset(ws.url);
 });
 
-const T = { timeout: 30_000 };
+const T = { timeout: 45_000 };
 
 describe("A01 注册 agent", T, () => {
   it("returns an agentId and a key; the key resolves to role and category (shoe → merchant)", async () => {
@@ -62,10 +64,10 @@ describe("A01 注册 agent", T, () => {
   });
 
   it("Sample dev keys resolve to their agents and roles", async () => {
-    expect((await api(ws.url, KEYS.personal).get("/me")).body).toEqual({ agentId: "personal-photon", category: "personal", role: "personal" });
-    expect((await api(ws.url, KEYS.desktop).get("/me")).body).toEqual({ agentId: "personal-desktop", category: "personal", role: "personal" });
+    expect((await api(ws.url, KEYS.personal).get("/me")).body).toEqual({ agentId: AGENTS.photon, category: "personal", role: "personal" });
+    expect((await api(ws.url, KEYS.desktop).get("/me")).body).toEqual({ agentId: AGENTS.desktop, category: "personal", role: "personal" });
     expect((await api(ws.url, KEYS.owner).get("/me")).body).toEqual({ agentId: "owner", category: "personal", role: "owner" });
-    expect((await api(ws.url, KEYS.acme).get("/me")).body).toEqual({ agentId: "shoe-acme", category: "shoe", role: "merchant" });
+    expect((await api(ws.url, KEYS.acme).get("/me")).body).toEqual({ agentId: AGENTS.acme, category: "shoe", role: "merchant" });
   });
 
   it("missing or unknown key → 401 AUTH_REQUIRED", async () => {
@@ -87,53 +89,68 @@ describe("A01 注册 agent", T, () => {
 
   it("rejects domain (reserved for UCP proxies), a missing name and an unknown category with 422", async () => {
     const anon = api(ws.url);
-    expectError(await anon.post("/agents/register", { name: "Spoof · Sample", category: "shoe", domain: "shoebacca.com" }), 422, "MISSING_FIELD");
+    expectError(await anon.post("/agents/register", { name: "Spoof · Sample", category: "shoe", domain: PINNED.offers[0]!.seller }), 422, "MISSING_FIELD");
     expectError(await anon.post("/agents/register", { category: "shoe" }), 422, "MISSING_FIELD");
     expectError(await anon.post("/agents/register", { name: "Pharmacy · Sample", category: "pharmacy" }), 422, "MISSING_FIELD");
   });
 });
 
 describe("A02 合并规则", T, () => {
-  it("seed card: shoe_size 42 from two agents is high; single personal stated values are medium", async () => {
+  it("seed card (Sample): lang, tone, shoe_size 42 and the imported shipping_address, each single personal stated → medium", async () => {
     const c = await card(api(ws.url, KEYS.personal));
-    expect(Object.keys(c).sort()).toEqual(["candidates", "card", "superseded"]);
-    const size = cardField(c, "shoe_size");
-    expect(size).toMatchObject({ value: "42", confidence: "high" });
-    expect([...size.sources].sort()).toEqual(["personal-photon", "ucp:shoebacca.com"]);
-    expect(cardField(c, "lang")).toMatchObject({ value: "zh", confidence: "medium", sources: ["personal-photon"] });
-    expect(cardField(c, "tone")).toMatchObject({ value: "简短", confidence: "medium" });
-    expect(cardField(c, "length")).toMatchObject({ value: "短", confidence: "medium" });
-    expect(cardField(c, "shipping_address")).toMatchObject({ value: SEED.address, confidence: "medium" });
+    expect(Object.keys(c).sort()).toEqual(["candidates", "card", "source", "superseded"]);
+    expect(c.source).toBe("sample");
+    expect((c.card as Json[]).map((f) => f.field).sort()).toEqual(["lang", "shipping_address", "shoe_size", "tone"]);
+    expect(cardField(c, "lang")).toMatchObject({ value: "zh", confidence: "medium", sources: [AGENTS.photon] });
+    expect(cardField(c, "tone")).toMatchObject({ value: "简短", confidence: "medium", sources: [AGENTS.photon] });
+    expect(cardField(c, "shoe_size")).toMatchObject({ value: "42", confidence: "medium", sources: [AGENTS.photon] });
+    const addr = cardField(c, "shipping_address");
+    expect(addr).toMatchObject({ value: SEED.address, confidence: "medium" });
+    expect(addr.sources).toHaveLength(1);
+    expect(c.candidates).toEqual([]);
     // the console holds the owner key and sees the same card
     expect(await card(api(ws.url, KEYS.owner))).toEqual(c);
   });
 
-  it("one non-personal source → candidate, not card; a second agreeing agent → card (high)", async () => {
+  it("two registered merchants observing shoe_size 42 through HTTP → high, with both merchants as sources", async () => {
     const personal = api(ws.url, KEYS.personal);
     const m1 = await merchant(ws.url, cb1);
     const m2 = await merchant(ws.url, cb2);
     const { sessions: [s1, s2] } = await introduce(personal, [m1, m2]);
-    for (const id of ["c_0004", "c_0005"]) {
-      const r = await personal.post(`/personal/contributions/${id}/revoke`);
-      expect(r.status).toBe(200);
-      expect(r.body.ok).toBe(true);
+    for (const [m, s] of [[m1, s1], [m2, s2]] as const) {
+      const w = await m.api.post("/agent/contributions", { sessionId: s, field: "shoe_size", value: "42", basis: "observed" });
+      expect(w.status).toBe(201);
+      expect(w.body.stored).toBe("observed");
     }
+    const size = cardField(await card(personal), "shoe_size");
+    expect(size).toMatchObject({ value: "42", confidence: "high" });
+    expect(size.sources).toEqual(expect.arrayContaining([m1.agentId, m2.agentId]));
+  });
+
+  it("without the personal record: one merchant source → candidate, not card; a second agreeing merchant → card (high)", async () => {
+    const personal = api(ws.url, KEYS.personal);
+    const m1 = await merchant(ws.url, cb1);
+    const m2 = await merchant(ws.url, cb2);
+    const { sessions: [s1, s2] } = await introduce(personal, [m1, m2]);
+    const rv = await personal.post(`/personal/contributions/${SEED.contribution.shoe_size}/revoke`);
+    expect(rv.status).toBe(200);
+    expect(rv.body.ok).toBe(true);
     expect(cardField(await card(personal), "shoe_size")).toBeUndefined();
 
-    const w1 = await m1.api.post("/agent/contributions", { sessionId: s1, field: "shoe_size", value: "44", basis: "observed" });
+    const w1 = await m1.api.post("/agent/contributions", { sessionId: s1, field: "shoe_size", value: "42", basis: "observed" });
     expect(w1.status).toBe(201);
     expect(w1.body.stored).toBe("observed");
     const afterOne = await card(personal);
     expect(cardField(afterOne, "shoe_size")).toBeUndefined();
     expect(afterOne.candidates).toContainEqual(
-      expect.objectContaining({ field: "shoe_size", value: "44", sources: [m1.agentId], reason: "single_source" }),
+      expect.objectContaining({ field: "shoe_size", value: "42", sources: [m1.agentId], reason: "single_source" }),
     );
 
-    const w2 = await m2.api.post("/agent/contributions", { sessionId: s2, field: "shoe_size", value: "44", basis: "observed" });
+    const w2 = await m2.api.post("/agent/contributions", { sessionId: s2, field: "shoe_size", value: "42", basis: "observed" });
     expect(w2.status).toBe(201);
     expect(w2.body.stored).toBe("observed");
     const size = cardField(await card(personal), "shoe_size");
-    expect(size).toMatchObject({ value: "44", confidence: "high" });
+    expect(size).toMatchObject({ value: "42", confidence: "high" });
     expect([...size.sources].sort()).toEqual([m1.agentId, m2.agentId].sort());
   });
 
@@ -144,7 +161,7 @@ describe("A02 合并规则", T, () => {
     const w = await m1.api.post("/agent/contributions", { sessionId: s1, field: "shoe_size", value: "43", basis: "observed" });
     expect(w.status).toBe(201);
     const c = await card(personal);
-    expect(cardField(c, "shoe_size")).toMatchObject({ value: "42", confidence: "high" });
+    expect(cardField(c, "shoe_size")).toMatchObject({ value: "42", confidence: "medium", sources: [AGENTS.photon] });
     expect(c.candidates).toContainEqual(expect.objectContaining({ field: "shoe_size", value: "43", sources: [m1.agentId] }));
   });
 
@@ -153,7 +170,7 @@ describe("A02 合并规则", T, () => {
     const m1 = await merchant(ws.url, cb1);
     const m2 = await merchant(ws.url, cb2);
     const { sessions: [s1, s2] } = await introduce(personal, [m1, m2]);
-    for (const id of ["c_0004", "c_0005"]) expect((await personal.post(`/personal/contributions/${id}/revoke`)).status).toBe(200);
+    expect((await personal.post(`/personal/contributions/${SEED.contribution.shoe_size}/revoke`)).status).toBe(200);
     for (const [m, s] of [[m1, s1], [m2, s2]] as const) {
       const r = await m.api.post("/agent/contributions", { sessionId: s, field: "shoe_size", value: "45", basis: "inferred" });
       expect(r.status).toBe(201);
@@ -170,12 +187,12 @@ describe("A02 合并规则", T, () => {
     const desktop = api(ws.url, KEYS.desktop);
     const r = await photon.post("/personal/contributions", { field: "budget", value: "120" });
     expect(r.status).toBe(201);
-    expect(r.body).toMatchObject({ field: "budget", value: "120", basis: "stated", agentId: "personal-photon" });
+    expect(r.body).toMatchObject({ field: "budget", value: "120", basis: "stated", agentId: AGENTS.photon });
     expect(cardField(await card(photon), "budget")).toMatchObject({ value: "120", confidence: "medium" });
     expect((await desktop.post("/personal/contributions", { field: "budget", value: "120" })).status).toBe(201);
     const b = cardField(await card(photon), "budget");
     expect(b).toMatchObject({ value: "120", confidence: "high" });
-    expect([...b.sources].sort()).toEqual(["personal-desktop", "personal-photon"]);
+    expect([...b.sources].sort()).toEqual([AGENTS.desktop, AGENTS.photon].sort());
   });
 
   it("unknown field on POST /personal/contributions → 422; unknown contribution id on revoke → 404", async () => {
@@ -188,15 +205,14 @@ describe("A02 合并规则", T, () => {
 });
 
 describe("A03 session ID 隔离", T, () => {
-  it("the same user gets a different session ID at every merchant", async () => {
+  it("the same user gets a different session ID at every merchant (two callback merchants + the two UCP proxies)", async () => {
     const personal = api(ws.url, KEYS.personal);
     const m1 = await merchant(ws.url, cb1);
     const m2 = await merchant(ws.url, cb2);
-    const { sessions: [s1, s2] } = await introduce(personal, [m1, m2]);
-    const gs = await grants(personal);
-    const shoebacca = gs.find((g) => g.agentId === SEED.shoebacca)?.sessionId;
-    const marathon = gs.find((g) => g.agentId === SEED.marathon)?.sessionId;
-    const ids = [s1, s2, shoebacca, marathon];
+    const { sessions: [s1, s2] } = await introduce(personal, [m1, m2], PINNED.intent);
+    const proxies = await proxySessions(personal);
+    expect(Object.keys(proxies).sort()).toEqual(PINNED.sellers);
+    const ids = [s1, s2, ...Object.values(proxies)];
     for (const id of ids) expect(typeof id).toBe("string");
     expect(new Set(ids).size).toBe(4);
   });
@@ -204,21 +220,30 @@ describe("A03 session ID 隔离", T, () => {
   it("session IDs carry no user or merchant identifier", async () => {
     const personal = api(ws.url, KEYS.personal);
     const m1 = await merchant(ws.url, cb1);
-    const { sessions: [s1] } = await introduce(personal, [m1]);
+    const { sessions: [s1] } = await introduce(personal, [m1], PINNED.intent);
     const ids = [s1!, ...(await grants(personal)).map((g) => g.sessionId as string)];
+    expect(ids.length).toBeGreaterThan(1);
+    const sellerWords = PINNED.sellers.map((d) => d.split(".")[0]!);
     for (const id of ids) {
-      for (const needle of [SEED.userId, "sample", SEED.userSecret, "shoebacca", "marathon", m1.agentId]) {
+      for (const needle of [SEED.userId, "sample", SEED.userSecret, ...sellerWords, m1.agentId]) {
         expect(id.toLowerCase()).not.toContain(needle.toLowerCase());
       }
     }
   });
 
-  it("proxy session IDs follow the contract's keyed derivation (not computable without the user secret)", async () => {
+  it("session IDs follow the contract's keyed derivation (not computable without the user secret)", async () => {
+    // the local reference implementation must reproduce every contract vector first
+    for (const v of SESSION_ID_VECTORS) expect(deriveSessionId(v.userSecret, v.merchantKey)).toBe(v.sessionId);
     const personal = api(ws.url, KEYS.personal);
-    await introduce(personal, []);
-    const gs = await grants(personal);
-    for (const v of SESSION_ID_VECTORS.filter((x) => x.userSecret === SEED.userSecret && x.merchantKey.includes("."))) {
-      expect(gs.find((g) => g.agentId === `ucp:${v.merchantKey}`)?.sessionId).toBe(v.sessionId);
+    const m1 = await merchant(ws.url, cb1);
+    const { sessions: [s1] } = await introduce(personal, [m1], PINNED.intent);
+    // merchantKey = agent.domain ?? agent.agentId
+    expect(s1).toBe(deriveSessionId(SEED.userSecret, m1.agentId));
+    const proxies = await proxySessions(personal);
+    expect(Object.keys(proxies).sort()).toEqual(PINNED.sellers);
+    for (const [seller, sessionId] of Object.entries(proxies)) {
+      expect(sessionId).toBe(deriveSessionId(SEED.userSecret, seller));
+      expect(sessionId).not.toBe(deriveSessionId("another-secret", seller));
     }
   });
 
@@ -226,11 +251,12 @@ describe("A03 session ID 隔离", T, () => {
     const personal = api(ws.url, KEYS.personal);
     const m1 = await merchant(ws.url, cb1);
     const m2 = await merchant(ws.url, cb2);
-    const { sessions: [s1, s2] } = await introduce(personal, [m1, m2]);
-    const shoebacca = (await grants(personal)).find((g) => g.agentId === SEED.shoebacca)!.sessionId as string;
+    const { sessions: [s1, s2] } = await introduce(personal, [m1, m2], PINNED.intent);
+    const proxy = (await grants(personal)).find((g) => g.agentId === ucpAgent(PINNED.sellers[0]!))?.sessionId as string;
+    expect(typeof proxy).toBe("string");
     const own = await m1.api.get(`/agent/handshake?sessionId=${s1}`);
     expect(own.status).toBe(200);
-    for (const foreign of [s2!, shoebacca, "zzzzzzzz"]) {
+    for (const foreign of [s2!, proxy, "zzzzzzzz"]) {
       const h = await m1.api.get(`/agent/handshake?sessionId=${foreign}`);
       expectError(h, 404, "NOT_FOUND");
       expect(h.text).toBe(NOT_FOUND_TEXT);
@@ -250,7 +276,9 @@ describe("A04 握手只有字段名", T, () => {
     expect(h.v).toBe(1);
     expect(h.sessionId).toBe(sessionId);
     expect(h.jar).toBe(ws.url);
-    expect({ lang: h.lang, tone: h.tone, length: h.length }).toEqual({ lang: "zh", tone: "简短", length: "短" });
+    // Seed (Sample): lang zh, tone 简短; the seed has no length value, so only its type is fixed here.
+    expect({ lang: h.lang, tone: h.tone }).toEqual({ lang: "zh", tone: "简短" });
+    expect(typeof h.length).toBe("string");
     expect(Array.isArray(h.available)).toBe(true);
     const available = h.available as unknown[];
     for (const f of available) expect(isField(f), `available entry ${JSON.stringify(f)} is not a field name`).toBe(true);
@@ -262,7 +290,7 @@ describe("A04 握手只有字段名", T, () => {
     const { expiresAt: _e, jar: _j, sessionId: _s, ...rest } = h;
     expect(JSON.stringify(rest)).not.toContain("42");
     const all = JSON.stringify(h);
-    for (const leak of ["Sample St", "Los Angeles", "90024", "Sample User", SEED.userId]) expect(all).not.toContain(leak);
+    for (const leak of [...SEED.addressNeedles, "Los Angeles", SEED.userName, SEED.userId, SEED.userSecret]) expect(all).not.toContain(leak);
   }
 
   it("the introduce callback carries the handshake and only the public intent", async () => {
