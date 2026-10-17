@@ -1,102 +1,167 @@
-# Agent Cookie · 运行入口
+# Agent Cookie
 
-Agent Cookie 让陌生 agent 在首条消息前获得按策略放行的用户上下文，并用商家独立的 session 与 note 保持回头客关系。身份卡由确定性规则合并；用户能查看来源、撤销授权并核对活动。
+让陌生 agent 在第一条消息之前认识你，同时只拿到当前任务允许的上下文。Agent Cookie 把 agent 写入的偏好合成身份卡，为每家商家派生独立 session，并管理字段授权、有效期、撤销和回执。
 
-当前交付在 `lane-c`，由人合入 main。已完成 Sample 控制台、fixtures 检查及原版 commerce-agents bootstrap；rules/memory 包测试须安装正式 contract 依赖。A 的正式 contract/workspace 已随 main 798e0de 合入；B 的 SDK 仍待合入和 workspace 接线。完整 Photon、真实 UCP 和深度商家接入不能视为已交付。验收现状见 [C14 证据](evidence/C14-http-acceptance.md)，逐项进度见 [C 线队列](lane-c-queue.md)。
+运行基线为 main `8c1a869`，B 线客户端另见下表。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
 
-## Agent 与演示数据
+## 当前交付
 
-| 名称 | 身份与用途 |
-| --- | --- |
-| Sample · Photon personal agent | `sample-personal-photon`，个人 agent，贡献初始 lang/tone/shoe_size |
-| Sample · Claude Desktop personal agent | `sample-personal-desktop`，第二个个人 agent，用于换入口后的身份连续性 |
-| Sample · ACME shoe agent | `sample-acme`，`shoe` 类别注册，Tier 0 chatEndpoint 为 `http://127.0.0.1:8000/api/chat` |
-| Sample Storefront A / B | 两份固定上游 `ShoppingAgent`，通用 Sample 商品，独立进程；尚未连接工作台 memory |
-| UCP 商家代理 | 工作台按真实 seller domain 建立代理；C 历史实录为 Reebok 与 Marathon Sports；D 新增 Marathon / Black Flag 的 EU42 pin pair，尚待接入工作台 |
+| 组件 | 入口 | 状态与边界 |
+| --- | --- | --- |
+| 工作台 | [apps/workspace](../apps/workspace) | 真实 rules、Git memory-repo、UCP adapter 已接入；默认 fixture 模式 |
+| 身份卡与记忆 | [rules](../packages/rules)、[memory-repo](../packages/memory-repo) | 确定性合并、商家独立 session、Git 提交与 seed reset |
+| 控制台 | [apps/console](../apps/console/README.md) | 卡片、授权、活动、reset；每 2 秒轮询，owner key 留在本机服务端 |
+| SDK / CLI / Photon / MCP | [B 线代码](https://github.com/BIBOYANG425/agent-cookie/tree/lane-b) | B 分支已有实现，当前 main 尚未包含；MCP 仅 personal stdio，商家 MCP / HTTP 4311 尚未实现 |
+| ACME retail | [blueprint](../examples/blueprint/README.md) | 外部克隆的原版通用商品 Sample 店；A15 首回、A16 安装分别留证 |
+| TAP 签名 | [互通证据](evidence/2026-10-17-tap-interop.md) | 库级互通已有记录；不表示工作台出站请求或支付已接通 |
 
-上游为 Anthropic [commerce-agents 固定版本](https://github.com/anthropics/commerce-agents/tree/fd4d59224ab96b43c6dc6888207c67b3bd5a24cf)。它提供现成店面和真实 memory 接缝，适合做接入示例。用户已选择保留通用商品；它不会为原 A15 的“42 码鞋报价”自动提供证据。
+自动验收由 A 线 [apps/workspace/test/acceptance](../apps/workspace/test/acceptance) 维护，报告 P0 自动项 **66/66**。A10/A17 手动证据和源码中 A18 的未录制失败路径仍需独立核对，不能将该数字称为完整 P0 全绿。C14 只收集手动证据，不在 `tests/acceptance` 重写自动测试。
 
-## 启动与检查
+## 启动
 
-使用 Node **22.12+，仍在 22 系列**、pnpm；本轮验证版本为 Node 22.23.3，blueprint 使用 Python 3.11+。依赖与第三方克隆不要提交。
-
-控制台的依赖安装、SDK 接线与服务端 `AGENT_COOKIE_KEY` 配置以 [控制台 README](../apps/console/README.md) 为准。准备完成后，从仓库根目录执行：
-
-```sh
-pnpm --dir apps/console dev
-# http://127.0.0.1:5173；Sample 模式不需要工作台钥匙。
-
-# 另一个终端：
-pnpm --dir apps/console test
-pnpm --dir apps/console typecheck
-pnpm --dir apps/console build
-node fixtures/verify.mjs
-node fixtures/ucp/verify.mjs
-
-# 原版 blueprint；外部克隆与依赖默认位于 /tmp。
-bash examples/blueprint/setup.sh
-bash examples/blueprint/run.sh
-# 保持上面的启动器运行，在另一终端核验：
-python3.11 examples/blueprint/verify.py
-```
-
-双店启动、四个独立端口和隔离环境文件见 [dual/USAGE.md](../examples/blueprint/dual/USAGE.md)。没有模型凭据时，health/catalog/session 可以检查，真实聊天不会成功；不能把 HTTP 200 的 SSE error 当成回复。
-
-A 的 `packages/contract` / `apps/workspace` 已合入；以下需根配置负责人把 C 新包纳入依赖锁后执行：
+需要 Node **22.19+，保持 22 系列**、pnpm、Git；blueprint 另需 Python 3.11+。从仓库根目录运行：
 
 ```sh
 pnpm install
-pnpm --filter @agent-cookie/rules test
-pnpm --filter @agent-cookie/rules typecheck
-pnpm --filter @agent-cookie/memory-repo test
-pnpm --filter @agent-cookie/memory-repo typecheck
-
-AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture pnpm --filter @agent-cookie/workspace start
 ```
 
-工作台必须明确装载真实 rules/memory/UCP adapters；A `bd9d6e3` 默认仍使用桩。C10b 已让控制台服务端从 `AGENT_COOKIE_KEY` 读取 owner key，通过 SDK 连接本机 4310；缺失方法暂用标注 `TODO(sdk)` 的 HTTP 调用。实际 SDK 读取、撤销和 reset 已在隔离 Sample 后台验证，见 [C10b 证据](evidence/C10b-sdk.md)。连接后顶部“重置演示”调用 owner-only `POST /demo/reset`；main 798e0de 的根 `demo:reset` 已带 `AGENT_COOKIE_KEY` Bearer 鉴权，可在同一 owner 环境调用；根 `pnpm dev` 组合启动和 CLI reset 仍须由对应线补齐。C 不改根脚本。
+根 `package.json` 目前没有 `dev`。计划中的 `pnpm dev` 统一入口待根目录负责人接入；下面使用已有脚本分终端运行。
 
-HTTP 验收的隔离 fixtures、无模型 callback、Sample key 绑定和实际命令见 [tests/acceptance/README.md](../tests/acceptance/README.md)。它会重置状态，不能与演示或控制台操作并行。A10/A17 的真实客户端证据另行保存。
+终端一，真实工作台使用独立演示数据目录：
 
-UCP CLI 的安装与 agent profile 初始化：
+```sh
+export AGENT_COOKIE_DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/agent-cookie-demo.XXXXXX")"
+export AGENT_COOKIE_DEMO=1
+export AGENT_COOKIE_UCP=fixture
+export OPT_OUT_INSTRUMENTATION=true
+pnpm workspace
+# http://127.0.0.1:4310
+```
+
+终端二，在本机环境设置 `AGENT_COOKIE_KEY` 为 **owner** key 后启动控制台：
+
+```sh
+export AGENT_COOKIE_SAMPLE=1
+pnpm --dir apps/console dev
+# http://127.0.0.1:5173 → “连接本机工作台” → “连接”
+```
+
+演示模式可使用 `fixtures/dev-keys.json` 的公开 Sample owner 项；Photon / Desktop 的 personal key 不能代替 owner。控制台不使用 `VITE_*` key，也不把 key 送到浏览器。SDK 未安装时，仅缺失方法走标有 `TODO(sdk)` 的 HTTP 临时通道；也可将 `AGENT_COOKIE_SDK_ROOT` 指向仓库外已构建的 B 线运行目录。B 最新 SDK 已实现全部 C10b 方法。接入前需构建 SDK 并保证控制台能解析该包；当前 console manifest 尚无 SDK dependency，不能假设普通 pnpm 安装会建立链接。临时使用 `AGENT_COOKIE_SDK_ROOT` 时，该运行根须实际包含 `node_modules/@agent-cookie/sdk/dist/index.js`，配置后重启控制台。
+
+在同一 owner 环境重置演示：
+
+```sh
+pnpm demo:reset
+```
+
+该命令调用 `POST /demo/reset`，清除演示状态并将专用记忆库恢复到 fixtures seed。不要与正在进行的聊天、验收或录制并行运行。`MEMORY_REPO_PATH` 只能指向工作台专用目录。
+
+### iMessage 与 Claude Desktop
+
+以下命令以 B 包已合入或已有完整 B 线运行目录为前提，无需切换 C 线开发分支：
+
+```sh
+pnpm --filter @agent-cookie/sdk --filter @agent-cookie/mcp --filter @agent-cookie/channel-photon build
+pnpm --dir apps/channel-photon check
+pnpm --dir apps/channel-photon start
+```
+
+按 [Photon 配置说明](https://github.com/BIBOYANG425/agent-cookie/blob/lane-b/apps/channel-photon/README.md) 准备 `.env`，使用 `sample-personal-photon` 对应的 key。当前识别固定主线：“身份卡”“帮我找双越野跑鞋，120以内，周五前到”“要第二双”“回执”；是确定性文本识别，不宣称任意自然语言理解。手机实际收发以 B 线 A17 证据为准。
+
+Claude Desktop 使用独立的 `sample-personal-desktop` key。在 `packages/mcp/.env` 设置 `AGENT_COOKIE_URL`、`AGENT_COOKIE_KEY`、`AGENT_COOKIE_SAMPLE`。保留现有配置中的其他 servers，加入：
+
+```json
+{
+  "mcpServers": {
+    "agent-cookie": {
+      "command": "/absolute/path/to/node22",
+      "args": [
+        "--env-file=/absolute/path/to/agent-cookie/packages/mcp/.env",
+        "/absolute/path/to/agent-cookie/packages/mcp/dist/main.js"
+      ]
+    }
+  }
+}
+```
+
+替换为本机绝对路径并重启 Desktop。工具为 `get_my_card`、`find_agents`、`accept_quote`、`list_receipts`；A10 需真实 Desktop 调用与工作台日志，stdio 测试不能替代。见 [MCP README](https://github.com/BIBOYANG425/agent-cookie/blob/lane-b/packages/mcp/README.md)。
+
+### UCP 与 ACME
 
 ```sh
 export OPT_OUT_INSTRUMENTATION=true
-npm i -g @shopify/ucp-cli
+npm i -g @shopify/ucp-cli@0.9.1
 ucp profile init --name agent
+
+# 第三方代码保留在仓库外，固定上游版本：
+bash examples/blueprint/setup.sh
+bash examples/blueprint/run.sh
+# 另一终端核验 API / UI：
+python3.11 examples/blueprint/verify.py
 ```
 
-录制命令、来源与响应校验见 [UCP fixtures](../fixtures/ucp/README.md)。安装 CLI 本身不会把工作台的 UCP 桩替换成真实 adapter。
+工作台 UCP 包锁定 CLI 0.9.1；使用不同全局版本前先核对 schema。`fixture` 重放已录制响应，`live` 请求当时商家状态。现有 pin pair 为 Marathon Sports / Black Flag，库存、价格只代表采集时刻；没有可靠 ETA 时显示“到货时间待确认”。见 [UCP 实录来源](../fixtures/ucp/README.md)。
+
+ACME API/UI 为 8000/3000，真实聊天需 `ANTHROPIC_API_KEY`；health/catalog 成功不证明聊天成功。原版是通用商品 Sample 店，不能称为真实鞋店。A15 要保存工作台 Tier 0 投递后真实首条回复出现 42 码的证据；A16 要分别保存 Claude Code 与 Devin 从干净克隆开始的 skill 运行及录屏，完成前不宣称深度接入通过。
 
 ## 环境变量
 
-| 名称 | 谁使用 / 设置 |
+| 名称 | 使用者与含义 |
 | --- | --- |
-| `AGENT_COOKIE_URL` | SDK/CLI/MCP/Photon/验收的工作台地址，默认 `http://127.0.0.1:4310` |
-| `AGENT_COOKIE_KEY` | 当前调用者的钥匙，放 host 环境；C10b 控制台服务端使用 owner key，不加 `VITE_` 前缀、不打进浏览器 bundle |
-| `AGENT_COOKIE_DEMO` | 工作台设 `1` 才开放演示 reset 和 Sample dev keys |
-| `AGENT_COOKIE_TEST` | 仅验收工作台设 `1`，开放 `/test/clock`；普通演示不需要 |
-| `AGENT_COOKIE_UCP` | `fixture` 读取实录、`live` 请求真实商家；先确认实际 adapter 已接通 |
-| `MEMORY_REPO_PATH` | 工作台管理的专用用户记忆目录；不要指向开发仓库或其他用户文件 |
-| `FIXTURES_DIR` | A 工作台的 seed 根目录，含 users/agents/contributions/dev-keys/memory/ucp |
-| `AGENT_COOKIE_DATA_DIR` | A 工作台独立运行数据目录；验收用临时专用目录 |
-| `SQLITE_PATH` | A 工作台 SQLite 文件覆盖项；客户端和验收不直接访问 |
-| `PORT` | A 工作台端口，演示保持 4310，host 固定 127.0.0.1 |
-| `UCP_BIN` | UCP CLI executable，可用隔离安装路径 |
-| `OPT_OUT_INSTRUMENTATION` | UCP 子进程统一设 `true` |
-| `ANTHROPIC_API_KEY` | 真实模型聊天，由人提供；双店分别经仓库外环境文件加载 |
-| `BLUEPRINT_DIR` / `BLUEPRINT_PYTHON` | 单店脚本的外部克隆与 Python executable 覆盖项 |
-| `AGENT_COOKIE_SAMPLE` | B SDK/通道/控制台服务显式标记 Sample 数据，`1`/`0`；不是工作台授权开关 |
-| `AGENT_COOKIE_SDK_ROOT` | SDK 尚未合入时，可指向仓库外已构建 B 包的运行根；合入并完成 workspace 链接后无需设置 |
-| `AGENT_COOKIE_JAR_KEK` / `AGENT_COOKIE_UNLOCK_SECRET` | D 线 jar/passkey 接线所需；当前不作为已验证 P0 前提 |
-| `STRIPE_SECRET_KEY` | D 线测试支付凭据，由人提供；本轮没有执行付款 |
-| `SENTRY_DSN` | P1 tracing 配置；未设置不等于验收通过 |
-| Photon 凭据 | 由 B 线按真实 Photon 接入文档配置，本文不编造名字 |
+| `AGENT_COOKIE_URL` | SDK / CLI / MCP / Photon 默认 `http://127.0.0.1:4310`；控制台固定此本机地址 |
+| `AGENT_COOKIE_KEY` | 当前调用者 key：控制台 owner；Photon / Desktop 各自 personal key |
+| `AGENT_COOKIE_DEMO` | 工作台设 `1` 开放 reset 与公开 Sample keys |
+| `AGENT_COOKIE_TEST` | 仅验收设 `1`，开放 `/test/clock` |
+| `AGENT_COOKIE_UCP` | `fixture`（默认）或 `live` |
+| `AGENT_COOKIE_DATA_DIR` | 运行目录，默认 `apps/workspace/data` |
+| `MEMORY_REPO_PATH` | 专用 Git 记忆库，默认数据目录下 `memory` |
+| `SQLITE_PATH` | 默认数据目录下 `workspace.sqlite`；客户端不直读 |
+| `FIXTURES_DIR` | 默认仓库 `fixtures` |
+| `PORT` | 工作台默认 4310，host 固定 127.0.0.1 |
+| `UCP_BIN` | 可选 UCP executable，未设置时使用 UCP 包的 CLI |
+| `OPT_OUT_INSTRUMENTATION` | UCP CLI 设 `true` |
+| `AGENT_COOKIE_SAMPLE` | SDK / 通道 / 控制台标示 Sample，`1` / `0`；不改变授权 |
+| `AGENT_COOKIE_SDK_ROOT` | 控制台可选仓库外 B SDK 运行目录；控制台能解析已构建 SDK 后无需设置 |
+| `PHOTON_PLATFORM` | 当前为 `imessage` |
+| `PHOTON_PROJECT_ID` / `PHOTON_API_KEY` | Photon 项目与凭据，放本机 `.env` |
+| `PHOTON_TEST_SENDER` / `PHOTON_AGENT_HANDLE` | B 线允许的测试发送者与 agent handle |
+| `AGENT_COOKIE_CHANNEL_STATE` | 可选 Photon 持久状态文件；同一线路不并行启多个状态实例 |
+| `ANTHROPIC_API_KEY` | ACME 真实模型；当前 Photon 主线不调用 LLM |
+| `BLUEPRINT_DIR` / `BLUEPRINT_PYTHON` | 外部 blueprint 路径与 Python executable |
+| `AGENT_COOKIE_JAR_KEK` / `AGENT_COOKIE_UNLOCK_SECRET` | D 线 jar / unlock 配置；不表示已接入工作台 |
+| `STRIPE_SECRET_KEY` / `SENTRY_DSN` | P1 支付测试 / tracing，设置变量本身不构成完成证据 |
 
-端口：工作台 4310、控制台 5173、MCP 计划为 4311；原版单店 API/UI 8000/3000，双店第二份 8001/3001；D 的 unlock 计划为 4312。只有实际启动和验证过的组件才视为可用。
+端口：工作台 4310、控制台 5173、ACME API/UI 8000/3000，第二份 Sample 店 8001/3001。MCP HTTP 4311 是计划项；unlock 4312 独立验证，不作为已完成主线。
 
-## 证据和重放
+## 验证与提交材料
 
-[UCP 实录](../fixtures/ucp/README.md) 包含真实 catalog、两家 discover 和一次 cart create，未付款；库存只代表录制时。`fixtures/memory/CARD.md` 是生成物，由 rules 的 seed 生成脚本产生，不能手改。
+```sh
+pnpm --filter @agent-cookie/workspace test -- test/acceptance
+pnpm --filter @agent-cookie/rules test
+pnpm --filter @agent-cookie/memory-repo test
+pnpm --dir apps/console test
+pnpm --dir apps/console build
+node fixtures/verify.mjs
+node fixtures/ucp/verify.mjs
+```
 
-[证据索引](evidence/README.md) 区分包测试、Sample UI、工作台 HTTP、真实模型和手动客户端录屏。只有全部 P0（A01–A12、A17、A18、A22）满足才算可演示。备用视频必须记录真实执行并标注 `Recorded run`；当前没有可据此宣布完整 Recorded run 通过的材料。
+以上是复跑命令，不是本文更新时重新执行的成绩。A 线维护自动结果；[手动索引](evidence/README.md)记录 A10/A17（B）、A15/A16（C）。C11 因 note 枚举、删除、clear 契约缺失保持 **P1 BLOCKED**。控制台真实来源列表仍缺逐条 contribution ID，不能用 Sample 撤销代替。
+
+提交入口：[Devpost 草稿](devpost-draft.md)、[视频分镜](video-storyboard.md)、[证据索引](evidence/README.md)、[跨线请求](requests.md)。视频、说明、代码必须使用相同能力边界。
+
+## 架构与第三方资产
+
+```mermaid
+flowchart LR
+  I[iMessage / Photon] --> S[Workspace SDK]
+  C[Claude Desktop / MCP] --> S
+  O[Console server] --> S
+  S --> W[Local workspace :4310]
+  W --> R[Rules + Git memory]
+  W --> U[UCP CLI / merchant]
+  W --> A[ACME Tier 0 delivery]
+```
+
+主要依赖：TypeScript / Node、pnpm、Hono、SQLite（better-sqlite3）、simple-git、React / Vite、Vitest；B 使用 Photon API、Socket.IO、MCP SDK；商家访问使用 Shopify UCP CLI。ACME 来自 [Anthropic 固定提交](https://github.com/anthropics/commerce-agents/tree/fd4d59224ab96b43c6dc6888207c67b3bd5a24cf)，保留外部克隆，不把上游代码和 Sample 商品算成本项目新建。D 线另含 SimpleWebAuthn 与 Stripe，按实际展示范围披露。
+
+`docs/plan.md` 与 `fixtures/` 按计划作为赛前材料披露。身份、地址、keys、ACME 商品均为 **Sample**；真实 UCP 响应副本按采集时间标 **Fixture replay**。已有执行片段标 **Recorded run** 并保留对应日志，不能冒充当前库存或现场响应。不要把 Sample 地址送给真实商家，不把付款链接称为已付款或已下单。`CARD.md` 由规则生成，不手工编辑。

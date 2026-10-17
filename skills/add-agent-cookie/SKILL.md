@@ -11,7 +11,7 @@ description: 在已有商家 agent 的代码中接入 Agent Cookie，定位主�
 
 读目标仓库的指令、启动方式、memory 协议与现有测试。记录 commit 和干净工作树状态，先跑原版，分别记录服务启动与模型聊天结果。没有模型凭据时继续做确定性检查，明确聊天未验证。
 
-取得 Agent Cookie 已冻结的 `packages/contract/src/types.ts`、`policy.ts`、`apis.ts`、`endpoints.ts`，并核对工作台路由实际请求/响应和 SDK。当前已核对 A 的 `bd9d6e3`，已随 main `798e0de` 合入；`packages/core` 是旧路径。`MemoryRepoApi` 是工作台内部持久化接口，不能当作商家 HTTP 或 SDK。确认 session、用途、可写 field/basis、note 大小/过期/删除、错误码、认证头及幂等语义。
+取得 Agent Cookie 已冻结的 `packages/contract/src/types.ts`、`policy.ts`、`apis.ts`、`endpoints.ts`，并核对工作台路由实际请求/响应和 SDK。执行时记录实际工作台提交，不沿用历史验证结论；C 本次取证基线是 main `8c1a869`，`packages/core` 是旧路径。`MemoryRepoApi` 是工作台内部持久化接口，不能当作商家 HTTP 或 SDK。确认 session、用途、可写 field/basis、note 大小/过期/删除、错误码、认证头及幂等语义。
 
 依赖未合入时，可以先做明确标为 Sample 的内存 port、fixture 和确定性测试，并在未实现边界标 `TODO(contract)`；不发明远程字段、端点或 SDK 方法。完整 HTTP store 缺删除/generation 等能力时应启动失败或明确报错，不能空操作后返回成功，也不能把本地测试当作真实授权验收。
 

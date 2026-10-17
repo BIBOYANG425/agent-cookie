@@ -1,10 +1,8 @@
 # A16 skill 生成的接入 · P1
 
-状态：**未执行；证据待采集。** HTTP 验收仍为 `it.todo`，没有现场生成的成功结果。
+当前记录见 [A16/README.md](A16/README.md)。用户于 2026-10-17 恢复 Claude Code 与 Devin 两次独立实跑要求，原“现场安装推迟”说明已失效。Claude Desktop Code 模式正在干净克隆上执行；Devin 已在用户明确授权后启动[独立会话](https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb)。尚未取得完整通过证据。
 
-本次用户已将现场 coding agent 安装推迟。[双 Sample storefront + live UCP](two-storefronts-and-ucp.md) 可以预先共用一个接入实现，分别验证两店身份与授权；这不会满足“干净克隆上由 skill 生成”的原 A16。保留本模板、编号、标题和原标准，后续真实执行后再补证据，不把预先写好的适配器或双店启动记为 A16 通过。
-
-通过标准：在干净的 blueprint 克隆上运行 `/add-agent-cookie`，生成的 MemoryStore 读到握手字段并写回 note；其余代码未改。
+通过标准：在干净的 blueprint 克隆上应用 `skills/add-agent-cookie`，生成的 MemoryStore 读到握手字段并写回 note；其余代码仅限必要 wiring 与相关测试。C11 的 P1 契约阻塞不能用空操作或本地 fallback 掩盖。
 
 ## 执行与取证
 
@@ -14,18 +12,6 @@
 4. 通过真实工作台 HTTP 路径记录握手字段读取、同一商家 note 写入与读取结果；不直接读数据库或 git 记忆库验证。
 5. 对照 `fixtures/expected/` 只做验收，记录生成实现的测试输出和所有差异。保留原有写过滤，商家只能读写自己的 note。
 
-## 执行记录（待填写）
+## 当前执行记录
 
-| 内容 | 记录 |
-| --- | --- |
-| 日期 / 执行人 | 待填写 |
-| 本项目提交 / blueprint 上游提交 | 待填写 |
-| coding agent / skill 版本 | 待填写 |
-| 干净克隆证明路径 | 待采集 |
-| 连续录屏与命令输出路径 | 待采集 |
-| 生成 diff 路径 | 待采集 |
-| HTTP 读取与 note 写回证据路径 | 待采集 |
-| 生成实现的测试命令与输出路径 | 待采集 |
-| 参考实现对照与范围偏差 | 未检查 |
-| 结果与判定理由 | 未执行 |
-| 失败 / 阻塞 / 限制 | 待填写 |
+执行人与基线、克隆证明、原始命令、生成 diff、真实 HTTP 与录屏状态统一维护在 [A16/README.md](A16/README.md)，避免模板中的“未执行”覆盖已发生的实跑。当前仍未满足完整通过标准。

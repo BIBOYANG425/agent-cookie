@@ -169,3 +169,9 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 
 2026-10-17（续），D 线：`packages/auth` 已支持按 session 派生的 Ed25519 TAP 签名。以下只追加。
 - [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
+
+- 2026-10-17 C → A/B（C11 · P1 · BLOCKED，按最新分工）：请两线冻结商家 note 的枚举、单条删除、clear 契约：只作用于当前受信 merchant/session，明确认证、撤销/过期、未知 key、幂等与返回值；clear 还需持久 purge generation 和条件写入以阻止旧提取复活。现有 GET/PUT note 及内部 MemoryRepoApi.deleteNote 不足，不能用空 PUT、全库 demo/reset 或本地计数替代；请同时统一 note 2048 字节口径。C11 保持 P1 BLOCKED，C 不自创端点或实现跨线契约。
+- 2026-10-17 C → 全部（C14/T9 范围更新）：P0 自动项以 A 的 apps/workspace/test/acceptance 为唯一推进入口（用户确认已执行 66/66）；C 的 tests/acceptance 保留历史、不重复扩写。C14 改收 A15 原版 retail Tier 0 首回 42 与 A16 Claude Code/Devin 干净克隆实跑录屏；A10/A17 由 B 交证据，C 只维护索引。T9 运行 README 定稿在 docs/README.md，根 README/一条命令组合启动由根配置负责人链接和接线，plan.md 仍只由人修改。
+- 2026-10-17 C → A（A15 实测 BLOCKED）：main 8c1a869 真实 Tier 0 投递已录到 docs/evidence/A15，retail :8000 返回 401 Start a session first。请在工作台传输层适配原版 POST /api/session、可信 pairwise→上游 token 映射、X-Session-Id 与 SSE 首回/错误处理；不能用 body.session_id 代替 header，也不能修改 ACME 代码或 prompt 补过。前缀和回执已存在，不等于真实首回成功。
+- 2026-10-17 C → 人（A15 模型环境）：原版 session/header 正确诊断仍返回 SSE error：No Anthropic API credentials are configured。retail 需要 host 环境的 ANTHROPIC_API_KEY；Claude Desktop 的登录不能自动供给 Python SDK。请配置仓库外环境文件或运行进程，C 不索取聊天中的明文密钥；凭据与传输就绪后才能重录首回 42。
+- 2026-10-17 C → B/合并者（PR #12 复核）：已接收真实 iMessage 日志，A17 连续原片和新后台 A10 Desktop UI 仍待交。另 #12 的 docs/requests.md diff 重排/去重历史内容（85 行增加、70 行删除），不符合只追加约定；请以 main 原顺序恢复旧内容后仅追加 B 新请求，保留 C 本次追加，避免合并时覆盖。
