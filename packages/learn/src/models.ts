@@ -38,7 +38,9 @@ export function createHaikuExtractor(options: {apiKey:string;provider?:'anthropi
         model:OPENROUTER_HAIKU_MODEL,max_tokens:512,stream:false,
         messages:[{role:'system',content:system},{role:'user',content:input.text}],
         response_format:{type:'json_schema',json_schema:{name:'stable_preferences',strict:true,schema}},
-        provider:{only:['anthropic'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true},
+        // First-party Anthropic is not ZDR on OpenRouter. Pin the same Haiku model
+        // to a published ZDR endpoint; never relax retention or fall back on failure.
+        provider:{only:['amazon-bedrock/us'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true},
       },signal);
       const envelope=z.object({choices:z.array(z.object({finish_reason:z.literal('stop'),message:z.object({
         role:z.literal('assistant'),content:z.string().max(16000),refusal:z.null().optional(),

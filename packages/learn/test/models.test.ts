@@ -43,7 +43,7 @@ it('uses OpenRouter structured Haiku with restricted routing and identical local
   const [url,init]=(mock.mock.calls as any)[0];const body=JSON.parse(init.body);
   expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
   expect(body.model).toBe(OPENROUTER_HAIKU_MODEL);
-  expect(body.provider).toEqual({only:['anthropic'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true});
+  expect(body.provider).toEqual({only:['amazon-bedrock/us'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true});
   expect(body.response_format.json_schema.strict).toBe(true);
   expect(body.messages[1].content).toBe(turn.text);expect(body).not.toHaveProperty('user');
 });

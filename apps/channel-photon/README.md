@@ -134,11 +134,11 @@ Photon `SEND_OUTCOME_UNKNOWN` 属于通道发件状态，不是订单状态。�
 
 B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm install --frozen-lockfile`。根 `pnpm-lock.yaml` 的 `version: link:../sdk` / `link:../../packages/sdk` 是 pnpm 正常生成的本地解析值，不应手动改成 `workspace:*`，也不建立 B 包独立锁文件。
 
-## 对话旁听学习（B 已实现，真实启用受 B44/B45 阻塞）
+## 对话旁听学习（B 已实现，真实启用仍受 B44 阻塞）
 
 新入口 `node --env-file=.env dist/main.js serve-spectrum` 使用官方 `spectrum-ts` 12.11.0 云 provider 的 `app.messages`，不安装或使用 `@spectrum-ts/imessage-local`。当前线上演示仍是旧 Socket.IO 入口，尚未迁移；两种入口共用同一个运行锁和状态文件，不能同时回复，不能通过换状态文件绕过锁。Spectrum Cloud 的 projectId/projectSecret 与现有 Photon Beta API key 不视为同一种凭据。
 
-仅在 A/C 修复 B44/B45 后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
+仅在 A 修复 B44 后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。C 688754d 的类型/作者身份修复和控制台学习读取、暂停/恢复已通过 B 隔离联调，不等同真实学习通过。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
 
 采集：受信 provider inbound + configured owner + dm + text → adapter.toEvent → 机主/敏感过滤 → 有界内存队列 → SDK Observation。全部群聊保守忽略；DM conversationId稳定，不靠时间切片/进程重启造两份来源。队列最多32个等待项、并发1、TTL30秒、10秒总超时；采集失败不影响回复、不落原文、不重试未知请求。正常已发送消息的持久去重仍保留。A目前没有messageId/幂等契约，跨入口去重待A补齐。
 
