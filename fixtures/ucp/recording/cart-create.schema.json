@@ -1,0 +1,906 @@
+{
+  "business": "https://abg-reebok-store.myshopify.com",
+  "endpoint": "https://abg-reebok-store.myshopify.com/api/ucp/mcp",
+  "transport": "mcp",
+  "result": {
+    "capability": "dev.ucp.shopping",
+    "version": "2026-08-25",
+    "client_policy": {
+      "unknown_plain_keys": "rejected",
+      "extension_key_format": "reverse-dns",
+      "description": "Operation inputs may use listed fields from tool.inputSchema. Unlisted business extension keys must be reverse-DNS names such as com.example.field."
+    },
+    "tool": {
+      "name": "create_cart",
+      "description": "Creates a new cart\n\nPrices in the response are integers in the currency's ISO 4217 minor units, paired with\na currency code: {\"amount\": 600, \"currency\": \"USD\"} is $6.00 and {\"amount\": 2500,\n\"currency\": \"USD\"} is $25.00. Convert to major units before quoting a price to a buyer\n(divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies\nsuch as JPY are already whole units).\n\n",
+      "inputSchema": {
+        "type": "object",
+        "description": "Cart properties.",
+        "properties": {
+          "line_items": {
+            "type": "array",
+            "description": "Items to add to the cart or checkout. Required when creating a new cart or checkout.",
+            "items": {
+              "type": "object",
+              "required": [
+                "item",
+                "quantity"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The ID of the line item to update."
+                },
+                "quantity": {
+                  "type": "integer"
+                },
+                "item": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "The Product Variant ID to add or update."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "buyer": {
+            "type": "object",
+            "description": "Information about the buyer including email and phone number.",
+            "additionalProperties": true,
+            "properties": {
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "phone_number": {
+                "type": "string"
+              },
+              "consent": {
+                "type": "object",
+                "description": "Per-purpose buyer consent decisions, keyed by reverse-DNS identifiers. Omission leaves existing choices unchanged.",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "granted",
+                    "source"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "granted": {
+                      "type": "boolean",
+                      "description": "Whether consent is granted."
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "business",
+                        "platform"
+                      ],
+                      "description": "Use platform for an explicit buyer decision. Business-sourced values do not update stored choices."
+                    },
+                    "segments": {
+                      "type": "object",
+                      "description": "One level of refinements. Marketing supports dev.ucp.consent.marketing.email and dev.ucp.consent.marketing.sms; a segment overrides its parent.",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "granted",
+                          "source"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "granted": {
+                            "type": "boolean",
+                            "description": "Whether consent is granted."
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "business",
+                              "platform"
+                            ],
+                            "description": "Use platform for an explicit buyer decision. Business-sourced values do not update stored choices."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "context": {
+            "type": "object",
+            "description": "Provisional context hints for localization and pricing. Used when authoritative data (e.g., shipping address) is missing; higher-resolution data supersedes these values and unsupported hints may be ignored without error.",
+            "additionalProperties": true,
+            "properties": {
+              "address_country": {
+                "type": "string",
+                "description": "Country hint for localization."
+              },
+              "address_region": {
+                "type": "string",
+                "description": "Region/state hint for localization."
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "Postal code hint for localization."
+              },
+              "intent": {
+                "type": "string",
+                "description": "Context describing buyer's intent."
+              },
+              "language": {
+                "type": "string",
+                "description": "Language tag in IETF BCP 47 format."
+              },
+              "currency": {
+                "type": "string",
+                "description": "Preferred currency (ISO 4217, e.g., 'EUR', 'USD')."
+              },
+              "eligibility": {
+                "type": "array",
+                "description": "Buyer claims about eligible benefits such as loyalty membership, payment perks, and similar.",
+                "items": {
+                  "type": "string",
+                  "description": "Reverse-domain identifier. Must contain at least two dot-separated segments (e.g., 'com.example.loyalty').",
+                  "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$"
+                }
+              }
+            }
+          },
+          "attribution": {
+            "type": "object",
+            "description": "Marketing attribution context for the buyer's session (referring domain, click IDs, UTM parameters). Forwarded to the cart for downstream reporting.",
+            "properties": {
+              "referring_domain": {
+                "type": "string",
+                "description": "Domain that referred the buyer to the merchant's storefront."
+              },
+              "click_id_tag": {
+                "type": "string",
+                "description": "Click identifier parameter name (e.g., 'gclid', 'fbclid')."
+              },
+              "click_id_value": {
+                "type": "string",
+                "description": "Click identifier value matching click_id_tag."
+              },
+              "activity_id_tag": {
+                "type": "string",
+                "description": "Activity identifier parameter name."
+              },
+              "activity_id_value": {
+                "type": "string",
+                "description": "Activity identifier value matching activity_id_tag."
+              },
+              "utm_campaign": {
+                "type": "string",
+                "description": "UTM campaign parameter."
+              },
+              "utm_source": {
+                "type": "string",
+                "description": "UTM source parameter."
+              },
+              "utm_medium": {
+                "type": "string",
+                "description": "UTM medium parameter."
+              },
+              "utm_content": {
+                "type": "string",
+                "description": "UTM content parameter."
+              },
+              "utm_term": {
+                "type": "string",
+                "description": "UTM term parameter."
+              }
+            }
+          },
+          "fulfillment": {
+            "type": "object",
+            "description": "Information about the fulfillment.",
+            "properties": {
+              "methods": {
+                "type": "array",
+                "description": "The methods of fulfillment.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "line_item_ids": {
+                      "type": "array",
+                      "description": "The line item ids to fulfill.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "selected_destination_id": {
+                      "type": "string",
+                      "description": "ID of the selected destination."
+                    },
+                    "destinations": {
+                      "type": "array",
+                      "description": "The destinations to fulfill to.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "first_name": {
+                            "type": "string"
+                          },
+                          "last_name": {
+                            "type": "string"
+                          },
+                          "phone_number": {
+                            "type": "string"
+                          },
+                          "street_address": {
+                            "type": "string"
+                          },
+                          "extended_address": {
+                            "type": "string"
+                          },
+                          "address_locality": {
+                            "type": "string"
+                          },
+                          "address_region": {
+                            "type": "string"
+                          },
+                          "postal_code": {
+                            "type": "string"
+                          },
+                          "address_country": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "groups": {
+                      "type": "array",
+                      "description": "The groups to fulfill to.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "selected_option_id": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              }
+            }
+          },
+          "discounts": {
+            "type": "object",
+            "description": "Discount or promo codes to apply to the cart. Only prompt if customer mentions having a discount code.",
+            "properties": {
+              "codes": {
+                "type": "array",
+                "description": "Discount codes to apply. Case-insensitive. Replaces previously submitted codes. Send empty array to clear.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "line_items"
+        ]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "title": "Cart response",
+        "description": "Structured cart content.",
+        "required": [
+          "ucp",
+          "id",
+          "line_items",
+          "currency",
+          "totals"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "ucp": {
+            "type": "object",
+            "description": "UCP protocol metadata for the response.",
+            "required": [
+              "version",
+              "status",
+              "services",
+              "capabilities",
+              "payment_handlers"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "version": {
+                "type": "string",
+                "description": "The negotiated UCP version."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "error"
+                ],
+                "description": "Whether UCP processing succeeded."
+              },
+              "services": {
+                "type": "object",
+                "description": "Services available to the agent.",
+                "additionalProperties": true
+              },
+              "capabilities": {
+                "type": "object",
+                "description": "Negotiated UCP capabilities.",
+                "additionalProperties": true
+              },
+              "payment_handlers": {
+                "type": "object",
+                "description": "Payment handlers available to the buyer. Empty on receipts.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "id": {
+            "type": "string",
+            "description": "The Shopify Cart GID."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The presentment currency code (ISO 4217)."
+          },
+          "buyer": {
+            "type": "object",
+            "description": "Information about the buyer.",
+            "additionalProperties": true,
+            "properties": {
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "phone_number": {
+                "type": "string"
+              },
+              "consent": {
+                "type": "object",
+                "description": "Current buyer consent decisions and business defaults, keyed by purpose.",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "granted",
+                    "source",
+                    "description"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "granted": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "business",
+                        "platform"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "segments": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "granted",
+                          "source",
+                          "description"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "granted": {
+                            "type": "boolean"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "business",
+                              "platform"
+                            ]
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "line_items": {
+            "type": "array",
+            "description": "Line items in the checkout.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "item",
+                "quantity",
+                "totals"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The line item ID."
+                },
+                "item": {
+                  "type": "object",
+                  "description": "The merchandise item for a line item.",
+                  "required": [
+                    "id",
+                    "title",
+                    "price"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "The product variant GID."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "The item title."
+                    },
+                    "price": {
+                      "type": "integer",
+                      "description": "The unit price in minor currency units."
+                    },
+                    "image_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "The item image URL."
+                    }
+                  }
+                },
+                "quantity": {
+                  "type": "integer",
+                  "description": "The line item quantity."
+                },
+                "totals": {
+                  "type": "array",
+                  "description": "Monetary totals in minor currency units.",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "amount"
+                    ],
+                    "additionalProperties": true,
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Cost category. Well-known values: subtotal, items_discount, discount, fulfillment, tax, fee, total. Businesses may use additional values, which always carry `display_text` (Shopify emits `duty`)."
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "description": "The amount in minor currency units. Discount totals are negative."
+                      },
+                      "display_text": {
+                        "type": "string",
+                        "description": "Buyer-facing label for the total."
+                      }
+                    }
+                  }
+                },
+                "parent_id": {
+                  "type": "string",
+                  "description": "The parent line item ID for nested line items."
+                }
+              }
+            }
+          },
+          "totals": {
+            "type": "array",
+            "description": "Monetary totals in minor currency units.",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "amount"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Cost category. Well-known values: subtotal, items_discount, discount, fulfillment, tax, fee, total. Businesses may use additional values, which always carry `display_text` (Shopify emits `duty`)."
+                },
+                "amount": {
+                  "type": "integer",
+                  "description": "The amount in minor currency units. Discount totals are negative."
+                },
+                "display_text": {
+                  "type": "string",
+                  "description": "Buyer-facing label for the total."
+                }
+              }
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The date and time when the checkout expires."
+          },
+          "attribution": {
+            "type": "object",
+            "description": "Marketing attribution context for the buyer's session.",
+            "additionalProperties": true,
+            "properties": {
+              "referring_domain": {
+                "type": "string"
+              },
+              "click_id_tag": {
+                "type": "string"
+              },
+              "click_id_value": {
+                "type": "string"
+              },
+              "activity_id_tag": {
+                "type": "string"
+              },
+              "activity_id_value": {
+                "type": "string"
+              },
+              "utm_campaign": {
+                "type": "string"
+              },
+              "utm_source": {
+                "type": "string"
+              },
+              "utm_medium": {
+                "type": "string"
+              },
+              "utm_content": {
+                "type": "string"
+              },
+              "utm_term": {
+                "type": "string"
+              }
+            }
+          },
+          "links": {
+            "type": "array",
+            "description": "Merchant policy links relevant to the checkout.",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "url"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "The policy URL."
+                }
+              }
+            }
+          },
+          "messages": {
+            "type": "array",
+            "description": "Errors or warnings surfaced while processing the tool call.",
+            "items": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "warning",
+                    "info"
+                  ]
+                },
+                "content_type": {
+                  "type": "string",
+                  "enum": [
+                    "plain",
+                    "markdown"
+                  ]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "recoverable",
+                    "requires_buyer_input",
+                    "requires_buyer_review",
+                    "unrecoverable"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "continue_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL where the buyer can continue checkout."
+          },
+          "fulfillment": {
+            "type": "object",
+            "description": "Fulfillment methods, destinations, delivery groups, and delivery options.",
+            "additionalProperties": true,
+            "properties": {
+              "methods": {
+                "type": "array",
+                "description": "Fulfillment methods available for the checkout or cart.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "type",
+                    "line_item_ids"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "shipping",
+                        "pickup"
+                      ]
+                    },
+                    "line_item_ids": {
+                      "type": "array",
+                      "description": "Line item IDs covered by this fulfillment method.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "selected_destination_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "destinations": {
+                      "type": "array",
+                      "description": "Destinations available for this fulfillment method.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "first_name": {
+                            "type": "string"
+                          },
+                          "last_name": {
+                            "type": "string"
+                          },
+                          "phone_number": {
+                            "type": "string"
+                          },
+                          "street_address": {
+                            "type": "string"
+                          },
+                          "extended_address": {
+                            "type": "string"
+                          },
+                          "address_locality": {
+                            "type": "string"
+                          },
+                          "address_region": {
+                            "type": "string"
+                          },
+                          "postal_code": {
+                            "type": "string"
+                          },
+                          "address_country": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "groups": {
+                      "type": "array",
+                      "description": "Delivery groups for this fulfillment method.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "line_item_ids"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "line_item_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "selected_option_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "options": {
+                            "type": "array",
+                            "description": "Delivery options available for the group.",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id"
+                              ],
+                              "additionalProperties": true,
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "description": {
+                                  "type": "object",
+                                  "description": "Buyer-facing description of the delivery option.",
+                                  "additionalProperties": true,
+                                  "properties": {
+                                    "plain": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "totals": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "type",
+                                      "amount"
+                                    ],
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "type": {
+                                        "type": "string"
+                                      },
+                                      "amount": {
+                                        "type": "integer",
+                                        "description": "The amount in minor currency units."
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "discounts": {
+            "type": "object",
+            "description": "Discount codes and applied discounts for the checkout or cart.",
+            "additionalProperties": true,
+            "properties": {
+              "codes": {
+                "type": "array",
+                "description": "Discount codes submitted for the checkout or cart.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "applied": {
+                "type": "array",
+                "description": "Discounts applied to the checkout or cart, including automatic discounts.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "amount"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "description": "The discount amount in minor currency units."
+                    },
+                    "method": {
+                      "type": "string",
+                      "description": "How the discount is allocated across the targeted items.",
+                      "enum": [
+                        "each",
+                        "across",
+                        "one"
+                      ]
+                    },
+                    "automatic": {
+                      "type": "boolean"
+                    },
+                    "allocations": {
+                      "type": "array",
+                      "description": "Line item or fulfillment total allocations of the discount.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "amount"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "JSONPath to the discounted line item or total."
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "description": "The allocated amount in minor currency units."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

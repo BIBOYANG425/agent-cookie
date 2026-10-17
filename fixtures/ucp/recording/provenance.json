@@ -1,0 +1,200 @@
+{
+  "status": "complete",
+  "source": "Live Shopify UCP CLI responses; recorded sample, not a live stock guarantee",
+  "startedAt": "2026-10-17T19:38:32.849Z",
+  "environment": {
+    "node": "v24.8.0",
+    "platform": "darwin",
+    "cli": "/private/tmp/agent-cookie-ucp-capture/node_modules/.bin/ucp",
+    "OPT_OUT_INSTRUMENTATION": "true",
+    "profile": "agent",
+    "state": "isolated temporary directory; removed after recording"
+  },
+  "request": {
+    "query": "trail running shoes",
+    "maxPrice": {
+      "amount": 12000,
+      "currency": "USD"
+    },
+    "shipsTo": "US"
+  },
+  "operations": [
+    {
+      "name": "cli-version",
+      "command": [
+        "ucp",
+        "--version",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:32.849Z",
+      "finishedAt": "2026-10-17T19:38:33.007Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "cli-version.stdout.txt",
+      "sha256": "c87976571392b5b8424c0a3aac1240ca99f4613952946c6f1939a916210b346d"
+    },
+    {
+      "name": "profile-init",
+      "command": [
+        "ucp",
+        "profile",
+        "init",
+        "--name",
+        "agent",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:33.008Z",
+      "finishedAt": "2026-10-17T19:38:33.122Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "profile-init.json",
+      "sha256": "a86089b3f37d8eed8ea3ad4d82539ac4ea5292dee7c4ec3918e84196b9e7a1de"
+    },
+    {
+      "name": "catalog-search.schema",
+      "command": [
+        "ucp",
+        "catalog",
+        "search",
+        "--profile",
+        "agent",
+        "--input-schema",
+        "--refresh",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:33.123Z",
+      "finishedAt": "2026-10-17T19:38:33.673Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "catalog-search.schema.json",
+      "sha256": "50101ea353e4d81e16d6ad787607bd71a94528ed3bf3e58592e2f1bec77d615a"
+    },
+    {
+      "name": "catalog-search",
+      "command": [
+        "ucp",
+        "catalog",
+        "search",
+        "--profile",
+        "agent",
+        "--input",
+        "@catalog-search.input.json",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:33.674Z",
+      "finishedAt": "2026-10-17T19:38:34.710Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "catalog-search.json",
+      "sha256": "21294571fea0aec3e3e08a99375bd84433143fdd62c4bc53725c656708ec95e2"
+    },
+    {
+      "name": "discover-abg-reebok-store.myshopify.com",
+      "command": [
+        "ucp",
+        "discover",
+        "--business",
+        "https://abg-reebok-store.myshopify.com",
+        "--profile",
+        "agent",
+        "--refresh",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:34.711Z",
+      "finishedAt": "2026-10-17T19:38:35.683Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "discover-abg-reebok-store.myshopify.com.json",
+      "sha256": "3a244b146cd4a952613b19e744f9d4b8eecf3d8620c7fa36f8c66c09b78450d0"
+    },
+    {
+      "name": "discover-marathonsports.myshopify.com",
+      "command": [
+        "ucp",
+        "discover",
+        "--business",
+        "https://marathonsports.myshopify.com",
+        "--profile",
+        "agent",
+        "--refresh",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:35.684Z",
+      "finishedAt": "2026-10-17T19:38:36.688Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "discover-marathonsports.myshopify.com.json",
+      "sha256": "63b609c6d9b78f505c74081a994d9957c1a36db74d68310c1dcc0fec74b29d5d"
+    },
+    {
+      "name": "cart-create.schema",
+      "command": [
+        "ucp",
+        "cart",
+        "create",
+        "--business",
+        "https://abg-reebok-store.myshopify.com",
+        "--profile",
+        "agent",
+        "--input-schema",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:36.689Z",
+      "finishedAt": "2026-10-17T19:38:36.818Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "cart-create.schema.json",
+      "sha256": "2d4f1baaf59b64fa5fe99de9fc41447ac98494038166ba8debc171b36768f5f5"
+    },
+    {
+      "name": "cart-create",
+      "command": [
+        "ucp",
+        "cart",
+        "create",
+        "--business",
+        "https://abg-reebok-store.myshopify.com",
+        "--profile",
+        "agent",
+        "--input",
+        "@cart-create.input.json",
+        "--format",
+        "json"
+      ],
+      "startedAt": "2026-10-17T19:38:36.818Z",
+      "finishedAt": "2026-10-17T19:38:38.467Z",
+      "exitCode": 0,
+      "signal": null,
+      "responseFile": "cart-create.json",
+      "sha256": "293744543b6bcd85cbde7a2437ba6598488a6aefca472599d10236cf1e259560",
+      "rawSha256": "cc4b545095cd7d62e1a7067211a54dd51ced5a624a0a8a4f2683ccb3f35da9f8",
+      "redactions": [
+        {
+          "path": "/result/id",
+          "reason": "Cart capability URL access key replaced with REDACTED_CART_ACCESS_KEY; original response not persisted."
+        },
+        {
+          "path": "/result/continue_url",
+          "reason": "Cart capability URL access key replaced with REDACTED_CART_ACCESS_KEY; original response not persisted."
+        }
+      ]
+    }
+  ],
+  "limitations": [],
+  "summary": {
+    "eligibleVariants": 2,
+    "successfulDiscoveries": 2,
+    "cartRequestAttempted": true,
+    "cartConfirmedRequestedLine": true,
+    "checkoutAttempted": false,
+    "paymentAttempted": false
+  },
+  "finishedAt": "2026-10-17T19:38:38.467Z"
+}
