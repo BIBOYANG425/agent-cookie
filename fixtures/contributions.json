@@ -1,0 +1,29 @@
+[
+  {
+    "id": "sample-lang-01",
+    "userId": "sample-user",
+    "agentId": "sample-personal-photon",
+    "field": "lang",
+    "value": "zh",
+    "basis": "stated",
+    "createdAt": "2026-10-17T16:00:00.000Z"
+  },
+  {
+    "id": "sample-tone-01",
+    "userId": "sample-user",
+    "agentId": "sample-personal-photon",
+    "field": "tone",
+    "value": "简短",
+    "basis": "stated",
+    "createdAt": "2026-10-17T16:00:01.000Z"
+  },
+  {
+    "id": "sample-shoe-size-01",
+    "userId": "sample-user",
+    "agentId": "sample-personal-photon",
+    "field": "shoe_size",
+    "value": "42",
+    "basis": "stated",
+    "createdAt": "2026-10-17T16:00:02.000Z"
+  }
+]

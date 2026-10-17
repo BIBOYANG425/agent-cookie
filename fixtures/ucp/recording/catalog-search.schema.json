@@ -1,0 +1,940 @@
+{
+  "business": "https://catalog.shopify.com",
+  "endpoint": "https://catalog.shopify.com/api/ucp/mcp",
+  "transport": "mcp",
+  "result": {
+    "capability": "dev.ucp.shopping",
+    "version": "2026-08-25",
+    "client_policy": {
+      "unknown_plain_keys": "rejected",
+      "extension_key_format": "reverse-dns",
+      "description": "Operation inputs may use listed fields from tool.inputSchema. Unlisted business extension keys must be reverse-DNS names such as com.example.field."
+    },
+    "tool": {
+      "name": "search_catalog",
+      "description": "Search for products across multiple Shopify stores in the global catalog.\nUse this tool when buyers are searching for products without specifying a particular store.\n\nExamples:\n- \"I'm looking for a pair of running shoes\"\n- \"Find me some wireless headphones under $100\"\n- \"Search for organic coffee beans\"\n\nInput and response conform to the UCP catalog search capability (dev.ucp.shopping.catalog.search).\n\nPrices in the response are integers in the currency's ISO 4217 minor units, paired with\na currency code: {\"amount\": 600, \"currency\": \"USD\"} is $6.00 and {\"amount\": 2500,\n\"currency\": \"USD\"} is $25.00. Convert to major units before quoting a price to a buyer\n(divide by 100 for two-decimal currencies such as USD and EUR; zero-decimal currencies\nsuch as JPY are already whole units).\n\n",
+      "inputSchema": {
+        "type": "object",
+        "description": "Catalog search parameters.",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query string."
+          },
+          "context": {
+            "type": "object",
+            "description": "Buyer signals for localization and personalization.",
+            "additionalProperties": true,
+            "properties": {
+              "address_country": {
+                "type": "string",
+                "description": "Country code in ISO 3166-1 alpha-2 format."
+              },
+              "address_region": {
+                "type": "string",
+                "description": "Region or state."
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "Postal code."
+              },
+              "language": {
+                "type": "string",
+                "description": "Language tag in IETF BCP 47 format."
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency code in ISO 4217 format."
+              },
+              "intent": {
+                "type": "string",
+                "description": "Buyer intent."
+              }
+            }
+          },
+          "signals": {
+            "type": "object",
+            "description": "Platform environment data.",
+            "additionalProperties": true,
+            "properties": {
+              "dev.ucp.buyer_ip": {
+                "type": "string",
+                "description": "Buyer IP address."
+              },
+              "dev.ucp.user_agent": {
+                "type": "string",
+                "description": "Buyer user agent."
+              }
+            }
+          },
+          "filters": {
+            "type": "object",
+            "description": "Narrowing criteria for catalog results.",
+            "additionalProperties": true,
+            "properties": {
+              "categories": {
+                "type": "array",
+                "description": "Category filters combined with OR logic.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "price": {
+                "type": "object",
+                "description": "Price range filter.",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "description": "Minimum price in minor currency units."
+                  },
+                  "max": {
+                    "type": "integer",
+                    "description": "Maximum price in minor currency units."
+                  }
+                }
+              },
+              "available": {
+                "type": "boolean",
+                "default": true,
+                "description": "Filter by availability. Default true (only sale-ready items)."
+              },
+              "shops": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "description": "Restrict results to specific shops by GID. Maximum 1000 entries per request."
+              },
+              "condition": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by product condition. Known values: 'new', 'secondhand'. Absent means no condition filter (all conditions returned). Multiple values use OR logic."
+              },
+              "ships_to": {
+                "type": "object",
+                "description": "Shipping destination filter. When absent, implementation falls back to context address fields. When country matches context, implementation MAY enrich with context region/postal_code for delivery estimates.",
+                "required": [
+                  "country"
+                ],
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{2}$",
+                    "description": "ISO 3166-1 alpha-2 country code."
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "State, province, or region. Improves delivery estimate fidelity."
+                  },
+                  "postal_code": {
+                    "type": "string",
+                    "description": "Postal or ZIP code. Improves delivery estimate fidelity."
+                  }
+                }
+              },
+              "ships_from": {
+                "type": "array",
+                "description": "Shipping origin filter. Matches variants offered from any listed origin. Absent means no origin filter. Multiple entries use OR logic.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "country"
+                  ],
+                  "properties": {
+                    "country": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$",
+                      "description": "ISO 3166-1 alpha-2 country code."
+                    }
+                  }
+                }
+              },
+              "attributes": {
+                "type": "array",
+                "maxItems": 25,
+                "description": "Filter by Shopify taxonomy attributes on products and variants. Entries combine with AND; values within an entry combine with OR. Unrecognized attribute names are ignored and surfaced via result.messages[]. Maximum 25 entries per request.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Taxonomy attribute. Currently supported attributes are 'Color', 'Size', 'Target gender'."
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "description": "Taxonomy values (e.g. 'Red'). Values within an entry combine with OR. Maximum 50 values per attribute."
+                    }
+                  }
+                }
+              },
+              "rating": {
+                "type": "object",
+                "description": "Filter by variant rating.",
+                "properties": {
+                  "variant": {
+                    "type": "object",
+                    "description": "Matches products with at least one variant whose rating field meets these thresholds.",
+                    "properties": {
+                      "min": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 5,
+                        "description": "Minimum rating value. Ratings are on a 0–5 scale."
+                      },
+                      "min_count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647,
+                        "description": "Minimum number of reviews."
+                      }
+                    }
+                  }
+                }
+              },
+              "price_tier": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by relative price tier within each product's category. Multiple values use OR logic. Well-known values: `low`, `medium`, `high`. Unrecognized values are ignored and surfaced via result.messages[]."
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "description": "Pagination parameters.",
+            "properties": {
+              "cursor": {
+                "type": "string",
+                "description": "Pagination cursor."
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Number of results to return.",
+                "default": 10,
+                "minimum": 1
+              }
+            }
+          },
+          "view": {
+            "type": "string",
+            "description": "Predefined output shape. When absent, returns the operation's default representation. Well-known values: `compact`."
+          },
+          "catalog_id": {
+            "type": "string",
+            "description": "Identifier of a saved catalog whose configuration supplies search constraints and may enable affiliate placement."
+          },
+          "like": {
+            "type": "array",
+            "description": "Similar items to search by — results should resemble these inputs.",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "title": "Like Item",
+              "description": "An item specified by product ID or by inline image data.",
+              "type": "object",
+              "oneOf": [
+                {
+                  "title": "Item Reference",
+                  "description": "Reference to a catalog item by GID.",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^gid://shopify/",
+                      "description": "GID of a product or product variant."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "title": "Image Content",
+                  "description": "Inline image for visual similarity search.",
+                  "required": [
+                    "image"
+                  ],
+                  "properties": {
+                    "image": {
+                      "type": "object",
+                      "description": "Base64-encoded image with MIME type.",
+                      "required": [
+                        "content_type",
+                        "data"
+                      ],
+                      "properties": {
+                        "content_type": {
+                          "type": "string",
+                          "description": "MIME type of the encoded image (e.g., image/jpeg, image/webp)."
+                        },
+                        "data": {
+                          "type": "string",
+                          "contentEncoding": "base64",
+                          "description": "Base64-encoded image bytes."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "pattern": "\\S"
+              }
+            }
+          },
+          {
+            "required": [
+              "like"
+            ]
+          },
+          {
+            "required": [
+              "filters"
+            ],
+            "properties": {
+              "filters": {
+                "minProperties": 1
+              }
+            }
+          }
+        ]
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "title": "Catalog search response or error",
+        "description": "Products matching a catalog search. On a tool error, the error envelope.",
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "Catalog search response",
+            "description": "Products matching a catalog search.",
+            "required": [
+              "ucp",
+              "products"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "ucp": {
+                "type": "object",
+                "description": "UCP protocol metadata for the response.",
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "description": "The negotiated UCP version."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "error"
+                    ],
+                    "description": "Whether UCP processing succeeded."
+                  },
+                  "capabilities": {
+                    "type": "object",
+                    "description": "Negotiated UCP capabilities.",
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "products": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title",
+                    "description",
+                    "price_range",
+                    "variants"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "plain": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "price_range": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "min": {
+                          "type": "object",
+                          "required": [
+                            "amount",
+                            "currency"
+                          ],
+                          "additionalProperties": true,
+                          "properties": {
+                            "amount": {
+                              "type": "integer",
+                              "description": "The amount in minor currency units."
+                            },
+                            "currency": {
+                              "type": "string",
+                              "description": "The currency code (ISO 4217)."
+                            }
+                          }
+                        },
+                        "max": {
+                          "type": "object",
+                          "required": [
+                            "amount",
+                            "currency"
+                          ],
+                          "additionalProperties": true,
+                          "properties": {
+                            "amount": {
+                              "type": "integer",
+                              "description": "The amount in minor currency units."
+                            },
+                            "currency": {
+                              "type": "string",
+                              "description": "The currency code (ISO 4217)."
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "values"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "label"
+                              ],
+                              "additionalProperties": true,
+                              "properties": {
+                                "label": {
+                                  "type": "string"
+                                },
+                                "available": {
+                                  "type": "boolean"
+                                },
+                                "exists": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "url"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "description": "The media type, such as `image`."
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "alt_text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "title",
+                          "description"
+                        ],
+                        "additionalProperties": true,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                              "plain": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "price": {
+                            "type": "object",
+                            "required": [
+                              "amount",
+                              "currency"
+                            ],
+                            "additionalProperties": true,
+                            "properties": {
+                              "amount": {
+                                "type": "integer",
+                                "description": "The amount in minor currency units."
+                              },
+                              "currency": {
+                                "type": "string",
+                                "description": "The currency code (ISO 4217)."
+                              }
+                            }
+                          },
+                          "list_price": {
+                            "type": "object",
+                            "required": [
+                              "amount",
+                              "currency"
+                            ],
+                            "additionalProperties": true,
+                            "properties": {
+                              "amount": {
+                                "type": "integer",
+                                "description": "The amount in minor currency units."
+                              },
+                              "currency": {
+                                "type": "string",
+                                "description": "The currency code (ISO 4217)."
+                              }
+                            }
+                          },
+                          "availability": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                              "available": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          "options": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name",
+                                "label"
+                              ],
+                              "additionalProperties": true,
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "media": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "url"
+                              ],
+                              "additionalProperties": true,
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "description": "The media type, such as `image`."
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "alt_text": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "seller": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "domain": {
+                                "type": "string"
+                              },
+                              "links": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "url"
+                                  ],
+                                  "additionalProperties": true,
+                                  "properties": {
+                                    "type": {
+                                      "type": "string"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "checkout_url": {
+                            "type": "string"
+                          },
+                          "rating": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "scale_max"
+                            ],
+                            "additionalProperties": true,
+                            "properties": {
+                              "value": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "scale_min": {
+                                "type": "number"
+                              },
+                              "scale_max": {
+                                "type": "number"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "condition": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "new",
+                                "secondhand"
+                              ]
+                            }
+                          },
+                          "eligible": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                              "native_checkout": {
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            }
+                          },
+                          "fulfillment": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {
+                              "methods": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              }
+                            }
+                          },
+                          "placement": {
+                            "type": "object",
+                            "required": [
+                              "type",
+                              "commission"
+                            ],
+                            "additionalProperties": true,
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "affiliate"
+                                ]
+                              },
+                              "commission": {
+                                "type": "object",
+                                "required": [
+                                  "percentage"
+                                ],
+                                "additionalProperties": true,
+                                "properties": {
+                                  "percentage": {
+                                    "type": "object",
+                                    "required": [
+                                      "value"
+                                    ],
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "value": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "rating": {
+                      "type": "object",
+                      "required": [
+                        "value",
+                        "scale_max"
+                      ],
+                      "additionalProperties": true,
+                      "properties": {
+                        "value": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "scale_min": {
+                          "type": "number"
+                        },
+                        "scale_max": {
+                          "type": "number"
+                        },
+                        "count": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "description": "Unique selling points, top features and technical specifications.",
+                      "additionalProperties": true,
+                      "properties": {
+                        "unique_selling_points": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "pagination": {
+                "type": "object",
+                "required": [
+                  "has_next_page"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "has_next_page": {
+                    "type": "boolean"
+                  },
+                  "cursor": {
+                    "type": "string",
+                    "description": "Opaque cursor for the next page."
+                  },
+                  "total_count": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "messages": {
+                "type": "array",
+                "description": "Errors or warnings surfaced while processing the tool call.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "error",
+                        "warning",
+                        "info"
+                      ]
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "enum": [
+                        "plain",
+                        "markdown"
+                      ]
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "recoverable",
+                        "requires_buyer_input",
+                        "requires_buyer_review",
+                        "unrecoverable"
+                      ]
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Error response",
+            "description": "The tool could not return its resource; `messages` explains why.",
+            "required": [
+              "ucp",
+              "messages"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "ucp": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "error"
+                    ]
+                  }
+                }
+              },
+              "messages": {
+                "type": "array",
+                "description": "Errors or warnings surfaced while processing the tool call.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "error",
+                        "warning",
+                        "info"
+                      ]
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "enum": [
+                        "plain",
+                        "markdown"
+                      ]
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "recoverable",
+                        "requires_buyer_input",
+                        "requires_buyer_review",
+                        "unrecoverable"
+                      ]
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

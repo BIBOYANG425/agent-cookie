@@ -1,0 +1,113 @@
+{
+  "status": "two_catalog_available_variants",
+  "label": "Recorded sample — availability was reported by catalog at observedAt only",
+  "selectionRule": "First available=true USD variant <=12000 minor units from each of the first two distinct seller.domain values in the recorded catalog response. No shoe-size or delivery-date claim.",
+  "variants": [
+    {
+      "source": "catalog-search.json#/result/products/0/variants/0",
+      "observedAt": "2026-10-17T19:38:34.710Z",
+      "productId": "gid://shopify/p/5Fw1PJdyXyKRKua8FHVrIM",
+      "productTitle": "Men's ZigWild Trail 6 Shoes",
+      "variantId": "gid://shopify/ProductVariant/50215275692336",
+      "variantTitle": "Men's ZigWild Trail 6 Shoes",
+      "seller": {
+        "id": "gid://shopify/Shop/86278340912",
+        "name": "Reebok",
+        "url": "https://www.reebok.com",
+        "domain": "abg-reebok-store.myshopify.com",
+        "links": [
+          {
+            "type": "privacy_policy",
+            "url": "https://checkout.shopify.com/86278340912/policies/42331668784.html"
+          },
+          {
+            "type": "terms_of_service",
+            "url": "https://checkout.shopify.com/86278340912/policies/42331701552.html"
+          },
+          {
+            "type": "refund_policy",
+            "url": "https://checkout.shopify.com/86278340912/policies/42332651824.html"
+          },
+          {
+            "type": "shipping_policy",
+            "url": "https://checkout.shopify.com/86278340912/policies/42332717360.html"
+          }
+        ]
+      },
+      "business": "https://abg-reebok-store.myshopify.com",
+      "price": {
+        "amount": 6999,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Color",
+          "label": "Black/Cold Grey 7/Ftwr White"
+        },
+        {
+          "name": "Numeric shoe size",
+          "label": "11"
+        }
+      ],
+      "checkoutUrl": "https://www.reebok.com/cart/50215275692336:1?_gsid=NS9kCrHPMKea&utm_source=shopify&utm_medium=catalog"
+    },
+    {
+      "source": "catalog-search.json#/result/products/1/variants/0",
+      "observedAt": "2026-10-17T19:38:34.710Z",
+      "productId": "gid://shopify/p/2ZIJ2iNE2z7cKMLlxMc4Ln",
+      "productTitle": "Brooks Men's Cascadia 19",
+      "variantId": "gid://shopify/ProductVariant/42550028075069",
+      "variantTitle": "Brooks Men's Cascadia 19",
+      "seller": {
+        "id": "gid://shopify/Shop/1296942",
+        "name": "Marathon Sports",
+        "url": "https://store.marathonsports.com",
+        "domain": "marathonsports.myshopify.com",
+        "links": [
+          {
+            "type": "privacy_policy",
+            "url": "https://checkout.shopify.com/1296942/policies/558352.html"
+          },
+          {
+            "type": "terms_of_service",
+            "url": "https://checkout.shopify.com/1296942/policies/558362.html"
+          },
+          {
+            "type": "refund_policy",
+            "url": "https://checkout.shopify.com/1296942/policies/558342.html"
+          },
+          {
+            "type": "shipping_policy",
+            "url": "https://checkout.shopify.com/1296942/policies/23313907773.html"
+          }
+        ]
+      },
+      "business": "https://marathonsports.myshopify.com",
+      "price": {
+        "amount": 10495,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Color",
+          "label": "Alloy/Ebony/Orange"
+        },
+        {
+          "name": "Shoe size",
+          "label": "9 US"
+        },
+        {
+          "name": "Shoe fit",
+          "label": "Medium (D)"
+        }
+      ],
+      "checkoutUrl": "https://store.marathonsports.com/cart/42550028075069:1?_gsid=NS9kCrHPMKea&utm_source=shopify&utm_medium=catalog"
+    }
+  ]
+}

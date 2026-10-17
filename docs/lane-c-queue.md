@@ -1,0 +1,16 @@
+- [x] C01 fixtures 种子与 dev-keys 对齐 v0.3（Category 只有 personal|shoe） — ff01d0b
+- [x] C02 fixtures/ucp 录好 catalog search、两家 discover、cart create，并记两个在库变体 ID — 8606f9e（本轮重新运行 verify.mjs 通过）
+- [x] C03 tests/acceptance A01–A22 的 it.todo 空壳（A10、A17 指向 docs/evidence） — 8606f9e（22 todo；本轮收集与类型检查通过）
+- [x] C04 packages/rules：deriveSessionId + 3 个测试 — dacbc1e
+- [x] C05 packages/rules：mergeCard（全部规则，显式 now）+ 测试 — b13b108
+- [x] C06 packages/rules：renderCard / renderContribution / parseContributions 往返无损 + 测试 — 59888f7
+- [x] C07 packages/memory-repo：openMemoryRepo、appendContribution、writeNote/readNote/deleteNote（≤2KB）、appendReceipt + 测试 — ab57e2f（11 个真实 Git 用例、类型检查通过）
+- [x] C08 packages/memory-repo：regenerateCard（调 rules 生成 CARD.md）、resetToSeed、每次写一个 commit（author=写入者，trailer Agent-Cookie-Sig）+ 测试 — a85471a（17 个真实 Git 用例、类型检查通过）
+- [x] C09 apps/console 骨架：身份卡视图，对 fixtures 或假工作台渲染 — 947b760（浏览器验证与截图）
+- [x] C10 apps/console：授权视图（剩余时间、撤销）、活动视图、重置按钮，2 秒轮询 — d58babb（12 测试、类型/构建检查、浏览器实连通过）
+- [ ] C11 fixtures/expected/agent_cookie_memory_store.py 参考实现
+- [ ] C12 skills/add-agent-cookie/SKILL.md
+- [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
+- [ ] C14 随工作台端点上线，把 A01–A22 逐条从 todo 改成真测试
+- [ ] C15 README：agent 名、启动命令、环境变量表
+- [ ] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度
