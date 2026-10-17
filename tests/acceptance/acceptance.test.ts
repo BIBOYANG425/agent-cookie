@@ -2,12 +2,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   accept, allFields, api, callback, card, clearCallbacks, clock, error, fields,
   grants, handshake, merchants, noGlobalIdentity, note, owner, pair, personal,
-  quote, register, reset, sampleAddress, secondPersonal, seededMerchant, startCallbacks,
+  quote, register, reset, sampleAddress, sampleIntentPublic, secondPersonal, seededKind, seededMerchant, startCallbacks,
   state, stopCallbacks, type Json,
 } from './http.js';
+import { assertAtMostTwoMerchants, assertQuotesWithinBudget } from './properties.js';
 
-// Canonical numbered titles: docs/plan.md v0.3. Wire shapes reviewed against lane A bd9d6e3.
+// Canonical numbered titles: docs/plan.md v0.3. Current wire shapes: main 8c1a869.
 // Only HTTP crosses the workspace boundary. Sample callback recipients contain no LLM or UCP.
+// Numeric merge/sentinel inputs below are controlled test data, not demo requirements.
 beforeAll(startCallbacks);
 afterAll(stopCallbacks);
 beforeEach(async () => { clearCallbacks(); await reset(); });
@@ -77,7 +79,8 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
       expect(r.status).toBe(200);
       expect(Object.keys(r.body).filter(k => !['sig', 'kid'].includes(k)).sort()).toEqual(
         ['v', 'sessionId', 'jar', 'lang', 'tone', 'length', 'available', 'expiresAt'].sort());
-      expect(r.body).toMatchObject({ v: 1, sessionId: p.sessions[i], lang: 'zh', tone: '简短', length: '' });
+      expect(r.body).toMatchObject({ v: 1, sessionId: p.sessions[i],
+        lang: p.expectedFields.lang ?? '', tone: p.expectedFields.tone ?? '', length: p.expectedFields.length ?? '' });
       expect(r.body.available).toContain('shoe_size');
       expect(r.body.available).toContain('shipping_address');
       for (const name of r.body.available) expect(allFields).toContain(name);
@@ -88,7 +91,7 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
       expect(r.text).not.toContain('9876.54');
       noGlobalIdentity(r.body);
       expect(p.intros[i]).toEqual({ type: 'introduce', sessionId: p.sessions[i], handshake: r.body,
-        intent: { id: p.intentId, kind: p.kind, public: { budget: '120' }, expiresAt: p.intros[i].intent.expiresAt } });
+        intent: { id: p.intentId, kind: p.kind, public: p.intentPublic, expiresAt: p.intros[i].intent.expiresAt } });
     }
   });
 
@@ -101,18 +104,25 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
     const [sa, sb] = p.sessions;
     const auto = await fields(a, sa, ['shoe_size', 'budget']);
     expect(auto.status).toBe(200);
-    expect(auto.body.fields).toEqual({ shoe_size: '42', budget: '120' });
+    expect(auto.body.fields).toEqual({ shoe_size: p.expectedFields.shoe_size, budget: p.intentPublic.budget });
     for (const purpose of [undefined, 'marketing', 'checkout']) {
       const denied = await fields(a, sa, ['shoe_size', 'shipping_address'], purpose);
       error(denied, 403, 'PURPOSE_MISMATCH');
-      expect(denied.text).not.toMatch(/shoe_size|shipping_address|42/);
+      expect(denied.text).not.toMatch(/shoe_size|shipping_address/);
+      expect(denied.text).not.toContain(p.expectedFields.shoe_size);
       expect(denied.text).not.toContain(sampleAddress);
     }
     const outside = await fields(a, sa, ['shoe_size', 'unknown_private_field']);
     error(outside, 403, 'SCOPE_DENIED');
-    expect(outside.text).not.toMatch(/shoe_size|unknown_private_field|42/);
+    expect(outside.text).not.toMatch(/shoe_size|unknown_private_field/);
+    expect(outside.text).not.toContain(p.expectedFields.shoe_size);
     error(await api('GET', '/personal/card', a), 403, 'SCOPE_DENIED');
-    const q = await quote(a, p.intentId);
+    error(await fields(b, sb, ['shipping_address'], 'checkout'), 403, 'PURPOSE_MISMATCH');
+    const beforeAccept = await api('GET', '/personal/receipts', personal);
+    expect(beforeAccept.status).toBe(200);
+    expect(beforeAccept.body.receipts.filter((r: Json) => r.fields.includes('shipping_address'))).toEqual([]);
+    const q = await quote(a, p.intentId, p.intentPublic.budget);
+    assertQuotesWithinBudget([q as { price: number | null; currency: string | null }], p.intentPublic.budget, 'USD');
     await accept(a, q.id);
     for (const purpose of [undefined, 'marketing']) {
       const denied = await fields(a, sa, ['shipping_address'], purpose);
@@ -123,12 +133,17 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
     const released = await fields(a, sa, ['shipping_address'], 'checkout');
     expect(released.status).toBe(200);
     expect(released.body).toEqual({ sessionId: sa, purpose: 'checkout', fields: { shipping_address: sampleAddress } });
-    error(await fields(b, sb, ['shipping_address'], 'checkout'), 403, 'PURPOSE_MISMATCH');
+    const unselected = await fields(b, sb, ['shipping_address'], 'checkout');
+    error(unselected, 403, 'PURPOSE_MISMATCH');
+    expect(unselected.text).not.toContain(sampleAddress);
+    // This fixture-only callback flow explicitly performed an authorized address read.
+    // A handoff / failed / blocked accept by itself does not imply such a receipt exists.
     const receipts = await api('GET', '/personal/receipts', personal);
     expect(receipts.status).toBe(200);
     expect(receipts.body.receipts).toContainEqual(expect.objectContaining({ agentId: a.agentId, sessionId: sa, fields: ['shipping_address'], purpose: 'checkout' }));
     expect(receipts.text).not.toContain(sampleAddress);
-    expect(receipts.body.receipts.some((r: Json) => r.agentId === b.agentId)).toBe(false);
+    const addressReceipts = receipts.body.receipts.filter((r: Json) => r.fields.includes('shipping_address'));
+    expect(new Set(addressReceipts.map((r: Json) => r.agentId))).toEqual(new Set([a.agentId]));
     const activity = await api('GET', '/owner/activity', owner);
     expect(activity.status).toBe(200);
     expect(activity.text).not.toContain(sampleAddress);
@@ -163,7 +178,7 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
     error(await handshake(p.merchants[0], p.sessions[0]), 403, 'GRANT_REVOKED');
     const unaffected = await fields(p.merchants[1], p.sessions[1], ['shoe_size']);
     expect(unaffected.status).toBe(200);
-    expect(unaffected.body.fields).toEqual({ shoe_size: '42' });
+    expect(unaffected.body.fields).toEqual({ shoe_size: p.expectedFields.shoe_size });
     expect((await grants()).find(g => g.id === grant.id)?.status).toBe('revoked');
   });
 
@@ -171,8 +186,8 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
     const p = await pair();
     const [a, b] = p.merchants;
     const [sa, sb] = p.sessions;
-    expect((await note(a, sa, 'relationship', 'Sample: bought trail socks in June')).status).toBe(200);
-    expect((await note(a, sa, 'relationship')).body.value).toBe('Sample: bought trail socks in June');
+    expect((await note(a, sa, 'relationship', 'Sample: previously asked about availability')).status).toBe(200);
+    expect((await note(a, sa, 'relationship')).body.value).toBe('Sample: previously asked about availability');
     const missing = await note(b, sb, 'never_written');
     error(missing, 404, 'NOT_FOUND');
     for (const denied of [await note(b, sb, 'relationship'), await note(b, sa, 'relationship'), await note(a, sa, 'never_written')]) {
@@ -180,12 +195,12 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
       expect(denied.text).toBe(missing.text);
     }
     expect((await note(b, sb, 'relationship', 'Sample: asked for a cart link')).status).toBe(200);
-    expect((await note(a, sa, 'relationship')).body.value).toBe('Sample: bought trail socks in June');
+    expect((await note(a, sa, 'relationship')).body.value).toBe('Sample: previously asked about availability');
     expect((await note(b, sb, 'relationship')).body.value).toBe('Sample: asked for a cart link');
     error(await note(a, sa, 'too_large', 'x'.repeat(2100)), 422, 'MISSING_FIELD');
   });
 
-  // StubUcp's invented offers cannot establish real recorded catalog provenance or EU42 stock.
+  // Sample offers do not prove real catalog provenance, this intent's size match or mismatch disclosure.
   it.todo('A09 意图匹配');
   // docs/evidence/A10-real-client.md: actual Claude Desktop MCP trace still required.
   it.todo('A10 真实客户端（手动）');
@@ -201,7 +216,9 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
       });
       expect(r.status).toBe(201);
       expect(r.body.stored).toBe('inferred');
-      expect(r.body.contribution).toMatchObject({ agentId: p.merchants[i].agentId, userId: 'sample-user', basis: 'inferred', field: 'vip' });
+      expect(r.body.contribution).toMatchObject({ agentId: p.merchants[i].agentId, basis: 'inferred', field: 'vip' });
+      expect(Object.hasOwn(r.body.contribution, 'userId')).toBe(false);
+      expect(r.text).not.toContain('sample-other-user');
     }
     const knownField = await api('POST', '/agent/contributions', p.merchants[0], {
       sessionId: p.sessions[0], field: 'shoe_size', value: claim, basis: 'stated',
@@ -223,7 +240,7 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
   // HTTP reset/replay support is exercised below; the complete live demo has not been replayed.
   it.todo('A12 重置复演');
   it.todo('A17 iMessage 主流程（手动）');
-  // No authentic sold-out + escalation recordings yet. UCP_STUB_COMPLETE is not real UCP evidence.
+  // This suite supplies no real sold-out/escalation evidence. UCP_STUB_COMPLETE does not establish it.
   it.todo('A18 UCP 失败路径');
 
   it('A22 回头客', async () => {
@@ -231,7 +248,7 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
       // The isolated fixture must route this stable Sample merchant to an inert local callback.
       // No quote is accepted here, and fixture UCP is not counted as a real catalog result.
       const previous = new Set((await grants()).map(grant => grant.id));
-      const r = await api('POST', '/personal/intents', who, { kind: 'trail_shoes', public: { budget: '120' } });
+      const r = await api('POST', '/personal/intents', who, { kind: seededKind, public: sampleIntentPublic });
       expect(r.status).toBe(201);
       const own = (await grants()).filter(g => g.agentId === seededMerchant.agentId);
       const introduced = own.filter(grant => !previous.has(grant.id));
@@ -257,7 +274,7 @@ describe.sequential('P0 · v0.3 HTTP 验收与显式待办', () => {
 describe.sequential('P1 · v0.3 HTTP 验收与显式待办', () => {
   it('A13 并发与幂等', async () => {
     const p = await merchants();
-    const body = { kind: p.kind, public: { budget: '120' } };
+    const body = { kind: p.kind, public: { budget: '64.30' } }; // A different controlled per-intent budget.
     const requests = await Promise.all(Array.from({ length: 5 }, () => api('POST', '/personal/intents', personal, body, 'c14-intent')));
     for (const r of requests) { expect(r.status).toBe(201); expect(r.body).toEqual(requests[0].body); }
     expect((await grants()).length).toBe(2);
@@ -266,17 +283,22 @@ describe.sequential('P1 · v0.3 HTTP 验收与显式待办', () => {
     expect(repeat.body).toEqual(requests[0].body);
     error(await api('POST', '/personal/intents', personal, { ...body, public: { budget: '200' } }, 'c14-intent'), 409, 'IDEMPOTENCY_CONFLICT');
     expect((await grants()).length).toBe(2);
-    const q = await quote(p.merchants[0], repeat.body.intentId, 'c14-quote');
-    expect((await quote(p.merchants[0], repeat.body.intentId, 'c14-quote')).id).toBe(q.id);
+    const q = await quote(p.merchants[0], repeat.body.intentId, body.public.budget, 'c14-quote');
+    expect((await quote(p.merchants[0], repeat.body.intentId, body.public.budget, 'c14-quote')).id).toBe(q.id);
     const quoted = await api('GET', `/personal/intents/${repeat.body.intentId}/quotes?wait=0`, personal);
     expect(quoted.status).toBe(200);
     expect(quoted.body.quotes).toHaveLength(1);
+    assertAtMostTwoMerchants(quoted.body.quotes.map((item: Json) => item.agentId));
+    assertQuotesWithinBudget(quoted.body.quotes, body.public.budget, 'USD');
     const result = await accept(p.merchants[0], q.id, 'c14-accept');
+    const afterAccept = await grants();
     expect(await accept(p.merchants[0], q.id, 'c14-accept')).toEqual(result);
+    expect((await grants()).map(grant => grant.id).sort()).toEqual(afterAccept.map(grant => grant.id).sort());
     const anotherCaller = await api('POST', '/personal/intents', secondPersonal, body, 'c14-intent');
     expect(anotherCaller.status).toBe(201);
     expect(anotherCaller.body.intentId).not.toBe(repeat.body.intentId);
-    expect((await grants()).length).toBe(4);
+    // Accept may create a checkout grant; compare against the observed post-accept baseline.
+    expect((await grants()).length).toBe(afterAccept.length + anotherCaller.body.introduced);
   });
 
   it.todo('A14 控制台');
@@ -293,7 +315,7 @@ describe.sequential('HTTP 支撑检查 · 不代表完整 demo 验收通过', ()
     async function replay() {
       await state('shipping_address', sampleAddress);
       const p = await pair();
-      const q = await quote(p.merchants[0], p.intentId);
+      const q = await quote(p.merchants[0], p.intentId, p.intentPublic.budget);
       const result = await accept(p.merchants[0], q.id);
       expect((await fields(p.merchants[0], p.sessions[0], ['shipping_address'], 'checkout')).status).toBe(200);
       const receipts = await api('GET', '/personal/receipts', personal);

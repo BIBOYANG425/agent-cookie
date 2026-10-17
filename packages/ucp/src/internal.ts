@@ -433,6 +433,8 @@ function normalizeOffers(envelope: JsonRecord, shipsTo: string): UcpOffer[] {
       const priceCents = price?.amount;
       if (typeof priceCents !== "number" || !Number.isSafeInteger(priceCents) || priceCents < 0) continue;
       const availability = record(variant.availability);
+      const currency = stringValue(price?.currency) ?? "";
+      if (currency !== "USD" || availability?.available !== true) continue;
       const options = Array.isArray(variant.options) ? variant.options : [];
       offers.push({
         sellerDomain,
@@ -441,14 +443,22 @@ function normalizeOffers(envelope: JsonRecord, shipsTo: string): UcpOffer[] {
         variantId,
         variantTitle: stringValue(variant.title) ?? "",
         priceCents,
-        currency: stringValue(price?.currency) ?? "",
-        available: availability?.available === true,
+        currency,
+        available: true,
         // UCP catalog responses have no per-variant shipping field; this reflects the request filter.
         shipsTo: [shipsTo],
         sizeOptions: options.flatMap((value) => {
           const option = record(value);
           return typeof option?.name === "string"
             && /size/i.test(option.name)
+            && typeof option.label === "string"
+            ? [option.label]
+            : [];
+        }),
+        colorOptions: options.flatMap((value) => {
+          const option = record(value);
+          return typeof option?.name === "string"
+            && /colou?r/i.test(option.name)
             && typeof option.label === "string"
             ? [option.label]
             : [];
@@ -508,12 +518,19 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
 
   const api: UcpApi = {
     async searchOffers(query) {
+      const baseIntent = query.intentText ?? query.query;
+      const intentParts = [baseIntent];
+      const signals = [
+        query.size && !baseIntent.toLowerCase().includes(query.size.toLowerCase()) ? `size: ${query.size}` : undefined,
+        query.color && !baseIntent.toLowerCase().includes(query.color.toLowerCase()) ? `color: ${query.color}` : undefined,
+      ].filter((signal): signal is string => Boolean(signal));
+      if (signals.length > 0) intentParts.push(`(${signals.join(", ")})`);
       const input = {
         query: query.query,
         context: {
           address_country: query.shipsTo,
           currency: "USD",
-          ...(query.intentText ? { intent: query.intentText } : {}),
+          intent: intentParts.join(" "),
         },
         filters: {
           available: true,

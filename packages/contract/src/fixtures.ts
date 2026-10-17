@@ -48,5 +48,7 @@ export interface PinnedOffers {
   recordedAt?: string;
   size?: string;
   budget?: number;
+  testOnly?: boolean;
+  note?: string;
   offers: Array<{ variantId: string; seller: string; title?: string; price?: number; size?: string }>;
 }

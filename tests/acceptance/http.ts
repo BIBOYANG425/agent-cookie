@@ -3,13 +3,15 @@ import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
+import { assertAtMostTwoMerchants, budgetInCents, effectiveAutoFields } from './properties.js';
 
 export type Json = Record<string, any>;
 export type Reply = { status: number; body: Json; text: string };
 export type Identity = { agentId: string; key: string };
 export type Merchant = Identity & { path: string };
 
-const base = new URL(process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310');
+if (!process.env.AGENT_COOKIE_URL) throw new Error('Set AGENT_COOKIE_URL to a dedicated resettable Sample workspace; no default target.');
+const base = new URL(process.env.AGENT_COOKIE_URL);
 if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)
   || base.username || base.password || base.pathname !== '/' || base.search || base.hash) {
   throw new Error('Acceptance requires an isolated loopback HTTP AGENT_COOKIE_URL.');
@@ -25,6 +27,12 @@ export const personal = identity('sample-personal-photon', 'personal');
 export const secondPersonal = identity('sample-personal-desktop', 'personal');
 export const owner = identity('owner', 'owner');
 export const seededMerchant = identity('sample-acme', 'merchant');
+const seededAgent = JSON.parse(readFileSync(new URL('../../fixtures/agents.json', import.meta.url), 'utf8'))
+  .find((agent: Json) => agent.agentId === seededMerchant.agentId);
+export const seededKind: string = seededAgent?.capabilities?.[0];
+if (!seededKind) throw new Error('Stable Sample merchant needs a fixture capability.');
+// Explicit per-run test input, not a product-wide budget requirement.
+export const sampleIntentPublic = { budget: '87.65' };
 export const sampleAddress: string = JSON.parse(readFileSync(new URL('../../fixtures/address.json', import.meta.url), 'utf8')).value;
 export const autoFields = ['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadline'];
 export const allFields = [...autoFields, 'shipping_address', 'payment_method'];
@@ -161,20 +169,23 @@ export async function merchants(count = 2): Promise<{ kind: string; merchants: M
   }
   return { kind, merchants: result };
 }
-export async function introduce(kind: string, list: Merchant[], who = personal): Promise<{ intentId: string; sessions: string[]; intros: Json[] }> {
-  const r = await api('POST', '/personal/intents', who, { kind, public: { budget: '120' } });
+export async function introduce(kind: string, list: Merchant[], who = personal, intentPublic = sampleIntentPublic) {
+  const currentCard = await card();
+  const expectedFields = effectiveAutoFields(currentCard as { card: Array<{ field: string; value: string }> }, intentPublic);
+  const r = await api('POST', '/personal/intents', who, { kind, public: intentPublic });
   expect(r.status).toBe(201);
   expect(r.body.introduced).toBe(list.length);
   const intros = await Promise.all(list.map(m => callback(m, 'introduce', r.body.intentId)));
-  return { intentId: r.body.intentId, sessions: intros.map(i => i.sessionId), intros };
+  assertAtMostTwoMerchants(list.map(merchant => merchant.agentId));
+  return { intentId: r.body.intentId, sessions: intros.map(i => i.sessionId), intros, intentPublic, expectedFields };
 }
 export async function pair() {
   const m = await merchants();
   return { ...m, ...await introduce(m.kind, m.merchants) };
 }
-export async function quote(merchant: Merchant, intentId: string, idempotencyKey?: string): Promise<Json> {
+export async function quote(merchant: Merchant, intentId: string, budget: string, idempotencyKey?: string): Promise<Json> {
   const r = await api('POST', '/agent/quotes', merchant, {
-    intentId, text: 'C14 Sample callback quote', price: 9900, currency: 'USD', etaDate: null,
+    intentId, text: 'C14 Sample callback quote', price: Math.floor(budgetInCents(budget) / 2), currency: 'USD', etaDate: null,
     checkoutUrl: 'https://merchant.example/c14-sample-checkout',
   }, idempotencyKey);
   expect(r.status).toBe(201);

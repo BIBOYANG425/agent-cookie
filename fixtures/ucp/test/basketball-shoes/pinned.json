@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-10-17T22:19:29.808Z",
+  "query": "basketball shoes",
+  "budget": 150,
+  "size": "10",
+  "testOnly": true,
+  "note": "Test fixture only; not used to pick offers in live mode.",
+  "offers": [
+    {
+      "variantId": "gid://shopify/ProductVariant/54353753080099",
+      "seller": "4165c2-2.myshopify.com",
+      "title": "ANTA KAI 2 \"Klay\"",
+      "price": 10000,
+      "size": "10",
+      "nativeCheckout": false
+    },
+    {
+      "variantId": "gid://shopify/ProductVariant/47084206260439",
+      "seller": "wowoffical.myshopify.com",
+      "title": "Wade All City 13 Encore \"Family Love\"",
+      "price": 10700,
+      "size": "US-M 10.5 / US-W 11.5 / EU 44 / UK 9.5 / 28.0cm / 11.0\"",
+      "nativeCheckout": false
+    }
+  ]
+}

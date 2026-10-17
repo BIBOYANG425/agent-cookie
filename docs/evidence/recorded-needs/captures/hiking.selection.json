@@ -1,0 +1,70 @@
+{
+  "id": "hiking",
+  "text": "周末想走山路，帮我找双防水徒步鞋，预算 160 美元。",
+  "query": "waterproof hiking shoes",
+  "budgetCents": 16000,
+  "currency": "USD",
+  "productCount": 50,
+  "selected": [
+    {
+      "source": "hiking.json#/result/products/0/variants/0",
+      "title": "Women's Headout Waterproof Hiking Shoe  |  Shitake/Dark Forest",
+      "variantId": "gid://shopify/ProductVariant/44471691804836",
+      "variantTitle": "Women's Headout Waterproof Hiking Shoe  |  Shitake/Dark Forest",
+      "seller": "us-keenfootwear.myshopify.com",
+      "price": {
+        "amount": 15000,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Width",
+          "label": "Regular"
+        },
+        {
+          "name": "Size",
+          "label": "5"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    },
+    {
+      "source": "hiking.json#/result/products/4/variants/0",
+      "title": "TARGHEE II WATERPROOF",
+      "variantId": "gid://shopify/ProductVariant/39809768063022",
+      "variantTitle": "TARGHEE II WATERPROOF",
+      "seller": "littles-shoes.myshopify.com",
+      "price": {
+        "amount": 14500,
+        "currency": "USD"
+      },
+      "availability": {
+        "available": true
+      },
+      "options": [
+        {
+          "name": "Width",
+          "label": "M"
+        },
+        {
+          "name": "Color",
+          "label": "Timberwolf/Engligh Lavender"
+        },
+        {
+          "name": "Size",
+          "label": "9.5"
+        }
+      ],
+      "sizeAssessment": "unknown",
+      "explanation": "仅为在库且预算内的候选。尺码标签与卡上尺码尚未核对；不保证合脚，不可称适码报价。",
+      "productAssessment": "Search result relevance and requested features require confirmation from the product details."
+    }
+  ],
+  "status": "catalog_support_ready",
+  "fullRecordedRunStatus": "BLOCKED: SDK/Photon generic intent and B continuous iMessage recording pending"
+}

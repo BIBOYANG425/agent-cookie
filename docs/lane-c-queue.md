@@ -12,8 +12,10 @@
 - [ ] C11（P1）fixtures/expected/agent_cookie_memory_store.py 参考实现 — 1abcbfa（13 项离线协议测试通过） BLOCKED: 完整 Tier 2 HTTP 缺 note 删除/枚举/clear、持久 generation/条件写入及卡字段映射；已交可验证的六方法内存参考和 TODO(contract)。
 - [x] C12 skills/add-agent-cookie/SKILL.md — 8a331bc（front matter/引用检查通过；A16真实接入及录屏仍待办）
 - [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
-- [ ] C14 手动证据收集（用户于 2026-10-17 调整范围）：A15 原版 retail :8000 + Tier 0 首条回复含 42；A16 干净克隆由 Claude Code、Devin 各跑一次并录屏；A10/A17 由 B 提供，C 维护索引。P0 自动项由 apps/workspace/test/acceptance 推进（用户确认 66/66），tests/acceptance 保留历史、不重复扩写。A15 已尝试并 BLOCKED；A16 Claude / Devin 实跑完成，有限 HTTP 接缝通过（34/34、29/29），完整 MemoryStore 仍 BLOCKED。
+- [ ] C14 手动证据收集（用户于 2026-10-17 调整范围）：A15 原版 retail :8000 + Tier 0 首条回复正确使用本次卡上适用 auto 字段；A16 干净克隆由 Claude Code、Devin 各跑一次并录屏；A10/A17 由 B 提供，C 维护索引。P0 自动项由 apps/workspace/test/acceptance 推进（用户确认 66/66），tests/acceptance 保留历史并维护性质断言，不复制 A 的整套。A15 已尝试并 BLOCKED；A16 Claude / Devin 实跑完成，有限 HTTP 接缝通过（34/34、29/29），完整 MemoryStore 仍 BLOCKED。
 - [x] C15 README：agent 名、启动命令、环境变量表 — 6327cb1（本地链接/agent 名核对通过，已同步 main 798e0de 状态）
 - [x] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度 — d94557e（真实窄屏截图、44px 按钮与键盘/空状态证据；C10b 浏览器复核受工具策略限制）
 
 - [x] C17 / T9 文稿：docs/README.md 定稿、Devpost 文案草稿、4:10 iMessage 主线分镜（3:10 失败删减版） — c04fe17。正式视频仍需 A17 原片与证据核验，不等于 T9 总出口完成。
+
+- [ ] C18 人的新方向：既有 HTTP 验收改为动态卡/本次预算与性质检查；控制台按契约字段通用渲染；分镜改为现场需求并备三条真实 catalog 支撑材料。代码/文稿检查见本次提交；三条完整 iMessage Recorded run 仍待 A/B/D 通用意图接线与 B 连续原片，不因 catalog 查询成功而勾完。

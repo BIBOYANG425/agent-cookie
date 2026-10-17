@@ -2,7 +2,9 @@ import fixtureContributions from '../../../fixtures/contributions.json';
 import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
 
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
-export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapter {
+export function createSampleAdapter(now: () => number = Date.now,
+  seedContributions: readonly Contribution[] = fixtureContributions as Contribution[]): ConsoleAdapter {
+  const initialContributions = structuredClone([...seedContributions]);
   let contributions: Contribution[] = [];
   let grants: GrantView[] = [];
   let events: ActivityEvent[] = [];
@@ -12,10 +14,11 @@ export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapte
     actor: 'Sample · 本地控制台', object, result: 'Sample · 本地完成', reason,
   });
   const seed = () => {
-    contributions = structuredClone(fixtureContributions) as Contribution[];
+    contributions = structuredClone(initialContributions);
+    const fields = [...new Set(contributions.filter((record) => !record.revokedAt).map((record) => record.field))];
     grants = ['a', 'b'].map((suffix) => ({
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
-      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: ['lang', 'tone', 'shoe_size'], purpose: 'handshake',
+      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...fields], purpose: 'handshake',
       createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 600000).toISOString(), remainingMs: 600000, status: 'live',
     }));
     events = [];
@@ -48,7 +51,7 @@ export function createSampleAdapter(now: () => number = Date.now): ConsoleAdapte
       grant.revokedAt = new Date(now()).toISOString();
       addEvent('撤销授权', id, 'Sample 授权已撤销；未向真实商家或工作台发送请求。');
     },
-    async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的三条来源与两份演示授权。'); },
+    async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
   };
 }
 

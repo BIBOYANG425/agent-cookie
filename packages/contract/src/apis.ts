@@ -141,12 +141,17 @@ export interface MemoryRepoApi {
 // ---------------------------------------------------------------------------------------------------------
 
 export interface UcpSearchQuery {
-  /** e.g. "trail running shoes" */
+  /** The user's own words, for any product category. */
   query: string;
-  /** The user's words, passed as context.intent. */
+  /** The user's own intent, passed as context.intent. Defaults to query. */
   intentText?: string;
+  /** Buyer signal only; the adapter does not filter variants by size. */
+  size?: string;
+  /** Buyer signal only; the adapter does not filter variants by color. */
+  color?: string;
+  /** The user's budget in minor currency units (USD). */
   maxPriceCents?: number;
-  /** ISO 3166-1 alpha-2, e.g. "US". */
+  /** Country to ship to, ISO 3166-1 alpha-2 (e.g. "US"). */
   shipsTo: string;
   limit?: number;
 }
@@ -165,8 +170,10 @@ export interface UcpOffer {
   /** availability.available */
   available: boolean;
   shipsTo: string[];
-  /** Every size-like option value of the variant, verbatim ("9", "US 9", "EU 42", "42"). */
+  /** Every size-like option value of the variant, verbatim; [] means the variant has no size option. */
   sizeOptions: string[];
+  /** Every color-like option value of the variant, verbatim. */
+  colorOptions?: string[];
   /** eligible.native_checkout: false means finalizing needs escalation (handoff via continue_url). */
   nativeCheckout: boolean;
   /** null unless UCP actually gave a delivery date. Never estimated. */
