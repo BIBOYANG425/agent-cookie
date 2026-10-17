@@ -11,15 +11,16 @@ pnpm --dir apps/console build
 pnpm --dir apps/console dev
 ```
 
-The development server binds to `127.0.0.1:5173` and refuses an occupied port. `preview` uses the same host and port. The app includes three sections:
+The development server binds to `127.0.0.1:5173` and refuses an occupied port. `preview` uses the same host and port. The app includes four sections:
 
 - Identity card: expand provenance, then revoke one Sample source. Empty cards, candidate information, and historical values have separate states.
+- Learned: each contribution's field key, value, candidate/on-card status, conversation or intent sources, evidence, time and revoke. The top “暂停学习” switch changes learning only after acknowledgement.
 - Grants: agent, fields, purpose, session, expiry, remaining seconds, and revoke. The countdown starts from the server's `remainingMs`, so the browser clock does not override the workspace test clock.
 - Activity: newest first, with expandable reason. Top-level reset restores Sample fixtures; in live mode it calls the actual demo-reset endpoint.
 
 Card, candidate, historical and grant fields display each returned field key alongside any available friendly label. Labels never determine which fields are shown; values and field order come from the response, without a fixed product category, size or budget. New keys remain visible even before a friendly label is added.
 
-Every two seconds the controller refreshes all three sections, without overlapping requests. Disconnect aborts outstanding requests. A stale poll cannot overwrite the state returned after a mutation. A failed revoke leaves existing rows in place and never displays success. If a mutation is acknowledged but the following refresh fails, the UI says so explicitly and retains the older display.
+Every two seconds the controller refreshes all sections, without overlapping requests. Disconnect aborts outstanding requests. A stale poll cannot overwrite the state returned after a mutation. A failed revoke or learning toggle leaves existing rows and the confirmed toggle in place and never displays success. If a mutation is acknowledged but the following refresh fails, the UI says so explicitly and retains the older display.
 
 ## Connecting the local workspace (C10b)
 
@@ -49,10 +50,26 @@ Both transports reject upstream redirects, omit cookies, disable caching, and ti
 | `revokeGrant(id)` | `POST /personal/grants/:id/revoke`; `{ ok, revokedAt }` | `TODO(sdk)` HTTP |
 | `revokeContribution(id)` | `POST /personal/contributions/:id/revoke`; `{ ok, card }` | `TODO(sdk)` HTTP |
 | `demoReset()` | `POST /demo/reset`; `{ ok, seededAt }`, requires `AGENT_COOKIE_DEMO=1` | `TODO(sdk)` HTTP |
+| `getLearning()` | User-specified `GET /personal/learned`; C `{ enabled, entries }` or B proposal `{ enabled, generation, learned }` | `TODO(sdk)` / `TODO(contract)` |
+| `setLearning({ enabled })` | User-specified `PUT /personal/learning`; `{ enabled }`, acknowledgement must confirm the requested state | `TODO(sdk)` / `TODO(contract)` |
 
-The UI polls card, grants and activity; the receipts method is routed for inspection and future UI use. The SDK checklist is appended in [docs/requests.md](../../docs/requests.md).
+The UI polls card, grants, activity and the optional learned endpoint; the receipts method is routed for inspection and future UI use. The SDK checklist is appended in [docs/requests.md](../../docs/requests.md).
 
 **Live provenance limitation:** the card contains source agent IDs, not contribution records/IDs. There is no verified list-contributions endpoint. Live mode displays source agent IDs and explains why individual source revoke is unavailable. It never invents a contribution ID. The verified revoke method is available when the contract supplies actual IDs.
+
+## Learned view (C19, provisional interface)
+
+The learning API types have not been published by lane A. B's plan at `35f6b38` proposes `getLearning()` and `setLearning({ enabled })`; the bridge prefers those installed SDK methods, without HTTP retry if a method throws. The user's `GET /personal/learned` and `PUT /personal/learning` remain the fallback paths; B's proposed GET/POST paths are not silently substituted. `src/learning.ts` isolates both temporary response shapes, marked `TODO(contract)`.
+
+The C/Sample `entries` shape requires an actual contribution `id`, `field`, `value`, `status` (`candidate` or `on_card`), `createdAt`, and `sources`. A source has `kind` (`conversation` or `intent`) and `id`, with optional `agentId`, `label`, `evidence` and `at`; a record may also provide `evidence`, `basis` and `revokedAt`. Missing IDs/status are rejected, not inferred from card fields. Repeated `(kind, id)` sources are displayed once, both within a record and across active records with the same field/value; source count never determines live promotion.
+
+B's proposal has `{ enabled, generation, learned: [{ id, key, value, evidence, basis, status: 'candidate' | 'confirmed', updatedAt }] }`. The normalizer maps `key` to the displayed field but preserves `confirmed` as “已确认 · 上卡状态待对齐”; it does not claim that confirmed means on-card. It displays `updatedAt` as update time, leaves absent provenance unavailable, and does not invent a creation time or contribution ID. Individual revoke is disabled with an explanation for these proposed learning IDs until A confirms that they are revocable contribution IDs. The pause control remains available when `enabled` is known. These provisional integrations do not constitute a passed C19 live acceptance.
+
+The optional learned read returning 404 or 501 shows “接口尚未提供”; malformed payloads and read failures are contained in that panel. Core card/grant/activity data remains available. The pause switch is disabled while its status is unknown. Live mode never substitutes Sample entries, and no query parameter can turn a live response into learned evidence. The server validates the pause JSON and still checks the owner role before calling the SDK or its missing-method HTTP fallback.
+
+Sample uses `fixtures/learning/console.json` through the adapter's optional third `learningSeed` argument. It starts empty. Use the panel's stage buttons, or open `/?learningStage=candidate#learned` or `/?learningStage=learned#learned`, to replay the authored states. The latter has two separate Sample conversation sources; the same chat is not copied into an intent to claim corroboration. Removing one supporting contribution returns the remaining matching Sample entry to candidate and removes its scripted card field. Pause changes only Sample state; it does not run an extractor. Reset returns to the empty learning stage. These screens demonstrate the interface, not real extraction, preference ranking, quotes or an end-to-end learning acceptance run.
+
+Learning checks cover source deduplication, generic fields, exact empty copy, safe evidence rendering, optional-endpoint isolation, contribution IDs, pause acknowledgement and failure, Sample revocation downgrade, SDK-first routing and validated HTTP fallback. Browser verification used only Sample data: stage replay, pause, and revocation downgrade. Pause failure was verified by a controller test, not browser fault injection.
 
 ## Verification and remaining checks
 

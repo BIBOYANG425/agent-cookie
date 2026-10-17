@@ -21,6 +21,7 @@ export interface ActivityEvent { id: string; at: string; event: string; actor: s
 export interface ConsoleSnapshot {
   card: Card; contributions: Contribution[] | null; grants: GrantView[]; events: ActivityEvent[]; receivedAt: number;
   sample?: boolean;
+  learning?: import('./learning').LearningState;
 }
 export interface ConsoleAdapter {
   mode: 'sample' | 'live';
@@ -28,4 +29,6 @@ export interface ConsoleAdapter {
   revokeContribution(id: string, signal?: AbortSignal): Promise<void>;
   revokeGrant(id: string, signal?: AbortSignal): Promise<void>;
   reset(signal?: AbortSignal): Promise<void>;
+  setLearning(enabled: boolean, signal?: AbortSignal): Promise<void>;
+  selectLearningStage?(id: string): Promise<void>;
 }

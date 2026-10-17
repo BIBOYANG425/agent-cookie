@@ -21,6 +21,12 @@ button.danger:disabled { color: #667189; border-color: #dce2ec; }
 .brand { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 650; text-decoration: none; flex-shrink: 0; }
 .brand-mark { display: grid; place-items: center; background: #254fd8; color: white; font-weight: 800; width: 40px; height: 40px; border-radius: 12px 12px 3px 12px; }
 .header-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.learning-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.learning-toggle .small { margin: 0; }
+.switch-track { width: 30px; height: 18px; padding: 2px; background: #8290a6; border-radius: 12px; flex-shrink: 0; }
+.switch-track > span { display: block; width: 14px; height: 14px; border-radius: 50%; background: white; }
+.learning-toggle[aria-checked="true"] .switch-track { background: #254fd8; }
+.learning-toggle[aria-checked="true"] .switch-track > span { transform: translateX(12px); }
 .mode-badge { font-size: 12px; font-weight: 600; background: #e6ecfa; color: #304c9a; padding: 6px 12px; border-radius: 20px; }
 .mode-badge.sample { color: #315646; background: #dfece7; }
 main { max-width: 1040px; margin: 40px auto 48px; padding: 0 48px; }
@@ -43,6 +49,7 @@ p, dd, li, code { overflow-wrap: anywhere; }
 .connection-input input { min-width: 0; width: 100%; border: 1px solid #bdc9de; border-radius: 8px; padding: 10px 12px; background: white; }
 .connection-input button { flex-shrink: 0; }
 .section-nav { display: flex; gap: 32px; border-bottom: 1px solid #dce2ec; margin: 8px 0 12px; }
+.section-nav { flex-wrap: wrap; column-gap: 24px; }
 .section-nav a { padding: 12px 0; min-height: 48px; text-decoration: none; font-weight: 600; color: #254fd8; }
 .section-nav a:hover { text-decoration: underline; text-underline-offset: 6px; }
 .sync-line { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; color: #667189; font-size: 12px; }
@@ -89,6 +96,24 @@ dd { margin: 0; min-width: 0; }
 .muted { color: #667189; }
 .small { font-size: 12px; margin: 4px 0; }
 .panel-note { margin: 16px 28px; }
+.learning-replay { margin: 16px 28px; padding: 16px; background: #f3f7f5; border: 1px solid #d7e4dc; border-radius: 8px; font-size: 13px; }
+.learning-replay p { margin: 0 0 10px; }
+.learning-replay p:last-child { margin-bottom: 0; }
+.replay-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.replay-actions [aria-pressed="true"] { background: #e3efe8; border-color: #59826b; }
+.sample-description { color: #315646; }
+.learned-list { list-style: none; padding: 0; margin: 0; }
+.learned-record { padding: 24px 28px; border-top: 1px solid #e7ebf1; }
+.learned-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.learned-value { margin: 8px 0 12px; font-size: 24px; color: #203353; white-space: pre-wrap; }
+.learned-status { flex-shrink: 0; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: #edf1ff; color: #304c9a; }
+.learned-status.on_card { background: #e3efe8; color: #315646; }
+.learned-evidence { margin: 12px 0; padding: 8px 12px; border-left: 3px solid #bdc9de; background: #f7f9fc; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.learned-sources { margin: 16px 0; font-size: 13px; }
+.learned-sources summary { cursor: pointer; min-height: 44px; padding: 10px 0; color: #254fd8; }
+.learned-sources ul { padding-left: 20px; }
+.learned-sources li + li { margin-top: 16px; }
+.learned-sources p { margin: 4px 0; }
 .empty { padding: 28px; margin: 0; font-size: 14px; color: #667189; }
 .activity-list { list-style: none; padding: 0; margin: 0; }
 .activity-list li + li { border-top: 1px solid #e7ebf1; }
@@ -120,6 +145,9 @@ dd { margin: 0; min-width: 0; }
   .reason-toggle { grid-column: 2; grid-row: 2; }
   .activity-detail { padding: 4px 20px 12px; }
   .panel-note { margin: 16px 20px; }
+  .learning-replay { margin: 16px 20px; }
+  .learned-record { padding: 20px; }
+  .learned-heading { flex-wrap: wrap; gap: 8px; }
   .secondary-section { padding: 12px 20px; }
 }
 @media (max-width: 380px) {

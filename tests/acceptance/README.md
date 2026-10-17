@@ -87,3 +87,15 @@ AGENT_COOKIE_URL=http://127.0.0.1:4328 node node_modules/vitest/vitest.mjs run -
 成功退出仅说明已实现断言通过，todo 不会使退出码失败。应同时报告已执行的编号、todo、工作台来源提交和真实装载的 adapter。历史 C14 工作台的 HTTP / SQLite 服务来自 A 原版源码，但 RulesApi、MemoryRepoApi、UcpApi 当时使用它的 stubs；历史报告不证明 C 的 rules/memory 包或 D 的 UCP 包已集成。
 
 历史强化复测使用 4318，避免重置 C10b 的 4310 后台。A05 检查接受前后用途及冲突 card budget；A22 要求每次介绍新增 grant；reset 支撑检查先通过 checkout 地址读取产生非空回执。auto 字段读取回执不在本目录已满足的能力声明中。
+# 动态学习的性质证据（C20）
+
+`learning-properties.test.ts` 只验证响应观察的性质：独立来源去重、短证据、暂停后无新记录、撤销与受控候选集的偏好排序；这些小测试不是模型或工作台集成通过证据。排序比较必须使用相同合格候选集，预算/尺码等其他因素相同，命中属性来自真实 catalog，不能按商品名猜。
+
+`learning-http.test.ts` 只打 HTTP，默认跳过；B 实际跑完演示对话后，以显式的隔离工作台和 owner key 启用：
+
+```sh
+AGENT_COOKIE_LEARNING_TEST=1 AGENT_COOKIE_URL=http://127.0.0.1:4310 \
+  pnpm exec vitest run --config vitest.config.mjs learning-http.test.ts
+```
+
+钥匙由当前进程环境 `AGENT_COOKIE_KEY` 传入，不写进命令、证据或浏览器。`TODO(contract)`：暂按 C19 本地桩 `{ enabled, entries }` 投影；A 类型到达后只替换该投影。端点 404、空 entries 或证据缺失都不能变成“通过”。不新增 learn 写端点，不直接读 SQLite/git，不复制 A 的 P0 套件。真实执行状态见 [learning.md](../../docs/evidence/learning.md)。

@@ -5,9 +5,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const upstream = 'http://127.0.0.1:4310';
 const prefix = '/workspace-api';
-type Method = (...args: string[]) => Promise<unknown>;
+type Method = (...args: Array<string | { enabled: boolean }>) => Promise<unknown>;
 export type SdkClient = Partial<Record<'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity'
-  | 'revokeGrant' | 'revokeContribution' | 'demoReset', Method>>;
+  | 'revokeGrant' | 'revokeContribution' | 'demoReset' | 'getLearning' | 'setLearning', Method>>;
 type ClientFactory = (options: { key: string; fetch: typeof fetch; timeoutMs: number; baseUrl: string; sample?: boolean }) => SdkClient;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -35,10 +35,11 @@ class BridgeError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
 }
 
-function route(method: string | undefined, path: string): { name: keyof SdkClient; args: string[] } | undefined {
+function route(method: string | undefined, path: string): { name: keyof SdkClient; args: Array<string | { enabled: boolean }> } | undefined {
   if (method === 'GET') {
     const names: Record<string, keyof SdkClient> = { '/me': 'getMe', '/personal/card': 'getMyCard',
-      '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity' };
+      '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity',
+      '/personal/learned': 'getLearning' };
     if (names[path]) return { name: names[path], args: [] };
   }
   if (method === 'POST') {
@@ -51,7 +52,27 @@ function route(method: string | undefined, path: string): { name: keyof SdkClien
       return { name: match[1] === 'grants' ? 'revokeGrant' : 'revokeContribution', args: [id] };
     }
   }
+  if (method === 'PUT' && path === '/personal/learning') return { name: 'setLearning', args: [] };
   return undefined;
+}
+
+async function readLearningChange(request: IncomingMessage): Promise<{ enabled: boolean }> {
+  // TODO(contract): provisional write shape until A publishes the learning contract.
+  if (!request.headers['content-type']?.startsWith('application/json')) throw new BridgeError(400, 'MISSING_FIELD');
+  const parts: Buffer[] = [];
+  let bytes = 0;
+  for await (const part of request) {
+    const buffer = Buffer.from(part);
+    bytes += buffer.length;
+    if (bytes > 1024) throw new BridgeError(413, 'MISSING_FIELD');
+    parts.push(buffer);
+  }
+  let body: unknown;
+  try { body = JSON.parse(Buffer.concat(parts).toString('utf8')); } catch { throw new BridgeError(400, 'MISSING_FIELD'); }
+  if (!object(body) || typeof body.enabled !== 'boolean' || Object.keys(body).some((key) => key !== 'enabled')) {
+    throw new BridgeError(400, 'MISSING_FIELD');
+  }
+  return { enabled: body.enabled };
 }
 
 // Only these existing workspace paths are reachable. No generic credentialed proxy.
@@ -89,18 +110,21 @@ export function createWorkspaceBridge(options: {
         redirect: 'manual', credentials: 'omit', cache: 'no-store' });
       const factory = await options.sdk;
       const client = factory?.({ key, fetch: fetcher, timeoutMs: 8000, baseUrl: upstream, sample: options.sample });
-      const direct = async (endpoint: string, method: string): Promise<unknown> => {
+      const direct = async (endpoint: string, method: string, payload?: unknown): Promise<unknown> => {
         // TODO(sdk): remove only when the corresponding method exists in B's installed package.
         // A bd9d6e3 HTTP contract. No fallback after an SDK method throws.
         const result = await fetcher(`${upstream}${endpoint}`, { method,
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json',
-            ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) },
-          ...(method === 'POST' ? { body: '{}' } : {}) });
+            ...(['POST', 'PUT'].includes(method) ? { 'Content-Type': 'application/json' } : {}) },
+          ...(['POST', 'PUT'].includes(method) ? { body: JSON.stringify(payload ?? {}) } : {}) });
         if (result.status >= 300 && result.status < 400) {
           await result.body?.cancel();
           throw new BridgeError(502, 'UPSTREAM_ERROR');
         }
-        const body: unknown = await result.json();
+        let body: unknown;
+        try { body = await result.json(); } catch {
+          if (result.ok) throw new BridgeError(502, 'UPSTREAM_ERROR');
+        }
         if (!result.ok) {
           const code = object(body) && object(body.error) ? body.error.code : undefined;
           throw new BridgeError(result.status, typeof code === 'string' && /^[A-Z_]{1,40}$/u.test(code) ? code : 'UPSTREAM_ERROR');
@@ -109,9 +133,13 @@ export function createWorkspaceBridge(options: {
       };
       const me = client?.getMe ? await client.getMe() : await direct('/me', 'GET');
       if (!object(me) || me.role !== 'owner') throw new BridgeError(403, 'CONSOLE_OWNER_REQUIRED');
+      const payload = selected.name === 'setLearning' ? await readLearningChange(request) : undefined;
+      // TODO(contract): B 35f6b38 proposes getLearning()/setLearning({enabled}); the user's HTTP paths remain authoritative.
+      // TODO(sdk): remove the direct path only when B's installed SDK provides the corresponding method.
+      if (payload) selected.args = [payload];
       let body = selected.name === 'getMe' ? me
         : typeof client?.[selected.name] === 'function' ? await client[selected.name]!(...selected.args)
-          : await direct(path, request.method!);
+          : await direct(path, request.method!, payload);
       // B returns { activity }; the console uses A's { events } wire shape.
       if (selected.name === 'getActivity' && object(body) && Array.isArray(body.activity)) {
         body = { events: body.activity, ...(body.sample === true ? { sample: true } : {}) };

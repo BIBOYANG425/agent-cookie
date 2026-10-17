@@ -20,16 +20,51 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No test listener');
-  return (path: string, method = 'GET', headers: Record<string, string> = {}) => new Promise<{ status: number; text: string }>((resolve, reject) => {
+  return (path: string, method = 'GET', headers: Record<string, string> = {}, body?: unknown) => new Promise<{ status: number; text: string }>((resolve, reject) => {
     const req = httpRequest({ host: '127.0.0.1', port: address.port, path: `/workspace-api${path}`, method,
-      headers: { Host: '127.0.0.1:5173', 'X-Agent-Cookie-Console': '1', ...headers } }, (res) => {
+      headers: { Host: '127.0.0.1:5173', 'X-Agent-Cookie-Console': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers } }, (res) => {
       let text = ''; res.on('data', (part) => { text += part; });
       res.on('end', () => resolve({ status: res.statusCode!, text }));
-    }); req.on('error', reject); req.end();
+    }); req.on('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
 
 describe('server SDK bridge', () => {
+  it('routes learning reads and writes through available SDK methods and sanitizes failed toggles', async () => {
+    const getLearning = vi.fn(async () => ({ enabled: true, generation: 0, learned: [] }));
+    const setLearning = vi.fn(async (input) => ({ ...input, generation: 1, forgottenKeys: [] }));
+    const http = vi.fn<typeof fetch>();
+    const sdk = { getMe: async () => owner, getLearning, setLearning };
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => sdk), fetcher: http });
+    expect(JSON.parse((await send('/personal/learned')).text)).toEqual({ enabled: true, generation: 0, learned: [] });
+    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { enabled: false })).text)).toEqual({ enabled: false, generation: 1, forgottenKeys: [] });
+    expect(setLearning).toHaveBeenCalledWith({ enabled: false });
+    setLearning.mockRejectedValueOnce(Object.assign(new Error(key), { status: 503, code: 'UPSTREAM_ERROR' }));
+    expect(await send('/personal/learning', 'PUT', {}, { enabled: true }))
+      .toEqual({ status: 503, text: '{"error":{"code":"UPSTREAM_ERROR"}}' });
+    expect(http).not.toHaveBeenCalled();
+  });
+
+  it('falls back only for missing learning methods, preserving PUT JSON and optional 501 status', async () => {
+    const http = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).endsWith('/personal/learned')) return new Response('not implemented', { status: 501 });
+      expect(String(url)).toBe('http://127.0.0.1:4310/personal/learning');
+      expect(init?.method).toBe('PUT');
+      expect(init?.body).toBe('{"enabled":false}');
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      return json({ enabled: false });
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http });
+    expect((await send('/personal/learned')).status).toBe(501);
+    expect((await send('/personal/learning', 'PUT', {}, { enabled: false })).status).toBe(200);
+    expect(http).toHaveBeenCalledTimes(2);
+    for (const body of [{ enabled: 'false' }, { enabled: true, key }, {}]) {
+      expect((await send('/personal/learning', 'PUT', {}, body)).status).toBe(400);
+    }
+    expect((await send('/personal/learning', 'POST', {}, { enabled: false })).status).toBe(404);
+    expect(http).toHaveBeenCalledTimes(2);
+  });
+
   it('calls every available SDK method with the server key and translates the activity envelope', async () => {
     const calls: string[] = [];
     const sdk: SdkClient = { getMe: async () => owner };

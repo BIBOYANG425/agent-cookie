@@ -5,9 +5,10 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import type { CommitRef, WriteMeta } from '@agent-cookie/contract';
 import { metadata, ownerFromFilename } from './codec.js';
+import { parseIntentFilename } from './intent-history.js';
 
 const REQUIRED = ['MEMORY.md', 'CARD.md', 'POLICY.yaml', 'receipts.md'] as const;
-const DIRECTORIES = ['contributions', 'notes', 'archive'] as const;
+const DIRECTORIES = ['contributions', 'notes', 'archive', 'intents'] as const;
 const MARKER = 'agent-cookie-memory.json';
 const queue = new Map<string, Promise<void>>();
 
@@ -88,7 +89,8 @@ function verifyLayout(files: Map<string, Buffer>): void {
     if (directory === 'archive') continue;
     if (!name || rest.length > 0) throw new Error('Unexpected memory record directory');
     if (name === '.gitkeep' && files.get(path)!.length === 0) continue;
-    ownerFromFilename(name);
+    if (directory === 'intents') parseIntentFilename(name);
+    else ownerFromFilename(name);
   }
 }
 
@@ -187,10 +189,16 @@ export async function commitFiles(root: string, files: ReadonlyMap<string, strin
   }
 }
 
-export async function recordFiles(root: string, directory: 'contributions' | 'notes'): Promise<string[]> {
-  const entries = await readdir(join(root, directory));
+export async function recordFiles(root: string, directory: 'contributions' | 'notes' | 'intents'): Promise<string[]> {
+  let entries: string[];
+  try { entries = await readdir(join(root, directory)); }
+  catch (error) {
+    if (directory === 'intents' && (error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
   return entries.filter((name) => name !== '.gitkeep').sort().map((name) => {
-    ownerFromFilename(name);
+    if (directory === 'intents') parseIntentFilename(name);
+    else ownerFromFilename(name);
     return name;
   });
 }

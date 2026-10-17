@@ -1,4 +1,5 @@
 import { isField, type Contribution, type RulesApi } from "@agent-cookie/contract";
+import { isLearningField, isLearningContributionMetadata, type LearningCard, type LearningContribution, type LearningMetadata } from './learning-types.js';
 
 // One physical line per record. Percent escapes protect grammar delimiters and CR/LF;
 // Unicode, backslashes, empty strings and leading/trailing whitespace remain data.
@@ -34,7 +35,7 @@ function headerText(value: string): string {
   return escapeText(value).replace(/[<>]/gu, percent);
 }
 
-export const renderCard: RulesApi["renderCard"] = (card, meta) => {
+export const renderCard = (card: LearningCard, meta: Parameters<RulesApi['renderCard']>[1]): string => {
   const section = (name: string, lines: string[]): string =>
     `## ${name}\n${lines.length === 0 ? "_none_" : lines.join("\n")}`;
   return [
@@ -56,12 +57,16 @@ export const renderCard: RulesApi["renderCard"] = (card, meta) => {
   ].join("\n");
 };
 
-export const renderContribution: RulesApi["renderContribution"] = (contribution) => record(
-  contribution.field, contribution.value, [
+export const renderContribution = (contribution: LearningContribution): string => {
+  if (!isLearningField(contribution.field) || !isLearningContributionMetadata(contribution)) {
+    throw new TypeError('Invalid learning field or provenance; evidence must be at most 200 characters');
+  }
+  return record(contribution.field, contribution.value, [
     ["id", contribution.id], ["basis", contribution.basis],
     ["at", contribution.createdAt], ["revoked", contribution.revokedAt],
-  ],
-);
+    ['intentId', contribution.intentId], ['conversationId', contribution.conversationId], ['evidence', contribution.evidence],
+  ]);
+};
 
 function parseAttributes(block: string): Map<string, string> | undefined {
   const attributes = new Map<string, string>();
@@ -77,13 +82,16 @@ function isTimestamp(value: string | undefined): value is string {
   return value !== undefined && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
-export const parseContributions: RulesApi["parseContributions"] = (markdown, owner) => {
-  const contributions: Contribution[] = [];
+type Owner = Parameters<RulesApi['parseContributions']>[1];
+export function parseContributions(markdown: string, owner: Owner): Array<Contribution & LearningMetadata>;
+export function parseContributions(markdown: string, owner: Owner, options: { learning: true }): LearningContribution[];
+export function parseContributions(markdown: string, owner: Owner, options?: { learning: true }): LearningContribution[] {
+  const contributions: LearningContribution[] = [];
   for (const line of markdown.split(/\r\n|\n|\r/u)) {
     // The required final attribute block disambiguates values that contain ": ".
     // Do not trim: the spaces on either side of the value can belong to the value.
-    const match = /^- ([a-z_]+): (.*) \[([^\[\]\r\n]*)\]$/su.exec(line);
-    if (!match || !isField(match[1])) continue;
+    const match = /^- ([a-z0-9_.]+): (.*) \[([^\[\]\r\n]*)\]$/su.exec(line);
+    if (!match || !isLearningField(match[1]) || (!options?.learning && !isField(match[1]))) continue;
     const attributes = parseAttributes(match[3]!);
     if (!attributes) continue;
     const id = attributes.get("id");
@@ -93,12 +101,20 @@ export const parseContributions: RulesApi["parseContributions"] = (markdown, own
     if (!id || !isTimestamp(createdAt)) continue;
     if (basis !== "observed" && basis !== "stated" && basis !== "inferred") continue;
     if (revokedAt !== undefined && !isTimestamp(revokedAt)) continue;
-    const contribution: Contribution = {
+    const contribution: LearningContribution = {
       id, userId: owner.userId, agentId: owner.agentId,
       field: match[1], value: unescapeText(match[2]!), basis, createdAt,
     };
     if (revokedAt !== undefined) contribution.revokedAt = revokedAt;
+    for (const key of ['intentId', 'conversationId', 'evidence'] as const) {
+      const value = attributes.get(key);
+      if (value !== undefined) contribution[key] = value;
+    }
+    if (!isLearningContributionMetadata(contribution)) continue;
     contributions.push(contribution);
   }
   return contributions;
-};
+}
+
+export const parseLearningContributions = (markdown: string, owner: Owner): LearningContribution[] =>
+  parseContributions(markdown, owner, { learning: true });

@@ -1,15 +1,20 @@
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import agents from '../../../fixtures/agents.json';
+import learningSeed from '../../../fixtures/learning/console.json';
 import { createLiveAdapter, createSampleAdapter } from './adapters';
 import { ConsoleController, remainingSeconds } from './controller';
 import { FieldName, fieldName } from './fields';
 import type { ConsoleAdapter } from './model';
+import type { LearningSeed } from './learning';
+import { LearningPanel, LearningToggle } from './LearningPanel';
 import './style.css';
 
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
 const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN', { hour12: false });
 const focusCard = () => document.getElementById('card-title')?.focus({ preventScroll: true });
+const createConsoleSample = () => createSampleAdapter(Date.now, undefined, learningSeed as LearningSeed,
+  new URLSearchParams(window.location.search).get('learningStage') ?? undefined);
 
 function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (next: ConsoleAdapter) => void }) {
   return <details className="connection">
@@ -17,7 +22,7 @@ function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (nex
     <p>目标：<code>127.0.0.1:4310</code>。使用本机控制台服务配置的 owner 钥匙，页面无需输入。</p>
     <button className="primary" type="button" onClick={() => change(createLiveAdapter())}>连接</button>
     <p className="muted">连接后，撤销与重置会发送给这个本机工作台。</p>
-    {adapter.mode === 'live' && <button type="button" onClick={() => change(createSampleAdapter())}>断开并返回 Sample</button>}
+    {adapter.mode === 'live' && <button type="button" onClick={() => change(createConsoleSample())}>断开并返回 Sample</button>}
   </details>;
 }
 
@@ -39,6 +44,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
     <header className="masthead">
       <a className="brand" href="#card" aria-label="Agent Cookie 首页"><span className="brand-mark" aria-hidden="true">ac</span>Agent Cookie</a>
       <div className="header-actions"><span className={`mode-badge ${sample ? 'sample' : ''}`}>{connectionState}</span>
+        <LearningToggle state={data?.learning} disabled={blocked} change={(enabled) => void controller.setLearning(enabled)} />
         <button type="button" disabled={blocked} onClick={() => void controller.reset()}>{state.pending.startsWith('重置') ? '正在重置…' : sample ? '重置 Sample' : '重置演示'}</button>
       </div>
     </header>
@@ -48,7 +54,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -79,6 +85,10 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         {data && data.card.superseded.length > 0 && <details className="secondary-section"><summary>历史值</summary><ul>{data.card.superseded.map((row, index) => <li key={`${row.field}-${index}`}><FieldName field={row.field} />：{row.value} → {row.supersededBy || '已不在身份卡中'}</li>)}</ul></details>}
       </section>
 
+      <LearningPanel state={data?.learning} sample={sample} disabled={blocked}
+        revoke={(id) => void controller.revokeContribution(id).then(() => document.getElementById('learned-title')?.focus({ preventScroll: true }))}
+        selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
+
       <section id="grants" className="panel" aria-labelledby="grants-title">
         <div className="sheet-heading"><h2 id="grants-title">授权</h2><span>到期或撤销后，商家不能继续读取</span></div>
         {!data || data.grants.length === 0 ? <p className="empty">{!data ? '连接后显示授权。' : '目前没有授权。介绍给商家后，相应的字段、用途和期限会显示在这里。'}</p>
@@ -108,7 +118,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
 }
 
 function App() {
-  const [adapter, setAdapter] = useState<ConsoleAdapter>(() => createSampleAdapter());
+  const [adapter, setAdapter] = useState<ConsoleAdapter>(createConsoleSample);
   return <Dashboard adapter={adapter} change={setAdapter} />;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
