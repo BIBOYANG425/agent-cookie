@@ -69,5 +69,10 @@ export class ConsoleController {
   }
   revokeContribution(id: string) { return this.perform('撤销来源记录', (signal) => this.adapter.revokeContribution(id, signal)); }
   revokeGrant(id: string) { return this.perform('撤销授权', (signal) => this.adapter.revokeGrant(id, signal)); }
+  setLearning(paused: boolean) { return this.perform(paused ? '暂停学习' : '恢复学习', (signal) => this.adapter.setLearning(paused, signal)); }
+  selectLearningStage(id: string) { return this.perform('切换 Sample 学习阶段', async () => {
+    if (!this.adapter.selectLearningStage) throw new Error('当前连接不支持 Sample 阶段。');
+    await this.adapter.selectLearningStage(id);
+  }); }
   reset() { return this.perform(this.adapter.mode === 'sample' ? '重置 Sample' : '重置演示', (signal) => this.adapter.reset(signal)); }
 }

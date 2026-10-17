@@ -1,0 +1,24 @@
+{
+  "at": "2026-10-17T23:20:49.933Z",
+  "source": "read-only HTTP after five-minute idle; default A learner",
+  "automaticLearningVerified": false,
+  "rankingEffectVerified": false,
+  "requests": [
+    {
+      "path": "/personal/learning",
+      "status": 200,
+      "paused": false
+    },
+    {
+      "path": "/personal/learned",
+      "status": 200,
+      "paused": false,
+      "learnedCount": 0
+    },
+    {
+      "path": "/owner/activity",
+      "status": 200,
+      "learningEvents": []
+    }
+  ]
+}

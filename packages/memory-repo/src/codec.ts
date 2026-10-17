@@ -50,12 +50,12 @@ export function ownerFromFilename(name: string): string {
   return decoded;
 }
 
-function escape(value: string): string {
+export function escape(value: string): string {
   return value.replace(/[%\r\n\[\];:]/gu,
     (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
 }
 
-function unescape(value: string): string {
+export function unescape(value: string): string {
   return value.replace(/%(25|0D|0A|5B|5D|3B|3A)/giu,
     (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
 }

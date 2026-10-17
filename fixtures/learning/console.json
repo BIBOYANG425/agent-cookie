@@ -1,0 +1,142 @@
+{
+  "paused": false,
+  "learned": [],
+  "stages": [
+    {
+      "id": "empty",
+      "label": "还未学习",
+      "description": "Sample · 尚未载入学习贡献；这是本地界面演示，未运行模型。",
+      "learned": []
+    },
+    {
+      "id": "candidate",
+      "label": "一次闲聊",
+      "description": "Sample · 预设的一段对话提供棉质和黑色候选，均未上卡；不代表真实提取。",
+      "learned": [
+        {
+          "field": "pref.material",
+          "value": "棉质",
+          "status": "candidate",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-material-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "棉质摸起来更舒服"
+            }
+          ]
+        },
+        {
+          "field": "pref.color",
+          "value": "黑色",
+          "status": "candidate",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-color-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "我平时更常选黑色"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "learned",
+      "label": "独立来源确认",
+      "description": "Sample · 预设的两个独立 agent 对话支持同值偏好；上卡状态为演示脚本，不代表工作台真实学习或报价排序。",
+      "learned": [
+        {
+          "field": "pref.material",
+          "value": "棉质",
+          "status": "card",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-material-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "还是喜欢棉质"
+            },
+            {
+              "contributionId": "sample-learned-material-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "棉质摸起来更舒服"
+            }
+          ]
+        },
+        {
+          "field": "pref.color",
+          "value": "黑色",
+          "status": "card",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-color-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "这次也选黑色"
+            },
+            {
+              "contributionId": "sample-learned-color-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "我平时更常选黑色"
+            }
+          ]
+        }
+      ],
+      "card": [
+        {
+          "field": "pref.material",
+          "value": "棉质",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        },
+        {
+          "field": "pref.color",
+          "value": "黑色",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        }
+      ]
+    }
+  ]
+}

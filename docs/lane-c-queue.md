@@ -16,6 +16,17 @@
 - [x] C15 README：agent 名、启动命令、环境变量表 — 6327cb1（本地链接/agent 名核对通过，已同步 main 798e0de 状态）
 - [x] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度 — d94557e（真实窄屏截图、44px 按钮与键盘/空状态证据；C10b 浏览器复核受工具策略限制）
 
-- [x] C17 / T9 文稿：docs/README.md 定稿、Devpost 文案草稿、4:10 iMessage 主线分镜（3:10 失败删减版） — c04fe17。正式视频仍需 A17 原片与证据核验，不等于 T9 总出口完成。
+- [x] T9 文稿（原 C17，2026-10-17 为学习功能腾出编号）：docs/README.md 定稿、Devpost 文案草稿、4:10 iMessage 主线分镜（3:10 失败删减版） — c04fe17。正式视频仍需 A17 原片与证据核验，不等于 T9 总出口完成。
 
-- [ ] C18 人的新方向：既有 HTTP 验收改为动态卡/本次预算与性质检查；控制台按契约字段通用渲染；分镜改为现场需求并备三条真实 catalog 支撑材料。代码/文稿检查见本次提交；三条完整 iMessage Recorded run 仍待 A/B/D 通用意图接线与 B 连续原片，不因 catalog 查询成功而勾完。
+- [ ] T9 通用演示（原 C18，2026-10-17 为学习功能腾出编号）：既有 HTTP 验收改为动态卡/本次预算与性质检查；控制台按契约字段通用渲染；分镜改为现场需求并备三条真实 catalog 支撑材料。7e14908 已交代码/文稿与三条真实 catalog 材料；三条完整 iMessage Recorded run 仍待 A/B/D 通用意图接线与 B 连续原片，不因 catalog 查询成功而勾完。
+
+## 动态记忆 + 对话旁听学习（人的要求，2026-10-17）
+
+循环：C17 → C18 → C19 → C20；实现、针对性验证、记录证据后再核对 A/B。已读 A `0129f08` 契约与 B `e24957c` 学习计划/实现；B最新`4dfa81c`仅增OpenRouter配置检查，不改接口，运行时载荷已对齐；main 未合并的共享类型仍保留少量导入迁移 `TODO(contract)`。下列组件完成不等于真实 C20 完成。
+
+- [x] C17 晋升规则：默认 rules/parser 接受 A 的 pref 白名单与嵌套 evidence；按 intentId/conversationId 别名连通关系去重，personal stated 立即 medium，observed/inferred 两个独立来源晋升 medium；同对话重复不算第二源，衰减后掉卡。52 tests，main/A/B 契约类型验证通过；已修复 A 扩展 FIELDS 导致 pref 卡重复的问题。
+- [x] C18 意图记忆：默认 openMemoryRepo 支持嵌套 evidence 和 A 的 flat IntentRecord；作者使用实际 personal agentId，保留旧 C wrapper；仅写结构化摘要和 ≤200 字证据，剔除 text/query/public/title/seller 自由文本。append/list/revoke/reopen、commit author、检索与原文排除共 29 个真实 Git tests；main 与 B 整合契约类型检查通过。
+- [x] C19 学到的视图：正式 `{paused,learned}` 分组，逐 evidence 用真实 contributionId 撤销，来源/短摘句/时间及暂停、2 秒轮询。SDK getLearned/getLearning 与 setLearning({enabled:!paused}) 已接真实 4310；5173 控制台通过 B e24957c SDK 的 10 个读取/暂停/恢复请求均200，owner key仅在服务端。35 tests、typecheck/build通过；正式载荷 fixture 使用 pref.material/color，旧截图只作历史 Sample。缺 SDK 方法才走标注 fallback。
+- [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、真实 HTTP/SDK/延时读取 JSON、两家 live 报价基线、19 项性质/配置日志保护检查。两句目标对话被接受202，五分钟静默后 learned仍为空；未验证模型或偏好排序，未有本轮界面录屏。用户已明确 OpenRouter 配置由B处理且尚未完成；A默认learner接线、stated保留、跨对话去重及允许字段的排序映射仍见 requests。接口连通不计C20完成。
+
+本轮验证：main 契约副本全量 545 passed（另1 skipped、4 todo），根typecheck与console build通过；B e24957c整合副本 rules52 / memory29 / learn43 / SDK79 / workspace214通过，workspace另4 todo，相关类型检查通过。没有复制A的P0验收，也未改plan.md。

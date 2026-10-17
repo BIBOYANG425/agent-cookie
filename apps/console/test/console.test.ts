@@ -83,6 +83,7 @@ describe('live HTTP boundary', () => {
       if (path.endsWith('/personal/card')) return json(card);
       if (path.endsWith('/personal/grants')) return json({ grants: [grant] });
       if (path.endsWith('/owner/activity')) return json({ events: [] });
+      if (path.endsWith('/personal/learned')) return json({ error: { code: 'NOT_FOUND' } }, 404);
       throw new Error('Unexpected endpoint');
     }, () => at);
     const snapshot = await live.load();
@@ -102,9 +103,10 @@ describe('live HTTP boundary', () => {
       throw new Error('Unexpected endpoint');
     };
     const live = createLiveAdapter(fetcher, () => at);
-    expect(await live.load()).toEqual({ ...empty, card: { ...empty.card, sample: true }, sample: true });
+    expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
       '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
+      '/workspace-api/personal/learned',
     ]);
     for (const call of calls) {
       expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });

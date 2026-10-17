@@ -87,3 +87,29 @@ AGENT_COOKIE_URL=http://127.0.0.1:4328 node node_modules/vitest/vitest.mjs run -
 成功退出仅说明已实现断言通过，todo 不会使退出码失败。应同时报告已执行的编号、todo、工作台来源提交和真实装载的 adapter。历史 C14 工作台的 HTTP / SQLite 服务来自 A 原版源码，但 RulesApi、MemoryRepoApi、UcpApi 当时使用它的 stubs；历史报告不证明 C 的 rules/memory 包或 D 的 UCP 包已集成。
 
 历史强化复测使用 4318，避免重置 C10b 的 4310 后台。A05 检查接受前后用途及冲突 card budget；A22 要求每次介绍新增 grant；reset 支撑检查先通过 checkout 地址读取产生非空回执。auto 字段读取回执不在本目录已满足的能力声明中。
+# 动态学习的性质证据（C20）
+
+`learning-properties.test.ts` 只验证响应观察的性质：正式分组载荷投影、独立来源去重、短证据、暂停后无新记录、撤销与受控候选集的偏好排序；这些小测试不是模型或工作台集成通过证据。受控结论使用 A 白名单中的 `pref.style`、`pref.material`，不把不存在的防水字段当成正式契约。排序比较必须使用相同合格候选集，预算/尺码等其他因素相同，命中属性来自真实 catalog，不能按商品名猜。
+
+`learning-http.test.ts` 只打 HTTP，默认跳过；B 实际跑完演示对话后，以显式的隔离工作台和 owner key 启用：
+
+```sh
+AGENT_COOKIE_LEARNING_TEST=1 AGENT_COOKIE_URL=http://127.0.0.1:4310 \
+  pnpm exec vitest run --config vitest.config.mjs learning-http.test.ts
+```
+
+钥匙由当前进程环境 `AGENT_COOKIE_KEY` 传入，不写进命令、证据或浏览器。已按 A `0129f08` 的正式 `GET /personal/learned` 载荷 `{ paused, learned: [{ field, value, status: 'card' | 'candidate', sources: agentId[], evidence: [{ contributionId, agentId, basis, createdAt, intentId?, conversationId?, snippet? }] }] }` 投影，拒绝旧桩 `{ enabled, entries }`。`sources` 中的作者不能当成两个独立对话；同一 evidence 的 intent/conversation 标识是别名，部分副本及传递别名只计一次。已知撤销/过期记录保留身份连接，但不能作为晋升支持；本次 GET 不返回已撤销历史时，单次快照无法证明服务端保留了所有历史别名。
+
+C20 仍要求非空结论、非空真实短摘句和来源，再检查单来源候选、明确 stated 或双独立来源晋升，以及未来、过期和 200 Unicode 字符边界。服务 200、已排队、手工注入贡献或 Sample fixture 都不等于实际对话学习成功；本测试也不能仅凭最终响应独立证明模型调用，必须同时保留实际对话与提取链路证据。端点 404、空 learned 或证据缺失不能变成 C20 通过。
+
+可单独设置 `AGENT_COOKIE_LEARNING_CONTRACT_TEST=1` 执行同文件的只读契约 smoke：它读取 `GET /personal/learning` 和 `GET /personal/learned`，允许 `{ paused: false, learned: [] }`。这只证明路由和载荷可读，明确不计为 C20。两组测试默认均跳过；不新增 learn 写端点，不直接读 SQLite/git，不复制 A 的 P0 套件。真实执行状态见 [learning.md](../../docs/evidence/learning.md)。
+
+
+`learning-backend-probe.mjs` 是另一个明确开启的 HTTP-only 记录器：先检查 owner/personal 角色，验证暂停并恢复原值，以本次唯一 Sample 值演练贡献/撤销，然后投递用户指定的两句对话。只有专用实例才能设置 `AGENT_COOKIE_ISOLATED_PROBE=1`；owner/personal key 分别从 `AGENT_COOKIE_KEY`、`AGENT_COOKIE_PERSONAL_KEY` 传入，不写入参数或输出。未知写入结果会查回真实贡献ID尝试撤销；无法确认时报告 unconfirmed 并失败。可选 `AGENT_COOKIE_C20_QUERY` 只触发一次真实 catalog 基线，不接受报价/付款。无本次预算时不套用固定价格上限。
+
+```sh
+AGENT_COOKIE_ISOLATED_PROBE=1 AGENT_COOKIE_URL=http://127.0.0.1:4310 \
+  node learning-backend-probe.mjs > /absolute/path/to/new-learning-http.json
+```
+
+它明确返回 `automaticLearningVerified:false`、`rankingEffectVerified:false`，用于记录实际接线和基线，不能替代B真实模型、个人agent通道和排序证据。人工贡献与两条排队消息不构成C20成功。只读契约验证请限定 `learning-http.test.ts`，不要运行带URL的整个历史套件：后者会reset且要求 `AGENT_COOKIE_TEST=1`。
