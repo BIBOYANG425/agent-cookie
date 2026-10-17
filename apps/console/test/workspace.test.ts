@@ -35,25 +35,38 @@ describe('server SDK bridge', () => {
       getMe: async () => owner,
       revokeGrant: async (id) => ({ id: id.toUpperCase() }),
       revokeContribution: async (id) => ({ id: id.toUpperCase() }),
-      setLearning: async (input) => ({ enabled: input.enabled }),
+      setLearning: async (input) => ({ paused: !input.enabled }),
     };
     const send = await start({ key: () => key, sdk: Promise.resolve(() => sdk) });
     expect(JSON.parse((await send('/personal/grants/grant-one/revoke', 'POST')).text)).toEqual({ id: 'GRANT-ONE' });
     expect(JSON.parse((await send('/personal/contributions/source-one/revoke', 'POST')).text)).toEqual({ id: 'SOURCE-ONE' });
-    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { enabled: false })).text)).toEqual({ enabled: false });
+    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { paused: true })).text)).toEqual({ paused: true });
   });
 
-  it('routes learning reads and writes through available SDK methods and sanitizes failed toggles', async () => {
-    const getLearning = vi.fn(async () => ({ enabled: true, generation: 0, learned: [] }));
-    const setLearning = vi.fn(async (input) => ({ ...input, generation: 1, forgottenKeys: [] }));
+  it('maps A paused writes to B e24957c LearningControl enabled and sanitizes failed SDK toggles', async () => {
+    const getLearning = vi.fn(async () => ({ paused: false }));
+    const getLearned = vi.fn(async () => ({ paused: false, learned: [] }));
+    // B e24957c packages/sdk/src/learning.ts: LearningControl is { enabled: boolean }.
+    const setLearning = vi.fn(async (input: { enabled: boolean }) => {
+      if (typeof input.enabled !== 'boolean' || Object.keys(input).some((field) => field !== 'enabled')) {
+        throw new Error('Invalid learning payload.');
+      }
+      return { paused: !input.enabled };
+    });
     const http = vi.fn<typeof fetch>();
-    const sdk = { getMe: async () => owner, getLearning, setLearning };
+    const sdk = { getMe: async () => owner, getLearning, getLearned, setLearning };
     const send = await start({ key: () => key, sdk: Promise.resolve(() => sdk), fetcher: http });
-    expect(JSON.parse((await send('/personal/learned')).text)).toEqual({ enabled: true, generation: 0, learned: [] });
-    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { enabled: false })).text)).toEqual({ enabled: false, generation: 1, forgottenKeys: [] });
-    expect(setLearning).toHaveBeenCalledWith({ enabled: false });
+    expect(JSON.parse((await send('/personal/learned')).text)).toEqual({ paused: false, learned: [] });
+    expect(getLearning).not.toHaveBeenCalled();
+    expect(getLearned).toHaveBeenCalledOnce();
+    expect(JSON.parse((await send('/personal/learning')).text)).toEqual({ paused: false });
+    expect(getLearning).toHaveBeenCalledOnce();
+    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { paused: true })).text)).toEqual({ paused: true });
+    expect(setLearning).toHaveBeenLastCalledWith({ enabled: false });
+    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { paused: false })).text)).toEqual({ paused: false });
+    expect(setLearning).toHaveBeenLastCalledWith({ enabled: true });
     setLearning.mockRejectedValueOnce(Object.assign(new Error(key), { status: 503, code: 'UPSTREAM_ERROR' }));
-    expect(await send('/personal/learning', 'PUT', {}, { enabled: true }))
+    expect(await send('/personal/learning', 'PUT', {}, { paused: false }))
       .toEqual({ status: 503, text: '{"error":{"code":"UPSTREAM_ERROR"}}' });
     expect(http).not.toHaveBeenCalled();
   });
@@ -63,18 +76,18 @@ describe('server SDK bridge', () => {
       if (String(url).endsWith('/personal/learned')) return new Response('not implemented', { status: 501 });
       expect(String(url)).toBe('http://127.0.0.1:4310/personal/learning');
       expect(init?.method).toBe('PUT');
-      expect(init?.body).toBe('{"enabled":false}');
+      expect(init?.body).toBe('{"paused":true}');
       expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
-      return json({ enabled: false });
+      return json({ paused: true });
     });
     const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http });
     expect((await send('/personal/learned')).status).toBe(501);
-    expect((await send('/personal/learning', 'PUT', {}, { enabled: false })).status).toBe(200);
+    expect((await send('/personal/learning', 'PUT', {}, { paused: true })).status).toBe(200);
     expect(http).toHaveBeenCalledTimes(2);
-    for (const body of [{ enabled: 'false' }, { enabled: true, key }, {}]) {
+    for (const body of [{ paused: 'false' }, { paused: true, key }, { enabled: false }, {}]) {
       expect((await send('/personal/learning', 'PUT', {}, body)).status).toBe(400);
     }
-    expect((await send('/personal/learning', 'POST', {}, { enabled: false })).status).toBe(404);
+    expect((await send('/personal/learning', 'POST', {}, { paused: true })).status).toBe(404);
     expect(http).toHaveBeenCalledTimes(2);
   });
 

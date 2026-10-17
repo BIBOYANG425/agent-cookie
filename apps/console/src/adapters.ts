@@ -1,16 +1,16 @@
 import fixtureContributions from '../../../fixtures/contributions.json';
 import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
-import { normalizeLearning, normalizeLearningEnabled, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
+import { countEvidenceSources, normalizeLearning, normalizeLearningPaused, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
 
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
 export function createSampleAdapter(now: () => number = Date.now,
   seedContributions: readonly Contribution[] = fixtureContributions as Contribution[],
-  learningSeed: LearningSeed = { enabled: true, entries: [] }, initialLearningStage?: string): ConsoleAdapter {
+  learningSeed: LearningSeed = { paused: false, learned: [] }, initialLearningStage?: string): ConsoleAdapter {
   const initialContributions = structuredClone([...seedContributions]);
   const initialLearning = structuredClone(learningSeed);
   let contributions: Contribution[] = [];
   let learned: LearnedEntry[] = [];
-  let learningEnabled = initialLearning.enabled;
+  let learningPaused = initialLearning.paused;
   let stageId = initialLearningStage ?? initialLearning.stages?.[0]?.id;
   const stage = () => initialLearning.stages?.find((row) => row.id === stageId);
   let grants: GrantView[] = [];
@@ -23,8 +23,8 @@ export function createSampleAdapter(now: () => number = Date.now,
   const seed = () => {
     contributions = structuredClone(initialContributions);
     stageId = initialLearning.stages?.[0]?.id;
-    learned = structuredClone(stage()?.entries ?? initialLearning.entries);
-    learningEnabled = initialLearning.enabled;
+    learned = structuredClone(stage()?.learned ?? initialLearning.learned);
+    learningPaused = initialLearning.paused;
     const fields = [...new Set(contributions.filter((record) => !record.revokedAt).map((record) => record.field))];
     grants = ['a', 'b'].map((suffix) => ({
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
@@ -37,7 +37,7 @@ export function createSampleAdapter(now: () => number = Date.now,
   seed();
   if (initialLearningStage && initialLearning.stages?.some((row) => row.id === initialLearningStage)) {
     stageId = initialLearningStage;
-    learned = structuredClone(stage()!.entries);
+    learned = structuredClone(stage()!.learned);
   }
   return {
     mode: 'sample',
@@ -47,10 +47,10 @@ export function createSampleAdapter(now: () => number = Date.now,
         updatedAt: record.createdAt, lastSupportedAt: record.createdAt, changedRecently: false,
       })), candidates: [], superseded: [] };
       // Only the fixture's authored card states are displayed; this adapter is not the workspace merger.
-      const scriptedCard = (stage()?.card ?? []).filter((field) => learned.some((entry) => !entry.revokedAt
-        && entry.status === 'on_card' && entry.field === field.field && entry.value === field.value));
+      const scriptedCard = (stage()?.card ?? []).filter((field) => learned.some((entry) =>
+        entry.status === 'card' && entry.field === field.field && entry.value === field.value));
       card.card = [...card.card.filter((field) => !scriptedCard.some((row) => row.field === field.field)), ...scriptedCard];
-      const learning: LearningState = { ...normalizeLearning({ enabled: learningEnabled, entries: learned }), sample: true,
+      const learning: LearningState = { ...normalizeLearning({ paused: learningPaused, learned }), sample: true,
         ...(stage() ? { sampleStage: stageId, sampleDescription: stage()!.description,
           sampleStages: initialLearning.stages!.map(({ id, label }) => ({ id, label })) } : {}) };
       return structuredClone({ card, contributions: contributions.filter((record) => !record.revokedAt),
@@ -62,15 +62,15 @@ export function createSampleAdapter(now: () => number = Date.now,
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
-      const learnedRecord = learned.find((row) => row.id === id);
+      const learnedRecord = learned.find((row) => row.evidence.some((evidence) => evidence.contributionId === id));
       if (!record && !learnedRecord) throw new Error('Sample 记录不存在');
       if (record) record.revokedAt = new Date(now()).toISOString();
       if (learnedRecord) {
-        learnedRecord.revokedAt = new Date(now()).toISOString();
-        const remaining = learned.filter((row) => !row.revokedAt && row.field === learnedRecord.field && row.value === learnedRecord.value);
-        const sources = new Set(remaining.flatMap((row) => row.sources.map((source) => JSON.stringify([source.kind, source.id]))));
-        // This Sample replay demonstrates the two-source learned preference: removing support returns it to candidate.
-        if (sources.size < 2) for (const row of remaining) row.status = 'candidate';
+        learnedRecord.evidence = learnedRecord.evidence.filter((evidence) => evidence.contributionId !== id);
+        learnedRecord.sources = [...new Set(learnedRecord.evidence.map((evidence) => evidence.agentId))];
+        // Scripted Sample replay only: removing corroboration returns its remaining record to candidate.
+        if (learnedRecord.evidence.length === 0) learned = learned.filter((entry) => entry !== learnedRecord);
+        else if (countEvidenceSources(learnedRecord.evidence) < 2) learnedRecord.status = 'candidate';
       }
       addEvent('撤销来源记录', id, 'Sample 来源已撤销；仅更新本页演示身份卡。');
     },
@@ -80,15 +80,15 @@ export function createSampleAdapter(now: () => number = Date.now,
       grant.revokedAt = new Date(now()).toISOString();
       addEvent('撤销授权', id, 'Sample 授权已撤销；未向真实商家或工作台发送请求。');
     },
-    async setLearning(enabled) {
-      learningEnabled = enabled;
-      addEvent(enabled ? '恢复学习' : '暂停学习', 'sample-learning', '仅更改 Sample 开关；未调用提取器或工作台。');
+    async setLearning(paused) {
+      learningPaused = paused;
+      addEvent(paused ? '暂停学习' : '恢复学习', 'sample-learning', '仅更改 Sample 开关；未调用提取器或工作台。');
     },
     async selectLearningStage(id) {
       const next = initialLearning.stages?.find((row) => row.id === id);
       if (!next) throw new Error('Sample 阶段不存在');
       stageId = id;
-      learned = structuredClone(next.entries);
+      learned = structuredClone(next.learned);
       addEvent('切换 Sample 学习阶段', id, '加载已编写的演示记录，不代表真实提取或购物结果。');
     },
     async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
@@ -150,9 +150,9 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
   const learning = async (signal?: AbortSignal): Promise<LearningState> => {
     try { return normalizeLearning(await request('/personal/learned', 'GET', signal)); }
     catch (error) {
-      if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable', enabled: null,
+      if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable', paused: null,
         entries: [], message: '工作台尚未提供学习记录接口。身份卡、授权和活动可继续使用。' };
-      return { availability: 'error', enabled: null, entries: [],
+      return { availability: 'error', paused: null, entries: [],
         message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
     }
   };
@@ -184,10 +184,10 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
       const body = await request('/demo/reset', 'POST', signal);
       if (!acknowledged(body) || !date(body.seededAt)) throw malformed();
     },
-    async setLearning(enabled, signal) {
-      // TODO(contract): provisional request/ack is { enabled: boolean }, pending A's published types.
-      const body = await request('/personal/learning', 'PUT', signal, { enabled });
-      if (normalizeLearningEnabled(body) !== enabled) throw new Error('工作台未确认所请求的学习开关状态。');
+    async setLearning(paused, signal) {
+      // A 0129f08: PUT /personal/learning and its acknowledgement both use { paused }.
+      const body = await request('/personal/learning', 'PUT', signal, { paused });
+      if (normalizeLearningPaused(body) !== paused) throw new Error('工作台未确认所请求的学习开关状态。');
     },
   };
 }
