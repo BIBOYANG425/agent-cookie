@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { UpstreamError } from "@agent-cookie/contract";
 import type {
@@ -25,6 +25,9 @@ type Operation =
 export type UcpRunner = (args: string[]) => Promise<unknown>;
 
 type ExecResult = { stdout: string; stderr: string };
+class InvalidJsonResponseError extends Error {}
+class FixtureReadError extends Error {}
+
 export type UcpExecutor = (
   args: string[],
   env: NodeJS.ProcessEnv,
@@ -112,11 +115,11 @@ const execUcp: UcpExecutor = (args, env, timeoutMs, bin) =>
     });
   });
 
-function parseJson(stdout: string, stderr: string): unknown {
+function parseJson(stdout: string): unknown {
   try {
     return JSON.parse(stdout) as unknown;
   } catch {
-    throw setProcessOutput(new Error("ucp CLI returned invalid JSON"), stdout, stderr);
+    throw new InvalidJsonResponseError("invalid JSON response");
   }
 }
 
@@ -129,15 +132,15 @@ export function createLiveRunner(
   return async (args) => {
     if (!profileInitPromise) {
       profileInitPromise = (async () => {
-        const { stdout, stderr } = await execute(
+        const { stdout } = await execute(
           ["profile", "init", "--name", "agent", "--format", "json"],
           env,
           timeoutMs,
           options.bin,
         );
-        const profile = parseJson(stdout, stderr);
+        const profile = parseJson(stdout);
         if (!isRecord(profile) || profile.name !== "agent" || profile.code || profile.error) {
-          throw setProcessOutput(new Error("ucp profile init failed"), stdout, stderr);
+          throw new Error("ucp profile init failed");
         }
       })().catch((error: unknown) => {
         profileInitPromise = undefined;
@@ -145,8 +148,14 @@ export function createLiveRunner(
       });
     }
     await profileInitPromise;
-    const { stdout, stderr } = await execute(args, env, timeoutMs, options.bin);
-    return parseJson(stdout, stderr);
+    try {
+      const { stdout } = await execute(args, env, timeoutMs, options.bin);
+      return parseJson(stdout);
+    } catch (error) {
+      const response = responseFromError(error);
+      if (isErrorEnvelope(response)) return response;
+      throw error;
+    }
   };
 }
 
@@ -162,12 +171,25 @@ function fixturePath(fixturesDir: string, operation: Operation, business: string
     const global = join(fixturesDir, `${operation}.global.json`);
     if (existsSync(global)) return global;
   }
-  return join(fixturesDir, `${operation}.json`);
+  const generic = join(fixturesDir, `${operation}.json`);
+  return existsSync(generic) ? generic : specific;
 }
 
 function readFixture(fixturesDir: string, operation: Operation, business: string): unknown {
   const path = fixturePath(fixturesDir, operation, business);
-  return JSON.parse(readFileSync(path, "utf8")) as unknown;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as unknown;
+  } catch (error) {
+    const filename = basename(path);
+    const code = record(error)?.code;
+    if (code === "ENOENT") {
+      throw new FixtureReadError(`ucp ${operation}: fixture ${filename} missing`);
+    }
+    if (error instanceof SyntaxError) {
+      throw new FixtureReadError(`ucp ${operation}: fixture ${filename} invalid JSON`);
+    }
+    throw new FixtureReadError(`ucp ${operation}: ${safeFailureCode(error)}`);
+  }
 }
 
 function messagesFrom(value: unknown): UcpMessage[] {
@@ -199,42 +221,54 @@ function preferredContinueUrl(candidate: string | undefined, fallback: string | 
 }
 
 function responseFromError(error: unknown): unknown {
-  const source = record(error);
-  if (typeof source?.stdout === "string") {
-    try {
-      return JSON.parse(source.stdout) as unknown;
-    } catch {
-      return undefined;
-    }
+  const stdout = record(error)?.stdout;
+  if (typeof stdout !== "string") return undefined;
+  try {
+    return JSON.parse(stdout) as unknown;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function upstreamFailure(operation: Operation, error: unknown, fallback?: string): UpstreamError {
-  const response = responseFromError(error);
-  const envelope = record(response);
-  if (
+function isErrorEnvelope(value: unknown): value is JsonRecord {
+  const envelope = record(value);
+  return Boolean(
     envelope
     && !Object.prototype.hasOwnProperty.call(envelope, "result")
     && stringValue(envelope.code)
     && stringValue(envelope.message)
-  ) {
+  );
+}
+
+function safeFailureCode(error: unknown): string {
+  if (error instanceof InvalidJsonResponseError) return "invalid JSON response";
+  const code = record(error)?.code;
+  if (typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code)) return code;
+  if (typeof code === "number" && Number.isSafeInteger(code)) return `process exited ${code}`;
+  return "failed";
+}
+
+function upstreamFailure(operation: Operation, error: unknown, fallback?: string): UpstreamError {
+  const response = responseFromError(error);
+  if (isErrorEnvelope(response)) {
+    const envelope = response;
     return new UpstreamError(
       `ucp ${operation}: ${envelope.code}: ${envelope.message}`,
       preferredContinueUrl(continueUrlFrom(envelope), fallback),
     );
   }
   return new UpstreamError(
-    errorMessage(error),
+    `ucp ${operation}: ${safeFailureCode(error)}`,
     preferredContinueUrl(continueUrlFrom(response), fallback),
   );
 }
 
-function responseEnvelope(value: unknown, operation: Operation, fallback?: string): JsonRecord {
+function responseEnvelope(
+  value: unknown,
+  operation: Operation,
+  fallback?: string,
+  handoffInsufficientPermissions = false,
+): JsonRecord {
   const envelope = record(value);
   if (!envelope || !Object.prototype.hasOwnProperty.call(envelope, "result")) {
     if (
@@ -242,19 +276,40 @@ function responseEnvelope(value: unknown, operation: Operation, fallback?: strin
       && stringValue(envelope.code)
       && stringValue(envelope.message)
     ) {
+      const code = stringValue(envelope.code)!;
+      const message = stringValue(envelope.message)!;
+      const continueUrl = preferredContinueUrl(continueUrlFrom(envelope), fallback);
+      if (handoffInsufficientPermissions && code === "INSUFFICIENT_PERMISSIONS") {
+        return {
+          ...envelope,
+          result: {
+            status: "requires_escalation",
+            ...(continueUrl ? { continue_url: continueUrl } : {}),
+            messages: [
+              ...messagesFrom(envelope),
+              {
+                type: "error",
+                code,
+                content: message,
+                severity: "requires_buyer_input",
+              },
+            ],
+          },
+        };
+      }
       throw new UpstreamError(
-        `ucp ${operation}: ${envelope.code}: ${envelope.message}`,
-        preferredContinueUrl(continueUrlFrom(envelope), fallback),
+        `ucp ${operation}: ${code}: ${message}`,
+        continueUrl,
       );
     }
     throw new UpstreamError(
-      `ucp ${operation}: response did not contain a result`,
+      `ucp ${operation}: failed`,
       preferredContinueUrl(continueUrlFrom(envelope), fallback),
     );
   }
   if (!isRecord(envelope.result)) {
     throw new UpstreamError(
-      `ucp ${operation}: response result was not an object`,
+      `ucp ${operation}: failed`,
       preferredContinueUrl(continueUrlFrom(envelope), fallback),
     );
   }
@@ -435,6 +490,7 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
     business: string,
     args: string[],
     fallback?: string,
+    handoffInsufficientPermissions = false,
   ): Promise<JsonRecord> {
     let response: unknown;
     try {
@@ -442,9 +498,12 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
         ? readFixture(fixturesDir, operation, business)
         : await runner!(args);
     } catch (error) {
+      if (error instanceof FixtureReadError) {
+        throw new UpstreamError(error.message, fallback);
+      }
       throw upstreamFailure(operation, error, fallback);
     }
-    return responseEnvelope(response, operation, fallback);
+    return responseEnvelope(response, operation, fallback, handoffInsufficientPermissions);
   }
 
   const api: UcpApi = {
@@ -483,7 +542,7 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
       const envelope = await call("cart-create", offer.sellerDomain, args);
       const result = record(envelope.result)!;
       const cartId = extractResourceId(result, "cart");
-      if (!cartId) throw new UpstreamError("ucp cart-create: response did not contain a cart id");
+      if (!cartId) throw new UpstreamError("ucp cart-create: failed");
       cartMetadata.set(cartId, result);
       const continueUrl = continueUrlFrom(result);
       const cart: UcpCart = {
@@ -512,7 +571,7 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
       const checkoutId = extractResourceId(result, "checkout");
       if (!checkoutId) {
         throw new UpstreamError(
-          "ucp checkout-create: response did not contain a checkout id",
+          "ucp checkout-create: failed",
           preferredContinueUrl(continueUrlFrom(result), fallback),
         );
       }
@@ -573,7 +632,7 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
         "--input",
         JSON.stringify({ payment: {} }),
       ]);
-      const envelope = await call("checkout-complete", checkout.sellerDomain, args, fallback);
+      const envelope = await call("checkout-complete", checkout.sellerDomain, args, fallback, true);
       const result = record(envelope.result)!;
       const continueUrl = preferredContinueUrl(continueUrlFrom(result), fallback);
       const orderId = orderIdFrom(result);
@@ -596,7 +655,11 @@ export function scrubFixture(value: unknown, key = ""): unknown {
     return "[REDACTED]";
   }
   if (typeof value === "string") {
-    return value.replace(/([?&](?:_gsid|access_token|auth_token|token|key)=)[^&#\s]+/gi, "$1REDACTED");
+    return value
+      .replace(/([?&](?:_gsid|access_token|auth_token|token|key)=)[^&#\s]+/gi, "$1REDACTED")
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, (email) =>
+        email.toLowerCase() === "demo@agent-cookie.dev" ? email : "[REDACTED]"
+      );
   }
   if (Array.isArray(value)) return value.map((item) => scrubFixture(item));
   if (isRecord(value)) {

@@ -1,6 +1,6 @@
 {
-  "business": "https://capra-run.myshopify.com",
-  "endpoint": "https://capra-run.myshopify.com/api/ucp/mcp",
+  "business": "https://black-flag-outfitters-clothing.myshopify.com",
+  "endpoint": "https://black-flag-outfitters-clothing.myshopify.com/api/ucp/mcp",
   "transport": "mcp",
   "ucp": {
     "version": "2026-08-25",
@@ -118,53 +118,6 @@
       ]
     },
     "payment_handlers": {
-      "com.google.pay": [
-        {
-          "id": "gpay",
-          "version": "2026-01-11",
-          "spec": "https://pay.google.com/gp/p/ucp/2026-01-11/",
-          "schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/config.json",
-          "config": {
-            "api_version": 2,
-            "api_version_minor": 0,
-            "merchant_info": {
-              "merchant_name": "Capra Running Co.",
-              "merchant_id": "16708973830884969730",
-              "merchant_origin": "www.capra.run",
-              "auth_jwt": ""
-            },
-            "allowed_payment_methods": [
-              {
-                "type": "CARD",
-                "parameters": {
-                  "allowed_auth_methods": [
-                    "PAN_ONLY",
-                    "CRYPTOGRAM_3DS"
-                  ],
-                  "allowed_card_networks": [
-                    "VISA",
-                    "MASTERCARD",
-                    "AMEX",
-                    "JCB"
-                  ],
-                  "billing_address_required": true,
-                  "billing_address_parameters": {
-                    "format": "FULL",
-                    "phone_number_required": true
-                  }
-                },
-                "tokenization_specification": {
-                  "type": "PAYMENT_GATEWAY",
-                  "parameters": {
-                    "gateway": "shopify",
-                    "gatewayMerchantId": "13992017"
-                  }
-                }
-              }
-            ]
-          }
-        }
-      ],
       "dev.shopify.card": [
         {
           "id": "shopify.card",
@@ -179,7 +132,8 @@
                   "visa",
                   "master",
                   "american_express",
-                  "jcb"
+                  "discover",
+                  "diners_club"
                 ]
               }
             ]
@@ -189,42 +143,18 @@
       "dev.shopify.shop_pay": [
         {
           "id": "shop_pay",
-          "version": "2026-04-08",
+          "version": "2026-01-23",
           "spec": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/spec.md",
           "schema": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/schema.json",
           "config": {
-            "shop_id": "13992017"
+            "shop_id": "34551070851"
           }
         }
       ]
     }
   },
   "result": {
-    "id": "gid://shopify/Cart/hWNI5R9smYUJjSPe3fjATIvQ?key=REDACTED",
-    "line_items": [
-      {
-        "id": "gid://shopify/CartLine/42bf4152-82c4-4f9b-9272-1bebde2b391f?cart=hWNI5R9smYUJjSPe3fjATIvQ",
-        "item": {
-          "id": "gid://shopify/ProductVariant/42418551193643",
-          "title": "Brooks Ghost Trail Gravel Running Shoes - Men's - Ebony/Black/Clove / 9",
-          "price": 13600,
-          "image_url": "https://cdn.shopify.com/s/files/1/1399/2017/files/GhostTrail_EBC_1.png?v=1790031290"
-        },
-        "quantity": 1,
-        "totals": [
-          {
-            "type": "subtotal",
-            "amount": 13600,
-            "display_text": "Subtotal"
-          },
-          {
-            "type": "total",
-            "amount": 13600,
-            "display_text": "Total"
-          }
-        ]
-      }
-    ],
+    "id": "gid://shopify/Checkout/hWNI5WoNCDcKcn0YcWUmN7cm?key=REDACTED",
     "currency": "USD",
     "buyer": {
       "consent": {
@@ -262,6 +192,30 @@
         }
       }
     },
+    "line_items": [
+      {
+        "id": "gid://shopify/CartLine/bc3980e1-eb14-444c-bd17-61360ba4fc96?cart=hWNI5WoNCDcKcn0YcWUmN7cm",
+        "item": {
+          "id": "gid://shopify/ProductVariant/49155489988835",
+          "title": "Keen Men's Wander Trail Running Shoe - Safari / Black / 8.5",
+          "price": 11200,
+          "image_url": "https://cdn.shopify.com/s/files/1/0345/5107/0851/files/KeenMen_sWanderTrailRunningShoe1.jpg?v=1780611939"
+        },
+        "quantity": 1,
+        "totals": [
+          {
+            "type": "subtotal",
+            "amount": 11200,
+            "display_text": "Subtotal"
+          },
+          {
+            "type": "total",
+            "amount": 11200,
+            "display_text": "Total"
+          }
+        ]
+      }
+    ],
     "discounts": {
       "codes": [],
       "applied": []
@@ -269,62 +223,85 @@
     "totals": [
       {
         "type": "subtotal",
-        "amount": 13600,
+        "amount": 11200,
         "display_text": "Subtotal"
       },
       {
         "type": "total",
-        "amount": 13600,
+        "amount": 11200,
         "display_text": "Total"
       }
     ],
     "fulfillment": {
       "methods": []
     },
-    "expires_at": "2026-11-16T21:09:34Z",
+    "expires_at": "2026-11-16T22:05:23Z",
     "links": [
       {
         "type": "refund_policy",
         "title": "Refund Policy",
-        "url": "https://checkout.shopify.com/13992017/policies/23650497.html?locale=en"
-      },
-      {
-        "type": "privacy_policy",
-        "title": "Privacy Policy",
-        "url": "https://checkout.shopify.com/13992017/policies/23650561.html?locale=en"
-      },
-      {
-        "type": "terms_of_service",
-        "title": "Terms of Service",
-        "url": "https://checkout.shopify.com/13992017/policies/23650625.html?locale=en"
+        "url": "https://checkout.shopify.com/34551070851/policies/39219822819.html?locale=en"
       },
       {
         "type": "shipping_policy",
         "title": "Shipping Policy",
-        "url": "https://checkout.shopify.com/13992017/policies/13672546347.html?locale=en"
+        "url": "https://checkout.shopify.com/34551070851/policies/39220216035.html?locale=en"
+      },
+      {
+        "type": "contact_information",
+        "title": "Contact Information",
+        "url": "https://checkout.shopify.com/34551070851/policies/40235565283.html?locale=en"
+      },
+      {
+        "type": "privacy_policy",
+        "title": "Privacy Policy",
+        "url": "https://checkout.shopify.com/34551070851/policies/41303539939.html?locale=en"
+      },
+      {
+        "type": "terms_of_service",
+        "title": "Terms of Service",
+        "url": "https://checkout.shopify.com/34551070851/policies/41305440483.html?locale=en"
       }
     ],
-    "messages": [],
-    "continue_url": "https://capra-run.myshopify.com/en-us/cart/c/hWNI5R9smYUJjSPe3fjATIvQ?key=REDACTED"
+    "payment": {
+      "instruments": []
+    },
+    "messages": [
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "buyer_identity_contact_method_required",
+        "content": "Missing a valid contact method.",
+        "severity": "recoverable"
+      },
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "delivery_address_required",
+        "content": "A destination address is required in order to continue.",
+        "severity": "recoverable"
+      },
+      {
+        "type": "error",
+        "content_type": "plain",
+        "code": "delivery_no_delivery_available",
+        "content": "Your cart has been updated and the items you added can’t be shipped to your address. Remove the items to complete your order.",
+        "severity": "recoverable"
+      }
+    ],
+    "status": "incomplete",
+    "continue_url": "https://black-flag-outfitters-clothing.myshopify.com/cart/c/hWNI5WoNCDcKcn0YcWUmN7cm?key=REDACTED"
   },
   "cta": {
-    "description": "Cart saved. To buy, create a checkout from this cart using the same business. For shipping estimates, inspect cart update schema; cart fulfillment is estimate-only, and checkout is final/selectable. Use the fulfillment guidance for payload examples.",
+    "description": "Checkout needs fulfillment destination or selection. Inspect checkout update schema, then send request-shaped line_items with line_item_ids from result.line_items[].id. Present returned methods/options to the buyer unless their preference is already clear; then select each group with selected_option_id. Use the fulfillment guidance for payload examples.",
     "commands": [
       {
-        "command": "ucp checkout create --business <business> --input '{\"cart_id\":\"<cart_id>\",\"line_items\":[]}'",
-        "description": "create checkout from this cart — substitute <cart_id> with result.id and <business> with the same business used for this cart; line_items is required and can be empty for cart conversion"
+        "command": "ucp checkout update --input-schema --business <business>",
+        "description": "inspect the checkout update schema before sending fulfillment, buyer, payment, discount, or business-specific fields"
       },
       {
-        "command": "ucp cart update --input-schema --business <business>",
-        "description": "inspect the cart update schema before requesting shipping estimates — only send fulfillment fields the merchant advertises"
-      },
-      {
-        "command": "ucp cart update <cart_id> --business <business> --input '{\"line_items\":[{\"id\":\"<line_item_id>\",\"item\":{\"id\":\"<item_id>\"},\"quantity\":<quantity>}],\"fulfillment\":{\"methods\":[{\"type\":\"shipping\",\"line_item_ids\":[\"<line_item_id>\"],\"destinations\":[{\"address_country\":\"<country>\",\"address_region\":\"<region>\",\"postal_code\":\"<postal_code>\"}]}]}}'",
-        "description": "request cart-stage shipping estimates with request-shaped line_items; returned cart fulfillment/totals are estimates"
-      },
-      {
-        "command": "ucp catalog search --set '/query=<search-term>'",
-        "description": "find more items — add them to this cart before proceeding to checkout"
+        "command": "ucp checkout update <checkout_id> --input '<request-shaped line_items + fulfillment.methods[] payload>'",
+        "description": "send the selected shipping or pickup fulfillment payload from the live schema; use result.line_items[N].id for line_item_ids and the fulfillment guidance for examples"
       }
     ]
   }

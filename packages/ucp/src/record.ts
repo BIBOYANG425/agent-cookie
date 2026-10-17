@@ -1,7 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { UpstreamError } from "@agent-cookie/contract";
 import type { UcpOffer } from "@agent-cookie/contract";
 import {
   createLiveRunner,
@@ -10,47 +9,39 @@ import {
   writeRecordedEnvelope,
   type UcpRunner,
 } from "./internal.js";
+import { sizeMatches } from "./size.js";
 
 const defaultSize = "9";
 const defaultBudget = 200;
+const defaultLimit = 50;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const fixturesDir = join(repositoryRoot, "fixtures", "ucp");
 
-function recordingOptions(args: string[]): { size: string; budget: number } {
+function recordingOptions(args: string[]): {
+  size: string;
+  budget: number;
+  intentText?: string;
+  limit: number;
+} {
   let size = defaultSize;
   let budget = defaultBudget;
+  let intentText: string | undefined;
+  let limit = defaultLimit;
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--size" && args[index + 1]) size = args[++index]!;
     else if (args[index] === "--budget" && args[index + 1]) {
       const parsed = Number(args[++index]);
       if (!Number.isFinite(parsed)) throw new Error("--budget must be a number of whole USD");
       budget = parsed;
+    } else if (args[index] === "--intent" && args[index + 1]) {
+      intentText = args[++index]!;
+    } else if (args[index] === "--limit" && args[index + 1]) {
+      const parsed = Number(args[++index]);
+      if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--limit must be a positive integer");
+      limit = parsed;
     }
   }
-  return { size, budget };
-}
-
-function parseSize(raw: string): { number: number; region: string } | undefined {
-  const match = /^(?:(US|EU|UK)\s*)?(\d+(?:\.\d+)?)(?:\s*(US|EU|UK))?$/i.exec(raw.trim());
-  if (!match) return undefined;
-  const prefix = match[1]?.toLowerCase();
-  const suffix = match[3]?.toLowerCase();
-  if (prefix && suffix && prefix !== suffix) return undefined;
-  const number = Number(match[2]);
-  return { number, region: prefix ?? suffix ?? (number >= 30 ? "eu" : "us") };
-}
-
-function matchingSize(offer: UcpOffer, requestedSize: string): string | undefined {
-  const requested = requestedSize.split(/[\/,]/).map(parseSize).filter(Boolean);
-  for (const label of offer.sizeOptions) {
-    for (const token of label.split(/[\/,]/)) {
-      const parsed = parseSize(token);
-      if (parsed && requested.some((size) =>
-        size!.number === parsed.number && size!.region === parsed.region
-      )) return label;
-    }
-  }
-  return undefined;
+  return { size, budget, ...(intentText ? { intentText } : {}), limit };
 }
 
 function selectOffers(
@@ -61,13 +52,14 @@ function selectOffers(
   const selected: Array<{ offer: UcpOffer; size: string }> = [];
   const sellers = new Set<string>();
   for (const offer of offers) {
-    const matchedSize = matchingSize(offer, size);
+    const matchedSize = offer.sizeOptions.find((label) => sizeMatches([label], size));
     if (
       selected.length >= 2
       || sellers.has(offer.sellerDomain)
       || offer.currency !== "USD"
       || !offer.available
       || offer.priceCents > maxPriceCents
+      || offer.nativeCheckout
       || !matchedSize
     ) continue;
     sellers.add(offer.sellerDomain);
@@ -77,23 +69,29 @@ function selectOffers(
 }
 
 async function record(): Promise<void> {
-  const { size, budget } = recordingOptions(process.argv.slice(2));
+  const { size, budget, intentText, limit } = recordingOptions(process.argv.slice(2));
   const maxPriceCents = Math.round(budget * 100);
-  mkdirSync(fixturesDir, { recursive: true });
   const liveRunner = createLiveRunner();
-  const captured: UcpRunner = async (args) => {
+  const capturedEnvelopes: Array<{ args: string[]; envelope: unknown }> = [];
+  const capturedRunner: UcpRunner = async (args) => {
     const envelope = await liveRunner(args);
-    writeRecordedEnvelope(fixturesDir, args, envelope);
+    capturedEnvelopes.push({ args: [...args], envelope });
     return envelope;
   };
-  const api = createUcpInternal({ mode: "live" }, captured);
+  const api = createUcpInternal({ mode: "live" }, capturedRunner);
   const offers = selectOffers(
-    await api.searchOffers({ query: "trail running shoes", shipsTo: "US", maxPriceCents }),
+    await api.searchOffers({
+      query: "trail running shoes",
+      ...(intentText ? { intentText } : {}),
+      maxPriceCents,
+      shipsTo: "US",
+      limit,
+    }),
     size,
     maxPriceCents,
   );
   if (offers.length !== 2) {
-    throw new Error(`Expected two matching offers, received ${offers.length}`);
+    throw new Error(`Matched ${offers.length} distinct non-native sellers for size ${size} within $${budget}; need 2`);
   }
 
   const destination = {
@@ -115,12 +113,7 @@ async function record(): Promise<void> {
       summaries.push({ variantId: offer.variantId, status: "skipped-native-checkout", messages: [] });
       continue;
     }
-    try {
-      summaries.push({ variantId: offer.variantId, ...(await api.complete(updated)) });
-    } catch (error) {
-      if (!(error instanceof UpstreamError)) throw error;
-      summaries.push({ variantId: offer.variantId, status: "failed", continueUrl: error.continueUrl });
-    }
+    summaries.push({ variantId: offer.variantId, ...(await api.complete(updated)) });
   }
 
   const pinned = {
@@ -133,8 +126,11 @@ async function record(): Promise<void> {
       title: offer.productTitle,
       price: offer.priceCents,
       size: matchedSize,
+      nativeCheckout: offer.nativeCheckout,
     })),
   };
+  mkdirSync(fixturesDir, { recursive: true });
+  for (const item of capturedEnvelopes) writeRecordedEnvelope(fixturesDir, item.args, item.envelope);
   writeFileSync(join(fixturesDir, "pinned.json"), `${JSON.stringify(pinned, null, 2)}\n`, { mode: 0o644 });
   console.log(JSON.stringify({ pinned, complete: summaries }, null, 2));
 }

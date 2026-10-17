@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   UpstreamError,
@@ -9,7 +10,8 @@ import {
 } from "@agent-cookie/contract";
 import { describe, expect, it } from "vitest";
 import { createUcp, ucpModule } from "../src/index.js";
-import { createLiveRunner, createUcpInternal, type UcpRunner } from "../src/internal.js";
+import { createLiveRunner, createUcpInternal, scrubFixture, type UcpRunner } from "../src/internal.js";
+import { sizeMatches } from "../src/size.js";
 
 type JsonRecord = Record<string, any>;
 const fixturesDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../fixtures/ucp");
@@ -84,6 +86,46 @@ describe("contract module", () => {
   it("exports a value assignable to the frozen UcpModule", () => {
     const module: UcpModule = ucpModule;
     expect(module.createUcp).toBe(createUcp);
+  });
+});
+
+describe("fixture scrubbing", () => {
+  it("redacts non-demo email addresses and query credentials", () => {
+    expect(scrubFixture({
+      email: "seller@example.test",
+      demo: "demo@agent-cookie.dev",
+      url: "https://shop.example/cart?key=secret&_gsid=session",
+    })).toEqual({
+      email: "[REDACTED]",
+      demo: "demo@agent-cookie.dev",
+      url: "https://shop.example/cart?key=REDACTED&_gsid=REDACTED",
+    });
+  });
+});
+
+describe("live profile initialization", () => {
+  it("retries after profile init fails and honors a supplied binary and timeout", async () => {
+    let profileAttempts = 0;
+    const calls: Array<{ args: string[]; bin?: string; timeoutMs: number }> = [];
+    const runner = createLiveRunner({}, {
+      bin: "/custom/ucp",
+      timeoutMs: 1234,
+      execute: async (args, _env, timeoutMs, bin) => {
+        calls.push({ args, bin, timeoutMs });
+        if (args[0] === "profile") {
+          profileAttempts += 1;
+          if (profileAttempts === 1) throw new Error("temporary profile init failure");
+          return { stdout: JSON.stringify({ name: "agent" }), stderr: "" };
+        }
+        return { stdout: JSON.stringify({ result: { ok: true } }), stderr: "" };
+      },
+    });
+
+    await expect(runner(["catalog", "search"])).rejects.toThrow("temporary profile init failure");
+    await expect(runner(["catalog", "search"])).resolves.toEqual({ result: { ok: true } });
+    expect(profileAttempts).toBe(2);
+    expect(calls.every((call) => call.bin === "/custom/ucp" && call.timeoutMs === 1234)).toBe(true);
+    expect(calls[0]!.args).not.toContain("--profile");
   });
 });
 
@@ -274,16 +316,36 @@ describe("complete and upstream failures", () => {
     });
   });
 
-  it("throws contract UpstreamError for error envelopes and runner failures with the best URL", async () => {
+  it("maps complete permission failures to handoff and keeps other errors exceptional", async () => {
     const fallback = "https://shop.example/cart/c/checkout-1";
     const envelopeClient = createUcpInternal({ mode: "live" }, runnerFor({
       code: "INSUFFICIENT_PERMISSIONS",
       message: "JWT required",
       continue_url: "https://shop.example/",
+      messages: [{ type: "info", content: "Continue on the store." }],
     }));
     await expect(envelopeClient.complete(checkout({ continueUrl: fallback })))
+      .resolves.toMatchObject({
+        status: "requires_escalation",
+        continueUrl: fallback,
+        messages: [
+          { type: "info", content: "Continue on the store." },
+          {
+            type: "error",
+            code: "INSUFFICIENT_PERMISSIONS",
+            content: "JWT required",
+            severity: "requires_buyer_input",
+          },
+        ],
+      });
+
+    const otherError = createUcpInternal({ mode: "live" }, runnerFor({
+      code: "INVALID_INPUT",
+      message: "Invalid checkout",
+    }));
+    await expect(otherError.complete(checkout({ continueUrl: fallback })))
       .rejects.toMatchObject({
-        message: "ucp checkout-complete: INSUFFICIENT_PERMISSIONS: JWT required",
+        message: "ucp checkout-complete: INVALID_INPUT: Invalid checkout",
         continueUrl: fallback,
       });
 
@@ -293,7 +355,89 @@ describe("complete and upstream failures", () => {
     await expect(thrownClient.complete(checkout({ continueUrl: fallback })))
       .rejects.toBeInstanceOf(UpstreamError);
     await expect(thrownClient.complete(checkout({ continueUrl: fallback })))
-      .rejects.toMatchObject({ message: "runner failed", continueUrl: fallback });
+      .rejects.toMatchObject({ message: "ucp checkout-complete: failed", continueUrl: fallback });
+  });
+
+  it("returns CLI error-envelope output so the recorder can capture complete handoffs", async () => {
+    const runner = createLiveRunner({}, {
+      execute: async (args) => {
+        if (args[0] === "profile") {
+          return { stdout: JSON.stringify({ name: "agent" }), stderr: "" };
+        }
+        throw Object.assign(new Error("process exited"), {
+          code: 1,
+          stdout: JSON.stringify({
+            code: "INSUFFICIENT_PERMISSIONS",
+            message: "JWT required",
+            continue_url: "https://shop.example/",
+          }),
+          stderr: "",
+        });
+      },
+    });
+    const api = createUcpInternal({ mode: "live" }, runner);
+    await expect(api.complete(checkout({
+      continueUrl: "https://shop.example/cart/c/checkout-1",
+    }))).resolves.toMatchObject({
+      status: "requires_escalation",
+      continueUrl: "https://shop.example/cart/c/checkout-1",
+      messages: [{
+        type: "error",
+        code: "INSUFFICIENT_PERMISSIONS",
+        content: "JWT required",
+        severity: "requires_buyer_input",
+      }],
+    });
+  });
+
+  it("sanitizes missing fixture paths, missing binaries, and malformed runner output", async () => {
+    const fixturesDir = mkdtempSync(join(tmpdir(), "agent-cookie-ucp-"));
+    try {
+      const fixtureApi = createUcp({ mode: "fixture", fixturesDir });
+      let fixtureError: unknown;
+      try {
+        await fixtureApi.createCart({ sellerDomain: "shop.example", variantId: "variant-1" });
+      } catch (error) {
+        fixtureError = error;
+      }
+      expect(fixtureError).toBeInstanceOf(UpstreamError);
+      const fixtureMessage = (fixtureError as Error).message;
+      expect(fixtureMessage).toContain("cart-create.shop.example.json");
+      expect(fixtureMessage).not.toContain(fixturesDir);
+      expect(fixtureMessage).not.toContain("ENOENT:");
+
+      const missingBinApi = createUcp({
+        mode: "live",
+        bin: "/definitely/missing/dir/ucp",
+      });
+      let missingBinError: unknown;
+      try {
+        await missingBinApi.searchOffers({ query: "shoes", shipsTo: "US" });
+      } catch (error) {
+        missingBinError = error;
+      }
+      expect(missingBinError).toBeInstanceOf(UpstreamError);
+      expect((missingBinError as Error).message).toContain("ENOENT");
+      expect((missingBinError as Error).message).not.toContain("/definitely");
+
+      const runner = createLiveRunner({}, {
+        execute: async (args) => args[0] === "profile"
+          ? { stdout: JSON.stringify({ name: "agent" }), stderr: "" }
+          : { stdout: "bad JSON /fake/local/path/output.json", stderr: "" },
+      });
+      const malformedApi = createUcpInternal({ mode: "live" }, runner);
+      let malformedError: unknown;
+      try {
+        await malformedApi.searchOffers({ query: "shoes", shipsTo: "US" });
+      } catch (error) {
+        malformedError = error;
+      }
+      expect(malformedError).toBeInstanceOf(UpstreamError);
+      expect((malformedError as Error).message).toContain("invalid JSON response");
+      expect((malformedError as Error).message).not.toContain("/fake/local/path");
+    } finally {
+      rmSync(fixturesDir, { recursive: true, force: true });
+    }
   });
 
   it("throws on any operation error envelope rather than filtering or converting it", async () => {
@@ -306,60 +450,47 @@ describe("complete and upstream failures", () => {
   });
 });
 
-describe("live profile initialization", () => {
-  it("retries after profile init fails and honors a supplied binary and timeout", async () => {
-    let profileAttempts = 0;
-    const calls: Array<{ args: string[]; bin?: string; timeoutMs: number }> = [];
-    const runner = createLiveRunner({}, {
-      bin: "/custom/ucp",
-      timeoutMs: 1234,
-      execute: async (args, _env, timeoutMs, bin) => {
-        calls.push({ args, bin, timeoutMs });
-        if (args[0] === "profile") {
-          profileAttempts += 1;
-          if (profileAttempts === 1) throw new Error("temporary profile init failure");
-          return { stdout: JSON.stringify({ name: "agent" }), stderr: "" };
-        }
-        return { stdout: JSON.stringify({ result: { ok: true } }), stderr: "" };
-      },
-    });
-
-    await expect(runner(["catalog", "search"])).rejects.toThrow("temporary profile init failure");
-    await expect(runner(["catalog", "search"])).resolves.toEqual({ result: { ok: true } });
-    expect(profileAttempts).toBe(2);
-    expect(calls.every((call) => call.bin === "/custom/ucp" && call.timeoutMs === 1234)).toBe(true);
-    expect(calls[0]!.args).not.toContain("--profile");
-  });
-});
-
 describe("committed fixture mode", () => {
-  it("normalizes both pinned offers and throws with the checkout handoff URL on live-shape failure", async () => {
+  it("filters the pinned EU-42 offers and completes each recorded handoff chain", async () => {
     const api = createUcp({ mode: "fixture" });
     const pinned = loadFixture("pinned.json");
     const offers = await api.searchOffers({
       query: "trail running shoes",
       shipsTo: "US",
-      maxPriceCents: 20_000,
+      maxPriceCents: 12_000,
       limit: 50,
     });
-    for (const item of pinned.offers as JsonRecord[]) {
-      expect(offers.some((offer) => offer.variantId === item.variantId)).toBe(true);
+    const matching = offers.filter((offer) =>
+      sizeMatches(offer.sizeOptions, "42")
+      && offer.currency === "USD"
+      && offer.available
+      && offer.priceCents <= 12_000
+    );
+    const pinnedOffers = pinned.offers as JsonRecord[];
+    const sellers = [...new Set(matching.map((offer) => offer.sellerDomain))].sort();
+    expect(sellers).toHaveLength(2);
+    expect(sellers).toEqual(pinnedOffers.map((offer) => offer.seller).sort());
+
+    for (const item of pinnedOffers) {
+      const offer = matching.find((candidate) => candidate.variantId === item.variantId);
+      expect(offer).toBeDefined();
+      const cart = await api.createCart(offer!);
+      const created = await api.createCheckout(cart);
+      const updated = await api.setDestination(created, {
+        name: "Agent Cookie Demo",
+        line1: "1 Ferry Building",
+        line2: "Ferry Building",
+        city: "San Francisco",
+        region: "CA",
+        postalCode: "94111",
+        country: "US",
+        raw: "ignored",
+      }, { email: "demo@agent-cookie.dev" });
+      const completed = await api.complete(updated);
+      expect(["requires_escalation", "completed"]).toContain(completed.status);
+      if (completed.status === "requires_escalation") {
+        expect(completed.continueUrl).toBeTruthy();
+      }
     }
-    const marathon = offers.find((offer) => offer.sellerDomain === "marathonsports.myshopify.com")!;
-    const cart = await api.createCart(marathon);
-    const created = await api.createCheckout(cart);
-    const updated = await api.setDestination(created, {
-      name: "Agent Cookie Demo",
-      line1: "1 Ferry Building",
-      line2: "Ferry Building",
-      city: "San Francisco",
-      region: "CA",
-      postalCode: "94111",
-      country: "US",
-      raw: "ignored",
-    }, { email: "demo@agent-cookie.dev" });
-    await expect(api.complete(updated)).rejects.toMatchObject({
-      continueUrl: expect.stringContaining("/cart/c/"),
-    });
   });
 });
