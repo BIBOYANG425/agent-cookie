@@ -42,7 +42,8 @@ export async function respond(text: string, messageId: string, conversation: Con
     const found = await workspace.find(intent, operationKey('find',messageId));
     conversation.offers = { ...found, quotes: found.quotes.slice(0,2) };
     const lines = conversation.offers.quotes.map((q,i) => `${i+1}. ${q.title ?? q.text} — $${(q.price/100).toFixed(2)} USD\n${q.etaDate ? `商家提供的到货日期：${q.etaDate}` : '到货时间未知'}${q.etaText ? `；${q.etaText}` : ''}`);
-    return `${found.sample ? '[Sample 演示报价，非真实库存]\n' : ''}${lines.join('\n\n') || '没有找到符合条件的报价。'}${lines.length ? '\n\n回复「要第一双」或「要第二双」。' : ''}${deadline ? '\n目前不能保证你要求的到货时间。' : ''}`;
+    const selectionHint = lines.length > 1 ? '\n\n回复「要第一双」或「要第二双」。' : lines.length === 1 ? '\n\n回复「要第一双」。' : '';
+    return `${found.sample ? '[Sample 演示报价，非真实库存]\n' : ''}${lines.join('\n\n') || '没有找到符合条件的报价。'}${selectionHint}${deadline ? '\n目前不能保证你要求的到货时间。' : ''}`;
   }
   return help;
 }

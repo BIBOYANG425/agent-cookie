@@ -109,3 +109,14 @@ C 线合入时的原始交接记录（保留全部原文）：
 - [D→A] `ucp-filter.ts` `parseSize` 不认后缀式 "9 US"（Marathon Sports 的真实标签），也不认 "UK"；请支持 `<num> US|EU` 后缀，UK 解析后不匹配。
 - [D→A] `--business` 用裸域名（`marathonsports.myshopify.com`）实测可用，契约注释里的 `https://` 前缀不需要。`UcpOffer.shipsTo` 来自请求过滤条件，目录无逐变体字段。
 - [D→A] `apps/workspace/src/laneD.ts`：`Object.assign(laneD, createLaneDHooks({ jar, secret, ttlMs }))`（`@agent-cookie/auth`），`authorizePayment` 用 `@agent-cookie/pay` 的授权函数。
+
+2026-10-17，B 线正式后台联调（A bd9d6e3、C a1d581e、D lane-d-contract e34800f，已集成 lane-b；以下只追加）：
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| B18 | B → A/C | 当前本机 4310 已换 `apps/workspace` SQLite + C seed；Photon/Desktop 用各自 personal key。SDK 读卡/报价/accept/receipts 与 owner activity 已接通；`{events}` envelope 已兼容。两个人 agent 到同店 session 相同、不同店不同，accept 幂等与个人 key 拒绝 activity 均通过。 | 详见 docs/evidence/2026-10-17-sqlite-verification.md |
+| B19 | B → A/C | 真实 iMessage 在新后台重跑找鞋→第二双，119.95/109.99 USD 两条回复均 delivered 且用户确认。实际构建 MCP stdio 对 4310 读卡/报价成功；Desktop 本轮 UI 操作工具失效，旧截图仅证明此前 fake 链路，未冒充新验收。 | 脱敏 JSON 已存 docs/evidence |
+| B20 | B → A | 正式响应没有 Sample 标记；B 已增加显式 `AGENT_COOKIE_SAMPLE=1` 供演示并保留到 MCP/Photon。AcceptResult 四态已覆盖；handoff 无链接不报错，failed/blocked 带 continueUrl 不丢失。建议后台也明确响应数据来源，避免其他客户端把桩报价当实时库存。 | B 兼容已完成；后台来源标记待 A |
+| B21 | B → A/C | 根 fixtures/address.json 没被 A seed loader 读入，当前卡仅 lang/tone/shoe_size；C seed 下 accept 因缺地址 handoff、无 checkout 地址回执，这是实测正常结果。A 自带 Sample seed 的独立测试可得到仅选中商家 shipping_address 回执。请明确地址 seed 导入后再复验完整授权展示。 | 待 A/C，不伪造地址或回执 |
+| B22 | B → A/C/D | 新 D e34800f 已对齐 UcpModule；用 A createDeps 的 ucp override 离线接入成功，但 A 默认 adapters.ts 仍硬接 StubUcp（fixture/live 均如此）。录制50条 offer 经当前 EU42/$120 过滤只有 shoebacca-prod.myshopify.com 一条11997美分；该店缺 cart-create 录制，accept failed/UPSTREAM_ERROR 且有 continueUrl。parseSize('9 US') 返回 undefined；原始 ENOENT 文案含本机路径，需对外脱敏。请接入新 D、修复后缀尺码并补匹配店的完整实录，不要把录制US9/US11直接当EU42报价。 | 独立探针证据已存；手机仍保留明确 Sample 的 A 桩链路 |
+| B23 | B → A/C | 已合入并测试 C rules 27项、memory-repo 11项；memory 的 regenerateCard/resetToSeed 尚为 C08 not implemented，A 仍用 stubRules/stubMemoryRepo。请 A 先接 rules、等 C08 后接持久 repo；本轮不跨线改 adapters.ts。SDK 当前仅 getMe/getMyCard/createIntent/getQuotes/find/accept/getReceipts/getActivity；console 所需写操作尚未实现，不应假定已经可调用。 | 等 A/C 接线及接口使用清单 |

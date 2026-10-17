@@ -73,4 +73,6 @@ Socket.IO 自动重连最多 5 次，每次用持久 cursor 重新订阅；串�
 
 `SEND_OUTCOME_UNKNOWN`：先通过 Photon 按原幂等 key/消息核查外发记录。确认已发出后才可把对应 outbox 标为 sent（保留 outgoingId），明确拒绝且未发出才可恢复 ready；不确定时保持停止。异常退出留下 `.lock` 时，先确认该 PID 已不存在，再移走旧锁，保留状态文件。不要删状态文件来“修复”去重。
 
-本机 Sample 后台没有持久化，重启后旧报价会失效；重新找鞋即可。Demo 只做一个购物任务，避免另一个 MCP find 替换当前授权。Sample、未知 ETA、handoff、失败和商家警告都会出现在回复中。没有实际付款或真实订单。真实手机购物流程的验收要另有设备回执，不能用旧 ping 或自动测试冒充 A17。
+当前联调使用 `apps/workspace` 的 SQLite 后台，监听 4310。Photon 的本地 `AGENT_COOKIE_KEY` 取自 `fixtures/dev-keys.json` 的 `sample-personal-photon` 条目，Desktop 使用不同的 `sample-personal-desktop` 条目。当前后台仍用 UCP 桩，设置 `AGENT_COOKIE_SAMPLE=1` 保留演示标识。`apps/workspace-fake` 仅作为可选内存 fallback；切换后台或重置数据后应重新找鞋，不能复用旧报价。
+
+Demo 同时只做一个购物任务，避免另一个 MCP find 替换当前授权。Sample、未知 ETA、handoff、失败和商家警告都会出现在回复中；handoff 没有链接时明确说明，failed/blocked 带 continueUrl 时保留它。没有实际付款或真实订单。2026-10-17 切换 SQLite 后的两条回复均由 Photon 读回 delivered，测试者确认收到报价与交接链接，见 `docs/evidence/2026-10-17-imessage-sqlite.json`。这不代表真实 UCP 商家已接入。

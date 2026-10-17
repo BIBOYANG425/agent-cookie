@@ -79,3 +79,12 @@ it.each(['ordered','handoff','blocked','failed'] as const)('renders actual %s ou
   if(status==='handoff')expect(text).toContain('未提供交接链接');
   if(status==='failed')expect(text).toContain('https://example.com/review');
 });
+
+it('offers only the first selection when the backend finds one eligible merchant',async()=>{
+  const client=await workspace();
+  const found=await client.find({kind:'trail_shoes',public:{}},'single');
+  vi.spyOn(client,'find').mockResolvedValue({...found,quotes:found.quotes.slice(0,1)});
+  const text=await respond('帮我找双越野跑鞋，120以内','single-search',{},client);
+  expect(text).toContain('要第一双');expect(text).not.toContain('要第二双');
+  expect(text).toContain('Sample');expect(text).toContain('到货时间未知');
+});
