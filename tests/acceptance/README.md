@@ -2,7 +2,7 @@
 
 这里登记 A01–A22，共 22 个 `it.todo`。**当前没有业务断言，没有通过的验收项。** Vitest 的成功退出只证明它能收集这些待办，不表示 P0 可演示。
 
-编号、标题和范围来自 `origin/devin/1792265075-plan-v0.3:docs/plan.md` 的“验收清单”，读取时提交为 `f23abfbc26c743aef1e4d634132c0e9ddd01d4a5`。本地 `docs/plan.md` 仍为 v0.2 时，不以旧编号覆盖本套件。
+编号、标题和范围来自 `origin/devin/1792265075-plan-v0.3:docs/plan.md` 的“验收清单”，读取时提交为 `f23abfbc26c743aef1e4d634132c0e9ddd01d4a5`。本轮已与合入的本地 v0.3 逐条核对，22 项编号和标题一致。
 
 - P0：A01–A12、A17、A18、A22，共 15 项。
 - P1：A13–A16、A19–A21，共 7 项。
@@ -11,7 +11,7 @@
 
 ## 独立运行
 
-根目录尚无 `package.json`、pnpm workspace、共享 Vitest 配置或工作台时，可只安装本目录依赖。锁文件只写在本目录，不改根锁。
+根 workspace 目前尚未纳入 tests/acceptance，本目录继续独立运行。锁文件只写在本目录，不改根锁。
 
 ```sh
 cd tests/acceptance
