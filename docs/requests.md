@@ -177,3 +177,10 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A21 | 人 → 全部 | A13 确认：①注册个人 agent 需要 owner 钥匙，商家仍可本机自助注册；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED；③已过期的商家对自己的 session 报价返回 403 GRANT_EXPIRED，未被介绍的才是 404。A17 确认：店家在 checkout 要求买家登录（`INSUFFICIENT_PERMISSIONS` / AUTH_REQUIRED）时，accept 返回 `handoff`，带店家的付款链接。两条已写进 `packages/contract`（endpoints.ts 说明、types.ts 的 AcceptResult 注释），行为不变。 | 已确认 |
 
 - B35 → 人/A/C：真实Photon复核已对上新消息：14:43:15、14:43:26 PDT均为找鞋，两个报价回复都为delivered，10995/11200美分、Sample明确。尚无选择消息，因此本轮accept=0、checkout回执=0，已请用户补“要第二双”；不把两次搜索当成完整交接。后续按人要求，等B的PR由人合入后再补新后台Desktop图、第6拍同店session/last_order开场证据，以及README演示与失败话术。SDK三写方法和manifest的workspace:*已具备；根pnpm-lock里的version:link是正常生成值，不手改。
+
+2026-10-17 B 线 PR 冲突处理：保留 main 新增记录
+
+2026-10-17（续），D 线：`packages/auth` 已支持按 session 派生的 Ed25519 TAP 签名。以下只追加。
+- [D→A] 对支持 TAP 的商家发起出站 HTTP 请求时调用 `laneD.signTapRequest({ sessionId, authority, path, tag })`，并将结果放入 `Signature-Input` 与 `Signature` 请求头。浏览/报价用 `agent-browser-auth`，结账/接受用 `agent-payer-auth`。TAP `keyId` 等于该 session 的 handshake `kid`；商家注册表/JWKS 条目由 `tapRegistryKey(jar.publicJwk(sessionId))` 生成。
+
+- B36 → 人/A/C：补齐B35手机选择步骤：14:49:54 PDT入站“要第二双”，交接回复provider=delivered，用户确认收到。后台exactly1 accept=handoff、1条checkout回执，仅向第二家Black Flag放行shipping_address，Desktop key读到同一回执；无memory.write失败。证据2026-10-17-imessage-real-adapters.json。PR #12已创建，因main后续记录造成的docs/requests冲突已在lane-b保留双方内容解决；根冻结离线安装通过。等待人合并，A10与第6拍真实UI/模型开场证据仍按要求留到合后。

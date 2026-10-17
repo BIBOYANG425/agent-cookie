@@ -35,6 +35,13 @@ describe("createLaneDHooks", () => {
       const unlocked = await hooks.handleUnlock(request());
       expect(unlocked.status).toBe(200);
       expect(await unlocked.json()).toEqual({ unlockedUntil: 1_500 });
+      const signedTap = await hooks.signTapRequest({
+        sessionId: "pairwise-session",
+        authority: "merchant.example",
+        path: "/products/1",
+        tag: "agent-browser-auth",
+      });
+      expect(signedTap.keyId).toBe(jar.publicJwk("pairwise-session").kid);
 
       const replay = await hooks.handleUnlock(request());
       expect(replay.status).toBe(401);

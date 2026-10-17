@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-17T21:48:59.026Z",
+  "checkedAt": "2026-10-17T21:50:16.644Z",
   "implementationCommit": "04c6e108e43999a15cecf3093c45acd21673a74c",
   "timezone": "America/Los_Angeles",
   "transport": "real Photon iMessage; API readback plus persisted outbox and workspace SDK",
@@ -21,6 +21,15 @@
       "outboundStatus": "delivered",
       "replyMatchesOutbox": true,
       "sampleLabel": true
+    },
+    {
+      "kind": "select",
+      "inboundAt": "2026-10-17T21:49:54.136Z",
+      "inboundStatus": "received",
+      "outboundAt": "2026-10-17T21:49:54.920Z",
+      "outboundStatus": "delivered",
+      "replyMatchesOutbox": true,
+      "sampleLabel": true
     }
   ],
   "pricesCents": [
@@ -31,18 +40,21 @@
     "fixture",
     "fixture"
   ],
-  "flowStatus": "quotes_delivered_awaiting_selection",
-  "result": null,
-  "acceptCount": 0,
-  "checkoutReceiptCount": 0,
-  "checkoutReceiptFields": [],
+  "selectedSeller": "black-flag-outfitters-clothing.myshopify.com",
+  "flowStatus": "handoff_complete",
+  "result": "handoff",
+  "acceptCount": 1,
+  "checkoutReceiptCount": 1,
+  "checkoutReceiptFields": [
+    "shipping_address"
+  ],
   "unselectedMerchantAddressDisclosure": false,
-  "desktopCanReadSameReceipt": false,
+  "desktopCanReadSameReceipt": true,
   "memoryWriteFailures": 0,
-  "outboxSentCount": 2,
+  "outboxSentCount": 3,
   "pendingOutboxCount": 0,
-  "cursor": 6729,
+  "cursor": 6775,
   "noPaymentOrOrderClaimed": true,
-  "deviceDisplayConfirmedByUser": false,
-  "secondOfferSeller": "black-flag-outfitters-clothing.myshopify.com"
+  "deviceDisplayConfirmedByUser": true,
+  "userConfirmation": "\u5df2\u53d1\u300c\u8981\u7b2c\u4e8c\u53cc\u300d\uff0c\u6536\u5230\u4ea4\u63a5\u94fe\u63a5"
 }

@@ -59,3 +59,14 @@ See appended B30–B34 in `docs/requests.md`. No main merge was performed.
 The previous “no fresh inbound” observation is now superseded. Photon confirms two new **find** messages at **14:43:15 and 14:43:26 PDT**, each followed by a quote reply with provider status **delivered**. Both replies match the persisted outbox text, show Sample, and quote $109.95 / $112.00. Cursor advanced from 6466 to 6729; no outbound message remains pending.
 
 Both inputs were searches, not a find/select pair. No new selection, accept or checkout receipt exists for this round yet. The user has been asked to send “要第二双” in the same conversation. This validates real iMessage quotation delivery, but does not yet close the phone handoff step. See [redacted Photon/API and backend readback](2026-10-17-imessage-real-adapters.json).
+
+
+## Full real iMessage handoff verified, 14:50 PDT
+
+The 14:48 waiting-for-selection status above is superseded. The configured phone sent “要第二双” at **14:49:54.136 PDT**; Photon recorded the matching outgoing handoff reply at **14:49:54.920**, status **delivered**. The user separately confirmed receiving the link. All three replies in this retry window (two searches, one selection) match the persisted outbox; none remain pending. Cursor is now 6775.
+
+The selected second quote is Black Flag Outfitters at $112.00. Workspace activity records exactly **one accept**, result **handoff**. Exactly **one checkout receipt** after these phone requests releases only `shipping_address` to the selected store; no address disclosure goes to the unselected store. The Desktop personal key reads the same receipt through SDK. No memory write failure is present. The response remains clearly Sample/fixture and explicitly says no payment or order is confirmed.
+
+This closes this round's real phone search → select → handoff and backend-receipt verification. It does not claim a new Claude Desktop UI screenshot, a real merchant payment, or a merchant model's last_order greeting. Those remain post-merge demo work.
+
+PR preparation: synced main 8c1a869 into lane-b to resolve GitHub's request-log conflict, preserving both sides. `pnpm install --frozen-lockfile --offline` passed with all 15 workspaces, no resolution or lock rewrite. B implementation code did not change, so the prior focused test results apply; inherited A04 timestamp assertion remains documented, not silently fixed or reclassified as green.
