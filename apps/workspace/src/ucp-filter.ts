@@ -34,20 +34,34 @@ export interface SearchConditions {
   prefs?: { brand: string[]; color: string[]; avoid: string[] };
 }
 
-/** "Brooks, Hoka" / "Brooks、Hoka" / "Brooks and Hoka" → ["brooks", "hoka"]. */
+/**
+ * "Brooks, Hoka" / "Brooks、Hoka" / "Brooks/Hoka" → ["brooks", "hoka"]. Only punctuation separates terms: words like
+ * "and" or 和 are parts of names ("Dolce and Gabbana", 和服).
+ */
 export function terms(v: string | undefined): string[] {
   if (!v) return [];
-  return [...new Set(v.split(/\s*(?:[,，、;；/|]|\band\b|\bor\b|和|或)\s*/i).map((t) => t.normalize("NFKC").trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(v.split(/[,，、;；/|]/).map((t) => fold(t)).filter(Boolean))];
 }
 
-/** Whether the offer's title, variant or seller name mentions `term` (whole words for Latin terms, substring otherwise). */
+/** NFKC, lower case, one kind of apostrophe, single spaces. */
+function fold(t: string): string {
+  return t.normalize("NFKC").replace(/[\u2018\u2019\u02BC`´]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Whether the offer's title, variant or seller name mentions `term`. Latin terms match whole words, where a word
+ * boundary is anything that is not a Latin letter or digit (so "nike" is found in "Nike跑鞋"); other scripts match
+ * as substrings.
+ */
 export function mentions(o: UcpOffer, term: string): boolean {
-  const hay = `${o.productTitle} ${o.variantTitle} ${o.sellerName}`.normalize("NFKC").toLowerCase();
-  if (/^[\p{Script=Latin}\d\s'&.-]+$/u.test(term)) {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(^|[^\\p{L}\\d])${escaped}($|[^\\p{L}\\d])`, "u").test(hay);
+  const hay = fold(`${o.productTitle} ${o.variantTitle} ${o.sellerName}`);
+  const t = fold(term);
+  if (!t) return false;
+  if (/^[\p{Script=Latin}\d\s'&.-]+$/u.test(t)) {
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^\\p{Script=Latin}\\d])${escaped}($|[^\\p{Script=Latin}\\d])`, "u").test(hay);
   }
-  return hay.includes(term);
+  return hay.includes(t);
 }
 
 /** Hard filters only. */
