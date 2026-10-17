@@ -2,6 +2,8 @@
 
 状态：**未执行；证据待采集。** HTTP 验收仍为 `it.todo`，没有现场生成的成功结果。
 
+本次用户已将现场 coding agent 安装推迟。[双 Sample storefront + live UCP](two-storefronts-and-ucp.md) 可以预先共用一个接入实现，分别验证两店身份与授权；这不会满足“干净克隆上由 skill 生成”的原 A16。保留本模板、编号、标题和原标准，后续真实执行后再补证据，不把预先写好的适配器或双店启动记为 A16 通过。
+
 通过标准：在干净的 blueprint 克隆上运行 `/add-agent-cookie`，生成的 MemoryStore 读到握手字段并写回 note；其余代码未改。
 
 ## 执行与取证

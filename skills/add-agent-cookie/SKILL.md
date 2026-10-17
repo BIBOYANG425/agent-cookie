@@ -34,3 +34,5 @@ TypeScript 通过 `packages/sdk`；本项目计划特许的 Python blueprint 用
 ## Anthropic commerce-agents 的已核对基线
 
 该例子目前只核对了源码与启动流程，Agent Cookie 深度接入尚未验证。目标是此仓库时，阅读 [references/commerce-agents.md](references/commerce-agents.md)，按固定 commit 重新确认路径；不要假定计划中的“三方法、约 80 行”适用于当前上游。
+
+若用户只要求先验证双 shopping agent 的授权上下文和有限关系 note，可评估现有 get_preferences 与 save_memory / recall_memories 接缝，关闭未接入的持久 memory/extraction/seed，不实例化残缺 MemoryStore。模型调用前必须有明确的工作台授权 gate；上游偏好预取会吞掉异常。明确说明此范围不包含完整删除/清空/自动提取，也不等于 A16 的完整 MemoryStore 接入。工作台载荷仍须冻结，不能以“最小版”为由猜字段或返回假授权。

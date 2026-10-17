@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-10-17T19:52:34.867707+00:00",
+  "scope": "live upstream session/SSE transport only; no workspace integration",
+  "upstream_commit": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+  "client": "examples/blueprint/storefront_transport.py",
+  "results": [
+    {
+      "store": "Sample A",
+      "origin": "http://127.0.0.1:8000",
+      "session_created": true,
+      "turn_complete": false,
+      "error_code": "upstream_error"
+    },
+    {
+      "store": "Sample B",
+      "origin": "http://127.0.0.1:8001",
+      "session_created": true,
+      "turn_complete": false,
+      "error_code": "upstream_error"
+    }
+  ],
+  "workspace_connected": false,
+  "llm_success_verified": false,
+  "note_isolation_verified": false,
+  "authorization_revocation_verified": false
+}

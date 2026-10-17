@@ -2,7 +2,7 @@
 
 分支：`lane-c`。本次只写 C 线目录；没有修改 `docs/plan.md`、根配置或其他线源码。原有未跟踪 `docs/media/agent-cookie-demo.mp4` 未改、未作为本次证据、未提交。
 
-本地计划仍为 v0.2；本次只读核对远端 `origin/devin/1792265075-plan-v0.3`，提交 `f23abfbc26c743aef1e4d634132c0e9ddd01d4a5`，采用用户指定的 v0.3 验收集合。人需同步计划与 core 到本分支，见 [追加请求](requests.md)。
+本地计划仍为 v0.2；已只读核对 v0.3 指定章节，采用用户指定的 v0.3 验收集合。后续 fetch 确认 `origin/main@d48e263` 已合入 v0.3 文档，但 A/B 分支尚无冻结契约、SDK 或 fake workspace。人需同步计划与 core 到本分支，见 [追加请求](requests.md)。
 
 ## 已完成的第一阶段材料
 
@@ -33,4 +33,12 @@ A：冻结请求/响应、core 与 fake workspace，来源贡献 ID、grants/act
 
 B：SDK 方法、MCP/Photon 客户端运行入口及 A10/A17 真实证据。完整 T6、真 HTTP 验收、录屏在这些依赖到达后实施，不用前端假行为点亮测试。
 
-用户追问 blueprint 是否值得使用后的建议：保留为 **P1 第三方接入样本**，不放在主线依赖。原版 ACME 无鞋且仅为 Sample catalog；Tier 0 需要上游 session/SSE 适配；Tier 2 需要删除与 purge generation 语义，不能只换一行。先完成 P0，再决定是否录短片。该建议已追加 requests；验收标准和计划仍由人修改。
+用户已确认新的优先方向：**一个真实 UCP 商家 + 两套独立 Sample shopping agent，共用一份接入实现**，两店沿用 blueprint 原有通用商品，后置现场 coding agent 安装环节。详见 [当前演示方向](two-storefront-demo.md)。原版无鞋、session/SSE、六方法 memory 等实地发现仍成立，必须解决；验收标准和计划仍由人修改。
+
+## 双店准备进度
+
+- [双实例启动器](../examples/blueprint/dual/USAGE.md) 已实际启动两个独立外部克隆，使用 Node 22.23.3：A 的 8000/3000、B 的 8001/3001。各 health、页面、catalog 为 200，自己的聊天 token 读 memory 为 200，交叉使用为 401。12 个配置隔离与 HTTP 探针测试通过，探针禁止代理和重定向。已正常停止服务、保留数据。原版页面仍是 ACME UI，最终演示需加入明确的 Sample A/B 标签。
+- [共享 session/SSE transport](../examples/blueprint/INTEGRATION.md) 的 9 个离线测试通过，覆盖 token 不能跨店、200 错误流、断流、token 上限、工具拒绝与重定向。两边实际创建上游会话成功，但实际 chat 均为 `upstream_error`，详见 [真实探针结果](../examples/blueprint/transport-verification-2026-10-17.json)。没有真实 LLM 成功结论。
+- [双店取证说明](evidence/two-storefronts-and-ucp.md) 已定义实际字段读取、独立 note、只撤 A、换 personal 回 B 与 live UCP cart 的证据。当前未连接工作台，也没有这些行为通过的记录；22 项验收继续 todo。
+
+下一步由 A/B 交付冻结载荷、受信身份绑定和 SDK 后，接上游偏好读取与现有 note 工具；模型前检查授权，服务端串行到历史写回完成，禁用未接入的旧持久记忆路径。两店模型凭据需配置在各自后端环境文件中，不进入本仓库或聊天。

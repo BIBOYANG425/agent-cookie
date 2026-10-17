@@ -2,6 +2,12 @@
 
 此目录只存我们写的启动、核验脚本与记录。第三方代码、依赖、`.env` 和运行数据留在仓库外。上游为 [anthropics/commerce-agents](https://github.com/anthropics/commerce-agents)，固定提交见 `upstream-revision`：`fd4d59224ab96b43c6dc6888207c67b3bd5a24cf`。本文行号均对应该提交。
 
+当前方向已更新为 [一条真实 UCP 链路 + 两个独立 Sample shopping agent](../../docs/two-storefront-demo.md)。两家复用同一接入实现，独立持有工作台凭据、pairwise session 和 notes；现场 coding agent 安装环节后置。下方单店启动记录是原版基线，不能作为双店工作台集成通过的证据。
+
+已完成的独立协议组件与最小接入路径见 [INTEGRATION.md](INTEGRATION.md)。上游 session/SSE transport 已有离线测试；工作台授权和 note 适配仍待契约，未计入真实验收。
+
+双实例已有 [启动说明](dual/USAGE.md) 和 [实测记录](dual/RUN-2026-10-17.md)：两边 health、页面、catalog 通过，跨实例聊天 token 被拒绝。当前仍是原版 ACME 页面，Sample A/B 标签只在启动器与说明中；最终演示还需在页面明确标注。此阶段没有工作台 pairwise ID 或 notes，不能算 A08 通过。
+
 上游公司、商品和人物都是 **Sample**。retail catalog 是通用商店，并非真实鞋店；87 个商品中没有 footwear 分类，商品标题中 `shoe` / `sneaker` / `boot` / `sandal` 的匹配数为 0。不要把原版演示描述为真实鞋报价。
 
 ## 启动

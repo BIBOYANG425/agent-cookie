@@ -2,6 +2,8 @@
 
 本目录用于验收 skill 生成的实现，不是用户接入时复制的代码。目前没有 `agent_cookie_memory_store.py`：冻结契约和 fake workspace 尚未交付，不能制造一个看似能跑的参考答案。
 
+新双店方向可以先用现成的偏好加载与 save_memory / recall_memories 工具接缝完成有限关系 note 接入，而不实例化 MemoryStore。这样不需要先解决全部六方法，但不等于本目录的完整参考实现或 A16 通过；详见 [最小接入边界](../../examples/blueprint/INTEGRATION.md)。
+
 真实上游 `anthropics/commerce-agents@fd4d59224ab96b43c6dc6888207c67b3bd5a24cf` 的 MemoryStore 要求六个方法；细节见 [blueprint 接入地图](../../skills/add-agent-cookie/references/commerce-agents.md)。实现前需 A/B/C 确认：
 
 | 未决项 | 影响 |
