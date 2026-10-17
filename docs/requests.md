@@ -1,5 +1,5 @@
-- [D→A] Add `PaymentAuthorization`, `SignHandshake`, and `AuthorizePayment` to core, and add `Receipt.amount`.
-- [D→A] Add error codes `AUTHORIZATION_USED` 403, `OVER_BUDGET` 403, and `UPSTREAM_ERROR` 502.
+- [D→A] Add `PaymentAuthorization`, `SignHandshake`, and `AuthorizePayment` to core, and add `Receipt.amount`. — done (core on main)
+- [D→A] Add error codes `AUTHORIZATION_USED` 403, `OVER_BUDGET` 403, and `UPSTREAM_ERROR` 502. — done (core on main)
 - [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
 - [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.

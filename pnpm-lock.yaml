@@ -40,6 +40,10 @@ importers:
         version: 2.1.9(@types/node@22.20.5)
 
   packages/auth:
+    dependencies:
+      '@agent-cookie/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.7.5
@@ -65,6 +69,9 @@ importers:
 
   packages/pay:
     dependencies:
+      '@agent-cookie/core':
+        specifier: workspace:*
+        version: link:../core
       stripe:
         specifier: ^17.0.0
         version: 17.7.0
