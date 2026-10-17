@@ -5,7 +5,7 @@
 使用 Node 22，先按 `../sdk/README.md` 安装、构建 SDK，再从仓库根运行：
 
 ```sh
-pnpm --dir packages/cli install --ignore-workspace --ignore-scripts
+pnpm install --ignore-scripts
 pnpm --dir packages/cli typecheck
 pnpm --dir packages/cli test
 pnpm --dir packages/cli build

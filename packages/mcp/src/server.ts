@@ -1,15 +1,21 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { randomUUID, createHash } from 'node:crypto';
+import { z } from 'zod';
+import type { FindInput } from '@agent-cookie/sdk';
 
 /** B-local injection seam, not the frozen WorkspaceClient method contract. */
 export interface PersonalWorkspaceBinding {
   getAuthenticatedRole(): Promise<string>;
   getMyCard(): Promise<unknown>;
+  find?(input: FindInput, key: string): Promise<unknown>;
+  accept?(quoteId: string, key: string): Promise<unknown>;
+  getReceipts?(): Promise<unknown>;
 }
 
 const publicErrors: Record<string, string> = {
   AUTH_REQUIRED: 'Workspace authentication is required.',
-  SCOPE_DENIED: 'This credential cannot read the personal card.',
+  SCOPE_DENIED: 'This credential cannot perform the requested operation.',
   GRANT_EXPIRED: 'The grant has expired.',
   GRANT_REVOKED: 'The grant was revoked.',
   PURPOSE_MISMATCH: 'This purpose is not allowed.',
@@ -46,6 +52,26 @@ export async function createPersonalServer(binding: PersonalWorkspaceBinding): P
       return toolError(error);
     }
   });
+  if (binding.find) server.registerTool('find_agents', {
+    description: 'Find trail-shoe offers through the workspace. This shares the task intent with external merchants in live mode. Use saved shoe size; preserve Sample labels and unknown delivery dates.',
+    inputSchema: { kind: z.literal('trail_shoes'), budget: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(), deadline: z.string().max(100).optional() },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, async ({kind,budget,deadline}) => {
+    try { return { content:[{type:'text' as const,text:JSON.stringify(await binding.find!({kind,public:{...(budget?{budget}:{}),...(deadline?{deadline}:{})}},`mcp:find:${randomUUID()}`))}] }; }
+    catch(error) {return toolError(error);}
+  });
+  if (binding.accept) server.registerTool('accept_quote', {
+    description: 'Accept only the quote the user explicitly selected. Return the actual ordered/handoff/blocked/failed result; handoff is not payment or an order. Preserve Sample and warnings.',
+    inputSchema: { quoteId: z.string().min(1).max(200) },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+  }, async ({quoteId}) => {
+    try {return {content:[{type:'text' as const,text:JSON.stringify(await binding.accept!(quoteId,`mcp:accept:${createHash('sha256').update(quoteId).digest('hex')}`))}]};}
+    catch(error) {return toolError(error);}
+  });
+  if (binding.getReceipts) server.registerTool('list_receipts', {
+    description:'List recent field-access receipts without private field values.', inputSchema:{},
+    annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},
+  },async()=>{try{return {content:[{type:'text' as const,text:JSON.stringify(await binding.getReceipts!())}]};}catch(error){return toolError(error);}});
   return server;
 }
 

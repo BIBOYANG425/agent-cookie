@@ -44,3 +44,14 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 - [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
 - [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
+
+2026-10-17，B 线接线更新（基于 A `72206dd`，已合入 lane-b，未合入 main）：
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| B12 | B → A/C | 用户已将 `apps/workspace-fake` 分配给 B。已实现 loopback 4310 的个人卡、handshake、fields（contract canRead + selected quote）、intent/quotes/accept、receipts/grants/revoke/activity/reset；现在是内存 Sample 后台，无 UCP 外呼、无真实订单。复用 A `stubRules`，等 C rules 发布再替换。 | 本地 HTTP 与 SDK 链路已测 |
+| B13 | B → C | 多次自行 fetch 并检查全部远端；截至 13:22 PDT，lane-c 仍 `7da6659`，未发现 fixtures/。loader 已对齐 contract `DevKeys` map 与单用户 seed，临时 B fallback 只写 gitignored `.runtime/sample-fixtures`，未改 C 目录。fake 额外使用 `quotes.json`（Omit<Quote,id/intentId>[]）；请推送 seed 和 UCP recorded responses 后告知文件格式，B 做适配。 | 等实际 fixture 文件，当前不宣称 C seed 兼容已验收 |
+| B14 | B → A | 已改为 `@agent-cookie/contract` 与 workspace:*，移除 B 包独立锁文件，根 lockfile 由 pnpm 安装产生更新。SDK 扩展 createIntent/getQuotes/find/accept/getReceipts；MCP 为 get_my_card/find_agents/accept_quote/list_receipts。formal backend 仍需核对 HTTP envelopes（intentId、{quotes}、AcceptResult、{receipts}）。 | Sample stdio 与 HTTP 已联调 |
+| B15 | B → A/C | Photon 项目及 shared iMessage 线路已建，先前 ping 已 delivered 且用户确认收到；本轮持续 Socket.IO 已连接，绑定唯一测试 sender，游标/发件箱 0600 持久化，重复消息幂等，未知发送结果停机。个人 agent 为受限确定性 parser，无 LLM key 依赖。业务会保留 Sample、未知 ETA 与 handoff 警告。 | 手机购物步骤等待用户发送；不计作 A17 已通过 |
+
+| B16 | B → A/C | B15 更新：用户已完成手机找鞋/选第二双，两个外发消息从 Photon 分别读回 `delivered`；用户明确确认收到，checkout receipt 只有 Sample merchant B 的 shipping_address。脱敏证据在 `docs/evidence/2026-10-17-imessage-sample.json`。这是真实 iMessage + Sample backend，不是真实 UCP/订单。Desktop 已安装及配置，停在登录页，等用户登录后补 A10 UI 证据。 | 手机 Sample 主链路通过；正式集成与 A10 待完成 |

@@ -1,3 +1,10 @@
+import type { AcceptResult, Quote, Receipt } from '@agent-cookie/contract';
+export type { AcceptResult, Quote, Receipt } from '@agent-cookie/contract';
+export interface FindInput { kind: 'trail_shoes'; public: Record<string, string> }
+export interface QuoteList { quotes: Quote[]; sample: boolean }
+export interface FindResult extends QuoteList { intentId: string }
+export type CheckoutResult = AcceptResult & { sample: boolean };
+
 export interface WorkspaceConfig {
   baseUrl: string;
   key: string;
@@ -66,13 +73,17 @@ export class WorkspaceClient {
     }
   }
 
-  async #get(path: string): Promise<unknown> {
+  async #request(path: string, body?: unknown, idempotencyKey?: string): Promise<unknown> {
+    if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
     let response: Response;
     let payload: unknown;
     try {
       response = await this.#fetch(new URL(path, this.#config.baseUrl), {
-        method: 'GET',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${this.#config.key}` },
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${this.#config.key}`,
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         redirect: 'manual', // Never forward a local credential to a redirect destination.
         cache: 'no-store',
         signal: AbortSignal.timeout(this.#timeoutMs),
@@ -97,7 +108,7 @@ export class WorkspaceClient {
   }
 
   async getMe(): Promise<WorkspaceIdentity> {
-    const payload = await this.#get('/me');
+    const payload = await this.#request('/me');
     if (!isObject(payload) || !['agentId', 'category', 'role'].every(key => typeof payload[key] === 'string' && payload[key])) {
       throw new Error('The workspace returned an invalid identity response.');
     }
@@ -105,11 +116,57 @@ export class WorkspaceClient {
   }
 
   async getMyCard(): Promise<unknown> {
-    const payload = await this.#get('/personal/card');
+    const payload = await this.#request('/personal/card');
     if (!isObject(payload) || !Array.isArray(payload.card) || !Array.isArray(payload.candidates)) {
       throw new Error('The workspace returned an invalid card response.');
     }
-    // Keep field details opaque until the A-owned core types are merged and frozen.
+    // Preserve the workspace card and provenance; consumers choose which fields to display.
     return payload;
   }
+
+  async createIntent(input: FindInput, idempotencyKey: string): Promise<{ intentId: string; sample: boolean }> {
+    if (input.kind !== 'trail_shoes' || !isObject(input.public) || Object.entries(input.public).some(([k,v]) =>
+      !['budget', 'deadline'].includes(k) || typeof v !== 'string' || v.length > 100)) throw new Error('Invalid shopping intent.');
+    const payload = await this.#request('/personal/intents', input, idempotencyKey);
+    if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
+    return { intentId: payload.intentId, sample: payload.sample === true };
+  }
+
+  async getQuotes(intentId: string): Promise<QuoteList> {
+    const payload = await this.#request(`/personal/intents/${encodeURIComponent(intentId)}/quotes`);
+    if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => isObject(q)
+      && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
+      && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
+      && (q.etaDate == null || typeof q.etaDate === 'string'))) throw new Error('Invalid quote response.');
+    return { quotes: payload.quotes as Quote[], sample: payload.sample === true };
+  }
+
+  async find(input: FindInput, idempotencyKey: string): Promise<FindResult> {
+    const created = await this.createIntent(input, idempotencyKey);
+    const quoted = await this.getQuotes(created.intentId);
+    return { ...quoted, intentId: created.intentId, sample: created.sample || quoted.sample };
+  }
+
+  async accept(quoteId: string, idempotencyKey: string): Promise<CheckoutResult> {
+    const payload = await this.#request(`/personal/quotes/${encodeURIComponent(quoteId)}/accept`, {}, idempotencyKey);
+    if (!isObject(payload) || !['ordered','handoff','blocked','failed'].includes(String(payload.status)) || payload.quoteId !== quoteId
+      || (payload.status === 'handoff' && !safeLink(payload.continueUrl))
+      || (payload.status === 'ordered' && (typeof payload.orderId !== 'string' || !payload.orderId))
+      || (payload.continueUrl !== undefined && !safeLink(payload.continueUrl))
+      || (payload.receipts !== undefined && (!Array.isArray(payload.receipts) || !payload.receipts.every(validReceipt)))) throw new Error('Invalid checkout response.');
+    return { ...payload, sample: payload.sample === true } as CheckoutResult;
+  }
+
+  async getReceipts(): Promise<{ receipts: Receipt[]; sample: boolean }> {
+    const payload = await this.#request('/personal/receipts');
+    if (!isObject(payload) || !Array.isArray(payload.receipts) || !payload.receipts.every(validReceipt)) throw new Error('Invalid receipts response.');
+    return { receipts: payload.receipts as Receipt[], sample: payload.sample === true };
+  }
+}
+
+function validReceipt(v: unknown): boolean { return isObject(v) && ['id','sessionId','agentId','purpose','createdAt'].every(k => typeof v[k] === 'string')
+  && Array.isArray(v.fields) && v.fields.every(f => typeof f === 'string'); }
+function safeLink(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password; } catch { return false; }
 }

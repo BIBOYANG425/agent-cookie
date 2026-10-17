@@ -1,13 +1,14 @@
-# Photon iMessage — 本地脚手架
+# Photon iMessage — 个人 agent 与通道
 
-本包提供离线 Sample、配置检查，以及真实通道的限时 ping 探针。运行者需在 Photon 控制台准备项目和共享 iMessage 线路，把凭据保存在本机、被 Git 忽略的 `.env` 中；仓库不含可共用的凭据或测试者身份。
+本包提供个人 agent 的持续 Socket.IO 连接、离线 Sample、配置检查，以及限时 ping 探针。运行者需在 Photon 控制台准备项目和共享 iMessage 线路，把凭据保存在本机、被 Git 忽略的 `.env` 中；仓库不含可共用的凭据或测试者身份。
 
 ## 不需要账号的本地检查
 
 使用 Node 22.12 以上的 22.x，在仓库根运行：
 
 ```sh
-pnpm --dir apps/channel-photon install --ignore-workspace --ignore-scripts
+pnpm install --ignore-scripts
+pnpm --filter @agent-cookie/sdk build
 pnpm --dir apps/channel-photon typecheck
 pnpm --dir apps/channel-photon test
 pnpm --dir apps/channel-photon build
@@ -56,8 +57,20 @@ pnpm --dir apps/channel-photon smoke --send
 - `timeout`：等待内没见到有效 ping，返回非零退出码。
 - `SEND_OUTCOME_UNKNOWN`：发送结果不确定，先查 Photon 活动，勿直接再发一条。
 
-官方新手流程也是限时轮询；持续购物 agent 后续应切到 [Socket.IO 事件流](https://photon.codes/docs/beta/websocket/events)，处理持久游标与去重。Socket.IO 的 webhook reply 与真正发 iMessage 是不同操作；本探针用 `projects.sendMessage` 发消息。
+## 持续个人 agent
 
-## 下一阶段
+已实现 [Photon Beta Socket.IO](https://photon.codes/docs/beta/websocket/events) 事件流，固定已查询的 API version `2026-07-01`。按官方 schema 读取 `message.received` 的 `data.object`，验证 project、双方 handle、direct space 与时间。不是把 webhook reply 当 iMessage；外发仍调用 `projects.sendMessage`。
 
-完成当前运行环境的一收一发验证后，再把 B 线 SDK 的 intent/quote/accept 链路接到通道。当前没有接模型、没有搜鞋或下单，也不算 A17 通过。通道身份与工作台用户/钥匙的绑定必须来自配置，不能听从消息内容里的 userId。
+在 Photon `.env` 中添加 `AGENT_COOKIE_URL` 和个人 `AGENT_COOKIE_KEY`，启动本机后台并构建 SDK 后：
+
+```sh
+pnpm --dir apps/channel-photon start
+```
+
+支持「身份卡」「帮我找双越野跑鞋，120以内，周五前到」「要第二双」「回执」。当前采用有边界的确定性文本识别，**没有调用 LLM**；不声称能处理任意自然语言。所有业务读写都通过 SDK。仅把预算和截止要求放入 intent，不把整张卡发给商家。选择仅映射当前 direct space 已展示的报价，消息中的 userId/agentId/quoteId 不形成授权。
+
+Socket.IO 自动重连最多 5 次，每次用持久 cursor 重新订阅；串行队列上限 128。`.runtime/channel-state.json`（0600、Git 忽略）保存账号绑定摘要、游标、报价和发件箱，最多 2000 条处理记录。运行锁阻止同一状态文件的并发进程；不要另设状态文件启动同一条线路。首次启动从新事件开始，正常重启后从成功检查点恢复。发送前先持久记录，消息 ID 派生幂等 key；不明发送结果会停止并要求人工查看 Photon Activity，不会自动换 key 重发。
+
+`SEND_OUTCOME_UNKNOWN`：先通过 Photon 按原幂等 key/消息核查外发记录。确认已发出后才可把对应 outbox 标为 sent（保留 outgoingId），明确拒绝且未发出才可恢复 ready；不确定时保持停止。异常退出留下 `.lock` 时，先确认该 PID 已不存在，再移走旧锁，保留状态文件。不要删状态文件来“修复”去重。
+
+本机 Sample 后台没有持久化，重启后旧报价会失效；重新找鞋即可。Demo 只做一个购物任务，避免另一个 MCP find 替换当前授权。Sample、未知 ETA、handoff、失败和商家警告都会出现在回复中。没有实际付款或真实订单。真实手机购物流程的验收要另有设备回执，不能用旧 ping 或自动测试冒充 A17。

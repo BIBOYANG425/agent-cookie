@@ -6,6 +6,9 @@ export function bindWorkspace(config: WorkspaceConfig): PersonalWorkspaceBinding
   return {
     getAuthenticatedRole: async () => (await client.getMe()).role,
     getMyCard: () => client.getMyCard(),
+    find: (input, key) => client.find(input, key),
+    accept: (quoteId, key) => client.accept(quoteId, key),
+    getReceipts: () => client.getReceipts(),
   };
 }
 import { WorkspaceClient } from '@agent-cookie/sdk';

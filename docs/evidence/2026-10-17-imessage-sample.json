@@ -1,0 +1,34 @@
+{
+  "checkedAt": "2026-10-17T20:22:32.535Z",
+  "mode": "Sample",
+  "transport": "real Photon iMessage",
+  "messages": [
+    {
+      "phase": "sent",
+      "photonStatus": "delivered",
+      "sampleLabel": true,
+      "handoffWarning": false,
+      "hasSecondMerchantLink": false
+    },
+    {
+      "phase": "sent",
+      "photonStatus": "delivered",
+      "sampleLabel": true,
+      "handoffWarning": true,
+      "hasSecondMerchantLink": true
+    }
+  ],
+  "receipts": [
+    {
+      "agentId": "sample-shoe-b",
+      "fields": [
+        "shipping_address"
+      ],
+      "purpose": "checkout"
+    }
+  ],
+  "userConfirmed": "Received two offers, then the second offer handoff link",
+  "realMerchantCalls": false,
+  "payment": false,
+  "realOrder": false
+}

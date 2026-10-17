@@ -1,3 +1,4 @@
+import { ChannelFailure } from './state.js';
 import { configurationReport, readConfig } from './config.js';
 import { ProbeFailure, runProbe } from './probe.js';
 import { runLocalDemo } from './sample.js';
@@ -20,13 +21,15 @@ async function main() {
     console.log(JSON.stringify(result));
     if (result.status === 'accepted') console.log('Photon accepted the request; confirm the reply on your device. Delivery is not confirmed by this process.');
     if (result.status === 'timeout') process.exitCode = 1;
+  } else if (mode === 'serve' && args.length === 1) {
+    const { serve } = await import('./runtime.js'); await serve(process.env);
   } else {
     throw new Error('Unknown command.');
   }
 }
 
 main().catch(error => {
-  const code = error instanceof ProbeFailure ? error.code : 'CONFIGURATION_OR_STARTUP_FAILED';
+  const code = (error instanceof ProbeFailure || error instanceof ChannelFailure) ? error.code : 'CONFIGURATION_OR_STARTUP_FAILED';
   console.error(JSON.stringify({ code, message: code === 'SEND_OUTCOME_UNKNOWN'
     ? 'Send outcome is unknown. Check Photon activity before retrying; retain the original message idempotency key.'
     : 'Check configuration, channel assignment and project permissions. Do not increase polling frequency after an API error.' }));

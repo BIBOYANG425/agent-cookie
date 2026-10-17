@@ -9,7 +9,7 @@ The workspace owns policy, grants, expiry, revocation, and memory merging. Use i
 
 ## Check the integration first
 
-Run `agent-cookie --help`. The CLI is owned by lane B; the workspace by lane A. The current scaffold only implements `card`; other commands below are planned and must appear in help before use. If unavailable, report the missing integration. Do not create a replacement client, edit `CARD.md`, inspect SQLite, or manufacture successful results.
+Run `agent-cookie --help`. The CLI is owned by lane B; the workspace by lane A. The current CLI only implements `card`; other CLI commands below are planned and must appear in help before use. When the Agent Cookie MCP is configured, `get_my_card`, `find_agents`, `accept_quote`, and `list_receipts` are implemented alternatives; inspect tool discovery before using them. If unavailable, report the missing integration. Do not create a replacement client, edit `CARD.md`, inspect SQLite, or manufacture successful results.
 
 Use `AGENT_COOKIE_URL` and `AGENT_COOKIE_KEY` from the local environment. Never print the key. Confirm each subcommand's current `--help` before supplying flags; this repository's CLI contract is still being delivered.
 

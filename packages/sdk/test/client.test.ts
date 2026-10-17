@@ -82,3 +82,30 @@ describe('local configuration', () => {
     expect(() => new WorkspaceClient({ ...config, baseUrl })).toThrow('AGENT_COOKIE_URL');
   });
 });
+
+describe('shopping response boundaries', () => {
+  it.each([
+    {status:'handoff',quoteId:'q',continueUrl:'javascript:alert(1)'},
+    {status:'handoff',quoteId:'q',continueUrl:'https://user:secret@example.com'},
+    {status:'ordered',quoteId:'q'},
+    {status:'handoff',quoteId:'another',continueUrl:'https://example.com'},
+  ])('rejects an invalid checkout result',async payload=>{
+    const client=new WorkspaceClient({...config,fetch:async()=>Response.json(payload)});
+    await expect(client.accept('q','sample-accept')).rejects.toThrow('Invalid checkout response');
+  });
+  it('rejects foreign-intent or invalid-price offers',async()=>{
+    const quote={id:'q',intentId:'intent',agentId:'merchant',text:'Sample',price:9900,currency:'USD'};
+    for (const invalid of [{...quote,intentId:'foreign'},{...quote,price:99.5},{...quote,currency:'EUR'}]) {
+      const client=new WorkspaceClient({...config,fetch:async()=>Response.json({quotes:[invalid],sample:true})});
+      await expect(client.getQuotes('intent')).rejects.toThrow('Invalid quote response');
+    }
+  });
+  it('keeps handoff warnings and the caller idempotency key without claiming an order',async()=>{
+    const payload={status:'handoff',quoteId:'q',continueUrl:'https://example.com/sample',message:'Sample requires buyer review',sample:true};
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json(payload));
+    const client=new WorkspaceClient({...config,fetch:fetcher});
+    expect(await client.accept('q','stable-key')).toEqual(payload);
+    expect(fetcher.mock.calls[0][1]).toMatchObject({method:'POST',headers:{'Idempotency-Key':'stable-key'}});
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
