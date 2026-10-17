@@ -9,68 +9,126 @@ import {
   writeRecordedEnvelope,
   type UcpRunner,
 } from "./internal.js";
-import { sizeMatches } from "./size.js";
+import { sizeMatch } from "./size.js";
 
-const defaultSize = "9";
 const defaultBudget = 200;
 const defaultLimit = 50;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const fixturesDir = join(repositoryRoot, "fixtures", "ucp");
+const pinnedNote = "Test fixture only; not used to pick offers in live mode.";
 
-function recordingOptions(args: string[]): {
-  size: string;
+interface RecordOptions {
+  query: string;
   budget: number;
-  intentText?: string;
+  size?: string;
+  color?: string;
+  intent?: string;
+  country: string;
   limit: number;
-} {
-  let size = defaultSize;
+  out?: string;
+  searchOnly: boolean;
+}
+
+function recordingOptions(args: string[]): RecordOptions {
+  let query: string | undefined;
   let budget = defaultBudget;
-  let intentText: string | undefined;
+  let size: string | undefined;
+  let color: string | undefined;
+  let intent: string | undefined;
+  let country = "US";
   let limit = defaultLimit;
+  let out: string | undefined;
+  let searchOnly = false;
+
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--size" && args[index + 1]) size = args[++index]!;
-    else if (args[index] === "--budget" && args[index + 1]) {
-      const parsed = Number(args[++index]);
-      if (!Number.isFinite(parsed)) throw new Error("--budget must be a number of whole USD");
+    const arg = args[index]!;
+    if (arg === "--search-only") {
+      searchOnly = true;
+      continue;
+    }
+    const value = args[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
+    if (arg === "--query") query = value;
+    else if (arg === "--budget") {
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error("--budget must be a non-negative whole USD amount");
       budget = parsed;
-    } else if (args[index] === "--intent" && args[index + 1]) {
-      intentText = args[++index]!;
-    } else if (args[index] === "--limit" && args[index + 1]) {
-      const parsed = Number(args[++index]);
+    } else if (arg === "--size") size = value;
+    else if (arg === "--color") color = value;
+    else if (arg === "--intent") intent = value;
+    else if (arg === "--country") country = value;
+    else if (arg === "--limit") {
+      const parsed = Number(value);
       if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--limit must be a positive integer");
       limit = parsed;
-    }
+    } else if (arg === "--out") out = value;
+    else throw new Error(`Unknown option: ${arg}`);
+    index += 1;
   }
-  return { size, budget, ...(intentText ? { intentText } : {}), limit };
+
+  if (!query) throw new Error("--query is required");
+  return {
+    query,
+    budget,
+    ...(size ? { size } : {}),
+    ...(color ? { color } : {}),
+    ...(intent !== undefined ? { intent } : {}),
+    country,
+    limit,
+    ...(out ? { out } : {}),
+    searchOnly,
+  };
+}
+
+function slug(value: string): string {
+  return value.trim().toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "") || "query";
+}
+
+function effectiveIntent(options: RecordOptions): string {
+  const intent = options.intent ?? options.query;
+  const signals = [
+    options.size && !intent.toLowerCase().includes(options.size.toLowerCase()) ? `size: ${options.size}` : undefined,
+    options.color && !intent.toLowerCase().includes(options.color.toLowerCase()) ? `color: ${options.color}` : undefined,
+  ].filter((signal): signal is string => Boolean(signal));
+  return signals.length > 0 ? `${intent} (${signals.join(", ")})` : intent;
 }
 
 function selectOffers(
   offers: UcpOffer[],
-  size: string,
+  options: RecordOptions,
   maxPriceCents: number,
-): Array<{ offer: UcpOffer; size: string }> {
-  const selected: Array<{ offer: UcpOffer; size: string }> = [];
+): Array<{ offer: UcpOffer; matchedSize?: string }> {
+  const ranked = offers.flatMap((offer, index) => {
+    if (offer.currency !== "USD" || !offer.available || offer.priceCents > maxPriceCents) return [];
+    const match = options.size ? sizeMatch(offer.sizeOptions, options.size) : "match";
+    if (match === "mismatch") return [];
+    const matchedSize = options.size && match === "match"
+      ? offer.sizeOptions.find((label) => sizeMatch([label], options.size!) === "match")
+      : undefined;
+    return [{ offer, index, sizeRank: match === "match" ? 0 : 1, matchedSize }];
+  }).sort((a, b) =>
+    a.sizeRank - b.sizeRank
+    || Number(a.offer.nativeCheckout) - Number(b.offer.nativeCheckout)
+    || a.index - b.index
+  );
+
+  const selected: Array<{ offer: UcpOffer; matchedSize?: string }> = [];
   const sellers = new Set<string>();
-  for (const offer of offers) {
-    const matchedSize = offer.sizeOptions.find((label) => sizeMatches([label], size));
-    if (
-      selected.length >= 2
-      || sellers.has(offer.sellerDomain)
-      || offer.currency !== "USD"
-      || !offer.available
-      || offer.priceCents > maxPriceCents
-      || offer.nativeCheckout
-      || !matchedSize
-    ) continue;
-    sellers.add(offer.sellerDomain);
-    selected.push({ offer, size: matchedSize });
+  for (const item of ranked) {
+    if (sellers.has(item.offer.sellerDomain)) continue;
+    sellers.add(item.offer.sellerDomain);
+    selected.push({ offer: item.offer, ...(item.matchedSize ? { matchedSize: item.matchedSize } : {}) });
+    if (selected.length === 2) break;
   }
   return selected;
 }
 
 async function record(): Promise<void> {
-  const { size, budget, intentText, limit } = recordingOptions(process.argv.slice(2));
-  const maxPriceCents = Math.round(budget * 100);
+  const args = process.argv.slice(2);
+  if (args[0] === "--") args.shift();
+  const options = recordingOptions(args);
+  const maxPriceCents = Math.round(options.budget * 100);
   const liveRunner = createLiveRunner();
   const capturedEnvelopes: Array<{ args: string[]; envelope: unknown }> = [];
   const capturedRunner: UcpRunner = async (args) => {
@@ -79,19 +137,41 @@ async function record(): Promise<void> {
     return envelope;
   };
   const api = createUcpInternal({ mode: "live" }, capturedRunner);
-  const offers = selectOffers(
-    await api.searchOffers({
-      query: "trail running shoes",
-      ...(intentText ? { intentText } : {}),
-      maxPriceCents,
-      shipsTo: "US",
-      limit,
-    }),
-    size,
+  const intent = effectiveIntent(options);
+  const offers = await api.searchOffers({
+    query: options.query,
+    intentText: intent,
+    ...(options.size ? { size: options.size } : {}),
+    ...(options.color ? { color: options.color } : {}),
     maxPriceCents,
-  );
-  if (offers.length !== 2) {
-    throw new Error(`Matched ${offers.length} distinct non-native sellers for size ${size} within $${budget}; need 2`);
+    shipsTo: options.country,
+    limit: options.limit,
+  });
+  const selected = selectOffers(offers, options, maxPriceCents);
+
+  if (options.searchOnly) {
+    console.log(JSON.stringify({
+      query: options.query,
+      intent,
+      budget: options.budget,
+      size: options.size ?? null,
+      color: options.color ?? null,
+      totalOffers: offers.length,
+      distinctSellers: new Set(offers.map((offer) => offer.sellerDomain)).size,
+      picked: selected.map(({ offer }) => ({
+        seller: offer.sellerDomain,
+        title: offer.productTitle,
+        variantTitle: offer.variantTitle,
+        price: offer.priceCents / 100,
+        sizeOptions: offer.sizeOptions,
+        colorOptions: offer.colorOptions ?? [],
+        nativeCheckout: offer.nativeCheckout,
+      })),
+    }, null, 2));
+    return;
+  }
+  if (selected.length !== 2) {
+    throw new Error(`Matched ${selected.length} distinct sellers for "${options.query}" within $${options.budget}; need 2`);
   }
 
   const destination = {
@@ -101,38 +181,39 @@ async function record(): Promise<void> {
     city: "San Francisco",
     region: "CA",
     postalCode: "94111",
-    country: "US",
-    raw: "Agent Cookie Demo, 1 Ferry Building, Ferry Building, San Francisco, CA 94111, US",
+    country: options.country,
+    raw: `Agent Cookie Demo, 1 Ferry Building, Ferry Building, San Francisco, CA 94111, ${options.country}`,
   };
   const summaries = [];
-  for (const { offer } of offers) {
+  for (const { offer } of selected) {
     const cart = await api.createCart(offer);
     const checkout = await api.createCheckout(cart);
     const updated = await api.setDestination(checkout, destination, { email: "demo@agent-cookie.dev" });
-    if (offer.nativeCheckout) {
-      summaries.push({ variantId: offer.variantId, status: "skipped-native-checkout", messages: [] });
-      continue;
-    }
     summaries.push({ variantId: offer.variantId, ...(await api.complete(updated)) });
   }
 
   const pinned = {
     recordedAt: new Date().toISOString(),
-    size,
-    budget,
-    offers: offers.map(({ offer, size: matchedSize }) => ({
+    query: options.query,
+    budget: options.budget,
+    ...(options.size ? { size: options.size } : {}),
+    ...(options.color ? { color: options.color } : {}),
+    testOnly: true,
+    note: pinnedNote,
+    offers: selected.map(({ offer, matchedSize }) => ({
       variantId: offer.variantId,
       seller: offer.sellerDomain,
       title: offer.productTitle,
       price: offer.priceCents,
-      size: matchedSize,
+      ...(matchedSize ? { size: matchedSize } : {}),
       nativeCheckout: offer.nativeCheckout,
     })),
   };
-  mkdirSync(fixturesDir, { recursive: true });
-  for (const item of capturedEnvelopes) writeRecordedEnvelope(fixturesDir, item.args, item.envelope);
-  writeFileSync(join(fixturesDir, "pinned.json"), `${JSON.stringify(pinned, null, 2)}\n`, { mode: 0o644 });
-  console.log(JSON.stringify({ pinned, complete: summaries }, null, 2));
+  const outputDir = resolve(repositoryRoot, options.out ?? join("fixtures", "ucp", "test", slug(options.query)));
+  mkdirSync(outputDir, { recursive: true });
+  for (const item of capturedEnvelopes) writeRecordedEnvelope(outputDir, item.args, item.envelope);
+  writeFileSync(join(outputDir, "pinned.json"), `${JSON.stringify(pinned, null, 2)}\n`, { mode: 0o644 });
+  console.log(JSON.stringify(scrubFixture({ pinned, complete: summaries }), null, 2));
 }
 
 void record().catch((error: unknown) => {

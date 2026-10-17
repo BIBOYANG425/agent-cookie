@@ -1,6 +1,6 @@
 # `@agent-cookie/ucp`
 
-Implements the frozen `UcpModule` from `@agent-cookie/contract` over the exact-pinned `@shopify/ucp-cli` 0.9.1 subprocess. The adapter normalizes catalog responses only; the workspace owns currency, availability, shipping, budget, and size filtering.
+Implements the frozen `UcpModule` from `@agent-cookie/contract` over the exact-pinned `@shopify/ucp-cli` 0.9.1 subprocess. The adapter sends shipping and budget filters and returns only available USD variants; the workspace owns final offer ranking.
 
 ## Use and environment
 
@@ -18,17 +18,26 @@ const ucp = createUcp({ mode: "fixture" });
 
 ## Size matching
 
-`parseSize`, `toSystem`, and `sizeMatches` are exported from the package. They share one table-driven men's EU↔US mapping; conversions do not use arithmetic. Sizes such as `9 US`, `US 9`, `Men's 8.5`, `EU 42`, and bare numbers are parsed, while UK and women's sizes are not matched. `sizeOptions` from `searchOffers` remains verbatim.
+`parseSize`, `toSystem`, `sizeMatch`, and `sizeMatches` are exported from the package. They share one table-driven men's EU↔US mapping; conversions do not use arithmetic. Sizes such as `9 US`, `US 9`, `Men's 8.5`, `EU 42`, and bare numbers are parsed, while UK and women's sizes are not matched. `sizeMatch` returns `"match"`, `"mismatch"`, or `"no-size"`; `sizeMatches` accepts both matches and offers without size options. Letter sizes are normalized (for example, `XXL` and `2XL` match). `sizeOptions` and `colorOptions` from `searchOffers` remain verbatim.
+
+`UcpSearchQuery.query` is the user's text for any category. Optional `size` and `color` are buyer signals added to `context.intent` when missing, not catalog exclusion filters. `intentText` overrides the query as the intent base; `maxPriceCents` and `shipsTo` become catalog price and shipping filters.
 
 ## Recording
 
-Run checks with `pnpm --filter @agent-cookie/ucp test` and `pnpm --filter @agent-cookie/ucp typecheck`. Record a new sample with `pnpm --filter @agent-cookie/ucp record`; arguments include `-- --size 42 --budget 120`, optional `--intent "..."`, and optional `--limit 50`.
+Run checks with `pnpm --filter @agent-cookie/ucp test` and `pnpm --filter @agent-cookie/ucp typecheck`. Record a category sample with:
+
+```sh
+pnpm --filter @agent-cookie/ucp record -- --query "rain jacket" --budget 150 \
+  [--size 10] [--color red] [--intent "..."] [--country US] [--limit 50] [--out <dir>]
+```
+
+`--query` is required. By default, recordings go to `fixtures/ucp/test/<query-slug>/`; `--out` overrides that directory. `--search-only` performs only catalog search, prints the offer summary as JSON, and writes no files.
 
 ## Fixtures and safety
 
-Fixture names follow `<operation>.<business-or-global>.json`, for example `catalog-search.global.json`, `cart-create.marathonsports.myshopify.com.json`, and `checkout-complete.marathonsports.myshopify.com.json`; generic `<operation>.json` files are fallback fixtures. Raw envelopes are scrubbed for token-like values, including `key=` query parameters. `pinned.json` records the selected rehearsal offers.
+Fixture names follow `<operation>.<business-or-global>.json`, for example `catalog-search.global.json`, `cart-create.marathonsports.myshopify.com.json`, and `checkout-complete.marathonsports.myshopify.com.json`; generic `<operation>.json` files are fallback fixtures. Raw envelopes are scrubbed for token-like values, including `key=` query parameters. `pinned.json` is marked test-only and records the two selected offers; live selection uses catalog results, never pinned offers.
 
-The recorder selects two distinct, non-native sellers with USD, available, requested-size variants within budget. It never sends `payment.instruments` and skips `checkout complete` for any selected variant with `nativeCheckout: true`. Existing recorded fixtures are committed; the recording command is not part of the test suite.
+The recorder selects two distinct sellers, preferring size matches and non-native checkout. With `--size`, it skips mismatches and prefers `"match"` over `"no-size"`. It records search, cart, checkout, destination update, and complete responses; complete sends only `{ payment: {} }`, never `payment.instruments`. Existing recorded fixtures are committed; the recording command is not part of the test suite.
 
 The 0.9.1 CLI needs `cart_id` and `line_items` in checkout-create input; checkout update receives the checkout ID positionally plus `line_items` and fulfillment `line_item_ids`; complete receives the ID positionally and only an empty `payment` object. `--business` uses the bare seller domain. Destination updates may return a bare store origin, so the adapter preserves a better prior continuation URL.
 

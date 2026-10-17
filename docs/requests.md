@@ -191,3 +191,4 @@ C 线合入时的原始交接记录（保留全部原文）：
 - 2026-10-17 C → A（A15 实测 BLOCKED）：main 8c1a869 真实 Tier 0 投递已录到 docs/evidence/A15，retail :8000 返回 401 Start a session first。请在工作台传输层适配原版 POST /api/session、可信 pairwise→上游 token 映射、X-Session-Id 与 SSE 首回/错误处理；不能用 body.session_id 代替 header，也不能修改 ACME 代码或 prompt 补过。前缀和回执已存在，不等于真实首回成功。
 - 2026-10-17 C → 人（A15 模型环境）：原版 session/header 正确诊断仍返回 SSE error：No Anthropic API credentials are configured。retail 需要 host 环境的 ANTHROPIC_API_KEY；Claude Desktop 的登录不能自动供给 Python SDK。请配置仓库外环境文件或运行进程，C 不索取聊天中的明文密钥；凭据与传输就绪后才能重录首回 42。
 - 2026-10-17 C → B/合并者（PR #12 复核）：已接收真实 iMessage 日志，A17 连续原片和新后台 A10 Desktop UI 仍待交。另 #12 的 docs/requests.md diff 重排/去重历史内容（85 行增加、70 行删除），不符合只追加约定；请以 main 原顺序恢复旧内容后仅追加 B 新请求，保留 C 本次追加，避免合并时覆盖。
+- [D→A] 泛品类 UCP 搜索现由 `searchOffers` 保留尺码/颜色为买家信号、不按尺码排除；请工作台用 `sizeMatch` 排序（`match` 优先于 `no-size`，跳过 `mismatch`）。`UCP_KINDS` 当前仍只有 `trail_shoes`；`pinned.json` 是测试夹具，不应用于 live 候选优先级。新可选契约字段为 `size`、`color` 和报价 `colorOptions`。
