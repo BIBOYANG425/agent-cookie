@@ -22,16 +22,37 @@ export type Category = "personal" | "shoe" | "retail";
 export type Role = "personal" | "merchant" | "owner";
 
 /**
+ * Learned-preference keys (2026-10-17, human direction "dynamic memory + learning from conversations"). Each is the
+ * card field `pref.<key>`; a key outside this list is refused (unknown field). Sensitive classes — health, religion,
+ * finances, relationships, whereabouts — deliberately have no field: there is nothing to store them in.
+ *   brand, color, material, style, fit, occasion, recipient, price_band, size_system — rank offers (brand, color)
+ *     or describe the shopper; `recipient` is who a purchase is for ("myself", "a gift"), never a person's details.
+ *   avoid — things the user does not want ("leather", "Nike"): a HARD exclusion when offers are ranked.
+ * Values are short text; several terms are separated by commas ("Brooks, Hoka").
+ */
+export const PREF_KEYS = ["brand", "color", "material", "style", "fit", "avoid", "occasion", "recipient", "price_band", "size_system"] as const;
+export type PrefKey = (typeof PREF_KEYS)[number];
+export type PrefField = `pref.${PrefKey}`;
+export const PREF_FIELDS: readonly PrefField[] = PREF_KEYS.map((k) => `pref.${k}` as const);
+
+/**
  * Card fields. `shoe_size` keeps its name (lanes B/C/D store and classify it); it is the card's size hint for any
  * retail search. A size stated in one request goes in IntentRequest.public.size and only applies to that request.
+ * The `pref.*` fields come last so the order of the original eight never changes.
  */
 export const FIELDS = [
   "lang", "tone", "length",
   "shoe_size", "budget", "deadline",
   "shipping_address",
   "payment_method", // a payment-provider token reference, never a card number
+  "pref.brand", "pref.color", "pref.material", "pref.style", "pref.fit",
+  "pref.avoid", "pref.occasion", "pref.recipient", "pref.price_band", "pref.size_system",
 ] as const;
 export type Field = (typeof FIELDS)[number];
+
+export function isPrefField(x: unknown): x is PrefField {
+  return typeof x === "string" && (PREF_FIELDS as readonly string[]).includes(x);
+}
 
 export function isField(x: unknown): x is Field {
   return typeof x === "string" && (FIELDS as readonly string[]).includes(x);
@@ -54,6 +75,18 @@ export interface Agent {
   createdAt: string;
 }
 
+/**
+ * Where a learned contribution came from (additive, 2026-10-17). `snippet` is at most EVIDENCE_SNIPPET_MAX characters
+ * of the user's OWN words (never another party's), kept so the user can see why something was learned; the
+ * conversation it came from is not kept.
+ */
+export interface ContributionEvidence {
+  intentId?: string;
+  conversationId?: string;
+  snippet?: string;
+}
+export const EVIDENCE_SNIPPET_MAX = 200;
+
 export interface Contribution {
   id: string;
   userId: string;
@@ -63,6 +96,8 @@ export interface Contribution {
   basis: Basis;
   createdAt: string;
   revokedAt?: string;
+  /** Learned contributions only (additive). */
+  evidence?: ContributionEvidence;
 }
 
 export interface CardField {
@@ -142,6 +177,90 @@ export interface IntentRequest {
   kind?: string;
 }
 export const DEFAULT_SELLER_COUNT = 2;
+
+// ---- Learning (2026-10-17, human direction; lane B leads, lane A hosts the endpoints) ----
+
+/**
+ * POST /personal/observations body: turns of a conversation the personal agent took part in or overheard. Only the
+ * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival and never stored. Turns
+ * are batched per (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once
+ * OBSERVATION_BATCH_TURNS turns have arrived; the stored text is deleted once processed. While learning is paused
+ * the observation is discarded.
+ */
+export interface ObservationTurn {
+  role: "user" | "agent" | "other";
+  text: string;
+  /** ISO time the turn was said. */
+  at: string;
+}
+export interface Observation {
+  /** e.g. "imessage", "desktop". */
+  channel: string;
+  /** Opaque, chosen by the personal agent; stable across posts of one conversation. */
+  conversationId: string;
+  turns: ObservationTurn[];
+}
+export const OBSERVATION_IDLE_MS = 5 * 60 * 1000;
+export const OBSERVATION_BATCH_TURNS = 10;
+export const OBSERVATION_MAX_TURNS = 50;
+export const OBSERVATION_TURN_MAX_CHARS = 2000;
+
+/** GET/PUT /personal/learning. Default `{ paused: false }`. */
+export interface LearningState {
+  paused: boolean;
+}
+
+/** One piece of evidence behind a learned value, as GET /personal/learned shows it. */
+export interface LearnedEvidence extends ContributionEvidence {
+  contributionId: string;
+  agentId: string;
+  basis: Basis;
+  createdAt: string;
+}
+/**
+ * GET /personal/learned: every `pref.*` value on the card ("card") or waiting for a second source ("candidate"),
+ * with who contributed it and why. A value reaches the card only with two distinct sources (RulesApi.mergeCard).
+ */
+export interface LearnedEntry {
+  field: PrefField;
+  value: string;
+  status: "card" | "candidate";
+  sources: string[];
+  evidence: LearnedEvidence[];
+}
+export interface LearnedResponse {
+  paused: boolean;
+  learned: LearnedEntry[];
+}
+
+/** GET /personal/intents?q= — the user's own intent history, newest first. */
+export interface IntentHistoryEntry {
+  id: string;
+  /** The personal agent that asked. */
+  agentId: string;
+  text?: string;
+  query?: string;
+  kind?: string;
+  public: Record<string, string>;
+  createdAt: string;
+  expiresAt: string;
+  /** The quote the user accepted for this intent, if any. */
+  accepted?: { quoteId: string; title?: string; seller?: string; price: number; status: string };
+}
+
+/** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */
+export interface IntentRecord {
+  id: string;
+  userId: string;
+  agentId: string;
+  text?: string;
+  query?: string;
+  kind?: string;
+  public: Record<string, string>;
+  createdAt: string;
+  /** Set on the record appended after an accept. */
+  chosenQuote?: { id: string; title?: string; seller?: string; price: number; currency: "USD" };
+}
 export const MAX_SELLER_COUNT = 5;
 
 /**

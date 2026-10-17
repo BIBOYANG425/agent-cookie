@@ -34,6 +34,11 @@ function keyTokens(key: string): string[] {
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PHONE = /(?:\+?\d[\s().-]?){10,}/;
 
+/** Contact or payment data in free text (email, phone number, card number): never stored as a learned value or snippet. */
+export function containsContactOrPayment(text: string): boolean {
+  return EMAIL.test(text) || PHONE.test(text) || containsCardNumber(text);
+}
+
 /** Why an intent public entry is refused, or undefined when it may be broadcast. */
 export function publicEntryProblem(key: string, value: string): string | undefined {
   if (keyTokens(key).some((t) => SENSITIVE_TOKENS.has(t))) return "intent public values may not carry contact, address or payment data";

@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
-import { FIELDS } from "@agent-cookie/contract";
+import { FIELDS, PREF_FIELDS } from "@agent-cookie/contract";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Json = any;
@@ -156,6 +156,8 @@ export function deriveSessionId(userSecret: string, merchantKey: string): string
 
 export const FIELD_NAMES: readonly string[] = FIELDS;
 export const SHOE_AUTO_FIELDS = ["lang", "tone", "length", "shoe_size", "budget", "deadline"] as const;
+/** UCP store proxies (category retail) also read the learned preferences (pref.*) with the handshake. */
+export const RETAIL_AUTO_FIELDS: readonly string[] = [...SHOE_AUTO_FIELDS, ...PREF_FIELDS];
 export const NOT_FOUND_TEXT = '{"error":{"code":"NOT_FOUND","message":"not found"}}';
 export const DATA_SOURCES = ["sample", "fixture", "live"] as const;
 

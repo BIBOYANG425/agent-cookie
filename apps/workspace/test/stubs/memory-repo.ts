@@ -2,7 +2,7 @@
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
   NOTE_MAX_BYTES, WorkspaceError,
-  type Card, type CommitRef, type Contribution, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
+  type Card, type CommitRef, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
   type OpenMemoryRepoOptions, type Receipt, type RulesApi, type WriteMeta,
 } from "@agent-cookie/contract";
 
@@ -10,6 +10,8 @@ export interface StubCommit { sha: string; author: string; sig: string; at: stri
 
 export class InMemoryRepo implements MemoryRepo {
   readonly commits: StubCommit[] = [];
+  /** appendIntent calls, in order (the real repo is lane C's). */
+  readonly intents: IntentRecord[] = [];
   private contributions: Contribution[] = [];
   private notes = new Map<string, Note[]>();
   private receipts: Receipt[] = [];
@@ -56,6 +58,10 @@ export class InMemoryRepo implements MemoryRepo {
     const list = this.notes.get(sessionId) ?? [];
     this.notes.set(sessionId, list.filter((x) => !(x.agentId === agentId && x.key === key)));
     return this.commit(`delete note ${key} by ${agentId}`, meta);
+  }
+  async appendIntent(record: IntentRecord, meta: WriteMeta): Promise<CommitRef> {
+    this.intents.push(structuredClone(record));
+    return this.commit(`intent ${record.id}${record.chosenQuote ? " chosen" : ""} by ${record.agentId}`, meta);
   }
   async appendReceipt(r: Receipt, meta: WriteMeta): Promise<CommitRef> {
     this.receipts.push(structuredClone(r));
