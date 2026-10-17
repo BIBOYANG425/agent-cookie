@@ -39,7 +39,7 @@ A03 的 HTTP 结果只证明隔离和归属检查，不能单独证明 HMAC 不�
 
 | 编号 | 缺失证据 |
 | --- | --- |
-| A09 | 真实录制 catalog 经真实 adapter 得到两家合格商家及仅对应代理获授权。当前 StubUcp 不算；实录 US 11 / US 9 也不是 EU 42 库存证明 |
+| A09 | 真实录制 catalog 经真实 adapter 得到两家合格商家及仅对应代理获授权。当前 StubUcp 不算；C 历史实录 US 11 / US 9 不是 EU 42 库存证明；D 新 pin pair 仍待接入 |
 | A10 / A17 | 真实 Claude Desktop MCP / iMessage 客户端链路证据 |
 | A12 | 固定种子下完整 demo 重跑 |
 | A14 | 真实控制台展开来源及撤销操作证据 |
@@ -74,3 +74,5 @@ AGENT_COOKIE_URL=http://127.0.0.1:4318 /private/tmp/agent-cookie-c-node22/node_m
 - reset 支撑检查改为先写 Sample 地址、接受本地 Sample 报价，再真实读取 checkout 地址以产生回执；仍保留非空前置断言及 reset 后必须为空断言。没有把空数组当作清空成功。
 - 2026-10-17 14:11:06：**12 passed / 11 todo，exit 0**，类型检查通过。新增断言还验证了接受后错误用途仍拒绝、A22 每次介绍有新 grant、响应只能包含契约允许的键。
 - 当前结果文件准确记录此次 4318 运行；A 的原版 UCP loader 未接录制目录，缺少 `ucp-offers.json` 时仍使用自带 Sample offers，A09/A18 继续 todo。
+
+收尾同步 main 798e0de 后，A contract/workspace 已合入，源码与本次验证的 bd9d6e3 相同；D 另交 EU42 的 Marathon / Black Flag pin pair 及失败处理。`apps/workspace/src/adapters.ts` 仍明确加载全部 stubs，故这些新文件不自动点亮 A09/A18；待 A 接线后重跑。
