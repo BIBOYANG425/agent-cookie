@@ -1,0 +1,60 @@
+:root {
+  font-family: "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #263758;
+  background: #f7f9fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid #254fd8; outline-offset: 5px; border-radius: 3px; }
+.skip-link { position: absolute; top: -100px; left: 20px; padding: 12px; background: white; z-index: 2; }
+.skip-link:focus { top: 12px; }
+.masthead { min-height: 92px; max-width: 1184px; margin: auto; padding: 24px 48px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 650; text-decoration: none; }
+.brand-mark { display: grid; place-items: center; background: #254fd8; color: white; font-weight: 800; width: 40px; height: 40px; border-radius: 12px 12px 3px 12px; }
+.sample-badge { font-size: 13px; font-weight: 600; color: #315646; background: #dfece7; padding: 5px 12px; border-radius: 20px; }
+main { max-width: 1040px; margin: 56px auto 48px; padding: 0 48px; }
+.intro { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 36px; }
+.context { margin: 0 0 10px; font-size: 15px; color: #526380; }
+h1 { margin: 0; font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -1.5px; line-height: 1.25; }
+.intro-note { color: #526380; font-size: 15px; margin: 0 0 4px; }
+.sample-notice { display: flex; align-items: baseline; gap: 16px; background: #edf1ff; color: #304c9a; padding: 16px 20px; margin-bottom: 24px; border-radius: 8px; font-size: 14px; }
+.sample-notice p { margin: 0; }
+.identity-sheet { border: 1px solid #dce2ec; background: white; border-radius: 16px; overflow: hidden; }
+.sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 32px; border-bottom: 1px solid #dce2ec; }
+h2 { font-size: 16px; margin: 0; font-weight: 600; }
+.sheet-heading > span { color: #667189; font-size: 13px; }
+.field-row + .field-row { border-top: 1px solid #e7ebf1; }
+.field-row summary { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 16px; cursor: pointer; padding: 28px 32px; min-height: 108px; list-style: none; }
+.field-row summary::-webkit-details-marker { display: none; }
+.field-row summary:hover { background: #f7f9fc; }
+.field-row summary:focus-visible { outline-offset: -5px; }
+.field-name { font-size: 16px; }
+.field-value { font-size: 28px; font-weight: 550; color: #203353; }
+.source-toggle { font-size: 13px; color: #254fd8; display: flex; align-items: center; gap: 12px; }
+.source-toggle > span { font-size: 20px; }
+details[open] .source-toggle > span { transform: rotate(45deg); }
+.source-detail { background: #f7f9fc; padding: 0 32px 28px; overflow-wrap: anywhere; }
+.source-name { font-size: 15px; margin: 0; padding-top: 20px; border-top: 1px solid #dce2ec; font-weight: 600; }
+dl { margin: 12px 0; font-size: 13px; }
+dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 12px; margin: 6px 0; }
+dt { color: #667189; }
+dd { margin: 0; }
+.source-note { font-size: 13px; margin: 16px 0 0; color: #667189; }
+.page-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #667189; font-size: 12px; margin-top: 28px; }
+@media (max-width: 600px) {
+  .masthead { padding: 20px; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+  main { padding: 0 20px; margin-top: 32px; }
+  .intro { align-items: flex-start; flex-direction: column; gap: 20px; margin-bottom: 24px; }
+  .intro-note br { display: none; }
+  .sample-notice { flex-direction: column; gap: 6px; padding: 16px; }
+  .sheet-heading { padding: 20px; }
+  .field-row summary { grid-template-columns: 1fr auto; padding: 20px; gap: 8px 12px; }
+  .source-toggle { grid-column: 1 / -1; }
+  .source-detail { padding: 0 20px 20px; }
+  dl > div { grid-template-columns: 1fr; gap: 2px; }
+}

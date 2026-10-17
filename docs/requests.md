@@ -66,3 +66,40 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 | A11 | A → C | 控制台用 owner 钥匙：`GET /personal/card`、`/personal/receipts`、`/personal/grants`、`POST /personal/grants/:id/revoke`、`POST /personal/contributions/:id/revoke`、`GET /owner/activity`、`POST /demo/reset` 都接受 owner。`apps/workspace/test/acceptance/` 是一套只打 HTTP 的 A01–A22 测试（独立于实现写成），C 可以整份搬进 `tests/acceptance` 当起点。 | 待 C |
 | A12 | A → C | Tier 0 投递形状：`POST <chatEndpoint>` JSON `{ "session_id": "<sessionId>", "message": "<前缀>\n<意图原话>" }`，前缀见 `packages/contract/src/tier0.ts`。请在 `examples/blueprint` 放适配器把它转成 ACME 的聊天请求，或告诉 A ACME 的真实请求形状。 | 待 C 回复 |
 | A13 | A → 人 | 三处与 plan 字面不同的决定，请确认或否决：①`POST /agents/register` 的 personal 类别需 owner 钥匙（plan 写"任何人（本机）"）；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED（plan："表里没有的组合一律 deny"），不是 422；③已过期的商家对自己的 session 提交报价得 403 GRANT_EXPIRED（与读取一致），未被介绍的才是 404。 | 待人 |
+
+---
+
+C 线合入时的原始交接记录（保留全部原文）：
+
+- 2026-10-17 C → 人：lane-c 本地 docs/plan.md 仍为 v0.2；已只读 origin/devin/1792265075-plan-v0.3 的 v0.3 指定章节，请由人同步计划及 AGENTS.md，并把根脚手架与冻结 core 契约带到 lane-c；C 不修改 plan.md、不跨线合并。
+- 2026-10-17 C → A：请交付冻结的 v0.3 types/policy/endpoints 与 apps/workspace-fake；lane-a 1537c83 尚有 pharmacy/hotel/owner 且 merge 未实现。请明确 GET /personal/card 的来源记录/贡献 ID 与 agent 名映射、GET /personal/grants/GET /owner/activity 响应形状，以便可撤单条贡献而不猜字段。
+- 2026-10-17 C → A：fixtures/{users,agents,contributions,address}.json 将提供 1 用户、3 agent、3 stated 贡献和独立 Sample 地址；请冻结 seed 导入结构、同一用户绑定两把 personal key 的方式及 reset 保留 userSecret 的规则（A22），地址如何进入卡亦需明确，不增加未定义 User 字段。
+- 2026-10-17 C → B：SDK 交付后请提供卡片/授权/活动/撤贡献/撤授权/reset 的 WorkspaceClient 方法签名与导出；C 将替换用户暂准的 HTTP 边界，tests/acceptance 继续只打 HTTP。
+- 2026-10-17 C → 根脚手架负责人：请把 tests/acceptance 纳入 pnpm workspace 与根 test/test:p0 脚本，apps/console 纳入 dev；当前 lane-c 无根 package.json/pnpm-workspace.yaml，C 只在所属目录放独立脚手架与锁文件，不改根。
+- 2026-10-17 C → A：实测原版 commerce-agents fd4d592 的 Tier 0 不是裸 POST chatEndpoint：先 POST /api/session {user_id: pairwise session ID}，再 POST /api/chat 带 X-Session-Id 和 {message}，响应 SSE；fixtures ACME 已指向 /api/chat。请在工作台投递适配，不改原版 ACME，auto 值仅工作台前缀可渲染（A15）。
+- 2026-10-17 C → A/B：blueprint MemoryStore 实际要求 6 个 async 方法（get_facts/upsert_facts/search_facts/delete_fact/clear/purge_generation），clear 需递增 purge generation 阻止并发提取回写；现契约仅 PUT/GET note，缺删除与 generation 语义。请两线确认扩展或既有端点可表达的原子语义后由人同步契约；C 不编造端点，Tier 2 参考实现/A16 暂不声称通过。
+- 2026-10-17 C → 人/A：固定上游 commerce-agents fd4d592 retail 是通用 ACME catalog（87 个 Sample 商品、11 类，无 footwear，商品标题 shoe/sneaker/boot/sandal 匹配 0）；原版首条回复按 42 报鞋价不能假定成立。请确认 A15 资产/台词与计划期望，C 保留原版并用真实模型响应验收。
+- 2026-10-17 C → A：UCP 已实录两家在库变体（Reebok US11、Marathon Sports US9），详细源路径见 fixtures/ucp/recording/selected-variants.json；这些不是 EU42 可售的证明，请用商品自身尺码表匹配鞋码并验证库存，不可把锁定 ID 直接当作 42 报价。
+- 2026-10-17 C → B：请提供 Claude Desktop find_agents（A10）与 Photon/iMessage 全流程（A17）的真实入口、活动导出及录屏；docs/evidence 已有采集说明，空模板和 HTTP 替身不计手动验收通过。
+- 2026-10-17 C → 人（范围建议，未改计划）：blueprint 保留为 P1 第三方兼容性样本，不作为 H6/H18 主线依赖；A15/A16 待 P0 全绿后再做。现原版无鞋、无真实 checkout，Tier0 需 session/SSE 适配，Tier2 还缺删除/generation 契约；若保留短拍，建议用原有 Sample 商品证明 lang/tone 首轮个性化，是否调整 A15 的 42 码标准由人同步计划。
+- 2026-10-17 C → 人/A/B（新方向，替代此前可砍P1建议）：侧聊已确认 1 个真实 UCP 商家 + 2 套独立 Anthropic customer-facing ShoppingAgent Sample 店面，共用接入实现，现场 coding agent 安装后置；正式计划/分镜/验收变动请人同步，C 不改 plan.md。
+- 2026-10-17 C → A：新双店演示需为两个独立 merchant agent 发不同 key、pairwise session 与可分别撤销的 grants；冻结受信 host 绑定上游 session 与工作台介绍的方式及 fields/notes 请求响应。两个进程或 Tier0 前缀不能代替真实工作台读写；不要让模型/浏览器任意 user_id 授权。
+- 2026-10-17 C → A/B：请冻结双店关系 note 的写入/读取语义和可验证场景：A key 不能读 B note；撤 A 后新字段读403 GRANT_REVOKED同时B仍可读；另一个personal agent介绍同一用户到B仍同pairwiseID且由B读回note。SDK/HTTP支持沿既有端点，缺载荷先达成两线确认。
+- 2026-10-17 C → 人/A：新演示只展示一条真实UCP链路，但v0.3 A09仍要求两家UCP代理，A15仍要求原版ACME报42码；请明确演示与验收映射并人工同步，C保留22个todo原编号/标题与历史两家UCP实录，不擅自改标准。
+- 2026-10-17 C → 人：origin/main@d48e263 已合入v0.3文档，lane-c本地尚未同步；本次fetch确认A仍预契约1537c83、B无SDK/fake。请由人同步文档与必要提交；两店真实模型运行还需在各自后端环境配置可用Anthropic凭据（不发到聊天、不入库）。
+- 2026-10-17 C → A：两个本地Sample店面不能都以相同localhost domain作merchantKey，否则domain??agentId会碰撞；请对非UCP两店使用独立稳定agentId（不填共享domain）或冻结独立merchantKey规则，保证reset/换personal仍认同一家。
+- 2026-10-17 C → A/B：双店撤销演示需复用被撤的原session/grant做下一次读，不得在下一轮自动重新介绍发grant掩盖403；同时冻结auto读取回执/活动的可导出关联（现GET /personal/receipts只描述敏感字段），以及note是否也受grant约束。
+- 2026-10-17 C → A：新序列只展示一个真实UCP cart，本轮不做真实付款/下单；现accept流程可继续到checkout complete，请提供既有流程中停在cart的明确调用/配置边界，由契约确认，不由C造新cart端点。
+- 2026-10-17 C → 人/A/B：用户已明确两家Sample店使用blueprint原有通用商品，不新增跑鞋资产；展示lang/tone/length等获准上下文与关系note，不能沿用原A15按42码报鞋价的成功承诺。请人工同步分镜/A15，并确认既有personal|shoe类别下的最小授权、注册capabilities与意图路由，不由C新增retail类别或工具名。
+- 2026-10-17 C → A/B：为先证明双agent真实读写，可优先走上游get_preferences + 现有save_memory/recall_memories接缝，关闭未接入的持久memory/extraction/seed，暂不实现六方法MemoryStore；仍需冻结fields/note载荷与受信host绑定。模型前必须明确授权gate（上游prefetch会吞异常继续），不能用403后旧history兜底。此最小接入不冒充A16完整MemoryStore。
+- 2026-10-17 C → A/人：用户新增授权 C 负责 packages/rules 与 packages/memory-repo，先等 A 的 RulesApi/MemoryRepoApi 类型合入，再先 rules 后 memory-repo；当前 origin/lane-a@17ea049 无这两个接口，main@d48e263 和 lane-c 无契约包。请合入实际接口导出/包路径及根 workspace 接线、同步到 lane-c，并由人更新目录分工；C 不临时复制类型或自行改 plan.md。
+- 2026-10-17 C → A：已实际复现 17ea049 mergeCard 输入顺序依赖：personal stated43(10/14)、A/B observed44(10/15-16)、C observed45(10/17)，固定 now 与相同4条记录，排列分别得到45/43/44；请在 RulesApi 契约明确 personal/单源更新的全序资格、时间字段与衰减历史语义，新 rules 必须过排列不变性，详见 docs/rules-memory-repo-readiness.md。
+- 2026-10-17 C → A：新 rules 要求往返无损，现 renderValue 把 CR/LF 改空格不满足；请冻结无损转义与 userId/agentId 外部绑定、base32 编码规则。现 contributionsFileName 使 a:b 与 a_b 同落 a_b.md，也须冻结无碰撞路径映射或合法 ID 域；C 不沿用这些有损行为。
+- 2026-10-17 C → A：MemoryRepoApi 请明确可信 writer/payload signature/显式时钟的传入、每次写入与 CARD 重算的 commit 边界、撤销物化和 note 读续期由哪层负责、完整 note 文件 UTF-8 2048 字节限制，以及 fixtures seed commit 的识别/允许 reset 根目录与稳定身份保留；Contribution 无 signature 字段且 Note 无 lastReadAt，C 不自行增字段或伪造 Agent-Cookie-Sig。
+- [D→A] Add `PaymentAuthorization`, `SignHandshake`, and `AuthorizePayment` to core, and add `Receipt.amount`.
+- [D→A] Add error codes `AUTHORIZATION_USED` 403, `OVER_BUDGET` 403, and `UPSTREAM_ERROR` 502.
+- [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
+- [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
+- [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
+- [D→A] packages/ucp exports UcpApi (+UcpOffer/UcpCompleteResult); map UcpCompleteResult→AcceptResult (status passes through, messages→message), UcpOffer→Quote (seller→seller/Agent.domain, agentId ucp:<seller>). Optionally move the UcpApi type into core.
+- 2026-10-17 C → A：已读 bd9d6e3 正式 RulesApi/MemoryRepoApi，C 正按其实现；请将 packages/contract 与 workspace 合入 main 并更新根锁文件（新 rules/memory-repo workspace 依赖）。本地验证先使用仓库外导出的原版 contract；changedRecently 按“替换已有合格值且仅单源”为真、首次 personal stated 为假，两源确认后假，过期证据不让初始单商家凭空合格；若需不同语义请在契约明确，C 继续工作。

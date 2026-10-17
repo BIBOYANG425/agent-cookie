@@ -1,0 +1,28 @@
+{
+  "mode": "bootstrap_only",
+  "workspace_connected": false,
+  "upstream": "fd4d59224ab96b43c6dc6888207c67b3bd5a24cf",
+  "node": "v22.23.3",
+  "instances": [
+    {
+      "name": "a",
+      "clone": "/private/tmp/agent-cookie-commerce-agents",
+      "api": 8000,
+      "web": 3000,
+      "python_environment": "/private/tmp/agent-cookie-commerce-agents/.venv",
+      "data_dir": "/private/tmp/agent-cookie-commerce-agents/examples/retail/data",
+      "memory_file": "/private/tmp/agent-cookie-commerce-agents/examples/retail/data/.memory-store.json",
+      "workspace_key_configured": false
+    },
+    {
+      "name": "b",
+      "clone": "/private/tmp/agent-cookie-commerce-agents-b",
+      "api": 8001,
+      "web": 3001,
+      "python_environment": "/private/tmp/agent-cookie-commerce-agents-b/.venv",
+      "data_dir": "/private/tmp/agent-cookie-commerce-agents-b/examples/retail/data",
+      "memory_file": "/private/tmp/agent-cookie-commerce-agents-b/examples/retail/data/.memory-store.json",
+      "workspace_key_configured": false
+    }
+  ]
+}

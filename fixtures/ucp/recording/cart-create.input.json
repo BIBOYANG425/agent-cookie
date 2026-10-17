@@ -1,0 +1,14 @@
+{
+  "line_items": [
+    {
+      "item": {
+        "id": "gid://shopify/ProductVariant/50215275692336"
+      },
+      "quantity": 1
+    }
+  ],
+  "context": {
+    "address_country": "US",
+    "currency": "USD"
+  }
+}

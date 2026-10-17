@@ -1,0 +1,31 @@
+{
+  "recordedOn": "2026-10-17",
+  "requestedGlobalInstall": {
+    "command": ["npm", "i", "-g", "@shopify/ucp-cli"],
+    "exitCode": 243,
+    "outcome": "failed",
+    "error": { "code": "EACCES", "syscall": "mkdir", "path": "/usr/local/lib/node_modules/@shopify" },
+    "reason": "Operating-system permissions; no sudo, system permission changes, or alternative global prefix used."
+  },
+  "temporaryInstall": {
+    "command": ["npm", "install", "--prefix", "/private/tmp/agent-cookie-ucp-capture", "@shopify/ucp-cli"],
+    "exitCode": 0,
+    "package": "@shopify/ucp-cli",
+    "version": "0.9.1",
+    "resolved": "https://registry.npmjs.org/@shopify/ucp-cli/-/ucp-cli-0.9.1.tgz",
+    "integrity": "sha512-xxGgMNK8zucpNRDpeTfSGyMKG+wcfx7gkyHdrOr9Tfw/8nFE82Tw3qZltjU1CydESodTNiNadMyLJcpMfmxwPQ==",
+    "repository": "https://github.com/Shopify/ucp-cli"
+  },
+  "runtime": {
+    "node": "v24.8.0",
+    "npm": "11.6.0",
+    "cliNodeRequirement": ">=22.19.0",
+    "projectNodeRequirement": "22",
+    "deviation": "Capture used the preinstalled Node 24.8.0. Node 22 compatibility has not been verified in this session."
+  },
+  "preflight": {
+    "profileInit": "ucp profile init --name agent succeeded in an isolated /private/tmp UCP_HOME before the fully recorded run.",
+    "schemaInspection": "Live catalog search input/output schema read before composing record.mjs. The recorded run fetched its own copy with --refresh.",
+    "OPT_OUT_INSTRUMENTATION": "true"
+  }
+}
