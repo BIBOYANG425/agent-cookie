@@ -4,7 +4,7 @@
 
 当前方向已更新为 [一条真实 UCP 链路 + 两个独立 Sample shopping agent](../../docs/two-storefront-demo.md)。两家复用同一接入实现，独立持有工作台凭据、pairwise session 和 notes；现场 coding agent 安装环节后置。下方单店启动记录是原版基线，不能作为双店工作台集成通过的证据。
 
-已完成的独立协议组件与最小接入路径见 [INTEGRATION.md](INTEGRATION.md)。上游 session/SSE transport 已有离线测试；A 的正式契约 `bd9d6e3` 已可读，尚未合入 main。真实授权与 note wiring 尚未完成；完整 HTTP MemoryStore 仍缺删除、generation/CAS 等契约，未计入真实验收。
+已完成的独立协议组件与最小接入路径见 [INTEGRATION.md](INTEGRATION.md)。上游 session/SSE transport 已有离线测试；A 的正式契约 `bd9d6e3` 已随 main `798e0de` 合入。真实授权与 note wiring 尚未完成；完整 HTTP MemoryStore 仍缺删除、generation/CAS 等契约，未计入真实验收。
 
 双实例已有 [启动说明](dual/USAGE.md) 和 [实测记录](dual/RUN-2026-10-17.md)：两边 health、页面、catalog 通过，跨实例聊天 token 被拒绝。当前仍是原版 ACME 页面，Sample A/B 标签只在启动器与说明中；最终演示还需在页面明确标注。此阶段没有工作台 pairwise ID 或 notes，不能算 A08 通过。
 
