@@ -2,7 +2,7 @@
 
 本目录用于对照 skill 生成的实现，**不是用户接入时复制的交付代码**。[agent_cookie_memory_store.py](agent_cookie_memory_store.py) 已提供完整六方法的确定性内存参考；它没有接到工作台或双店服务，不是 A16 通过证据。
 
-上游基线为外部克隆 `anthropics/commerce-agents@fd4d59224ab96b43c6dc6888207c67b3bd5a24cf`。测试直接导入该安装的 `MemoryFact`、fence、filter、`check_memory_store` 和 `extract_and_store`，没有复制第三方源码进本仓库。正式工作台契约已核对 A `bd9d6e3` 的 `packages/contract/src/{types,policy,apis,endpoints}.ts`；尚未合入 main。
+上游基线为外部克隆 `anthropics/commerce-agents@fd4d59224ab96b43c6dc6888207c67b3bd5a24cf`。测试直接导入该安装的 `MemoryFact`、fence、filter、`check_memory_store` 和 `extract_and_store`，没有复制第三方源码进本仓库。正式工作台契约已核对 A `bd9d6e3` 的 `packages/contract/src/{types,policy,apis,endpoints}.ts`；已随 main `798e0de` 合入。当前阻塞是下面列出的商家 HTTP 能力缺口，不能再归因于契约文件未到。
 
 ## 已实现、已验证的范围
 

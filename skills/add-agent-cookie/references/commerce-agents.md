@@ -13,6 +13,10 @@
 - 启动 seed：`main.py:57` 创建 MemorySeeder；`storefront.py:185` 启动时运行；`examples/demo_common/memory.py:54` 对 demo-user 写 Sample facts。外部 store 必须明确如何隔离/停用 seed；仅替换注入行会触发未绑定主体写入。
 - preferences 不只来自 memory：`examples/retail/api/mock_retail.py:326` 从本地 users fixture 读取；未知主体得到 Guest。避免用现有 demo-user 的 seed/profile 假装读到了工作台字段。
 
-当前工作台计划列了 GET/PUT note，没有删除、枚举、clear/generation 语义；也未交付完整的字段/note/contribution 载荷。先提出这些跨线需求。完整实现行数应由协议决定，不能为了“约 80 行”省略方法、过滤或失败路径。
+正式 A 契约已在 `bd9d6e3` 的 `packages/contract/src/{types,policy,apis,endpoints}.ts`，尚未合入 main。实际商家 note 路由在 `apps/workspace/src/app.ts`：`GET /agent/notes/:key?sessionId=` 返回 `{key,value,updatedAt,expiresAt}`；`PUT` 同一路径接收 `{value:string}`，返回 `{key,updatedAt,expiresAt}`；Bearer merchant key。每次读写都先检查 session/grant，读取会续期。HTTP 尚无删除、枚举、clear/generation/CAS；`MemoryRepoApi.deleteNote` 是内部调用，商家不能直接使用。
+
+容量仍须跨层统一：A 的 `services/notes.ts` 按全部 `[key,value]` 的 JSON UTF-8 字节计 2048，而 `MemoryRepoApi` 要求整个渲染 note 文件不超过 2048。完整 MemoryFact 的 note 编码、批量写入原子性和来源字段映射没有冻结；不能把现有 PUT 方法当作已解决这些语义。
+
+[六方法内存参考](../../../fixtures/expected/README.md) 已有离线测试。它只接收受信 host 的主体绑定和白名单关系 context，复用上游 fence/filter；既不读取共享卡，也不自动创建 observed contribution。HTTP port 明确拒绝启用。`clear` 的 generation 测试使用真实上游 `extract_and_store` 与显式模型 fixture；不是模型 API 或工作台验收。单条删除不升 generation，跨进程检查后写入的窗口仍未解决。
 
 基线仅含通用 Sample 商品，不能把它宣传成已验证的真实鞋店。模型 key、固定 Node 22 环境、Tier 0 前缀语义和 A15/A16 证据分别核对，不能互相替代。
