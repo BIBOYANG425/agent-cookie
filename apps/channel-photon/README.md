@@ -1,6 +1,6 @@
 # Photon iMessage — 本地脚手架
 
-当前没有 Photon 项目或真实通道配置。本包提供离线 Sample、配置检查，以及账号准备后可运行的限时 ping 探针。本轮没有发送 iMessage，也没有创建项目、分配线路或运行付费操作。
+本包提供离线 Sample、配置检查，以及真实通道的限时 ping 探针。运行者需在 Photon 控制台准备项目和共享 iMessage 线路，把凭据保存在本机、被 Git 忽略的 `.env` 中；仓库不含可共用的凭据或测试者身份。
 
 ## 不需要账号的本地检查
 
@@ -17,7 +17,7 @@ pnpm --dir apps/channel-photon demo
 
 `check` 只输出是否有效和缺失变量名，永不打印值，也不访问网络。`demo` 使用内存中的 Sample 消息，应显示 `externalCalls:0`、`outboundMessages:0`、`deliveryConfirmed:false`。它只证明消息筛选逻辑可跑，不证明 Photon 或手机已接通。
 
-## 账号准备后的验证入口（本轮未运行）
+## 真实通道验证入口
 
 将本目录的 `env.example` 复制为 `.env`，在本机填写：
 
@@ -43,7 +43,11 @@ pnpm --dir apps/channel-photon smoke
 pnpm --dir apps/channel-photon smoke --send
 ```
 
-探针最多运行 2 分钟，每轮间隔 2 秒；只匹配启动后、指定双方之间、iMessage 直接会话里的一条纯文本 `ping`。它忽略其他人、群聊、旧消息和其他内容。回复使用收到的 space/agent/message ID，固定文本，不携带身份卡。每条请求有超时，翻页有上限；失败不自动重试发送，幂等 key 来自原消息 ID。
+探针最多运行 2 分钟，每轮间隔 2 秒；只匹配启动后、指定双方之间、iMessage 直接会话里的一条纯文本 `ping`。它忽略其他人、群聊、旧消息和其他内容。回复使用收到的 space/agent ID，在同一会话发送固定文本，不携带身份卡。每条请求有超时，翻页有上限；失败不自动重试发送，幂等 key 来自原消息 ID。
+
+共享 iMessage 线路使用普通文本消息，不传 `parentMessageId`：2026-10-17 的真实测试中，引用回复被 Photon 以 HTTP 409 `SPACE_NOT_SENDABLE`（`Replies are not supported for this Space`）拒绝；省略该字段后发送成功受理。不要在结果不明时自动更换请求或幂等 key 重发；先核查 API Activities，确认原请求被拒绝且没有发出消息。
+
+该次验证中，Photon 记录输入为 `received`、测试回复为 `delivered`，测试者也确认手机收到固定回复。这证明已配置环境的一次真实收发；探针运行结束后不会持续自动回复，新机器仍需自行配置凭据与测试身份。
 
 结果语义：
 
@@ -56,4 +60,4 @@ pnpm --dir apps/channel-photon smoke --send
 
 ## 下一阶段
 
-账号和通道准备好后验证一收一发，再把 B 线 SDK 的 intent/quote/accept 链路接到通道。当前没有接模型、没有搜鞋或下单，也不算 A17 通过。通道身份与工作台用户/钥匙的绑定必须来自配置，不能听从消息内容里的 userId。
+完成当前运行环境的一收一发验证后，再把 B 线 SDK 的 intent/quote/accept 链路接到通道。当前没有接模型、没有搜鞋或下单，也不算 A17 通过。通道身份与工作台用户/钥匙的绑定必须来自配置，不能听从消息内容里的 userId。

@@ -24,7 +24,8 @@ export function createPhotonPort(config: PhotonConfig): ProbePort {
         body: {
           spaceId: route.spaceId,
           senderId: route.agentId,
-          parentMessageId: route.messageId,
+          // Shared iMessage Spaces reject quoted replies with SPACE_NOT_SENDABLE.
+          // Keep this a plain message in the same Space; the input ID still keys deduplication.
           content: { type: 'text', format: 'plain', text: 'Agent Cookie: ping received. This is a channel connection test.' },
         },
       }, { signal });
