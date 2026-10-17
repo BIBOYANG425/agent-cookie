@@ -1,0 +1,69 @@
+{
+  "checkedAt": "2026-10-17T21:34:08.712Z",
+  "workspace": {
+    "port": 4311,
+    "ucp": "fixture",
+    "rules": "real",
+    "memoryRepo": "real Git",
+    "storage": "SQLite",
+    "isolatedFromPreviousDemo": true
+  },
+  "photonAgent": {
+    "transport": "local invocation of production respond against HTTP; no new phone delivery claimed",
+    "quoteSampleLabel": true,
+    "deadlineNotPromised": true,
+    "acceptStatus": "handoff",
+    "selectedSeller": "black-flag-outfitters-clothing.myshopify.com",
+    "checkoutReceiptCount": 1,
+    "checkoutReceiptFields": [
+      "shipping_address"
+    ],
+    "unselectedMerchantAddressDisclosure": false
+  },
+  "mcp": {
+    "transport": "built production stdio; not Claude UI",
+    "tools": [
+      "get_my_card",
+      "find_agents",
+      "list_receipts"
+    ],
+    "cardSource": "sample",
+    "cardFields": [
+      "lang",
+      "tone",
+      "shoe_size",
+      "shipping_address"
+    ],
+    "quotePricesCents": [
+      10995,
+      11200
+    ],
+    "quoteSources": [
+      "fixture",
+      "fixture"
+    ],
+    "checkoutReceiptShared": true,
+    "diagnosticsEmpty": true
+  },
+  "bothPersonalAgentsSameMerchantSession": true,
+  "memoryWriteFailures": 0,
+  "receiptCountBeforeRestart": 2,
+  "runtime": {
+    "port": 4310,
+    "restartedFrom4311": true,
+    "checkoutReceiptSurvivedRestart": true,
+    "distinctPersonalIntentGrantPairs": 2,
+    "sameMerchantSessionVerified": true,
+    "consoleConnected": true,
+    "photonPhoneDeliveryThisRound": "user reported success, but no new server-side message found; clarification pending",
+    "photonListenerReady": true
+  },
+  "phoneAcceptance": {
+    "userReportedTwoOffersAndLink": true,
+    "serverConfirmedThisRound": false,
+    "providerLatestInboundAt": "2026-10-17T20:42:19.853Z",
+    "newMessagesAfterSwitch": 0,
+    "outboxEntriesStill": 4,
+    "cursorStill": 6466
+  }
+}

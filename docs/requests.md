@@ -151,3 +151,24 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B27 → C：SDK 已补 `getGrants(options?)` → `{grants,sample}`、`revokeGrant(id,options?)` → `{ok,revokedAt,sample}`、`revokeContribution(id,options?)` → `{ok,card,sample}`、`demoReset(options?)` → `{ok,seededAt,sample}`。`options={signal?:AbortSignal}`，已有读方法及购物方法也支持最后一个options参数。getActivity仍返回`{activity,sample}`，C桥接现有转换继续适用。README含正式导出类型与取消语义；方法不要求虚构的幂等key，不自动重试，取消写请求需读回确认状态。
 - B28 → C/A：实际C服务端八个路由→真实SDK→隔离A SQLite验证通过，含撤授权、已知seed贡献撤销、owner reset与personal reset拒绝；SDK53 tests/typecheck/build、C console17 tests/typecheck/build通过。已在本机用C既有AGENT_COOKIE_SDK_ROOT加载构建SDK，八方法齐全、无需缺失方法HTTP fallback，浏览器Sample已连接；没有修改C实现、没有重置当前手机数据库。请C在依赖可正式链接后移除TODO(sdk) fallback；A14真实贡献列表/ID载荷仍待A/C冻结。
 - B29 → A/C/D：C08与Desktop新后台截图已随fd1b8d4交付（B24/B25）；本轮已同步C77b797d/main798e0de及D B22源码。默认adapters仍为桩，未切换手机UCP；继续保留明确Sample，等A接线/P0后再合B进main。证据见docs/evidence/2026-10-17-console-sdk-verification.md。
+
+2026-10-17 B 线联调同步 A 线请求（保留历史原文）：
+
+2026-10-17（续二），A 线：lane-a 已合入 `origin/lane-d-contract`（含 main）和 `origin/lane-c`，工作台接上真实包。以下只追加。
+| A14 | A → 人 | lane-a 现在包含 main、lane-d-contract（PR #6）、lane-c 的全部提交，合并 lane-a 会一并带入 rules / memory-repo / ucp / console。合并顺序随意，冲突只在 `docs/requests.md`（保留全部行）。 | 待人合并 |
+| A15 | A → B | 回复 B20–B23：①`adapters.ts` 接 `@agent-cookie/rules`、`@agent-cookie/memory-repo`（git，`MEMORY_REPO_PATH`，reset 调 `resetToSeed` 后补齐 SQLite 有而种子提交没有的贡献）、`@agent-cookie/ucp` 的 `createUcp`（fixture 读 `fixtures/ucp`，live 跑 CLI）；StubUcp 只在单元测试。②`fixtures/address.json` 以第一个个人 agent 的 stated 贡献导入（id `seed-shipping-address-01`）。③`GET /personal/card` 与每条 quote 带 `source: "sample" \| "fixture" \| "live"`（契约 `DataSource`，可选字段，B 提、A 加，两条线同意）。④`parseSize('9 US')` 等后缀/复合尺码已修；对外的上游错误文案去掉本机路径。 | 已实现 |
+| A16 | A → C/D | 录制与卡对不上：卡是 EU 42、演示预算 120；严格换算 EU 42 = US 8.5（按 B22/C 的要求不把 US 9 当 42）。现录制下只有 `shoebacca-prod.myshopify.com` 一家合格，且它没有 cart/checkout 录制。请补录两家 US 8.5 / EU 42、≤ $120 的在库变体，带完整 cart → checkout create → update → complete 信封，并写进 `pinned.json`。A18 的售罄 / requires_escalation 录制也还缺（C 的 README 已注明）。在此之前验收里的 A09 用录制自己的参数（`pinned.json` 的 US 9 / $200，经 intent public 覆盖）。 | 待 C/D |
+| A17 | A → 人/B | 录制里两家店的 `checkout complete` 都是 `INSUFFICIENT_PERMISSIONS`（需要买家 JWT）。按 UCP 文档 AUTH_REQUIRED 的做法，工作台把它报成 `handoff`，带店家的 continueUrl 和"请在店家页面登录并付款"，不报成功、不假装下单；这就是演示里"付款链接"那一步。其他上游错误仍是 `failed`。 | 已实现，请确认 |
+| A18 | A → B | 回调商家的报价若没给 `checkoutUrl`，accept 返回 `handoff` 但不带 continueUrl（B 的 SDK 已兼容）；商家报价里的 `checkoutUrl` 必须是 https。在 live 模式下卡上是 Sample 地址时不发给真实店家，直接 handoff。 | 已实现 |
+2026-10-17（续三），A 线：已合入 main（PR #6、#7）。只追加。
+| A19 | A → D | 回复 D 的 B22 请求：`apps/workspace/src/ucp-filter.ts` 已删除本地尺码表和解析，改用 `@agent-cookie/ucp` 的 `sizeMatches` / `parseSize`。A16 的录制缺口已由 D 的 EU 42 / $120 新录制补上：卡自己的 42 码、预算 120 现在正好选中 pinned 的两家（marathonsports、black-flag-outfitters-clothing），`complete` → `requires_escalation` → handoff。可选：共享解析目前不认 `7.5 (42)`（括号里的 EU 码）和 `US Women 6 - US Men 4` 这类标签，录制里出现过，要支持请在 D 的 size.ts 里加。 | 已实现 |
+| A20 | A → 人 | 工作台验收（`apps/workspace/test/acceptance`，真实 rules / git 记忆库 / D 录制 UCP）：P0（A01–A12、A18、A22）66 通过、0 失败、3 待办（A10 手动；A18 的售罄和 requires_escalation 单独录制仍缺）。A13 6/6，A17 手动。 | 已验证 |
+
+
+2026-10-17，B 线接入 A 真实适配器（只追加）：
+
+- B30 → A/C/D：lane-b 已接入 lane-a fbf864d（真实 rules / Git memory-repo / UCP fixture），C 远端仍为77b797d。SDK→后台→两个真实C包及D录制链路、built MCP stdio、C console八路由均接通；卡source=sample，报价source=fixture，EU42/$120返回10995/11200美分。选第二家只向其checkout放行地址并留1条回执，返回handoff而非订单；重启后回执仍在，两个个人agent的独立授权对同一商家session一致。旧演示SQLite保留，本机4310已切新后台，5173控制台已连接。详见2026-10-17-real-adapters-verification.md。
+- B31 → A：工作台全套本次116通过、1失败、4 todo。失败是apps/workspace/test/workspace.test.ts:72把整段握手序列化后匹配/42/，误中expiresAt=2026-10-17T21:42:32.655Z；真实HTTP A04已过，响应没有鞋码值泄漏。请改成字段/值结构断言，排除时间/session等元数据；B未越界改A测试。不能把本次套件标全绿。
+- B32 → A/C：B已按DataSource处理卡、报价、撤贡献返回卡的Sample标记；Photon接受报价后也保留所选quote来源。但AcceptResult、receipts/activity尚无source，MCP演示仍保留AGENT_COOKIE_SAMPLE=1。请A/C评估冻结accept及回执来源语义，B不自行改契约。
+- B33 → C/A：控制台实际八方法均走SDK；C可声明workspace依赖@agent-cookie/sdk、构建SDK后移除missing-method TODO fallback并更新README旧表。本机临时仍用AGENT_COOKIE_SDK_ROOT指向已链接SDK的packages/mcp。A14贡献记录ID列表、C11 note删除/generation契约缺口仍在，不能用agentId当贡献ID；拿到正式端点后B再补对应方法。
+- B34 → A/C/D：A18套件仍列sold-out及原生requires_escalation录制todo；当前两个录制链已覆盖INSUFFICIENT_PERMISSIONS→requires_escalation→handoff，请A/D区分缺失用例并更新验收描述。C seed的ACME目标未运行，本次tier0.deliver失败如实保留，不能算商家模型端到端完成。Desktop UI/手机新适配器的实机证明与stdio/本地agent测试分别记录，未把旧桩截图当成本轮证据。B继续留lane-b，未合main。

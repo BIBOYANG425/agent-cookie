@@ -2,58 +2,19 @@
 // ships to US, available, size matching the card, price within budget; then the first two distinct sellers.
 // No model involved. An unknown delivery date (etaDate null) never disqualifies an offer.
 import type { UcpDestination, UcpOffer } from "@agent-cookie/contract";
+import { sizeMatches } from "@agent-cookie/ucp";
 
-/** Men's EU → US, the common Brooks/Saucony/Nike table. Brand tables differ by up to half a size; this is a filter, not a fitting. */
-const EU_TO_US_MEN: Record<string, string> = {
-  "38": "5.5", "38.5": "6", "39": "6.5", "40": "7", "40.5": "7.5", "41": "8", "42": "8.5", "42.5": "9", "43": "9.5",
-  "44": "10", "44.5": "10.5", "45": "11", "45.5": "11.5", "46": "12", "47": "13", "48": "14",
-};
-const US_TO_EU_MEN: Record<string, string> = Object.fromEntries(Object.entries(EU_TO_US_MEN).map(([eu, us]) => [us, eu]));
+// Size matching is shared with lane D (B22): one strict men's EU↔US table and one label parser, in @agent-cookie/ucp.
+// EU 42 = US 8.5, EU 42.5 = US 9; a recorded US 9 is never quoted as EU 42.
+export { parseSize, sizeMatches } from "@agent-cookie/ucp";
 
-export interface Size { system: "EU" | "US"; value: string }
-
-function num(s: string): string | undefined {
-  const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? String(n) : undefined;
-}
-
-/** "42", "EU 42", "US 8.5", "M 8.5", "Men's 8.5", "8.5" → Size. Bare numbers ≥ 30 are EU, below are US. */
-export function parseSize(raw: string): Size | undefined {
-  const t = raw.trim().toLowerCase().replace(/\s+/g, " ");
-  let m = /^(?:eu|eur)\s?(\d{2}(?:\.\d)?)$/.exec(t);
-  if (m) return num(m[1]!) ? { system: "EU", value: num(m[1]!)! } : undefined;
-  m = /^(?:us|us m|m|men'?s|mens)\s?(\d{1,2}(?:\.5)?)$/.exec(t);
-  if (m) return num(m[1]!) ? { system: "US", value: num(m[1]!)! } : undefined;
-  m = /^(\d{1,2}(?:\.\d)?)$/.exec(t);
-  if (m) {
-    const v = num(m[1]!);
-    if (!v) return undefined;
-    return Number(v) >= 30 ? { system: "EU", value: v } : { system: "US", value: v };
-  }
-  return undefined;
-}
-
-function toSystem(s: Size, system: "EU" | "US"): string | undefined {
-  if (s.system === system) return s.value;
-  return system === "US" ? EU_TO_US_MEN[s.value] : US_TO_EU_MEN[s.value];
-}
-
-export function sizeMatches(options: readonly string[], cardSize: string): boolean {
-  const want = parseSize(cardSize);
-  if (!want) return false;
-  return options.some((o) => {
-    const have = parseSize(o);
-    if (!have) return false;
-    return toSystem(want, have.system) === have.value;
-  });
-}
-
-/** "120", "$120", "120 USD", "119.99" → cents. Undefined when no number is present. */
+/** "120", "$120", "120 USD", "120 以内", "1,200", "119.99" → cents; a range "100-160" / "100 到 160" → its upper bound. */
 export function parseBudgetCents(v: string | undefined): number | undefined {
   if (!v) return undefined;
-  const m = /(\d+(?:\.\d{1,2})?)/.exec(v.replace(/,/g, ""));
-  if (!m) return undefined;
-  const cents = Math.round(Number(m[1]) * 100);
+  const nums = [...v.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(/\d+(?:\.\d{1,2})?/g)].map((m) => Number(m[0]));
+  if (nums.length === 0) return undefined;
+  const max = nums.length >= 2 && /\d\s*(?:-|–|~|到|至|to)\s*\$?\d/i.test(v) ? Math.max(nums[0]!, nums[1]!) : nums[0]!;
+  const cents = Math.round(max * 100);
   return Number.isSafeInteger(cents) && cents > 0 ? cents : undefined;
 }
 
@@ -69,11 +30,15 @@ export function isEligible(o: UcpOffer, q: EligibilityInput): boolean {
   return Boolean(o.sellerDomain && o.variantId);
 }
 
-/** First `n` eligible offers with distinct sellers, in catalog order (A09: only these get sessions). */
-export function pickSellers(offers: readonly UcpOffer[], q: EligibilityInput, n = 2): UcpOffer[] {
+/**
+ * First `n` eligible offers with distinct sellers (A09: only these get sessions). Pinned rehearsal variants that pass
+ * every filter come first, in pinned order; then catalog order. Pinning never bypasses a filter.
+ */
+export function pickSellers(offers: readonly UcpOffer[], q: EligibilityInput, n = 2, preferVariantIds: readonly string[] = []): UcpOffer[] {
   const out: UcpOffer[] = [];
   const seen = new Set<string>();
-  for (const o of offers) {
+  const pinned = preferVariantIds.map((id) => offers.find((o) => o.variantId === id)).filter((o): o is UcpOffer => o !== undefined);
+  for (const o of [...pinned, ...offers]) {
     if (out.length >= n) break;
     if (seen.has(o.sellerDomain) || !isEligible(o, q)) continue;
     seen.add(o.sellerDomain);

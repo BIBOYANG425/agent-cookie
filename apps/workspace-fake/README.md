@@ -29,7 +29,7 @@ For C data use `AGENT_COOKIE_FIXTURES=../../fixtures`. **C compatibility is not 
 
 All routes are authenticated (except CORS preflight). Intent and accept writes require `Idempotency-Key`. Supplied user/agent/purpose text never grants identity. New intents replace active pairwise sessions in this small fake; keep one shopping demo at a time. Do not run a second MCP find between an iMessage quote and its selection.
 
-Not a replacement for A's persisted backend: no SQLite, memory repository commits, live UCP, registration, notes, contribution writes, payment authorization, production quota management, or restart recovery. The fake imports A's existing stub rules without changing A's files. Its `build` is a typecheck because it runs TypeScript through tsx and references those stubs.
+Not a replacement for A's persisted backend: no SQLite, memory repository commits, live UCP, registration, notes, contribution writes, payment authorization, production quota management, or restart recovery. The fake shares the deterministic `@agent-cookie/rules` package with the real workspace. Its `build` is a typecheck because it runs TypeScript through tsx.
 
 ## Checks
 

@@ -42,6 +42,9 @@ importers:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
     devDependencies:
+      '@types/node':
+        specifier: 22.20.5
+        version: 22.20.5
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -54,6 +57,9 @@ importers:
       vite:
         specifier: 8.3.4
         version: 8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
+      vitest:
+        specifier: 2.1.9
+        version: 2.1.9(@types/node@22.20.5)(lightningcss@1.33.0)
 
   apps/unlock:
     dependencies:
@@ -91,6 +97,15 @@ importers:
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@agent-cookie/memory-repo':
+        specifier: workspace:*
+        version: link:../../packages/memory-repo
+      '@agent-cookie/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
+      '@agent-cookie/ucp':
+        specifier: workspace:*
+        version: link:../../packages/ucp
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.17(hono@4.13.13)
@@ -122,6 +137,9 @@ importers:
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@agent-cookie/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
     devDependencies:
       '@types/node':
         specifier: 22.20.5

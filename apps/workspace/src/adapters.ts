@@ -1,26 +1,29 @@
-// Where the three external packages plug in. Today: in-memory stubs of the contract interfaces.
-// When packages/rules, packages/memory-repo (lane C) and packages/ucp (lane D) land, swap the three lines below.
-import { resolve } from "node:path";
-import type { Contribution, MemoryRepoApi, RulesApi, UcpApi } from "@agent-cookie/contract";
-import type { Config } from "./config.js";
-import { SAMPLE_FIXTURES_DIR } from "./config.js";
-import { stubMemoryRepoApi } from "./stubs/memory-repo.js";
-import { stubRules } from "./stubs/rules.js";
-import { StubUcp } from "./stubs/ucp.js";
+// The three packages the workspace calls, through the frozen contract interfaces:
+//   RulesApi      → @agent-cookie/rules        (lane C)
+//   MemoryRepoApi → @agent-cookie/memory-repo  (lane C): git memory repo at MEMORY_REPO_PATH, seeded from fixtures/memory
+//   UcpApi        → @agent-cookie/ucp          (lane D): AGENT_COOKIE_UCP=fixture replays fixtures/ucp, live runs the ucp CLI
+// Unit tests inject in-memory stubs through createDeps(config, overrides); production never uses them.
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { FIXTURE_FILES, type MemoryRepoApi, type RulesApi, type UcpApi } from "@agent-cookie/contract";
+import { openMemoryRepo } from "@agent-cookie/memory-repo";
+import { rules } from "@agent-cookie/rules";
+import { createUcp } from "@agent-cookie/ucp";
+import type { Config } from "./config.js";
 
 export function loadRules(): RulesApi {
-  return stubRules;
+  return rules;
 }
 
-export function loadMemoryRepoApi(seedContributions: () => Contribution[]): MemoryRepoApi {
-  return stubMemoryRepoApi(seedContributions);
+export function loadMemoryRepoApi(): MemoryRepoApi {
+  return { openMemoryRepo };
 }
 
 export function loadUcp(config: Config): UcpApi {
-  if (config.ucpMode === "live") {
-    console.warn("[workspace] AGENT_COOKIE_UCP=live needs packages/ucp (lane D); using the in-memory fixture stub");
-  }
-  const own = resolve(config.fixturesDir, "ucp-offers.json");
-  return StubUcp.fromFile(existsSync(own) ? own : resolve(SAMPLE_FIXTURES_DIR, "ucp-offers.json"), config.ucpStubComplete);
+  const recorded = resolve(config.fixturesDir, FIXTURE_FILES.ucp);
+  return createUcp({
+    mode: config.ucpMode,
+    ...(config.ucpMode === "fixture" && existsSync(recorded) ? { fixturesDir: recorded } : {}),
+    ...(config.ucpBin ? { bin: config.ucpBin } : {}),
+  });
 }

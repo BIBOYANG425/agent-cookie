@@ -9,6 +9,8 @@ export const FIXTURE_FILES = {
   agents: "agents.json",
   /** Contribution[] — the initial card's sources. */
   contributions: "contributions.json",
+  /** SeedAddress — imported at seed as a personal "stated" shipping_address contribution (lane B, B21). */
+  address: "address.json",
   /** DevKeys — Sample keys. Loaded only when AGENT_COOKIE_DEMO=1 or AGENT_COOKIE_TEST=1. */
   devKeys: "dev-keys.json",
   /** Directory: the initial commit of the user's git memory repo (MemoryRepoApi seedDir). */
@@ -34,3 +36,17 @@ export type SeedAgent = Agent;
 export type DevKeys = Record<string, { agentId: string; role: Role }>;
 
 export type SeedContribution = Contribution;
+
+/** fixtures/address.json: one Sample shipping_address value. */
+export interface SeedAddress {
+  field: "shipping_address";
+  value: string;
+}
+
+/** fixtures/ucp/pinned.json (lanes C/D): rehearsal offers the workspace prefers when they pass its filters. */
+export interface PinnedOffers {
+  recordedAt?: string;
+  size?: string;
+  budget?: number;
+  offers: Array<{ variantId: string; seller: string; title?: string; price?: number; size?: string }>;
+}

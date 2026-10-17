@@ -1,6 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { createServer, request, type Server } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Contribution, DevKeys } from '@agent-cookie/contract';
 import { createApp } from '../../../apps/workspace/src/app.js';
@@ -9,11 +11,13 @@ import { createDeps, type Deps } from '../../../apps/workspace/src/deps.js';
 import { createWorkspaceBridge } from '../../../apps/console/server/workspace.js';
 import { WorkspaceClient } from '../src/index.js';
 
+let temp: string | undefined;
 let server: Server | undefined;
 let deps: Deps | undefined;
 afterEach(async () => {
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
   if (deps) { await deps.delivery.settle(); deps.close(); }
+  if (temp) await rm(temp,{recursive:true,force:true});
 });
 
 it('routes all eight C console methods through the actual SDK into isolated A SQLite', async () => {
@@ -21,7 +25,8 @@ it('routes all eight C console methods through the actual SDK into isolated A SQ
   const keys=JSON.parse(await readFile(`${fixturesDir}/dev-keys.json`,'utf8')) as DevKeys;
   const key=Object.keys(keys).find(k=>keys[k].role==='owner')!;
   const personal=Object.keys(keys).find(k=>keys[k].role==='personal')!;
-  deps=await createDeps(loadConfig({SQLITE_PATH:':memory:',FIXTURES_DIR:fixturesDir,
+  temp=await mkdtemp(join(tmpdir(),'agent-cookie-bridge-'));
+  deps=await createDeps(loadConfig({SQLITE_PATH:':memory:',FIXTURES_DIR:fixturesDir,MEMORY_REPO_PATH:join(temp,'memory'),
     AGENT_COOKIE_DEMO:'1',CALLBACK_TIMEOUT_MS:'50',CALLBACK_RETRIES:'1'}));
   const app=createApp(deps);
   const upstream: typeof fetch=async (input,init)=>app.request(String(input),init);

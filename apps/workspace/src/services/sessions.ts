@@ -11,6 +11,8 @@ import { laneD } from "../laneD.js";
 import type { CardService } from "./card.js";
 import type { Ctx } from "./context.js";
 
+export interface Introduction { agent: Agent; channel: Channel; session: Session; grant: GrantRow; handshake: Handshake }
+
 export interface GrantView {
   id: string; sessionId: string; agentId: string; agentName: string; fields: Field[]; purpose: string;
   createdAt: string; expiresAt: string; remainingMs: number; revokedAt?: string; status: "live" | "expired" | "revoked";
@@ -21,36 +23,68 @@ const STYLE: Field[] = ["lang", "tone", "length"];
 export class SessionService {
   constructor(private ctx: Ctx, private card: CardService) {}
 
-  async introduce(userId: string, agent: Agent, intent: IntentRow | undefined, channel: Channel): Promise<{ session: Session; grant: GrantRow; handshake: Handshake }> {
+  /**
+   * Plan one introduction without writing anything (handshake signing may fail, e.g. lane D's JAR_LOCKED);
+   * `commit` writes it inside the caller's transaction. Session id = deriveSessionId(secret, merchantKey).
+   */
+  async prepare(userId: string, agent: Agent, intent: IntentRow, channel: Channel): Promise<Introduction> {
     const { store, clock, rules } = this.ctx;
     const user = store.user(userId);
     if (!user) fail("NOT_FOUND");
     const sessionId = rules.deriveSessionId(user.secret, merchantKeyFor(agent));
-    const session = store.upsertSession(sessionId, userId, agent.agentId, clock.nowIso());
-    if (session.agentId !== agent.agentId || session.userId !== userId) throw new Error("session id collision between merchants");
-    const grant: GrantRow = { id: newId("g"), sessionId, fields: autoFields(agent.category), purpose: "handshake",
+    const existing = store.session(sessionId);
+    if (existing && (existing.agentId !== agent.agentId || existing.userId !== userId)) throw new Error("session id collision between merchants");
+    const session: Session = existing ?? { sessionId, userId, agentId: agent.agentId, createdAt: clock.nowIso() };
+    const grant: GrantRow = { id: newId("g"), sessionId, intentId: intent.id, fields: autoFields(agent.category), purpose: "handshake",
       createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS) };
-    if (intent) grant.intentId = intent.id;
-    store.insertGrant(grant);
-    if (intent) store.addIntentSession({ intentId: intent.id, sessionId, agentId: agent.agentId, channel });
-    this.ctx.log({ event: "introduce", actor: "workspace", object: sessionId, result: "ok", reason: `${agent.agentId} via ${channel}` });
-    return { session, grant, handshake: await this.handshake(session, grant, agent) };
+    const handshake = await this.handshake(session, grant, agent, intent);
+    return { agent, channel, session, grant, handshake };
   }
 
-  /** The caller must own the session (else 404, existence not revealed) and hold a live grant. */
-  access(agent: AuthedAgent, sessionId: string): { session: Session; grant: GrantRow } {
+  commit(x: Introduction, intent: IntentRow): void {
+    const { store } = this.ctx;
+    store.upsertSession(x.session.sessionId, x.session.userId, x.agent.agentId, x.session.createdAt);
+    store.insertGrant(x.grant);
+    store.addIntentSession({ intentId: intent.id, sessionId: x.session.sessionId, agentId: x.agent.agentId, channel: x.channel });
+    this.ctx.log({ event: "introduce", actor: "workspace", object: x.session.sessionId, result: "ok", reason: `${x.agent.agentId} via ${x.channel}` });
+  }
+
+  /**
+   * The caller must own the session (else 404, existence not revealed) and hold a live grant — for `intentId`
+   * when given. Picks the live grant that lasts longest; with none live, the newest relevant grant explains why
+   * (revoked → GRANT_REVOKED, else GRANT_EXPIRED). Never trusts the order grants were written in.
+   */
+  access(agent: AuthedAgent, sessionId: string, opts: { intentId?: string } = {}): { session: Session; grant: GrantRow; live: GrantRow[] } {
     const session = this.ctx.store.session(sessionId);
     if (!session || session.agentId !== agent.agentId) fail("NOT_FOUND");
-    const grant = this.ctx.store.newestGrant(sessionId);
-    if (!grant) fail("NOT_FOUND");
-    if (grant.revokedAt) fail("GRANT_REVOKED");
-    if (Date.parse(grant.expiresAt) <= this.ctx.clock.now()) fail("GRANT_EXPIRED");
-    return { session, grant };
+    const all = this.ctx.store.grantsForSession(sessionId).filter((g) => opts.intentId === undefined || g.intentId === opts.intentId);
+    if (all.length === 0) fail("NOT_FOUND");
+    const now = this.ctx.clock.now();
+    const live = all.filter((g) => !g.revokedAt && Date.parse(g.expiresAt) > now)
+      .sort((a, b) => Date.parse(b.expiresAt) - Date.parse(a.expiresAt));
+    if (live.length === 0) fail(all[0]!.revokedAt ? "GRANT_REVOKED" : "GRANT_EXPIRED");
+    return { session, grant: live[0]!, live };
+  }
+
+  /**
+   * "按用途自动扩大": when the user accepts a merchant's quote, the grant for that intent widens to the purpose
+   * fields the accepted step needs (shipping_address for checkout), for one more TTL. Only accept calls this.
+   */
+  widen(session: Session, intentId: string, fields: Field[], purpose: string): GrantRow {
+    const grant: GrantRow = { id: newId("g"), sessionId: session.sessionId, intentId, fields, purpose,
+      createdAt: this.ctx.clock.nowIso(), expiresAt: this.ctx.clock.isoIn(GRANT_TTL_MS) };
+    this.ctx.store.insertGrant(grant);
+    this.ctx.log({ event: "grant.widen", actor: "workspace", object: session.sessionId, result: "ok", reason: `${fields.join(",")} purpose=${purpose}` });
+    return grant;
+  }
+
+  withdraw(grantId: string): void {
+    this.ctx.store.revokeGrant(grantId, this.ctx.clock.nowIso());
   }
 
   /** Field NAMES only; lang/tone/length are the three style values (A04). */
-  async handshake(session: Session, grant: GrantRow, agent: Agent): Promise<Handshake> {
-    const values = this.card.values(session.userId, grant.intentId);
+  async handshake(session: Session, grant: GrantRow, agent: Agent, intent?: IntentRow): Promise<Handshake> {
+    const values = this.card.values(session.userId, intent ?? grant.intentId);
     const has = (f: Field) => STYLE.includes(f) || (values[f] !== undefined && values[f] !== "");
     const available = [...autoFields(agent.category), ...purposeFields(agent.category)]
       .filter((f, i, all) => all.indexOf(f) === i && has(f) && f !== "payment_method");

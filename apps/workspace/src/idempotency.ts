@@ -14,7 +14,13 @@ export function idempotency(store: Store, clock: Clock): MiddlewareHandler<AppEn
     if (!key) return next();
     if (key.length > 200) fail("MISSING_FIELD", "Idempotency-Key too long");
     const scope = `${c.get("agent").agentId} ${c.req.method} ${c.req.path}`;
-    const hash = sha256Hex(canonicalJson(await readJson(c)));
+    const body = await readJson(c);
+    let hash: string;
+    try {
+      hash = sha256Hex(canonicalJson(body));
+    } catch {
+      fail("MISSING_FIELD", "body too deeply nested");
+    }
     const slot = `${scope}\n${key}`;
     while (inflight.has(slot)) await inflight.get(slot);
     const hit = store.idempotent(scope, key);

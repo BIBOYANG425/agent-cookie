@@ -77,6 +77,13 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// B20 provenance is server-owned. A list is Sample if any offer is recorded or seeded.
+function hasSampleSource(payload: Record<string, unknown>): boolean {
+  const sampleSource = (value: unknown) => isObject(value) && ['sample', 'fixture'].includes(String(value.source));
+  return sampleSource(payload) || sampleSource(payload.card)
+    || (Array.isArray(payload.quotes) && payload.quotes.some(sampleSource));
+}
+
 /** Thin HTTP scaffold. All authentication and field policy stay in the workspace. */
 export class WorkspaceClient {
   #config: WorkspaceConfig;
@@ -128,7 +135,7 @@ export class WorkspaceClient {
       }
       throw new Error('The workspace rejected the request with an unrecognized error.');
     }
-    return this.#config.sample && isObject(payload) ? { ...payload, sample: true } : payload;
+    return isObject(payload) && (this.#config.sample || hasSampleSource(payload)) ? { ...payload, sample: true } : payload;
   }
 
   async getMe(options?: RequestOptions): Promise<WorkspaceIdentity> {

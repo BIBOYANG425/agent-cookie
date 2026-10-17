@@ -88,3 +88,14 @@ it('offers only the first selection when the backend finds one eligible merchant
   expect(text).toContain('要第一双');expect(text).not.toContain('要第二双');
   expect(text).toContain('Sample');expect(text).toContain('到货时间未知');
 });
+
+it('retains recorded quote provenance when AcceptResult has no source metadata',async()=>{
+  const client=await workspace();
+  const offers=await client.find({kind:'trail_shoes',public:{}},'provenance');
+  offers.sample=false;offers.quotes[0].source='fixture';
+  vi.spyOn(client,'accept').mockResolvedValue({status:'handoff',quoteId:offers.quotes[0].id,sample:false,
+    continueUrl:'https://example.com/checkout'});
+  const text=await respond('要第一双','provenance-selection',{offers},client);
+  expect(text).toContain('[Sample 演示]');expect(text).toContain('此结果仅供演示');
+  expect(text).toContain('尚未付款');
+});

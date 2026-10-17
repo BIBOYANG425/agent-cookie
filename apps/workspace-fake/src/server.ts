@@ -5,8 +5,8 @@ import {
   GRANT_TTL_MS, WorkspaceError, type AcceptResult, type ActivityEvent, type Field,
   type Grant, type Handshake, type Intent, type Quote, type Receipt, type Session,
 } from '@agent-cookie/contract';
-import { stubRules } from '../../workspace/src/stubs/rules.js';
-const { mergeCard, deriveSessionId } = stubRules;
+import { rules } from '@agent-cookie/rules';
+const { mergeCard, deriveSessionId } = rules;
 import { validateFixtures, type FixtureKey, type Fixtures } from './fixtures.js';
 
 interface Options { demo?: boolean; now?: () => number; onActivity?: (event: ActivityEvent) => void }
