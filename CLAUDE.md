@@ -18,15 +18,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 线 | 拥有的目录（只改这些） |
 |---|---|
-| A · 核心与工作台（Claude Code，Bo 的会话） | `packages/core` `apps/workspace` `packages/sdk` `packages/cli` |
-| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
+| A · 核心与工作台（Claude Code，Bo 的会话） | `packages/core` `apps/workspace` |
+| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
 | C · 演示面与验收（Codex B，Bo 的） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `fixtures` `tests/acceptance` `docs` |
 | D · 登录与支付（Devin，Bo 的，P1） | `packages/auth` `packages/pay` `apps/unlock` |
 
 规则：
-- 只改自己线的目录。需要别的目录改动，写进 `docs/requests.md` 一行，由人转达。
+- 只改自己线的目录。需要别的目录改动，写进 `docs/requests.md` 一行，由人转达（这个文件所有线都可以追加，只追加不改）。`docs/plan.md` 只有人改。
 - 所有线只通过 `packages/sdk` 调工作台；不直接碰 SQLite，不直接碰 git 记忆库。`tests/acceptance` 只打 HTTP。
-- D 线对工作台的接口只有 `signHandshake`、`authorizePayment` 两个纯函数和 `POST /personal/unlock` 一个端点，由 A 线在契约里预留。D 线分支在 P0（A01–A18）全绿前不合并进 main。
+- D 线对工作台的接口只有 `signHandshake`、`authorizePayment` 两个纯函数和 `POST /personal/unlock` 一个端点，由 A 线在契约里预留。D 线分支在 P0 验收（A01–A12、A17、A18、A22）全绿前不合并进 main。
 - 每条线一个分支（`lane-a` / `lane-b` / `lane-c` / `lane-d`），只往自己的目录提交。合并到 `main` 由人做。
 - H0–1 只有 A 线写业务代码。B、C 先用 `fixtures/` 和 A 线提供的假工作台开工。
 
@@ -37,12 +37,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 商家永远不碰 git 记忆库；`CARD.md` 只生成不编辑。
 - 用户不需要对任何读取点头：按用途与策略核对后放行，每次放行写回执。
 - 页面和日志不展示编造的指标；示例数据标 Sample；售罄和 `requires_escalation` 要如实告诉用户。
-- 不把用户的身份卡贴进发给别的 agent 的消息里；只发握手（字段名）。
-- passkey 不进 cookie，卡号不进任何地方：jar 自己持密钥，用户 passkey 只解锁 jar；`payment_method` 只存支付提供方的 token 引用，按用途、限额、单次放行授权结果。
+- 不把用户的身份卡贴进发给别的 agent 的消息里；只发握手（字段名）。唯一例外是 Tier 0 文本前缀：只带该类别的 auto 字段值，purpose 字段永不带值，每次投递写回执。
+- passkey 不进 cookie，卡号不进任何地方：jar 自己持密钥（签名钥按 session 成对派生，没有全局 jar 公钥），用户 passkey 只解锁 jar；`payment_method` 只存支付提供方的 token 引用，按用途、限额、单次放行授权结果。
 
 ## 怎么跑
 
 - Node 22，pnpm。`pnpm install`，`pnpm test`（vitest），`pnpm dev` 起工作台 + 控制台 + Photon 线。
 - UCP：`npm i -g @shopify/ucp-cli`，`ucp profile init --name agent`，环境变量 `OPT_OUT_INSTRUMENTATION=true`。
 - 工作台只监听 127.0.0.1:4310；钥匙放环境变量 `AGENT_COOKIE_KEY`，地址 `AGENT_COOKIE_URL`。
-- 演示重置：`agent-cookie reset`（只动 fixtures 的演示数据）。
+- 演示重置：`pnpm demo:reset` = `agent-cookie reset` = `POST /demo/reset`（清 SQLite，记忆库重置到 fixtures 初始 commit；仅 `AGENT_COOKIE_DEMO=1`）。
+- 环境变量和端口的完整列表见 `docs/plan.md` 第 4 节。

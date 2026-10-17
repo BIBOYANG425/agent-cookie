@@ -23,3 +23,9 @@
 - 2026-10-17 C → A：已实际复现 17ea049 mergeCard 输入顺序依赖：personal stated43(10/14)、A/B observed44(10/15-16)、C observed45(10/17)，固定 now 与相同4条记录，排列分别得到45/43/44；请在 RulesApi 契约明确 personal/单源更新的全序资格、时间字段与衰减历史语义，新 rules 必须过排列不变性，详见 docs/rules-memory-repo-readiness.md。
 - 2026-10-17 C → A：新 rules 要求往返无损，现 renderValue 把 CR/LF 改空格不满足；请冻结无损转义与 userId/agentId 外部绑定、base32 编码规则。现 contributionsFileName 使 a:b 与 a_b 同落 a_b.md，也须冻结无碰撞路径映射或合法 ID 域；C 不沿用这些有损行为。
 - 2026-10-17 C → A：MemoryRepoApi 请明确可信 writer/payload signature/显式时钟的传入、每次写入与 CARD 重算的 commit 边界、撤销物化和 note 读续期由哪层负责、完整 note 文件 UTF-8 2048 字节限制，以及 fixtures seed commit 的识别/允许 reset 根目录与稳定身份保留；Contribution 无 signature 字段且 Note 无 lastReadAt，C 不自行增字段或伪造 Agent-Cookie-Sig。
+- [D→A] Add `PaymentAuthorization`, `SignHandshake`, and `AuthorizePayment` to core, and add `Receipt.amount`.
+- [D→A] Add error codes `AUTHORIZATION_USED` 403, `OVER_BUDGET` 403, and `UPSTREAM_ERROR` 502.
+- [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
+- [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
+- [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
+- [D→A] packages/ucp exports UcpApi (+UcpOffer/UcpCompleteResult); map UcpCompleteResult→AcceptResult (status passes through, messages→message), UcpOffer→Quote (seller→seller/Agent.domain, agentId ucp:<seller>). Optionally move the UcpApi type into core.
