@@ -30,6 +30,19 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
 }
 
 describe('server SDK bridge', () => {
+  it('keeps revocation identifiers typed as strings alongside learning change objects', async () => {
+    const sdk: SdkClient = {
+      getMe: async () => owner,
+      revokeGrant: async (id) => ({ id: id.toUpperCase() }),
+      revokeContribution: async (id) => ({ id: id.toUpperCase() }),
+      setLearning: async (input) => ({ enabled: input.enabled }),
+    };
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => sdk) });
+    expect(JSON.parse((await send('/personal/grants/grant-one/revoke', 'POST')).text)).toEqual({ id: 'GRANT-ONE' });
+    expect(JSON.parse((await send('/personal/contributions/source-one/revoke', 'POST')).text)).toEqual({ id: 'SOURCE-ONE' });
+    expect(JSON.parse((await send('/personal/learning', 'PUT', {}, { enabled: false })).text)).toEqual({ enabled: false });
+  });
+
   it('routes learning reads and writes through available SDK methods and sanitizes failed toggles', async () => {
     const getLearning = vi.fn(async () => ({ enabled: true, generation: 0, learned: [] }));
     const setLearning = vi.fn(async (input) => ({ ...input, generation: 1, forgottenKeys: [] }));
@@ -68,8 +81,11 @@ describe('server SDK bridge', () => {
   it('calls every available SDK method with the server key and translates the activity envelope', async () => {
     const calls: string[] = [];
     const sdk: SdkClient = { getMe: async () => owner };
-    for (const name of ['getMyCard', 'getGrants', 'getReceipts', 'getActivity', 'revokeGrant', 'revokeContribution', 'demoReset'] as const) {
-      sdk[name] = async (...args) => { calls.push(`${name}:${args.join(',')}`); return name === 'getActivity' ? { activity: [] } : { ok: true }; };
+    for (const name of ['getMyCard', 'getGrants', 'getReceipts', 'getActivity', 'demoReset'] as const) {
+      sdk[name] = async () => { calls.push(`${name}:`); return name === 'getActivity' ? { activity: [] } : { ok: true }; };
+    }
+    for (const name of ['revokeGrant', 'revokeContribution'] as const) {
+      sdk[name] = async (id) => { calls.push(`${name}:${id}`); return { ok: true }; };
     }
     const http = vi.fn<typeof fetch>();
     const factory = vi.fn((options: { key: string; baseUrl: string; sample?: boolean }) => { expect(options.key).toBe(key);

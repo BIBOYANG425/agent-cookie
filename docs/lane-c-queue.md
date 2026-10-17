@@ -26,5 +26,5 @@
 
 - [x] C17 晋升规则：证据按 intentId / conversationId 及两者别名连通关系去重；personal stated 立即 medium；inferred 单源候选、两个独立来源晋升 observed/medium；pref.* 同样衰减。显式 now、最新合格值、同值刷新、未来时间排除、格式往返与别名回归共 47 tests，类型检查通过；正式类型待 A 对齐。
 - [x] C18 意图记忆：appendIntent({ intent, extracted, chosenQuote? }, meta) → intents/<YYYY-MM-DD>-<id>.md，searchIntents(q) 全文摘要；结构化白名单及 ≤200 字证据，不存对话原文。每写一次一个 personal commit；openLearningMemoryRepo 支持 pref 贡献与 CARD 重建。24 个真实 Git 测试与类型检查通过；本地扩展 TODO(contract)，不代表 A 已接线。
-- [x] C19 学到的视图组件：GET /personal/learned、PUT /personal/learning、SDK getLearning/setLearning({enabled}) 接缝；候选/上卡、来源/证据/时间、已知贡献 ID 撤销、暂停与 2 秒轮询。31 tests、类型/构建检查和 Sample 浏览器操作通过。B confirmed/未知 ID 保守展示并禁用逐条撤销；真实 4310 learned=404，正式 C19 联调待 A 契约，缺方法保留 TODO(sdk)/TODO(contract)。
+- [x] C19 学到的视图组件：GET /personal/learned、PUT /personal/learning、SDK getLearning/setLearning({enabled}) 接缝；候选/上卡、来源/证据/时间、已知贡献 ID 撤销、暂停与 2 秒轮询。32 tests、类型/构建检查和 Sample 浏览器操作通过，含既有 SDK 撤销方法类型兼容回归。B confirmed/未知 ID 保守展示并禁用逐条撤销；真实 4310 learned=404，正式 C19 联调待 A 契约，缺方法保留 TODO(sdk)/TODO(contract)。
 - [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、4 张 Sample 界面图、9 个响应性质检查（另 1 HTTP 用例显式跳过）。真实“闲聊→帮我找双鞋”的 B learn、A 端点及报价排序截图仍待接线；不固定店名，不把候选凑成双源，不因 Sample 已跑就勾完。

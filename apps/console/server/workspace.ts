@@ -5,9 +5,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const upstream = 'http://127.0.0.1:4310';
 const prefix = '/workspace-api';
-type Method = (...args: Array<string | { enabled: boolean }>) => Promise<unknown>;
-export type SdkClient = Partial<Record<'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity'
-  | 'revokeGrant' | 'revokeContribution' | 'demoReset' | 'getLearning' | 'setLearning', Method>>;
+type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning';
+type RevokeName = 'revokeGrant' | 'revokeContribution';
+export type SdkClient = Partial<Record<ReadName, () => Promise<unknown>>
+  & Record<RevokeName, (id: string) => Promise<unknown>>
+  & { setLearning: (input: { enabled: boolean }) => Promise<unknown> }>;
+type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: 'setLearning' };
 type ClientFactory = (options: { key: string; fetch: typeof fetch; timeoutMs: number; baseUrl: string; sample?: boolean }) => SdkClient;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -35,24 +38,24 @@ class BridgeError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
 }
 
-function route(method: string | undefined, path: string): { name: keyof SdkClient; args: Array<string | { enabled: boolean }> } | undefined {
+function route(method: string | undefined, path: string): SdkRoute | undefined {
   if (method === 'GET') {
-    const names: Record<string, keyof SdkClient> = { '/me': 'getMe', '/personal/card': 'getMyCard',
+    const names: Record<string, ReadName> = { '/me': 'getMe', '/personal/card': 'getMyCard',
       '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity',
       '/personal/learned': 'getLearning' };
-    if (names[path]) return { name: names[path], args: [] };
+    if (names[path]) return { name: names[path] };
   }
   if (method === 'POST') {
-    if (path === '/demo/reset') return { name: 'demoReset', args: [] };
+    if (path === '/demo/reset') return { name: 'demoReset' };
     const match = /^\/personal\/(grants|contributions)\/([^/]+)\/revoke$/u.exec(path);
     if (match) {
       let id: string;
       try { id = decodeURIComponent(match[2]); } catch { return undefined; }
       if (!id || id.length > 256 || /[\x00-\x1f\x7f]/u.test(id)) return undefined;
-      return { name: match[1] === 'grants' ? 'revokeGrant' : 'revokeContribution', args: [id] };
+      return { name: match[1] === 'grants' ? 'revokeGrant' : 'revokeContribution', id };
     }
   }
-  if (method === 'PUT' && path === '/personal/learning') return { name: 'setLearning', args: [] };
+  if (method === 'PUT' && path === '/personal/learning') return { name: 'setLearning' };
   return undefined;
 }
 
@@ -133,13 +136,18 @@ export function createWorkspaceBridge(options: {
       };
       const me = client?.getMe ? await client.getMe() : await direct('/me', 'GET');
       if (!object(me) || me.role !== 'owner') throw new BridgeError(403, 'CONSOLE_OWNER_REQUIRED');
-      const payload = selected.name === 'setLearning' ? await readLearningChange(request) : undefined;
       // TODO(contract): B 35f6b38 proposes getLearning()/setLearning({enabled}); the user's HTTP paths remain authoritative.
       // TODO(sdk): remove the direct path only when B's installed SDK provides the corresponding method.
-      if (payload) selected.args = [payload];
-      let body = selected.name === 'getMe' ? me
-        : typeof client?.[selected.name] === 'function' ? await client[selected.name]!(...selected.args)
-          : await direct(path, request.method!, payload);
+      let body: unknown;
+      if (selected.name === 'getMe') body = me;
+      else if (selected.name === 'setLearning') {
+        const payload = await readLearningChange(request);
+        body = client?.setLearning ? await client.setLearning(payload) : await direct(path, request.method!, payload);
+      } else if (selected.name === 'revokeGrant' || selected.name === 'revokeContribution') {
+        body = client?.[selected.name] ? await client[selected.name]!(selected.id) : await direct(path, request.method!);
+      } else {
+        body = client?.[selected.name] ? await client[selected.name]!() : await direct(path, request.method!);
+      }
       // B returns { activity }; the console uses A's { events } wire shape.
       if (selected.name === 'getActivity' && object(body) && Array.isArray(body.activity)) {
         body = { events: body.activity, ...(body.sample === true ? { sample: true } : {}) };
