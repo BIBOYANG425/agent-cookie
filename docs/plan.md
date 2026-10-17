@@ -396,7 +396,7 @@ SQLite 只建热状态表：agents, users, sessions, grants, intents, quotes, ac
 
 出口：curl 能注册 agent、写记录、看到合并后的卡、拿握手、读字段并被正确拒绝。
 
-H2–6T2 · 挂钩 + SDK + 接上 Claude Desktop`P0`B 线 · Codex 1（console 脚手架归 C 线）
+H2–6T2 · 挂钩 + SDK + 接上 Claude Desktop`P0`B 线 · Codex A（console 脚手架归 C 线）
 `packages/sdk`：`new WorkspaceClient({ baseUrl, key })`，每个端点一个方法，错误统一抛 `WorkspaceError { status, code, message }`。 `packages/cli`：`agent-cookie card | contribute | find | accept | read --as --purpose | grants | revoke | receipts | reset`，每个子命令一行调 SDK，输出 JSON（`--pretty` 给人看）。 `packages/mcp`：启动时读 `AGENT_COOKIE_URL`、`AGENT_COOKIE_KEY`，调 `GET /me` 拿角色，按角色注册工具（工具表见下文）。 stdio 传输跑通；写 `claude_desktop_config.json` 示例到 README。 在 Claude Desktop 里调用 `get_my_card`，看到 fixtures 里的三个字段。 `apps/console` 脚手架：Vite + React，一个页面先把 `GET /personal/card` 的 JSON 渲染成表。 streamable HTTP 传输跑通（商家 agent 用），端口 4311。
 
 出口：Claude Desktop → MCP → 工作台 → SQLite 闭环；A10 的前半段（真实客户端调用有日志）成立。
