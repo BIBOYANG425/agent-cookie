@@ -20,6 +20,7 @@ export interface ActivityEvent { id: string; at: string; event: string; actor: s
 // View state, not a workspace wire response. null means no source-record API exists.
 export interface ConsoleSnapshot {
   card: Card; contributions: Contribution[] | null; grants: GrantView[]; events: ActivityEvent[]; receivedAt: number;
+  sample?: boolean;
 }
 export interface ConsoleAdapter {
   mode: 'sample' | 'live';

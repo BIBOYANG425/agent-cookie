@@ -1,15 +1,17 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { createWorkspaceBridge, loadSdk } from './server/workspace.ts';
 
-// Fixed loopback target; no user-supplied origin and no key in build-time environment.
-const proxy = {
-  '/workspace-api': {
-    target: 'http://127.0.0.1:4310',
-    changeOrigin: false,
-    followRedirects: false,
-    rewrite: (path: string) => path.replace(/^\/workspace-api(?=\/|$)/u, ''),
-  },
-};
+function workspace(): Plugin {
+  const bridge = async () => createWorkspaceBridge({ key: () => process.env.AGENT_COOKIE_KEY,
+    sample: process.env.AGENT_COOKIE_SAMPLE === '1',
+    sdk: Promise.resolve(await loadSdk(process.env.AGENT_COOKIE_SDK_ROOT)) });
+  return { name: 'agent-cookie-workspace',
+    async configureServer(server) { server.middlewares.use(await bridge()); },
+    async configurePreviewServer(server) { server.middlewares.use(await bridge()); },
+  };
+}
 export default defineConfig({
-  server: { host: '127.0.0.1', port: 5173, strictPort: true, proxy },
-  preview: { host: '127.0.0.1', port: 5173, strictPort: true, proxy },
+  plugins: [workspace()],
+  server: { host: '127.0.0.1', port: 5173, strictPort: true },
+  preview: { host: '127.0.0.1', port: 5173, strictPort: true },
 });

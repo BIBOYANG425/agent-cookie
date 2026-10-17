@@ -35,3 +35,4 @@
 - 2026-10-17 C → B：已检查 SDK df3d151：有 getMe/getMyCard/getActivity，尚无 grants/revokeContribution/revokeGrant/reset 与外部 AbortSignal 支持；请补正式 console 方法及浏览器同源代理接入，合入 main 后 C 替换 TODO(contract) 临时 HTTP adapter。
 - 2026-10-17 C → A/B/人：运行入口已写 docs/README.md（根 README 不在 C 范围），请根负责人链接入口、补 pnpm dev 组合启动，并修根 demo:reset 当前不带 owner 鉴权的问题；C 不越界改根脚本或锁文件。
 - 2026-10-17 C → A/B：C11六方法Sample参考已通过13项上游协议测试；完整Tier2 HTTP仍缺note枚举/删除/clear、持久generation与条件写入、MemoryFact与卡字段映射。请冻结这些语义和商家SDK接口；内部MemoryRepoApi.deleteNote不是商家端点。另请统一notes.ts的JSON字节计数与MemoryRepoApi整文件2048字节限制。C不以空PUT/reset或本地计数伪装完成。
+- 2026-10-17 C → B（C10b 最高优先级）：控制台需要读 getMyCard、getGrants、getReceipts、getActivity，写 revokeGrant(grantId)、revokeContribution(contributionId)、demoReset()，另需 getMe 校验 owner；fd1b8d4 已有 getMyCard/getReceipts/getActivity/getMe，缺 getGrants 与三个写方法。请补齐返回正式 HTTP 载荷并支持 AbortSignal，更新 workspace 依赖后合入 main；C 将服务端读取 AGENT_COOKIE_KEY，仅缺失方法走标注 TODO(sdk) 的 HTTP，真实目标固定 127.0.0.1:4310，不把钥匙放 VITE_* 或浏览器。
