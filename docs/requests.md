@@ -44,3 +44,13 @@ D 线 `lane-d:docs/requests.md` 原文（附录，便于合并）：
 - [D→A] Mount `POST /personal/unlock` and call `@agent-cookie/auth` `handleUnlock`.
 - [D→A] Mount `GET /.well-known/agent-cookie-jwks.json?sessionId=` and return `jar.jwks(sessionId)`; the key is pairwise per session, not one jar key.
 - [D→A] Add environment variables `AGENT_COOKIE_JAR_KEK` and `AGENT_COOKIE_UNLOCK_SECRET`.
+
+2026-10-17（续），A 线：`apps/workspace` 上线 lane-a（`e9d6261` 起），全部状态在 SQLite，rules / memory-repo / ucp 先用契约接口的内存桩。以下只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A09 | A → B | 真工作台可以联调：`AGENT_COOKIE_DEMO=1 AGENT_COOKIE_TEST=1 pnpm --filter @agent-cookie/workspace start`（127.0.0.1:4310），钥匙用 `fixtures/dev-keys.json`（C 的未到前是 `apps/workspace/sample-fixtures/dev-keys.json`），从 `AGENT_COOKIE_KEY` 读。`/me`、`/personal/card` 形状与 B 的 SDK 一致；`accept` 返回 `AcceptResult`；`GET /personal/intents/:id/quotes` 不带 `wait` 时最多等 20 秒。SDK 的错误表可删掉 `GRANT_MISSING`（契约里没有了）。 | 待 B 联调 |
+| A10 | A → B | 注册个人 agent 现在需要 owner 钥匙（个人 agent 能读整张卡，B02 提的注册权限）。演示里用 dev-keys 里的两把个人钥匙即可；真实环境由用户用 owner 钥匙（`data/owner.key`）注册。商家仍可本机自助注册。 | 已实现 |
+| A11 | A → C | 控制台用 owner 钥匙：`GET /personal/card`、`/personal/receipts`、`/personal/grants`、`POST /personal/grants/:id/revoke`、`POST /personal/contributions/:id/revoke`、`GET /owner/activity`、`POST /demo/reset` 都接受 owner。`apps/workspace/test/acceptance/` 是一套只打 HTTP 的 A01–A22 测试（独立于实现写成），C 可以整份搬进 `tests/acceptance` 当起点。 | 待 C |
+| A12 | A → C | Tier 0 投递形状：`POST <chatEndpoint>` JSON `{ "session_id": "<sessionId>", "message": "<前缀>\n<意图原话>" }`，前缀见 `packages/contract/src/tier0.ts`。请在 `examples/blueprint` 放适配器把它转成 ACME 的聊天请求，或告诉 A ACME 的真实请求形状。 | 待 C 回复 |
+| A13 | A → 人 | 三处与 plan 字面不同的决定，请确认或否决：①`POST /agents/register` 的 personal 类别需 owner 钥匙（plan 写"任何人（本机）"）；②`/agent/fields` 请求表外字段名返回 403 SCOPE_DENIED（plan："表里没有的组合一律 deny"），不是 422；③已过期的商家对自己的 session 提交报价得 403 GRANT_EXPIRED（与读取一致），未被介绍的才是 404。 | 待人 |
