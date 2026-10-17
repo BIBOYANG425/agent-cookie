@@ -7,6 +7,7 @@ export interface Outbox { phase: 'processing'|'ready'|'sending'|'sent'; route: R
 export interface ChannelState {
   version: 1; binding: string; cursor: number; startedAt: number;
   conversations: Record<string, Conversation>; messages: Record<string, Outbox>;
+  learning?: {paused:boolean;lastSummaryDay?:string};
 }
 export class ChannelFailure extends Error { constructor(readonly code: string) { super(code); } }
 

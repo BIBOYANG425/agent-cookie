@@ -15,7 +15,7 @@
 - [x] L2：规则 → 可选 Jev 类型判定 → 指定 Haiku 结构化抽取；无 Jev 降级、超时、取消、离线回放。
 - [x] L3：SDK observe/getLearning/setLearning 和明确配置的 HTTP 桩测试；不把未冻结提案当生产接口。
 - [x] L4：Spectrum app.messages → adapter.toEvent → 非阻塞有界内存队列；仅机主直聊，去重/超时/失败不影响回复。
-- [ ] L5：Photon 暂停/恢复/忘记控制及每日结论摘要；先阻断在途任务，后台确认才报告删除成功。
+- [x] L5：Photon 暂停/恢复/忘记控制及每日结论摘要；先阻断在途任务，后台确认才报告删除成功。
 - [ ] L6：MCP observe、个人 SKILL、Claude Code UserPromptSubmit README 示例；不改全局配置、不读 transcript。
 - [ ] L7：@photon-ai/otel 只记管道阶段/状态/计数/耗时，离线 exporter 验证无正文和私密值。
 - [ ] L8：隔离桩全链路及敏感/群聊/撤销竞态/每日摘要回归，保存证据、更新 A/C 请求并推 lane-b。
@@ -119,3 +119,5 @@ L2 验证：33 项 learn 测试、typecheck/build 通过；Jev/Haiku fixture 明
 L3 验证：SDK 学习提案接口5项测试及typecheck/build通过；未配显式binding时零网络请求，身份字段不透传，取消/拒绝保留。A契约未到，实际后台仍禁用。
 
 L4 验证：5项采集/队列测试与Photon typecheck通过；Spectrum app.messages循环适配器已实现，真实云入口及控制在L5接线。整条DM的conversationId稳定，不凭时间切片伪造第二来源；A/C需确认可信对话边界。
+
+L5 验证：12项采集/控制测试及Photon typecheck/build通过；Spectrum云入口编译通过但未启用。日常偏好不发购物intent；删除确认要求generation前进；摘要只在正常回复中附加，无主动定时短信。
