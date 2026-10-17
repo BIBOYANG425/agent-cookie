@@ -2,7 +2,7 @@
 
 让陌生 agent 在第一条消息之前认识你，同时只拿到当前任务允许的上下文。Agent Cookie 把 agent 写入的偏好合成身份卡，为每家商家派生独立 session，并管理字段授权、有效期、撤销和回执。
 
-运行说明已同步 main `7beb63d`（#11 CI、#12 B 客户端、#13 可选 auth/TAP 接线已由人合并）；A15/A16 的实际取证基线仍为 `8c1a869`，不将后续代码变化混入旧记录。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
+运行说明已同步 main `1d0ffff`（#11–#14 已由人合并）；A15/A16 的实际取证基线仍为 `8c1a869`，不将后续代码变化混入旧记录。规格在 [plan.md](plan.md)，实际完成状态以[证据索引](evidence/README.md)为准。根 README 尚不存在，本文件可由根目录负责人链接。
 
 ## 当前交付
 
@@ -66,7 +66,7 @@ pnpm --dir apps/channel-photon check
 pnpm --dir apps/channel-photon start
 ```
 
-按 [Photon 配置说明](../apps/channel-photon/README.md) 准备 `.env`，使用 `sample-personal-photon` 对应的 key。当前识别固定主线：“身份卡”“帮我找双越野跑鞋，120以内，周五前到”“要第二双”“回执”；是确定性文本识别，不宣称任意自然语言理解。手机实际收发以 B 线 A17 证据为准。
+按 [Photon 配置说明](../apps/channel-photon/README.md) 准备 `.env`，使用 `sample-personal-photon` 对应的 key。现有 Photon 仍是限定跑鞋词的确定性解析，SDK 仅接受 trail_shoes 与 budget/deadline；这只是当前实现限制，不是新演示的固定脚本。人的新方向是现场真实需求、本次预算、卡上适用尺码与偏好、最多两家真实报价。通用 query/类别契约与客户端入口已写入 [requests](requests.md)，补齐前不宣称任意需求已能从手机跑通。三条备选和对应素材见 [分镜](video-storyboard.md) / [实录索引](evidence/recorded-needs/README.md)。
 
 Claude Desktop 使用独立的 `sample-personal-desktop` key。在 `packages/mcp/.env` 设置 `AGENT_COOKIE_URL`、`AGENT_COOKIE_KEY`、`AGENT_COOKIE_SAMPLE`。保留现有配置中的其他 servers，加入：
 
@@ -100,9 +100,9 @@ bash examples/blueprint/run.sh
 python3.11 examples/blueprint/verify.py
 ```
 
-工作台 UCP 包锁定 CLI 0.9.1；使用不同全局版本前先核对 schema。`fixture` 重放已录制响应，`live` 请求当时商家状态。现有 pin pair 为 Marathon Sports / Black Flag，库存、价格只代表采集时刻；没有可靠 ETA 时显示“到货时间待确认”。见 [UCP 实录来源](../fixtures/ucp/README.md)。
+工作台 UCP 包锁定 CLI 0.9.1；使用不同全局版本前先核对 schema。`fixture` 重放已录制响应，`live` 请求当时商家状态。现有 pin pair 是旧需求的采集结果，不限定后续商家；库存、价格只代表采集时刻；没有可靠 ETA 时显示“到货时间待确认”。见 [UCP 实录来源](../fixtures/ucp/README.md)。
 
-ACME API/UI 为 8000/3000，真实聊天需 `ANTHROPIC_API_KEY`；health/catalog 成功不证明聊天成功。原版是通用商品 Sample 店，不能称为真实鞋店。A15 要保存工作台 Tier 0 投递后真实首条回复出现 42 码的证据；A16 要分别保存 Claude Code 与 Devin 从干净克隆开始的 skill 运行及录屏，完成前不宣称深度接入通过。
+ACME API/UI 为 8000/3000，真实聊天需 `ANTHROPIC_API_KEY`；health/catalog 成功不证明聊天成功。原版是通用商品 Sample 店，不能称为真实鞋店。A15 要保存工作台 Tier 0 投递后首条回复正确使用该次卡上适用 auto 字段的证据，不要求具体字段或字面数值；A16 要分别保存 Claude Code 与 Devin 从干净克隆开始的 skill 运行及录屏，完成前不宣称深度接入通过。
 
 ## 环境变量
 

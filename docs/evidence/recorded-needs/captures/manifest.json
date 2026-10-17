@@ -1,0 +1,117 @@
+{
+  "dataMode": "Live public catalog captured for replay; Sample card is local only",
+  "scope": "Catalog-only supporting recordings, not iMessage or workspace quotes; no accept, address, cart or payment",
+  "startedAt": "2026-10-17T22:17:12.935Z",
+  "operations": [
+    {
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "input": null,
+      "file": "version.txt",
+      "startedAt": "2026-10-17T22:17:12.936Z",
+      "finishedAt": "2026-10-17T22:17:13.082Z",
+      "exitCode": 0,
+      "sha256": "c87976571392b5b8424c0a3aac1240ca99f4613952946c6f1939a916210b346d"
+    },
+    {
+      "name": "profile",
+      "args": [
+        "profile",
+        "init",
+        "--name",
+        "agent"
+      ],
+      "input": null,
+      "file": "profile.json",
+      "startedAt": "2026-10-17T22:17:13.083Z",
+      "finishedAt": "2026-10-17T22:17:13.202Z",
+      "exitCode": 0,
+      "sha256": "ba2a3b0941ce5dd3f7c357e60297203ed41470253ad1dce8a43c923d56ff069f"
+    },
+    {
+      "name": "schema",
+      "args": [
+        "catalog",
+        "search",
+        "--profile",
+        "agent",
+        "--input-schema",
+        "--refresh"
+      ],
+      "input": null,
+      "file": "schema.json",
+      "startedAt": "2026-10-17T22:17:13.202Z",
+      "finishedAt": "2026-10-17T22:17:13.999Z",
+      "exitCode": 0,
+      "sha256": "50101ea353e4d81e16d6ad787607bd71a94528ed3bf3e58592e2f1bec77d615a"
+    },
+    {
+      "name": "walking",
+      "args": [
+        "catalog",
+        "search",
+        "--profile",
+        "agent"
+      ],
+      "input": "walking.input.json",
+      "file": "walking.json",
+      "startedAt": "2026-10-17T22:17:14.000Z",
+      "finishedAt": "2026-10-17T22:17:14.810Z",
+      "exitCode": 0,
+      "sha256": "3a0b460b5a7b0017906bef5f4064684ce3762bc02d90c2fa679cc2014a0e999a"
+    },
+    {
+      "name": "hiking",
+      "args": [
+        "catalog",
+        "search",
+        "--profile",
+        "agent"
+      ],
+      "input": "hiking.input.json",
+      "file": "hiking.json",
+      "startedAt": "2026-10-17T22:17:14.811Z",
+      "finishedAt": "2026-10-17T22:17:15.671Z",
+      "exitCode": 0,
+      "sha256": "2f5103e6817c28b2755882cfecf15ec6f60d53696a11c5a394806de416549f6b"
+    },
+    {
+      "name": "running",
+      "args": [
+        "catalog",
+        "search",
+        "--profile",
+        "agent"
+      ],
+      "input": "running.input.json",
+      "file": "running.json",
+      "startedAt": "2026-10-17T22:17:15.673Z",
+      "finishedAt": "2026-10-17T22:17:16.387Z",
+      "exitCode": 0,
+      "sha256": "d2d26063a146068ab32bc40873943a554b62758bfb94f6a681e9cf76da02344e"
+    }
+  ],
+  "runs": [
+    {
+      "id": "walking",
+      "file": "walking.selection.json",
+      "status": "catalog_support_ready",
+      "count": 2
+    },
+    {
+      "id": "hiking",
+      "file": "hiking.selection.json",
+      "status": "catalog_support_ready",
+      "count": 2
+    },
+    {
+      "id": "running",
+      "file": "running.selection.json",
+      "status": "catalog_support_ready",
+      "count": 2
+    }
+  ],
+  "finishedAt": "2026-10-17T22:17:16.389Z"
+}
