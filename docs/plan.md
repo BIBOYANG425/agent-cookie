@@ -18,6 +18,7 @@ LA HACKS 2026 · 工程计划 v0.3 · 2026-10-17
 > - 验收：明确 P0 集合（不再写"A01–A18 全绿"，其中有 P1）；补命题 6 的验收 A22；命题 → 验收对照；A10、A17 标为手动证据；A09 用录好的 UCP 响应保证可重复。
 > - 新增：开赛前预检、环境变量与端口表、HTTPS/手机访问风险、开放问题（第 7 节）。
 > - 新增：第 8 节"更大的图景"——北极星、开放协议、四阶段路线、网络效应、购物以外的场景、商业模式假设、规模化风险、答辩里怎么讲大。24 小时范围不变。
+> - D 线签名钥改为按 session 成对派生（`HKDF(主种子, sessionId)`），JWKS 按 `?sessionId=` 只给该 session 的公钥。单一 jar 公钥会成为跨商家的全局标识，违反命题 6 / A22。
 
 ## 1 · 这个计划具体是什么
 
@@ -193,7 +194,7 @@ Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以
 | A17 | iMessage 主流程（手动） | 从 iMessage 一句话到付款链接（或已下单），不离开对话；用户没有输入尺码和地址；录屏存 `docs/evidence/` | `P0` |
 | A18 | UCP 失败路径 | 售罄 warning 和 `requires_escalation` 都在回复里说清楚，并给 `continue_url`；不假装成功 | `P0` |
 | A19 | passkey 解锁 jar | 手机 passkey 断言一次 → 工作台能签握手；未解锁 403 JAR_LOCKED | `P1` |
-| A20 | 商家验签登录 | 商家用 JWKS 验签通过；篡改一字节被拒；首次见面记公钥，再见即登录 | `P1` |
+| A20 | 商家验签登录 | 商家用该 session 的 JWKS 验签通过；篡改一字节被拒；首次见面记该 session 的 kid，再见即登录；两家商家拿到的公钥不同 | `P1` |
 | A21 | 支付单次限额 | 同一支付授权第二次使用被拒；金额超 intent.budget 被拒；商家拿不到 token | `P1` |
 | A22 | 回头客 | 同一用户经两个不同个人 agent 介绍到同一商家，两次 session ID 相同；`POST /demo/reset` 后仍相同；握手和字段里没有电话、邮箱等全局标识 | `P0` |
 
@@ -424,7 +425,7 @@ H10–14T6 · 控制台、skill、个人 agent 文案`P0`B 线（个人 agent �
 H2–18TD · 登录与支付（D 线）`P1`D 线 · Devin
 原则：passkey 不进 cookie，卡号不进任何地方。jar 自己是一把密钥，用户的 passkey 只用来解锁 jar；支付走提供方的 token，按用途、按金额、单次放行。
 
-**TD1 · jar 密钥与 passkey 解锁（H2–8）。**`packages/auth`：jar 生成 Ed25519 密钥对，私钥加密存本机；`apps/unlock` 一个手机能开的页面，用 `@simplewebauthn/server` + browser 做 passkey 注册和断言，断言成功后解锁 jar 私钥 N 分钟（手机经 HTTPS tunnel 访问该页，工作台本身仍只听 127.0.0.1）；`signHandshake(handshake) → { sig, kid }`。验收 A19：手机 Face ID 一次 → 工作台能签握手；未解锁时签名接口 403 JAR_LOCKED。 **TD2 · 商家验签登录（H8–14）。**握手增加 `sig` 和 `kid`；工作台暴露 `GET /.well-known/agent-cookie-jwks.json`；商家侧 SDK 加 `verifyHandshake()`；首次见面把 jar 公钥记在该商家的 note 里，之后验签即登录（"Sign in with Agent Cookie"，等价于 OIDC pairwise subject）。ACME 的 Tier 2 参考实现改为验签后才读字段。验收 A20：篡改一个字节的握手被拒。 **TD3 · 支付凭据按用途单次放行（H10–18）。**`packages/pay`：身份卡字段 `payment_method` 只存提供方 token 引用（Stripe 测试模式的 payment method id；Visa 沙盒接得上就换）。策略：purpose=payment、金额 ≤ intent.budget、单次有效、只给被接受报价的那一家。`authorizePayment({ sessionId, amount, currency })` 由工作台替用户向提供方发起，商家只拿到授权结果，不拿 token。回执写金额。验收 A21：同一授权第二次使用被拒；超预算被拒。 **TD4 · 接到 demo（H18 前）。**UCP 真实商家的 checkout 若接受 `payment.instruments` 的委托支付则接入，否则保持 `requires_escalation`（用户自己刷）；ACME 的 checkout handoff 用 Stripe 测试模式走完 TD3。demo 第 4 拍据此二选一，台词如实。
+**TD1 · jar 密钥与 passkey 解锁（H2–8）。**`packages/auth`：jar 生成一个主种子，加密存本机；每个 session 的 Ed25519 签名钥按 `HKDF(主种子, sessionId)` 派生（成对密钥：每家商家看到的公钥不同，商家之间对不上号；sessionId 按 merchantKey 推导，所以重置或换个人 agent 后同一家仍是同一把）；`apps/unlock` 一个手机能开的页面，用 `@simplewebauthn/server` + browser 做 passkey 注册和断言，断言成功后解锁 jar 主种子 N 分钟（手机经 HTTPS tunnel 访问该页，工作台本身仍只听 127.0.0.1）；`signHandshake(handshake) → { sig, kid }`。验收 A19：手机 Face ID 一次 → 工作台能签握手；未解锁时签名接口 403 JAR_LOCKED。 **TD2 · 商家验签登录（H8–14）。**握手增加 `sig` 和 `kid`；工作台暴露 `GET /.well-known/agent-cookie-jwks.json?sessionId=`，只返回该 session 的公钥；商家侧 SDK 加 `verifyHandshake()`；首次见面把该 session 公钥的 `kid` 记在该商家的 note 里，之后验签即登录（"Sign in with Agent Cookie"，等价于 OIDC pairwise subject）。ACME 的 Tier 2 参考实现改为验签后才读字段。验收 A20：篡改一个字节的握手被拒。 **TD3 · 支付凭据按用途单次放行（H10–18）。**`packages/pay`：身份卡字段 `payment_method` 只存提供方 token 引用（Stripe 测试模式的 payment method id；Visa 沙盒接得上就换）。策略：purpose=payment、金额 ≤ intent.budget、单次有效、只给被接受报价的那一家。`authorizePayment({ sessionId, amount, currency })` 由工作台替用户向提供方发起，商家只拿到授权结果，不拿 token。回执写金额。验收 A21：同一授权第二次使用被拒；超预算被拒。 **TD4 · 接到 demo（H18 前）。**UCP 真实商家的 checkout 若接受 `payment.instruments` 的委托支付则接入，否则保持 `requires_escalation`（用户自己刷）；ACME 的 checkout handoff 用 Stripe 测试模式走完 TD3。demo 第 4 拍据此二选一，台词如实。
 
 出口：A19–A21 绿；至少一条真实路径（ACME + Stripe 测试模式）从握手验签到限额单次扣款跑通。没到出口，demo 只讲设计，不演。
 
@@ -584,7 +585,7 @@ H21–24T9 · 冻结与提交`P0`四线（D 线未达出口则不合并）
 | POST /demo/reset | 控制台 / CLI | 清表、重灌 fixtures、记忆库重置；仅 `AGENT_COOKIE_DEMO=1` |
 | POST /test/clock | 验收测试 | `{ offsetMs }` 拨服务器时钟；仅 `AGENT_COOKIE_TEST=1` |
 | POST /personal/unlock | 手机解锁页 | D 线 P1：passkey 断言通过后解锁 jar N 分钟 |
-| GET /.well-known/agent-cookie-jwks.json | 任何人 | D 线 P1：jar 公钥 |
+| GET /.well-known/agent-cookie-jwks.json | 任何人 | D 线 P1：`?sessionId=` 只返回该 session 的派生公钥（成对，没有全局 jar 公钥） |
 
 写操作带 `Idempotency-Key`。商家的 callbackUrl 收到两种 POST：`{type:"introduce", sessionId, handshake, intent}` 和 `{type:"accepted", sessionId, quoteId}`。
 
@@ -625,7 +626,7 @@ H21–24T9 · 冻结与提交`P0`四线（D 线未达出口则不合并）
 
 #### Passkey：为什么不是"把 passkey 存进 cookie"
 
-passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自己持有一对密钥，商家第一次见面记下 jar 的公钥（和网站注册 passkey 是同一个动作），以后验签即登录；用户的 passkey 只用来解锁 jar，人只在最上面按一次。商家坚持要人的 passkey 时，安全交接到用户手机，cookie 记下"这家需要人亲自过一次"。
+passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自己持有一对密钥，商家第一次见面记下 jar 为这家派生的公钥（和网站注册 passkey 是同一个动作；每家一把，商家之间对不上号），以后验签即登录；用户的 passkey 只用来解锁 jar，人只在最上面按一次。商家坚持要人的 passkey 时，安全交接到用户手机，cookie 记下"这家需要人亲自过一次"。
 
 #### 支付：为什么不存卡号
 
@@ -794,7 +795,7 @@ Agent Cookie 要成为这一层：**cookie 的便利 + OAuth 的授权 + 支付�
 - **字段词表开放治理**，像 schema.org：标准字段加命名空间扩展（`x-shoe:width`），新增字段走公开提案。
 - **策略可机器验证。**POLICY.yaml 是声明式的，`canRead` 的结果可以离线复算；商家和审计方不用信任我们的服务器，只用跑同一份规则。
 - **一致性测试套件。**A01–A22 本来就只打 HTTP，改写成协议一致性测试，任何实现都能跑（对标 OAuth conformance、Web Platform Tests）。"通过一致性测试"就是兼容标志。
-- **验签代替信任。**D 线的 jar 签名 + JWKS 让商家只需验签，不需要信任任何一家托管方。这是能联邦的前提。
+- **验签代替信任。**D 线的成对签名钥 + JWKS 让商家只需验签，不需要信任任何一家托管方。这是能联邦的前提。
 
 ### 网络效应
 

@@ -38,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 用户不需要对任何读取点头：按用途与策略核对后放行，每次放行写回执。
 - 页面和日志不展示编造的指标；示例数据标 Sample；售罄和 `requires_escalation` 要如实告诉用户。
 - 不把用户的身份卡贴进发给别的 agent 的消息里；只发握手（字段名）。唯一例外是 Tier 0 文本前缀：只带该类别的 auto 字段值，purpose 字段永不带值，每次投递写回执。
-- passkey 不进 cookie，卡号不进任何地方：jar 自己持密钥，用户 passkey 只解锁 jar；`payment_method` 只存支付提供方的 token 引用，按用途、限额、单次放行授权结果。
+- passkey 不进 cookie，卡号不进任何地方：jar 自己持密钥（签名钥按 session 成对派生，没有全局 jar 公钥），用户 passkey 只解锁 jar；`payment_method` 只存支付提供方的 token 引用，按用途、限额、单次放行授权结果。
 
 ## 怎么跑
 
