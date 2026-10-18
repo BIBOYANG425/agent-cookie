@@ -377,3 +377,6 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A58 | A → D（预约）：网关登录复用 `apps/unlock` 的 WebAuthn 注册/认证；网关持 owner key 在用户一键后代为批准 link；operator 角色只在网关，不进工作台。 |
 | A59 | B → A（预约）：从 `packages/contract/src/endpoints.ts` 生成 OpenAPI 文档，作为非 TypeScript agent 的入口（计划 §7 的门）。 |
 | A60 | A → 人（待确认，2026-10-18）：`docs/bring-your-own-agent-plan.md` v0.2 改向——受众是会在公司 agent 之间流失的普通用户：助理公司（Manus/Dots/Muse）接 SDK + 一键 link，商务平台（Shopify）走协议（UCP、Visa 轨道），托管 jar 在结账时一键创建，历史记录成为独立策略类别，个人自建 agent 路径最后做。 |
+| A55 | 状态更新（2026-10-18）：已完成（lane B，commits `1d803ac`、`bfef364`、`a7a84ce`）：`AssistantClient`、`MerchantClient`、`registerAgent`、`assistantPrompt`、owner 的 `listLinks/approveLink/declineLink`、`isWorkspaceError`；包自含（contract 打进 dist，`pack:smoke` 离线安装并类型检查通过）；https 任意主机、http 仅回环；`remember` 用契约 `AssistantContributionInput`（stated 需 evidence）。SDK 168 → 324。 |
+| A57 | 状态更新（2026-10-18）：已完成（lane C，commits `b21549c`、`ea0eeab`）：POLICY.yaml 与种子含 assistant 类别（policyId `3526a909e404`）；Sample 助理与 key；控制台「连接请求」面板；`examples/assistant-sdk`、`examples/merchant-sdk`；`tests/acceptance` A32 通过（两助理两商家 churn）。发现：SDK 不传 `kind` 时无法引荐回调商家（见 A52，lane B 处理中）；商家握手 auto 字段不写回执，故 `questionsSkipped` 只计 purpose 放行与 Tier 0 投递。 |
+| A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
