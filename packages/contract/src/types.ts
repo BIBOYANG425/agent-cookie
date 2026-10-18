@@ -614,6 +614,8 @@ export interface DreamingRun {
 /** Wire shape of every error response. Never includes field names the caller is not allowed to know. */
 export interface ErrorBody {
   error: { code: ErrorCode; message: string };
+  /** Additive (A59, as UpstreamError.toBody sends it): UPSTREAM_ERROR only, the upstream's continue_url when it gave one. */
+  continueUrl?: string;
 }
 
 /** Response of POST /agents/register. The key is shown once; callers keep it in AGENT_COOKIE_KEY, never in chat or commits. */
@@ -690,7 +692,17 @@ export interface AssistantContributionInput {
   field: Field;
   value: string;
   basis?: Basis;
-  evidence?: Required<Pick<ContributionEvidence, "conversationId" | "snippet">>;
+  evidence?: AssistantEvidence;
+}
+/**
+ * The evidence of an assistant's contribution: both fields required. Named (A59) so the JSON Schema keeps them required;
+ * the same shape as Required<Pick<ContributionEvidence, "conversationId" | "snippet">>.
+ */
+export interface AssistantEvidence {
+  /** Opaque, at most 128 bytes; never a phone number or email. */
+  conversationId: string;
+  /** The user's own words, 1–EVIDENCE_SNIPPET_MAX characters, no contact or payment data. */
+  snippet: string;
 }
 
 /** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */
