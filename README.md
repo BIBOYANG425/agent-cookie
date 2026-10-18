@@ -16,7 +16,7 @@
 
 ## 架构
 
-下面按 [plan 第 1 节](docs/plan.md)原样保留设计图。图中的 ACME 是历史设计：A15 因 Tier 0 协议不匹配已砍，不在当前 demo。控制台的 owner API 由服务端 SDK 桥调用；商家 MCP HTTP 4311 仍是计划项。UCP 商家不接收我们的 session ID，工作台内部的商家代理持有它。
+下面按 [plan 第 1 节](docs/plan.md)原样保留设计图。图中的 ACME 是历史设计：A15 因 Tier 0 协议不匹配已砍，不在当前 demo。控制台的 owner API 由服务端 SDK 桥调用；MCP 的 HTTP 门在 127.0.0.1:4311（个人与助理工具，商家工具仍是计划项）。UCP 商家不接收我们的 session ID，工作台内部的商家代理持有它。
 
 ``` mermaid
 
@@ -95,6 +95,26 @@ cd tests/acceptance && node node_modules/vitest/vitest.mjs run --config vitest.c
 
 两个示例和 A32（两家助理公司之间的 churn：第二家助理第一次读 context 就知道第一家学到的）都对演示模式的真实工作台跑，输出只有计数、id 和字段名；数据为 Sample，UCP 报价为录制回放。设计见 `docs/bring-your-own-agent-plan.md`。
 
+### 自己的 agent：`agent-cookie init`
+
+给自己跑 agent 的人：`init` 指向一个工作台（或用 `--start` 起一个空白的，数据在 `~/.agent-cookie`），读 `owner.key`，为你的 agent 发第一把 personal 钥匙，只打印一次环境变量和五行 SDK 代码，从不写进文件。之后 `agent-cookie keys mint|list|revoke` 管理钥匙；撤销后该钥匙处处 401，agent 写过的内容和回执都留着。验收 A29：空白工作台 → 发钥匙 → 只用 SDK 写两条偏好并读回 → 撤销 → 下一次 401。
+
+```sh
+pnpm build:deps && pnpm --filter @agent-cookie/cli build
+node packages/cli/dist/main.js init --start     # 打印 export AGENT_COOKIE_URL=… 和 export AGENT_COOKIE_KEY=…（只这一次）
+```
+
+### Python 客户端与 MCP 的 HTTP 门
+
+不用 TypeScript 的团队：`packages/sdk-python` 是从 `packages/contract/openapi.json` 用 openapi-python-client 生成的客户端，外加同名（snake_case）的 `AssistantClient`、`MerchantClient`、`WorkspaceClient`，README 有同样三段快速开始。Python ≥ 3.11。
+
+```sh
+pnpm --filter @agent-cookie/sdk-python run bootstrap   # 一次：建 .venv
+pnpm --filter @agent-cookie/sdk-python test            # pytest，自己起一个演示工作台
+```
+
+MCP 客户端不走 stdio 时：`AGENT_COOKIE_MCP_TRANSPORT=http` 让 `packages/mcp` 在 `http://127.0.0.1:4311/mcp` 说 Streamable HTTP；每个会话按其 bearer 钥匙的 `/me` 角色拿个人工具或助理工具（每个 `AssistantClient` 方法一个），owner 和商家钥匙一律 401。托管部署只需在前面加 TLS。详见 [MCP README](packages/mcp/README.md)。
+
 ### 托管 jar（网关）
 
 `apps/gateway` 让没有自己工作台的人也有一个 jar。它不是多租户工作台：**每人一个**真实的 `apps/workspace` 进程（blank seed、自己的数据目录、只听 127.0.0.1），网关用 passkey 注册和登录（没有密码，也没有邮箱），把 `/u/<userId>/*` 转给本人的实例。助理公司在网关注册**一次**，拿到只在网关有效的全局 key，为正在对话的人申请同意链接；本人点开 `/link/<id>`，用 passkey 登录或新建 jar，看到助理名和它能读的**字段名**，批准。网关随即在本人实例里注册该助理，用自己持有的 owner key 批准实例内的 link；助理轮询到 `jar: { url: "<origin>/u/<userId>", key }`，之后 `/assistant/*` 和 intent 路由原样走 `jar.url`（SDK：`AssistantClient.forJar(link.jar)`）。本人的 cookie 页 `/me`：回执（谁、哪些字段名、什么用途）、可撤销的授权、link 列表、删除我的数据、退出登录。契约在 `packages/contract/src/gateway.ts`，细节见 [网关 README](apps/gateway/README.md)。
@@ -139,6 +159,9 @@ A33 自己在随机空闲端口起一个测试模式网关和临时数据目录�
 | `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` / `AGENT_COOKIE_LEARNING_OTLP_TOKEN` | 可选学习遥测出口；不设置则不导出，不记录对话原文。TOKEN 当前仅旧 Spectrum 入口读取，Beta/后台未接。 |
 | `AGENT_COOKIE_JAR_KEK` / `AGENT_COOKIE_UNLOCK_SECRET` | P1 jar hooks，必须成对配置；KEK 为32字节 base64url。不是主线先决条件。 |
 | `AGENT_COOKIE_JAR_PATH` | 可选 jar 保存路径。 |
+| `AGENT_COOKIE_MCP_TRANSPORT` | MCP `stdio`（默认）或 `http`。 |
+| `MCP_HTTP_PORT` | MCP HTTP 门，默认 4311，只绑 127.0.0.1。 |
+| `AGENT_COOKIE_OWNER_KEY` | CLI `init` 用的 owner key；不设则读 `<数据目录>/owner.key`。 |
 | `PORT` | 工作台 4310，固定绑定 127.0.0.1；控制台 5173。 |
 | `MEMORY_REPO_PATH` | 默认数据目录下 `memory`；工作台初始化的用户 Git 记忆库。 |
 | `SQLITE_PATH` / `FIXTURES_DIR` | 默认数据目录下 `workspace.sqlite` / 仓库 `fixtures`；客户端不直读 SQLite。 |
@@ -153,7 +176,7 @@ A33 自己在随机空闲端口起一个测试模式网关和临时数据目录�
 | `VISA_ACCEPTANCE_MERCHANT_ID` / `VISA_ACCEPTANCE_KEY_ID` / `VISA_ACCEPTANCE_SHARED_SECRET` | `AGENT_COOKIE_PAY=visa` 必需；只从环境读取，不记录、不打印。截至 2026-10-18 Visa 未提供沙盒，provider 只对照官方 Node SDK 离线校验，仓库内没有任何真实调用结果。 |
 | `AGENT_COOKIE_EXPERIMENT` | `off`（默认）或 `ranking`：按 intent 分组的排序对照实验，报表见 `GET /owner/experiments`。 |
 
-高级工作台限时/重试配置见 [config.ts](apps/workspace/src/config.ts)。商家 MCP HTTP 4311 是计划项；unlock 4312 独立验证；blueprint 8000/3000 仅保留 A16 接入材料，不是当前主线服务。
+高级工作台限时/重试配置见 [config.ts](apps/workspace/src/config.ts)。MCP HTTP 4311（`AGENT_COOKIE_MCP_TRANSPORT=http`）只给 personal 与 assistant 钥匙，商家工具是计划项；unlock 4312 独立验证；blueprint 8000/3000 仅保留 A16 接入材料，不是当前主线服务。
 
 演示重置使用 owner 环境中的 `pnpm demo:reset`（`POST /demo/reset`），且工作台必须开启 demo。它清理 SQLite 演示状态，**只把 Git 的 `contributions/`、`notes/`、`CARD.md`、`receipts.md`、`POLICY.yaml` 恢复到 seed**；skill 的其他文件及 `MEMORY.md` 改动保留。不要对正在聊天或录制的实例重置。稳定商家 session ID 不变。
 
