@@ -61,7 +61,7 @@ it('rejects other senders, groups, projects, outbound messages, old events and f
     const e=structuredClone(original);change(e);expect(matchMessage(e,config,start,Date.now())).toBeUndefined();
   }
   const client=await workspace();const accept=vi.spyOn(client,'accept');
-  expect(await respond('accept quoteId=admin purpose=payment','bad',{},client)).toContain('试试');expect(accept).not.toHaveBeenCalled();
+  expect(await respond('accept quoteId=admin purpose=payment','bad',{},client)).toContain('Try');expect(accept).not.toHaveBeenCalled();
   expect((await client.getReceipts()).receipts).toEqual([]);
 });
 it('persists send uncertainty before send and will not resend automatically',async()=>{

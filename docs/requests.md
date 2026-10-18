@@ -383,3 +383,6 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
 | A62 | A → D（交接，2026-10-18）：人决定把全部商业轨道代码交给 D 线（Devin）。交接文档 `docs/handoff/devin-commerce.md`：D1 Visa Acceptance 模拟器（`apps/visa-sim`，用官方 SDK 代码独立验签，脚本化场景而非随机，`VISA_ACCEPTANCE_SIMULATOR=1` 只放行回环主机，页面与回执标注"模拟器"），D2 UCP 支付工具与 payer 签名（A50），D3 Visa JWT 鉴权。Visa 不会提供沙盒，Intelligent Commerce 不模拟、继续搁置。A 线的 /loop 不再做 Phase 2。 |
 | A80 | A → 人（记录，2026-10-18）：Phase 3 托管 jar 已建成（分支 `claude/amazing-allen-cnv3s6`，PR 待开）：契约 `gateway.ts`、工作台 `AGENT_COOKIE_SEED=blank` 与 `GET /healthz`、SDK 路径前缀与 `forJar`、新应用 `apps/gateway`（每人一个工作台进程、passkey、consent link、cookie 页、反向代理、owner key 不出网关）、验收 A33。未做并已写明：邮箱、passkey 找回、第二设备；operator 汇总留待 Phase 4（`measured: false`）。Phase 4/5 已分别交给独立会话（分支 `claude/phase-4-history-operator`、`claude/phase-5-doors`，各自开 PR；requests 编号分别从 A63、A70 起）。 |
+| BC-i18n | B/C → 各线（负责人已批准跨线）：SDK/MCP 保留原话 text 并传英文 query、显式条件与商家数量，兼容旧 kind；Photon 用确定性双语词典搜通用品并按消息语言回复；控制台随卡片语言并支持持久化中英切换，保留 Sample、未知到货及未确认订单/支付提示；不改工作台或契约，不新增依赖或模型调用。 |
+
+| BC-i18n-CI | B/C → D（2026-10-18）：在最新 main `b1e049a` 独立 worktree 第 12 次复现 auth unlock token 的 bad-MAC 断言偶发失败（test/auth.test.ts:180）；固定替换 base64url 末字符为 x 可能不改变解码字节，请 D 线改成确定翻转 MAC 字节的测试；本 PR 不改 D 线代码。 |
