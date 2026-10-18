@@ -6,8 +6,8 @@ import { EVIDENCE_SNIPPET_MAX } from '@agent-cookie/contract';
 import { fieldName, isObject, text, validDate, validId } from './core.js';
 
 export const BASES = ['observed', 'stated', 'inferred'] as const satisfies readonly Basis[];
-/** Longest conversation id accepted in evidence (the same bound as an observation's conversationId). */
-const CONVERSATION_ID_MAX = 128;
+/** Longest conversation id accepted in evidence, in UTF-8 bytes (contract AssistantContributionInput). */
+const CONVERSATION_ID_MAX_BYTES = 128;
 
 export interface ContributionInput {
   field: Field;
@@ -46,7 +46,7 @@ export interface ContributionResult {
 }
 
 const basis = (v: unknown): v is Basis => (BASES as readonly unknown[]).includes(v);
-const conversationId = (v: unknown): v is string => validId(v) && v.length <= CONVERSATION_ID_MAX && !!v.trim();
+const conversationId = (v: unknown): v is string => validId(v) && text(v, CONVERSATION_ID_MAX_BYTES);
 const snippet = (v: unknown): v is string => typeof v === 'string' && !!v.trim() && Array.from(v).length <= EVIDENCE_SNIPPET_MAX;
 
 /** The explicit wire body; validation messages never contain the value or the snippet. */

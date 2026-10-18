@@ -83,15 +83,22 @@ export function isWorkspaceError(error: unknown, ...codes: ErrorCode[]): error i
   return error instanceof WorkspaceError && (codes.length === 0 || codes.includes(error.code));
 }
 
-/** The origin of a loopback workspace URL; anything else is refused before a key could travel to it. */
+const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', 'localhost', '[::1]'];
+const ORIGIN_RULE = 'AGENT_COOKIE_URL must be an https:// origin, or http:// on loopback (127.0.0.1, localhost, [::1]), '
+  + 'with no path, query or credentials.';
+
+/**
+ * The origin of a workspace URL, refused before a key could travel to it unless it is either
+ *  - `https:` on any host: a hosted jar behind its TLS gateway (plan Phase 3), or
+ *  - `http:` on loopback only: the local workspace (127.0.0.1:4310 by default).
+ * An origin only: no path, query, fragment or embedded credentials. Every refusal carries the same message.
+ */
 export function workspaceOrigin(value: string | undefined): string {
   let url: URL;
   try { url = new URL(value ?? 'http://127.0.0.1:4310'); }
-  catch { throw new Error('AGENT_COOKIE_URL must be a loopback HTTP URL.'); }
-  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
-    throw new Error('AGENT_COOKIE_URL must be a loopback HTTP origin without credentials.');
-  }
+  catch { throw new Error(ORIGIN_RULE); }
+  const transport = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname));
+  if (!transport || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error(ORIGIN_RULE);
   return url.origin;
 }
 

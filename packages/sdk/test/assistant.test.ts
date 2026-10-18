@@ -198,6 +198,7 @@ describe('context, remember, stats', () => {
     { conversationId: 'conv-42', snippet: '' },
     { conversationId: '', snippet: 'secret-snippet' },
     { conversationId: 'c'.repeat(129), snippet: 'secret-snippet' },
+    { conversationId: '会'.repeat(43), snippet: 'secret-snippet' }, // 129 bytes: the bound is in UTF-8 bytes
     { snippet: 'secret-snippet' },
   ])('refuses malformed evidence before sending, without echoing it %#', async evidence => {
     const fetcher = vi.fn<typeof fetch>();

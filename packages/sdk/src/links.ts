@@ -2,7 +2,10 @@
 import type { Link, LinkStatus, LinkView } from '@agent-cookie/contract';
 import { isObject, validDate, validId } from './core.js';
 
-/** Every LinkStatus, in lifecycle order. */
+/**
+ * Every LinkStatus, in lifecycle order. The contract has only the type today; once it exports its own LINK_STATUSES,
+ * this becomes a re-export of it (test/owner-links.test.ts fails until it does, so the switch is not forgotten).
+ */
 export const LINK_STATUSES = ['pending', 'approved', 'declined', 'expired'] as const satisfies readonly LinkStatus[];
 const linkStatus = (v: unknown): v is LinkStatus => (LINK_STATUSES as readonly unknown[]).includes(v);
 

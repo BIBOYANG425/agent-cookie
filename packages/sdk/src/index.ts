@@ -42,6 +42,7 @@ export type PolicyResult = PolicyView & { sample: boolean };
 export type ShadowResult = ShadowReport & { sample: boolean };
 /** GET /owner/links. */
 export interface LinkList { links: Link[]; sample: boolean }
+export interface LinkQuery { limit?: number }
 export type LinkResult = Link & { sample: boolean };
 
 /**
@@ -159,9 +160,16 @@ export class WorkspaceClient extends ActingClient {
       unchanged: payload.unchanged, sample: payload.sample === true };
   }
 
-  /** Requires an owner key. Consent links, newest first: pending ones to decide, and decided ones. */
-  async listLinks(options?: RequestOptions): Promise<LinkList> {
-    const payload = await this.request('/owner/links', options);
+  /**
+   * Requires an owner key. Consent links, newest first: pending ones to decide, and decided ones. `limit` is an
+   * integer 1–500 (the workspace's default is 100), checked before sending.
+   */
+  async listLinks(query: LinkQuery = {}, options?: RequestOptions): Promise<LinkList> {
+    const limit = isObject(query) ? query.limit : null;
+    if (limit !== undefined && (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > 500)) {
+      throw new Error('Invalid links query.');
+    }
+    const payload = await this.request(`/owner/links${limit !== undefined ? `?${new URLSearchParams({ limit: String(limit) })}` : ''}`, options);
     const links = isObject(payload) && Array.isArray(payload.links) ? payload.links.map(ownerLink) : undefined;
     if (!isObject(payload) || !links || !links.every((l): l is Link => l !== undefined)) throw new Error('Invalid links response.');
     return { links, sample: payload.sample === true };

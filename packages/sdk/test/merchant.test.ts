@@ -177,7 +177,14 @@ describe('registerAgent', () => {
       callbackUrl: 'http://127.0.0.1:5001/cookie' });
   });
 
-  it.each(['https://127.0.0.1:4310', 'http://workspace.example', 'http://127.0.0.1:4310/api'])('refuses workspace URL %s before sending', async target => {
+  it('registers with a hosted jar over https', async () => {
+    const fetcher = replies([registration, 201]);
+    await registerAgent('https://jar.example.com', { name: 'Muse', category: 'assistant' }, { fetch: fetcher });
+    expect(String(fetcher.mock.calls[0][0])).toBe('https://jar.example.com/agents/register');
+  });
+
+  it.each(['http://workspace.example', 'http://127.0.0.1:4310/api', 'https://user:secret@jar.example.com', 'https://jar.example.com/u/42'])(
+    'refuses workspace URL %s before sending', async target => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(registerAgent(target, { name: 'Muse', category: 'assistant' }, { fetch: fetcher })).rejects.toThrow('AGENT_COOKIE_URL');
     expect(fetcher).not.toHaveBeenCalled();

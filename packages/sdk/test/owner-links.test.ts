@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WorkspaceClient, WorkspaceError } from '../src/index.js';
+import * as contract from '@agent-cookie/contract';
+import { LINK_STATUSES, WorkspaceClient, WorkspaceError } from '../src/index.js';
 
 const config = { baseUrl: 'http://127.0.0.1:4310', key: 'sample-owner-key' };
 const at = '2026-10-18T09:00:00.000Z';
@@ -22,6 +23,29 @@ describe('owner consent links', () => {
     expect(await new WorkspaceClient({ ...config, fetch: fetcher }).listLinks()).toEqual({ links: [approvedLink, pendingLink], sample: true });
     expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4310/owner/links');
     expect(fetcher.mock.calls[0][1]).toMatchObject({ method: 'GET', headers: { Authorization: 'Bearer sample-owner-key' } });
+  });
+
+  it('sends ?limit= only when given, checked before sending', async () => {
+    const fetcher = replies([{ links: [] }], [{ links: [] }], [{ links: [] }]);
+    const client = new WorkspaceClient({ ...config, fetch: fetcher });
+    await client.listLinks();
+    await client.listLinks({ limit: 500 });
+    await client.listLinks({ limit: 1 }, { signal: new AbortController().signal });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual(['http://127.0.0.1:4310/owner/links',
+      'http://127.0.0.1:4310/owner/links?limit=500', 'http://127.0.0.1:4310/owner/links?limit=1']);
+  });
+
+  it.each([0, 501, 2.5, -1, Number.NaN, '10'])('refuses limit %j before sending', async limit => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(new WorkspaceClient({ ...config, fetch: fetcher }).listLinks({ limit: limit as number })).rejects.toThrow('Invalid links query');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('lists every link status, and is the contract\'s own list once the contract exports one', () => {
+    expect([...LINK_STATUSES]).toEqual(['pending', 'approved', 'declined', 'expired']);
+    const fromContract = (contract as Record<string, unknown>).LINK_STATUSES;
+    // When lane A adds LINK_STATUSES to the contract, src/links.ts must re-export it instead of keeping its own copy.
+    if (fromContract !== undefined) expect(LINK_STATUSES).toBe(fromContract);
   });
 
   it.each([{}, { links: {} }, { links: [{ ...pendingLink, status: 'maybe' }] }, { links: [{ ...pendingLink, createdAt: 'now' }] },

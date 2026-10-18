@@ -18,7 +18,7 @@ npm install @agent-cookie/sdk   # Node 22+, ESM, types included, no runtime depe
 - **Keys are bearer credentials, shown once.** `registerAgent` returns the key in its response and never again. Keep it in your secret store (`AGENT_COOKIE_KEY`), never in a prompt, a chat message, a log or a commit. The SDK never puts a key or a field value in an error message.
 - **Demo mode is Sample data.** A workspace started with `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture` serves a Sample persona (its card, receipts and stats), Sample keys (`fixtures/dev-keys.json`, e.g. `ck_assistant_sample`, `ck_merchant_acme_sample`, `ck_personal_desktop_sample`) and recorded store answers replayed from fixtures. Quotes and cards with `source: sample | fixture` come back with `sample: true`; contexts, handshakes, links and stats carry no source, so set `AGENT_COOKIE_SAMPLE=1` (or `sample: true` in the client options) to label those too. Never show Sample data as a real person, real inventory or a real order.
 
-Today the SDK talks to a workspace on loopback only (`http://127.0.0.1:4310`, `localhost`, `[::1]`; no path, no credentials in the URL) and refuses any other origin, so a key cannot be sent elsewhere. The hosted gateway is a later phase of the plan.
+**Where the workspace is.** The URL is an origin: `https://` on any host (a person's hosted jar behind its TLS gateway), or `http://` on loopback only (`127.0.0.1`, `localhost`, `[::1]`; the local workspace listens on `http://127.0.0.1:4310`). No path, query or credentials in it. Anything else, `http://` to another machine included, is refused before a request, so a key never crosses a network in clear text. The SDK never follows a redirect. The hosted gateway itself is a later phase of the plan; the quickstarts use the local workspace.
 
 ## Quickstart (a): an assistant company
 
@@ -103,7 +103,7 @@ const result = await me.accept(found.quotes[0].id, `accept-${found.quotes[0].id}
 const { receipts } = await me.getReceipts(); // who read which field, for which purpose; never values
 ```
 
-The owner key (console, CLI) also decides consent links: `listLinks()`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
+The owner key (console, CLI) also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
 
 ## Errors
 
@@ -133,9 +133,9 @@ Every method takes an optional last `{ signal?: AbortSignal }`. Writes that crea
 
 **`registerAgent(url, { name, category, capabilities?, callbackUrl?, chatEndpoint? }, { fetch?, timeoutMs?, signal? })`** → `Registration { agentId, key, category, role }`. No key needed; an assistant takes no callback or chat endpoint; category `personal` needs the owner key and is refused.
 
-**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks()`, `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
+**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks({ limit? })` (1–500, workspace default 100), `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
 
-**Configuration.** `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
+**Configuration.** `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`; an `https://` origin, or `http://` on loopback) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
 
 ## Develop in this repository
 
