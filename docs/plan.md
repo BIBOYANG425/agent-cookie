@@ -20,6 +20,8 @@ LA HACKS 2026 · 工程计划 v0.3 · 2026-10-17
 > - 新增：第 8 节"更大的图景"——北极星、开放协议、四阶段路线、网络效应、购物以外的场景、商业模式假设、规模化风险、答辩里怎么讲大。24 小时范围不变。
 > - D 线签名钥改为按 session 成对派生（`HKDF(主种子, sessionId)`），JWKS 按 `?sessionId=` 只给该 session 的公钥。单一 jar 公钥会成为跨商家的全局标识，违反命题 6 / A22。
 
+> 2026-10-18：本文由人维护；当日人授权 A 线会话按 `docs/requests.md` 的 A46、A56、A60 直接修订下文（验收清单 A24–A32、环境变量、字段策略表、受众改向、Stripe → Visa）。原始设计文字其余未动。
+
 ## 1 · 这个计划具体是什么
 
 我们做三样东西，加上演示用的 agent。
@@ -151,6 +153,8 @@ Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以
 
 ### 双边定位
 
+> 2026-10-18 改向（A60）：真实受众是会在公司 agent 之间流失的普通用户，他们不会铸造钥匙。助理公司（Manus、Dots、Muse）接 SDK 的 `AssistantClient` 与一键 consent link；商务平台（Shopify）走协议（UCP、Visa 轨道），`MerchantClient` 留给长尾商家；用户的 jar 在中间、托管、每人一个实例，在结账时一键创建。个人自建 agent 的路径最后做。详见 `docs/bring-your-own-agent-plan.md` v0.2。
+
 这层基础设施有两个客户，缺一个都站不住。浏览器方案（agent 用用户自己的账号逛网站）只能给用户无感，给不了商家下面这些，这也是评委问"为什么不直接 browser-use"时的答案。
 
 | 谁 | 得到什么 | demo 里哪一幕证明 |
@@ -197,6 +201,14 @@ Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以
 | A20 | 商家验签登录 | 商家用该 session 的 JWKS 验签通过；篡改一字节被拒；首次见面记该 session 的 kid，再见即登录；两家商家拿到的公钥不同 | `P1` |
 | A21 | 支付单次限额 | 同一支付授权第二次使用被拒；金额超 intent.budget 被拒；商家拿不到 token | `P1` |
 | A22 | 回头客 | 同一用户经两个不同个人 agent 介绍到同一商家，两次 session ID 相同；`POST /demo/reset` 后仍相同；握手和字段里没有电话、邮箱等全局标识 | `P0` |
+| A24 | 漏斗 | `GET /owner/funnel` 每个 intent 一行：introduced/quoted/首报价毫秒/accepted/outcome/fieldsGranted/fieldsRead/purposeReleases/questionsSkipped/createdBy，只有计数与 id，没有字段值（`docs/commerce-analytics-plan.md` Phase 0；`apps/workspace/test/acceptance/a24.test.ts`） | `P1` |
+| A25 | 策略文档 | 字段策略是一份可安装的 `PolicyDocument`：`GET /personal/policy` 给出文档与 policyId；`PUT` 低于 floor 的文档 422 并列出每条违反；授权与回执带 policyId（`a25-a26.test.ts`） | `P1` |
+| A26 | 影子评估 | `POST /personal/policy/shadow` 对历史回执和读取逐条给出候选文档会改变的结果，不改变任何授权 | `P1` |
+| A27 | 阶段授权 | quoted → accepted → checkout → payment 每进一阶段开一份只含该阶段字段的 grant；地址只在 checkout、支付只在 payment；每次放行写回执（`stages.test.ts`、`payment.test.ts`、A21） | `P1` |
+| A28 | 报价推送 | `GET /personal/intents/:id/events` 以 SSE 推送已有与新到报价、complete、expired；`Last-Event-ID` 可续；SDK `find()` 先走流再回退长轮询（`a28-events.test.ts`） | `P1` |
+| A31 | 公司助理接入 | 助理注册 → 申请 link → owner 批准 → `GET /assistant/context` 只有策略允许的值、没有地址与支付 → 建 intent、accept → 回执含 assist 与 checkout → 漏斗行 createdBy/questionsSkipped → 撤销后 403；带用户原话证据的 stated 写入上卡，第二个助理第一次读就能看到（`a31-assistant.test.ts`） | `P1` |
+| A32 | 助理之间的 churn | 两家公司助理、两家商家：A 学到两件事并下单；C 第一次 context 就知道；D 只在结账拿到地址；回执恰好四个 session；C 读不到 A 的 intent；撤销 A 后 C 不再看到 A 的值；任何面向助理或商家的响应不含 payment_method（`tests/acceptance/a32-churn.test.ts`） | `P1` |
+| A29 / A30 | （计划）空白工作台 + 自带 agent；陌生商家 agent 跳过自身 onboarding | `docs/bring-your-own-agent-plan.md` v0.1 的个人自建路径，v0.2 排到最后，未实现 | — |
 
 ### 比赛目标（10 月 17 日赛道页）
 
@@ -366,7 +378,7 @@ sequenceDiagram
 - `ucp` CLI 0.9.1 装好，`ucp catalog search` 对 "trail running shoes" 有结果；挑好两个在库变体，响应录进 `fixtures/ucp/`。
 - `ANTHROPIC_API_KEY` 可用，计划里的模型 ID 实际调得通。
 - Claude Desktop 已装；`anthropics/commerce-agents` 的 retail 能在本机起来（:8000 / :3000）。
-- D 线：Stripe 测试模式 key；一个 HTTPS 域名或 tunnel（WebAuthn 只在 secure context 下工作，rpID 绑定域名）。
+- D 线：Visa Acceptance 沙盒凭据（如 Visa 提供）；一个 HTTPS 域名或 tunnel（WebAuthn 只在 secure context 下工作，rpID 绑定域名）。
 - 确认 LA Hacks 2026 对预制资产（本计划、fixtures、设计稿）的规定。
 
 ### 环境变量与端口
@@ -381,7 +393,9 @@ sequenceDiagram
 | `AGENT_COOKIE_TEST` | `1` 时开放 `POST /test/clock` | 工作台；只在验收里开 |
 | `OPT_OUT_INSTRUMENTATION` | `true` | ucp CLI |
 | `ANTHROPIC_API_KEY` | 自建商家 agent、Photon 线的模型 | A、B |
-| `STRIPE_SECRET_KEY` | 测试模式 | D 线，P1 |
+| `AGENT_COOKIE_PAY` | `off`（默认）/ `fake` / `visa`：支付阶段的 provider；`visa` 只允许 Visa Acceptance 沙盒主机；Stripe 代码在 `packages/pay` 但未接线 | 工作台，D 线 |
+| `VISA_ACCEPTANCE_MERCHANT_ID` / `VISA_ACCEPTANCE_KEY_ID` / `VISA_ACCEPTANCE_SHARED_SECRET` | `AGENT_COOKIE_PAY=visa` 必需；只从环境读，不记录；截至 2026-10-18 Visa 未提供沙盒，provider 对照官方 Node SDK 离线校验 | D 线 |
+| `AGENT_COOKIE_EXPERIMENT` | `off`（默认）/ `ranking`：按 intent 分组的排序对照实验，`GET /owner/experiments` | 工作台，A 线 |
 | `SENTRY_DSN` | tracing + logs | A 线，P1 |
 | Photon 凭据 | 名字以 Photon 文档为准 | B 线 |
 
@@ -427,7 +441,7 @@ H2–18TD · 登录与支付（D 线）`P1`D 线 · Devin
 
 **TD1 · jar 密钥与 passkey 解锁（H2–8）。**`packages/auth`：jar 生成一个主种子，加密存本机；每个 session 的 Ed25519 签名钥按 `HKDF(主种子, sessionId)` 派生（成对密钥：每家商家看到的公钥不同，商家之间对不上号；sessionId 按 merchantKey 推导，所以重置或换个人 agent 后同一家仍是同一把）；`apps/unlock` 一个手机能开的页面，用 `@simplewebauthn/server` + browser 做 passkey 注册和断言，断言成功后解锁 jar 主种子 N 分钟（手机经 HTTPS tunnel 访问该页，工作台本身仍只听 127.0.0.1）；`signHandshake(handshake) → { sig, kid }`。验收 A19：手机 Face ID 一次 → 工作台能签握手；未解锁时签名接口 403 JAR_LOCKED。 **TD2 · 商家验签登录（H8–14）。**握手增加 `sig` 和 `kid`；工作台暴露 `GET /.well-known/agent-cookie-jwks.json?sessionId=`，只返回该 session 的公钥；商家侧 SDK 加 `verifyHandshake()`；首次见面把该 session 公钥的 `kid` 记在该商家的 note 里，之后验签即登录（"Sign in with Agent Cookie"，等价于 OIDC pairwise subject）。ACME 的 Tier 2 参考实现改为验签后才读字段。验收 A20：篡改一个字节的握手被拒。 **TD3 · 支付凭据按用途单次放行（H10–18）。**`packages/pay`：身份卡字段 `payment_method` 只存提供方 token 引用（Stripe 测试模式的 payment method id；Visa 沙盒接得上就换）。策略：purpose=payment、金额 ≤ intent.budget、单次有效、只给被接受报价的那一家。`authorizePayment({ sessionId, amount, currency })` 由工作台替用户向提供方发起，商家只拿到授权结果，不拿 token。回执写金额。验收 A21：同一授权第二次使用被拒；超预算被拒。 **TD4 · 接到 demo（H18 前）。**UCP 真实商家的 checkout 若接受 `payment.instruments` 的委托支付则接入，否则保持 `requires_escalation`（用户自己刷）；ACME 的 checkout handoff 用 Stripe 测试模式走完 TD3。demo 第 4 拍据此二选一，台词如实。
 
-出口：A19–A21 绿；至少一条真实路径（ACME + Stripe 测试模式）从握手验签到限额单次扣款跑通。没到出口，demo 只讲设计，不演。
+出口：A19–A21 绿；至少一条真实路径（Visa Acceptance 沙盒；未获沙盒时对照 Visa 官方 SDK 离线校验，不声称真实调用）从握手验签到限额单次授权跑通。没到出口，demo 只讲设计，不演。
 
 H14–18T7 · 验收、幂等、稳定性`P0`A、B、C 三线（D 线按自己的出口走）
 A：Idempotency-Key 落在 intents、quotes、quotes/accept；A13 通过。 A：商家 callback 失败重试 3 次，失败写 activity，不阻塞别的商家。 B：从 reset 连跑 demo 两遍，记录每一步耗时；超过 20 秒的步骤换 haiku 或缩短提示。 B：录一遍完整运行，标 Recorded run，作为备用。 A10：从 Claude Desktop 跑的那次，把活动日志导出存进 `docs/evidence/`。
@@ -551,17 +565,22 @@ H21–24T9 · 冻结与提交`P0`四线（D 线未达出口则不合并）
     export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
     export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
 
-### 字段策略表（packages/core/src/policy.ts）
+### 字段策略表（packages/contract/src/policy-document.ts）
+
+2026-10-18 起，这张表由安装的 `PolicyDocument` 决定（`DEFAULT_POLICY` 即下表，是种子；用户记忆库里的 `POLICY.yaml` 可改，但不能低于 floor：风格字段随每次握手、payment_method 只在 payment、shipping_address 只在 checkout、商家只写 shoe_size、个人 agent 读写全部、公司助理永不读写地址与支付）。
 
 | 类别 | 随握手可读（auto） | 按用途可读（purpose） | 可写的字段 |
 |----|----|----|----|
 | personal | 全部 | 无 | 全部，basis 可为 stated |
 | shoe | lang, tone, length, shoe_size, budget, deadline | shipping_address，仅 purpose=checkout | shoe_size（observed） |
 | 任何商家类别 | — | payment_method，仅 purpose=payment，且金额 ≤ intent.budget、单次有效、只给被接受报价的那一家；放行的是授权结果，不是 token | 无 |
+| assistant（公司助理，`docs/bring-your-own-agent-plan.md`） | lang, tone, length, shoe_size, budget, deadline, pref.*（以值读取，不带来源；owner 批准 link 后，按安装的文档在读取时决定） | 无；shipping_address 与 payment_method 在代码里硬拒，工作台在 checkout / payment 阶段直接交给商家 | shoe_size, pref.*（stated 须带用户原话证据，link 有效期内与个人 agent 同级信任；observed 为候选，需第二个独立来源） |
 
 表里没有的组合一律 deny。pharmacy、hotel 两类连同 date_of_birth、allergies、diet 字段已砍掉；下文"药店"只作隔离的举例。用途由商家声明，工作台只核对用途与字段是否相符，并把每次放行写成回执给用户。电话号码不是字段，永远不进卡。
 
 ### 工作台 HTTP（apps/workspace，127.0.0.1:4310）
+
+2026-10-18：冻结的端点清单以 `packages/contract/src/endpoints.ts`（及由它生成的 `packages/contract/openapi.json`）为准。本表之外当日新增：`GET /owner/funnel`、`GET /owner/experiments`、`GET/PUT /personal/policy`、`POST /personal/policy/shadow`、`GET /personal/intents/:id/events`（SSE）、`GET /agent/stats`、公司助理的 `POST /assistant/link`、`GET /assistant/link/:id`、`GET /assistant/context`、`POST /assistant/contributions`、`GET /assistant/stats`、`GET /owner/links`、`POST /owner/links/:id/approve|decline`；intent / quotes / events / accept / observations 路由也接受已 link 的助理钥匙。类型新增见 `packages/contract/src/{analytics,events,policy-document,types}.ts`（`FunnelRow`、`PolicyDocument`、`IntentEvent`、`Link`、`AssistantContext`、`AssistantStats` 等）。
 
 | 方法与路径 | 调用方 | 行为 |
 |----|----|----|
@@ -701,7 +720,7 @@ passkey 绑定设备，agent 在云端没法替你按 Face ID。所以 jar 自�
 
 ### 这个周末不做
 
-- P0 不碰付款（用户在商家 continue_url 自己刷卡），P1 的 D 线按上文接 Stripe 测试模式或 Visa 沙盒；不做 Photon A2A 群聊、Browser Use、Agentverse、文件来源 hash、跨设备、多用户托管、组织权限。
+- P0 不碰付款（用户在商家 continue_url 自己刷卡），P1 的 D 线按 Visa 轨道（`docs/commerce-analytics-plan.md` §7b）接入，不接 Stripe；不做 Photon A2A 群聊、Browser Use、Agentverse、文件来源 hash、跨设备、多用户托管、组织权限。
 - 从商家对话里提取记录（只从个人 agent 的对话提取）。
 - 通用向量搜索、自动归档聊天记录。
 - 任何形式的"防篡改审计"宣传。本机管理员能改 SQLite。
