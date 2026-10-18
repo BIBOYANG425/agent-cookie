@@ -552,10 +552,11 @@ describe("A21 · AGENT_COOKIE_PAY=visa (Visa Acceptance sandbox, fetch injected:
       },
     });
     expect(sent[0]!.headers.Host).toBe("apitest.cybersource.com");
-    // Reversal: after complete, of the amount the authorization response authorized; currency under orderInformation.
+    // Reversal: after complete, of the amount the authorization response authorized; the currency sits beside it under
+    // reversalInformation.amountDetails (the official SDK's AuthReversalRequest model; its orderInformation.amountDetails
+    // holds only serviceFeeAmount).
     expect(sent[1]!.storeOps.filter((op) => op === "checkout.complete")).toHaveLength(1);
-    expect(sent[1]!.body).toEqual({ reversalInformation: { amountDetails: { totalAmount: (q.price / 100).toFixed(2) } },
-      orderInformation: { amountDetails: { currency: "USD" } } });
+    expect(sent[1]!.body).toEqual({ reversalInformation: { amountDetails: { totalAmount: (q.price / 100).toFixed(2), currency: "USD" } } });
 
     expect((await paymentEvents(h)).map((e) => [e.result, e.reason])).toEqual([["authorized", "tap=none billto=shipping_address"]]);
     expect((await reverseEvents(h)).map((e) => [e.object, e.result, e.reason])).toEqual([[q.id, "reversed", ""]]);

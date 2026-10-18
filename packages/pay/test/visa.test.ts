@@ -1,7 +1,9 @@
 // Visa Acceptance provider (src/visa.ts), offline. The requests and responses below are the recorded fixtures in
 // test/fixtures/visa-acceptance/ — written from the public REST reference as known, NOT captured from the sandbox (the
-// network policy denies it and no credentials exist). The golden signatures were computed outside this package (Python
-// hmac/hashlib over the signing string written out below), so a change to the signing string fails here.
+// sandbox is not available to this project: the network policy denies it and no credentials exist). The golden
+// signatures here were computed outside this package (Python hmac/hashlib over the signing string written out below,
+// with the SDK's `request-target` label), so a change to the signing string fails here; visa-sdk-golden.test.ts checks
+// the same functions against Visa's official Node SDK's own output.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createPayments } from "../src/payments.js";
@@ -70,7 +72,7 @@ describe("Visa Acceptance HTTP Signature (golden)", () => {
       merchantId: CREDS.merchantId })).toBe([
       "host: apitest.cybersource.com",
       "date: Sun, 18 Oct 2026 04:00:00 GMT",
-      "(request-target): post /pts/v2/payments",
+      "request-target: post /pts/v2/payments",
       `digest: ${digest}`,
       "v-c-merchant-id: agent_cookie_test",
     ].join("\n"));
@@ -80,7 +82,7 @@ describe("Visa Acceptance HTTP Signature (golden)", () => {
       Host: "apitest.cybersource.com",
       Digest: digest,
       Signature: 'keyid="00000000-0000-4000-8000-000000000001", algorithm="HmacSHA256", '
-        + 'headers="host date (request-target) digest v-c-merchant-id", signature="9hcDR1Uxc6no2CAnux2sZcmzSzplEUu8cBOxaxeO6JU="',
+        + 'headers="host date request-target digest v-c-merchant-id", signature="bol2CgdsLAMg1HeF9kAkSVvlFV0+E5yNJW9aW4l33RU="',
     });
   });
 
@@ -91,11 +93,11 @@ describe("Visa Acceptance HTTP Signature (golden)", () => {
       Date: DATE,
       Host: "apitest.cybersource.com",
       Signature: 'keyid="00000000-0000-4000-8000-000000000001", algorithm="HmacSHA256", '
-        + 'headers="host date (request-target) v-c-merchant-id", signature="qHkSoNKU2fvq2phc/dujDhuswP5xedcsDP0xGijOPCQ="',
+        + 'headers="host date request-target v-c-merchant-id", signature="MLk2oHMYZdhYKyGWoNzdA2JfoydnbFfuJeFtsfbnWog="',
     });
   });
 
-  it("the provider signs exactly the bytes it sends, to the sandbox host, with an RFC 7231 date", async () => {
+  it("the provider signs exactly the bytes it sends, to the sandbox host, with an RFC 7231 date and the SDK's content negotiation", async () => {
     const { visa, sent } = provider([reply("authorize-with-billto.json")]);
     await visa.authorize(fixture("authorize-with-billto.json")._input);
     expect(sent).toHaveLength(1);
@@ -103,7 +105,8 @@ describe("Visa Acceptance HTTP Signature (golden)", () => {
     expect(req!.url).toBe("https://apitest.cybersource.com/pts/v2/payments");
     expect(req!.method).toBe("POST");
     expect(req!.headers["Content-Type"]).toBe("application/json");
-    const { "Content-Type": _ct, ...signed } = req!.headers;
+    expect(req!.headers.Accept).toBe("application/hal+json");
+    const { "Content-Type": _ct, Accept: _accept, ...signed } = req!.headers;
     expect(signed).toEqual(visaSignedHeaders({ host: VISA_ACCEPTANCE_SANDBOX_HOST, ...CREDS, method: "POST", path: "/pts/v2/payments",
       body: req!.body, date: DATE }));
     expect(req!.headers.Date).toMatch(/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/);
@@ -145,12 +148,12 @@ describe("Visa Acceptance request bodies (fixtures)", () => {
     expect(sent[0]!.body).not.toContain("billTo");
   });
 
-  it("reversal shape: totalAmount under reversalInformation.amountDetails, currency under orderInformation.amountDetails", () => {
-    expect(visaReversalRequest(5_000, "USD")).toEqual({
-      reversalInformation: { amountDetails: { totalAmount: "50.00" } },
-      orderInformation: { amountDetails: { currency: "USD" } },
-    });
-    expect(JSON.stringify(visaReversalRequest(5_000, "USD").reversalInformation)).not.toContain("currency");
+  it("reversal shape: totalAmount and currency under reversalInformation.amountDetails, no orderInformation (the SDK's AuthReversalRequest)", () => {
+    const reversal = visaReversalRequest(5_000, "USD");
+    expect(reversal).toEqual({ reversalInformation: { amountDetails: { totalAmount: "50.00", currency: "USD" } } });
+    expect(Object.keys(reversal)).toEqual(["reversalInformation"]);
+    expect(reversal).not.toHaveProperty("orderInformation");
+    expect(JSON.stringify(reversal)).not.toContain("orderInformation");
     expect([visaCents("124.50"), visaCents("5"), visaCents("0.5"), visaCents("1000.05")]).toEqual([12_450, 500, 50, 100_005]);
     for (const bad of [undefined, 124.5, "", "1.234", "-1.00", "1,000.00", "12a"]) expect(visaCents(bad)).toBeUndefined();
   });

@@ -1,6 +1,8 @@
 // Visa Acceptance sandbox smoke (lane D): authorize a small amount on a TMS test instrument, then reverse it, with
-// @agent-cookie/pay's visaProvider — the first live check of the request shapes written offline (U2–U5, U7–U9 in
-// packages/pay/src/visa.ts). Sandbox only (apitest.cybersource.com); no workspace needed; nothing is captured.
+// @agent-cookie/pay's visaProvider — the first live check of the request shapes written offline (U4, U5, U7–U9 in
+// packages/pay/src/visa.ts; the signature and the body shapes are already checked against Visa's official Node SDK
+// offline). Sandbox only (apitest.cybersource.com); no workspace needed; nothing is captured. As of 2026-10-18 Visa has
+// not provided a sandbox account for this project, so this has not run; it waits for any Visa Acceptance test credentials.
 // Usage: VISA_ACCEPTANCE_MERCHANT_ID=… VISA_ACCEPTANCE_KEY_ID=… VISA_ACCEPTANCE_SHARED_SECRET=… \
 //        VISA_ACCEPTANCE_TEST_INSTRUMENT=<TMS payment-instrument id, or tms_<id>> \
 //        pnpm --filter @agent-cookie/workspace smoke:visa [--out file.json]

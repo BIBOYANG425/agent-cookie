@@ -2,34 +2,53 @@
 //
 // Written offline. This environment's network policy denies the Visa Acceptance documentation and sandbox hosts and no
 // credentials exist, so every request and response shape here comes from the public Visa Acceptance REST reference as
-// known, not from a captured exchange. All of them live in this one module; the exact requests and responses the tests
-// assume are recorded in test/fixtures/visa-acceptance/. Lines marked UNVERIFIED are the ones to confirm on the first
-// live run (apps/workspace `pnpm smoke:visa`). No result in this repository comes from a live call.
+// known and from Visa's official Node SDK read and run offline, not from a captured exchange. All of them live in this
+// one module; the exact requests and responses the tests assume are recorded in test/fixtures/visa-acceptance/. Lines
+// marked UNVERIFIED are the ones to confirm on the first live run (apps/workspace `pnpm smoke:visa`). The Visa
+// Acceptance sandbox is not available to this project, so everything listed as settled below is settled against the
+// official Node SDK, not against the service. No result in this repository comes from a live call.
 //
 // DEPRECATION: HTTP Signature is deprecated by Cybersource; JWT (P12 certificate) authentication is the required
 // follow-up before any production use. The latest revision of the Getting Started REST guide states a date after which
 // HTTP Signature messaging is no longer supported, with JSON Web Token messaging as the replacement. Not implemented here.
 //
-// Settled from the official Visa Acceptance / Cybersource material (SDKs; guides read through search snippets, not run):
-//   - the Signature `headers` label and signing-string line are `(request-target)`, parenthesised (formerly U1);
+// Settled against Visa's official Node SDK, cybersource-rest-client 0.0.84, offline (its source read and its signing
+// functions run with dummy credentials; not a live call). test/fixtures/visa-acceptance/sdk-signature-golden.json holds
+// the SDK's own Signature and Digest for fixed inputs, and test/visa-sdk-golden.test.ts reproduces them byte for byte:
+//   - Digest: `SHA-256=` + base64 sha256 of the exact body bytes.
+//   - the Signature `headers` label and signing-string line are `request-target` WITHOUT parentheses, as the SDK writes
+//     them (`headers="host date request-target digest v-c-merchant-id"`, line `request-target: post /pts/v2/payments`)
+//     (formerly U1). Visa's guides also show the parenthesised `(request-target)`; we follow the SDK, the executable
+//     form every integrator ships.
+//   - U2: request targets have no trailing slash (`/pts/v2/payments`, `/pts/v2/payments/{id}/captures`,
+//     `/pts/v2/payments/{id}/reversals`), as in the SDK's PaymentsApi, CaptureApi and ReversalApi.
+//   - U3: `Content-Type: application/json` and `Accept: application/hal+json`, as the SDK's ApiClient sends them.
 //   - reversal (formerly U6): `reversalInformation.amountDetails.totalAmount` MUST be the amount the authorization
 //     RESPONSE authorized (`orderInformation.amountDetails.authorizedAmount`), not the requested amount — they differ
-//     on a partial approval; the currency goes in `orderInformation.amountDetails.currency`, not inside
-//     `reversalInformation.amountDetails`; the response status is `REVERSED`, with a `reversalAmountDetails` object.
-//     createPayments records the response's authorized amount (`authorizedAmount`) and reverses that.
-//     `reversalInformation.reason` is omitted.
+//     on a partial approval; the currency goes in `reversalInformation.amountDetails.currency` (in the SDK's
+//     AuthReversalRequest, a reversal's `orderInformation.amountDetails` has only `serviceFeeAmount`), so no
+//     `orderInformation` object is sent; the response status is `REVERSED`, with `reversalAmountDetails`
+//     (`reversedAmount`, `originalTransactionAmount`, `currency`). createPayments records the response's authorized
+//     amount (`authorizedAmount`) and reverses that. `reversalInformation.reason` is omitted.
+//   - status vocabulary (the rest of U7 stays open below): an authorization response's `status` is one of AUTHORIZED,
+//     PARTIAL_AUTHORIZED, AUTHORIZED_PENDING_REVIEW, AUTHORIZED_RISK_DECLINED, PENDING_AUTHENTICATION, PENDING_REVIEW,
+//     DECLINED, INVALID_REQUEST; its `orderInformation.amountDetails` has `totalAmount`, `authorizedAmount` and
+//     `currency`; `errorInformation` has `reason`, `message` and `details`. A reversal response's status is REVERSED.
+//   - the fields we send exist in the SDK's models: `processingInformation.capture` (boolean),
+//     `paymentInformation.paymentInstrument.id`, and every `orderInformation.billTo` key we write (firstName lastName
+//     address1 locality administrativeArea postalCode country email).
 //
 // UNVERIFIED, in one place:
-//   U2  request targets without a trailing slash (`/pts/v2/payments`; some examples show `/pts/v2/payments/`).
-//   U3  `Content-Type: application/json` and no `Accept` (the SDKs send `application/json;charset=utf-8`, `application/hal+json`).
 //   U4  `paymentInformation.paymentInstrument.id` alone is enough for a TMS payment-instrument token (some
-//       configurations also want `paymentInformation.customer.id`); a TMS instrument id is 32 hex characters.
+//       configurations also want `paymentInformation.customer.id`; the SDK model has both fields, which does not say
+//       which one a merchant needs); a TMS instrument id is 32 hex characters.
 //   U5  `orderInformation.billTo` may be partial when the token's instrument carries its own billing address.
-//   U7  response statuses: authorize 201 AUTHORIZED | 201 DECLINED (reason at errorInformation.reason) | 400
-//       INVALID_REQUEST (reason at top level); capture 201 PENDING; HTTP 201 on a reversal; AUTHORIZED_PENDING_REVIEW,
-//       AUTHORIZED_RISK_DECLINED and PARTIAL_AUTHORIZED mean a hold exists although the payment cannot go on. We never
-//       ask for partial authorization; a partial approval (that status, or AUTHORIZED with a smaller authorizedAmount)
-//       is reversed for the amount it authorized and fails.
+//   U7  the HTTP status codes (the status vocabulary is settled above): authorize 201 AUTHORIZED | 201 DECLINED (reason
+//       at errorInformation.reason) | 400 INVALID_REQUEST (reason at top level); capture 201 PENDING; HTTP 201 on a
+//       reversal. Our handling, not a provider fact: AUTHORIZED_PENDING_REVIEW, AUTHORIZED_RISK_DECLINED and
+//       PARTIAL_AUTHORIZED mean a hold exists although the payment cannot go on. We never ask for partial
+//       authorization; a partial approval (that status, or AUTHORIZED with a smaller authorizedAmount) is reversed for
+//       the amount it authorized and fails.
 //   U8  `id` is a decimal string (accepted here: 1–64 letters or digits, since it goes into a URL path).
 //   U9  `clientReferenceInformation.code` is a merchant reference, not a de-duplication key: a retry after a lost
 //       response can create a second authorization (createPayments releases the quote only when the call threw).
@@ -47,10 +66,10 @@ export const VISA_ACCEPTANCE_SANDBOX_HOST = "apitest.cybersource.com";
 /** The card's payment_method for this provider: `tms_` + the TMS payment-instrument id (a provider token reference). */
 export const VISA_TOKEN_PREFIX = "tms_";
 
-/** The request-target pseudo-header, parenthesised as in the official Visa Acceptance / Cybersource SDKs. */
-export const REQUEST_TARGET = "(request-target)";
+/** The request-target label, WITHOUT parentheses, as the official Node SDK (cybersource-rest-client 0.0.84) writes it. */
+export const REQUEST_TARGET = "request-target";
 
-/** U2. */
+/** U2 (settled against the SDK): no trailing slash. */
 export const VISA_PATHS = {
   payments: "/pts/v2/payments",
   captures: (id: string) => `/pts/v2/payments/${id}/captures`,
@@ -200,10 +219,10 @@ export function visaCaptureRequest(amount: number, currency: "USD"): Record<stri
 
 /**
  * POST /pts/v2/payments/{id}/reversals. `amount` must be the amount the authorization RESPONSE authorized; the currency
- * sits under orderInformation.amountDetails, not under reversalInformation.amountDetails.
+ * sits beside it under reversalInformation.amountDetails (the SDK's AuthReversalRequest), and no orderInformation is sent.
  */
 export function visaReversalRequest(amount: number, currency: "USD"): Record<string, unknown> {
-  return { reversalInformation: { amountDetails: { totalAmount: visaAmount(amount) } }, orderInformation: { amountDetails: { currency } } };
+  return { reversalInformation: { amountDetails: { totalAmount: visaAmount(amount), currency } } };
 }
 
 /** A Visa Acceptance decimal amount string ("124.50") → integer cents; undefined when absent or not an amount. */
@@ -236,7 +255,7 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   async function send(what: string, path: string, payload: Record<string, unknown>): Promise<{ status: number; body?: Record<string, unknown> }> {
     const text = JSON.stringify(payload);
     const headers = { ...visaSignedHeaders({ host, merchantId, keyId, sharedSecret, method: "POST", path, body: text, date: now().toUTCString() }),
-      "Content-Type": "application/json" }; // U3
+      "Content-Type": "application/json", Accept: "application/hal+json" }; // U3, as the SDK sends them
     options.debug?.({ method: "POST", path, headers: redactVisaHeaders(headers) });
     let res: Response;
     let raw: string;
