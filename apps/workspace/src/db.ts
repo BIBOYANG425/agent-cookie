@@ -7,7 +7,7 @@ import type {
   ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, PaymentAuthorization,
   Quote, Receipt, Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
-import { isExperimentArm, isFunnelStage, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
+import { isExperimentArm, isFunnelStage, PAYMENT_SIMULATOR_LABEL, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
@@ -45,6 +45,8 @@ export interface LinkRow { id: string; agentId: string; status: "pending" | "app
  * Lane D payment (A21): an authorization with the two references that never leave the workspace — the provider's
  * (capture) and the card's payment_method token reference. Same shape as @agent-cookie/pay's InternalAuthorization.
  */
+/** D1: who answered an authorization when it was not a real provider (PaymentAuthorization / Receipt provider, simulated). */
+export type PaymentProvenance = Pick<PaymentAuthorization, "provider" | "simulated">;
 export interface PaymentAuthorizationRow extends PaymentAuthorization {
   providerRef: string; paymentMethodRef: string; agentId: string;
   /** v12: integer cents the provider's response authorized (what a reversal releases); absent on older rows. */
@@ -113,8 +115,14 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 12, table: "payment_authorizations", column: "authorized_amount", ddl: "ALTER TABLE payment_authorizations ADD COLUMN authorized_amount INTEGER" },
   // v13 (bring-your-own-agent): `links` (consent links of company assistants) is a new TABLE, added by SCHEMA's
   // CREATE TABLE IF NOT EXISTS like v11; the bump records that the database has it.
+  // v14 (lane D, D1): the provenance of a simulated authorization and of its payment receipt (PaymentAuthorization.provider
+  // / simulated), kept for the life of the row.
+  { version: 14, table: "payment_authorizations", column: "provider", ddl: "ALTER TABLE payment_authorizations ADD COLUMN provider TEXT" },
+  { version: 14, table: "payment_authorizations", column: "simulated", ddl: "ALTER TABLE payment_authorizations ADD COLUMN simulated INTEGER" },
+  { version: 14, table: "receipts", column: "provider", ddl: "ALTER TABLE receipts ADD COLUMN provider TEXT" },
+  { version: 14, table: "receipts", column: "simulated", ddl: "ALTER TABLE receipts ADD COLUMN simulated INTEGER" },
 ];
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations", "links"] as const;
@@ -184,7 +192,15 @@ function toReceipt(r: Row): ReceiptRow {
   if (r.amount !== null && r.amount !== undefined) x.amount = Number(r.amount);
   if (r.intent_id) x.intentId = String(r.intent_id);
   if (r.policy_id) x.policyId = String(r.policy_id);
+  Object.assign(x, toProvenance(r));
   return x;
+}
+/** v14 columns → PaymentProvenance; an unknown provider name is dropped, `simulated` is kept only as true. */
+function toProvenance(r: Row): PaymentProvenance {
+  const out: PaymentProvenance = {};
+  if (r.provider === PAYMENT_SIMULATOR_LABEL) out.provider = PAYMENT_SIMULATOR_LABEL;
+  if (r.simulated === 1) out.simulated = true;
+  return out;
 }
 const PAYMENT_STATUSES: ReadonlyArray<PaymentAuthorization["status"]> = ["authorized", "declined", "used", "reversed"];
 function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
@@ -193,6 +209,7 @@ function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
   const row: PaymentAuthorizationRow = { id: String(r.id), sessionId: String(r.session_id), quoteId: String(r.quote_id), amount: Number(r.amount), currency: "USD",
     status, createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
   if (r.authorized_amount !== null && r.authorized_amount !== undefined) row.authorizedAmount = Number(r.authorized_amount);
+  Object.assign(row, toProvenance(r));
   return row;
 }
 const LINK_STATUSES: ReadonlyArray<LinkRow["status"]> = ["pending", "approved", "declined"];
@@ -626,7 +643,9 @@ export class Store {
 
   // ---- receipts
   insertReceipt(r: ReceiptRow): void {
-    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null);
+    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id, provider, simulated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null,
+      r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null, r.provider ?? null, r.simulated ? 1 : null);
   }
   /** The newest receipt of one session for one purpose (receipt de-duplication, services/receipts.ts). */
   lastReceipt(sessionId: string, purpose: string): ReceiptRow | undefined {
@@ -679,12 +698,13 @@ export class Store {
   }
   putPaymentAuthorization(a: PaymentAuthorizationRow): void {
     this.exec(`INSERT INTO payment_authorizations (id, quote_id, session_id, amount, currency, status, provider_ref, payment_method_ref, agent_id,
-      created_at, reserved_at, authorized_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, reserved_at, authorized_amount, provider, simulated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET session_id = excluded.session_id, amount = excluded.amount, currency = excluded.currency,
         status = excluded.status, provider_ref = excluded.provider_ref, payment_method_ref = excluded.payment_method_ref,
-        agent_id = excluded.agent_id, created_at = excluded.created_at, authorized_amount = excluded.authorized_amount`,
+        agent_id = excluded.agent_id, created_at = excluded.created_at, authorized_amount = excluded.authorized_amount,
+        provider = excluded.provider, simulated = excluded.simulated`,
       a.id, a.quoteId, a.sessionId, a.amount, a.currency, a.status, a.providerRef, a.paymentMethodRef, a.agentId, a.createdAt, a.createdAt,
-      a.authorizedAmount ?? null);
+      a.authorizedAmount ?? null, a.provider ?? null, a.simulated ? 1 : null);
   }
   /** A recorded authorization (a bare reservation is not one). */
   paymentAuthorization(id: string): PaymentAuthorizationRow | undefined {

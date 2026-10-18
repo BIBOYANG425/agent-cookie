@@ -5952,6 +5952,14 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/PaymentProviderLabel",
+            "description": "Additive (lane D, D1): set together, and only when a simulator produced this result: `provider` names it and `simulated: true` says no payment network answered (never a claim that Visa accepted the request). Kept for the life of the authorization, through reversal and re-reads; absent = not marked (the Visa sandbox, and the fake provider of AGENT_COOKIE_PAY=fake, are not marked)."
+          },
+          "simulated": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -5963,6 +5971,11 @@
           "status",
           "createdAt"
         ]
+      },
+      "PaymentProviderLabel": {
+        "type": "string",
+        "const": "Visa Acceptance simulator",
+        "description": "Additive (lane D, D1): the providers that mark their results. apps/visa-sim is loopback only (VISA_ACCEPTANCE_SIMULATOR=1)."
       },
       "PersonalContributionRequest": {
         "type": "object",
@@ -6803,6 +6816,14 @@
           "policyId": {
             "type": "string",
             "description": "Additive (Phase 1): id of the policy document that allowed this release (policy-document.ts policyId)."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/PaymentProviderLabel",
+            "description": "Additive (lane D, D1): on a payment receipt only, the provenance of the authorization it records (PaymentAuthorization)."
+          },
+          "simulated": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [

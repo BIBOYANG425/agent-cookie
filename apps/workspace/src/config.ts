@@ -69,8 +69,12 @@ export interface Config {
    * sandbox only (payments.ts). Stripe is not wired.
    */
   pay: "off" | "fake" | "visa";
-  /** AGENT_COOKIE_PAY=visa only: the Visa Acceptance REST credentials and the sandbox host. Never logged or printed. */
-  visa?: { merchantId: string; keyId: string; sharedSecret: string; host: string };
+  /**
+   * AGENT_COOKIE_PAY=visa only: the Visa Acceptance REST credentials and the sandbox host. Never logged or printed.
+   * `simulator` (D1): VISA_ACCEPTANCE_SIMULATOR=1 with VISA_ACCEPTANCE_HOST=http://127.0.0.1:<port>, lane D's loopback
+   * simulator (apps/visa-sim); every authorization it answers is marked simulated (payments.ts).
+   */
+  visa?: { merchantId: string; keyId: string; sharedSecret: string; host: string; simulator?: true };
 }
 
 const VISA_VARS = ["VISA_ACCEPTANCE_MERCHANT_ID", "VISA_ACCEPTANCE_KEY_ID", "VISA_ACCEPTANCE_SHARED_SECRET"] as const;
@@ -80,12 +84,22 @@ function visaConfig(env: NodeJS.ProcessEnv): NonNullable<Config["visa"]> {
   const missing = VISA_VARS.filter((name) => !env[name]);
   if (missing.length > 0) throw new Error(`AGENT_COOKIE_PAY=visa requires ${missing.join(", ")}`);
   const host = env.VISA_ACCEPTANCE_HOST || VISA_ACCEPTANCE_SANDBOX_HOST;
-  if (host !== VISA_ACCEPTANCE_SANDBOX_HOST) throw new Error(`VISA_ACCEPTANCE_HOST must be ${VISA_ACCEPTANCE_SANDBOX_HOST} (the Visa Acceptance sandbox; production is out of scope)`);
+  // D1: the loopback simulator only with its own switch, and only as the exact origin http://127.0.0.1:<port>.
+  const simulator = env.VISA_ACCEPTANCE_SIMULATOR === "1" && isSimulatorOrigin(host);
+  if (host !== VISA_ACCEPTANCE_SANDBOX_HOST && !simulator) {
+    throw new Error(`VISA_ACCEPTANCE_HOST must be ${VISA_ACCEPTANCE_SANDBOX_HOST} (the Visa Acceptance sandbox; production is out of scope), or http://127.0.0.1:<port> with VISA_ACCEPTANCE_SIMULATOR=1`);
+  }
   const secret = env.VISA_ACCEPTANCE_SHARED_SECRET!;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(secret) || Buffer.from(secret, "base64").length === 0) {
     throw new Error("VISA_ACCEPTANCE_SHARED_SECRET must be the base64 shared secret");
   }
-  return { merchantId: env.VISA_ACCEPTANCE_MERCHANT_ID!, keyId: env.VISA_ACCEPTANCE_KEY_ID!, sharedSecret: secret, host };
+  return { merchantId: env.VISA_ACCEPTANCE_MERCHANT_ID!, keyId: env.VISA_ACCEPTANCE_KEY_ID!, sharedSecret: secret, host, ...(simulator ? { simulator: true as const } : {}) };
+}
+
+/** The Visa Acceptance simulator's origin (lane D, apps/visa-sim): http://127.0.0.1:<1–65535>, nothing else. */
+export function isSimulatorOrigin(host: string): boolean {
+  const m = /^http:\/\/127\.0\.0\.1:([1-9]\d{0,4})$/.exec(host);
+  return m !== null && Number(m[1]) <= 65535;
 }
 
 function int(v: string | undefined, dflt: number, min: number, max: number): number {

@@ -51,6 +51,14 @@ function billToOf(d: UcpDestination): PaymentBillTo {
   return { ...(d.name ? { name: d.name } : {}), line1: d.line1, city: d.city, region: d.region, postalCode: d.postalCode, country: d.country };
 }
 
+/**
+ * D1: told to the user on every accept whose payment stage reached lane D's Visa Acceptance simulator (the provider's
+ * marks, payments.ts), whatever the outcome: a simulated authorization, decline or failure is never told as a real one.
+ */
+const SIMULATED_PAYMENT_NOTE = "Payment ran against the Visa Acceptance simulator (simulated): no payment network was involved.";
+/** The `simulated=true` token on payment events in the activity log when the simulator answered. */
+const simulatedReason = (simulated: boolean | undefined) => (simulated ? " simulated=true" : "");
+
 /** Why the payment stage stopped an accept before anything more reached the store (AcceptResult.message, verbatim). */
 const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
   OVER_BUDGET: "The price is over your budget, so no payment was authorized and nothing was ordered.",
@@ -556,6 +564,8 @@ export class CommerceService {
     // Lane D payment stage (A21): the authorization RESULT once the workspace made one; carried on every result after.
     let authorization: PaymentAuthorization | undefined;
     let paymentGrant: GrantRow | undefined;
+    // D1: the simulator was asked for this accept's authorization (SIMULATED_PAYMENT_NOTE).
+    let simulatorAsked = false;
     const done = async (r: AcceptResult): Promise<AcceptResult> => {
       let res = r;
       // An authorization still holding funds here was not taken by the store (UCP_STORE_TAKES_PAYMENT): release it and
@@ -565,6 +575,7 @@ export class CommerceService {
         authorization = released.authorization;
         res = { ...res, message: [res.message, released.note].filter(Boolean).join(" ") };
       }
+      if (simulatorAsked || authorization?.simulated) res = { ...res, message: [res.message, SIMULATED_PAYMENT_NOTE].filter(Boolean).join(" ") };
       // Like the checkout grant (decide), the payment stage's grant is withdrawn when the user cannot finish this checkout.
       if (paymentGrant && res.status !== "ordered" && res.status !== "handoff") this.sessions.withdraw(paymentGrant.id);
       const out = receipts.length > 0 ? { ...res, receipts } : res;
@@ -604,8 +615,9 @@ export class CommerceService {
       // exist. The event names the outcome, the TAP signature, and whether the provider got the address as billTo — by
       // field name only.
       const pay = card.payment_method ? this.ctx.laneD.authorizePayment : undefined;
+      const simulatedProvider = this.ctx.laneD.paymentProvenance?.simulated === true;
       const logPayment = (result: string, billToSent: boolean) => this.ctx.log({ event: "payment.authorize", actor: "workspace", object: q.id, result,
-        reason: `tap=${UCP_PAYER_TAP} billto=${billToSent ? "shipping_address" : "none"}` });
+        reason: `tap=${UCP_PAYER_TAP} billto=${billToSent ? "shipping_address" : "none"}${simulatedReason(simulatedProvider)}` });
       // The budget first, before the address is read or leaves: a quote the budget already rules out never gets a
       // destination. Same rule as the authorization itself (payments.ts paymentBudgetCents), which checks it again.
       if (pay) {
@@ -633,6 +645,7 @@ export class CommerceService {
       // complete (payments.ts: accepted quote, budget, single use). Already used or declined → nothing more goes to the store.
       if (pay) {
         try {
+          simulatorAsked = simulatedProvider;
           authorization = await pay({ sessionId: q.sessionId, quoteId: q.id, amount: q.price, currency: "USD", billTo: billToOf(destination) });
         } catch (err) {
           if (!(err instanceof WorkspaceError)) throw err;
@@ -715,7 +728,8 @@ export class CommerceService {
   private paymentFailure(q: QuoteRow): string {
     const recorded = this.ctx.store.paymentAuthorizationForQuote(q.id);
     if (!recorded) return "The payment provider could not be reached; nothing was ordered.";
-    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: recorded.status === "reversed" ? "reversed" : "not_reversed" });
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: recorded.status === "reversed" ? "reversed" : "not_reversed",
+      ...(recorded.simulated ? { reason: simulatedReason(true).trim() } : {}) });
     return recorded.status === "reversed"
       ? "The payment could not be recorded, so its authorization was reversed; no hold remains on your card and nothing was ordered."
       : "The payment could not be recorded and its hold could not be released; it may stay on your card until it expires. Nothing was ordered.";
@@ -741,7 +755,8 @@ export class CommerceService {
         outcome = err instanceof WorkspaceError ? err.code : "error";
       }
     }
-    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: outcome });
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: outcome,
+      ...(current.simulated ? { reason: simulatedReason(true).trim() } : {}) });
     if (current.status !== "reversed") {
       return { authorization: current, note: "The store did not take the payment authorization and its hold could not be released; it may stay on your card until it expires." };
     }
