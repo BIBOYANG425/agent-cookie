@@ -121,7 +121,7 @@ We keep three kinds of evidence apart: automated tests, recorded live runs, and 
 
 - **Built and tested over HTTP.** The card, cookies, policy, purposes, expiry, revocation, receipts and idempotency. Assistant consent links and churn between two assistant companies. Hosted jars through the gateway. Owner-minted keys for your own agent. Purchase history as a policy category that is off for assistants by default.
 - **Recorded live runs.** Real iMessage send, select and handoff through Photon. Claude Desktop through MCP. The unmodified Cognition Agent Memory Repo skill reading and writing the same repository as the workspace.
-- **Not claimed.** No real payment has been completed: checkout ends in a merchant handoff link. Visa has no sandbox for us, so the Visa Acceptance provider is checked offline, byte for byte, against Visa's official Node SDK, and a deterministic simulator is in review. Recorded UCP responses do not prove current stock. Continuous phone footage and a clean phone-learning run are still being collected.
+- **Not claimed.** No real payment has been completed: checkout ends in a merchant handoff link. Visa has no sandbox for us, so the Visa Acceptance provider is checked offline, byte for byte, against Visa's official Node SDK. A deterministic local simulator verifies every request with that SDK's own code. The workspace does not route payments to it yet, so a simulated result is never shown as a Visa one. Recorded UCP responses do not prove current stock. Continuous phone footage and a clean phone-learning run are still being collected.
 
 ## Tracks
 
@@ -131,7 +131,7 @@ These are the tracks we are entering, with the scope we can show. None of it is 
 | --- | --- |
 | **Applied Intelligence** | Opt-in learning with a `typesafe/jev-1.14` gate and `openai/gpt-oss-120b` extraction via OpenRouter, where rules, not models, decide promotion and access. Real models passed the six original scenarios on synthetic inputs. |
 | **Photon** | A real iMessage shopping agent: a request, up to two offers, a choice, and a merchant handoff. |
-| **Visa** | Trusted Agent Protocol interop with pairwise per-session keys, single-use and within-budget payment authorization in tests, and an offline SDK-verified Visa Acceptance provider. |
+| **Visa** | Trusted Agent Protocol interop with pairwise per-session keys, single-use and within-budget payment authorization in tests, a Visa Acceptance provider (HTTP Signature and JWT) matched byte for byte against Visa's official SDK, and a scripted simulator that verifies requests with the SDK's own code. |
 | **Cognition** | Format interop with the stock Agent Memory Repo skill (A23), and Claude Code and Devin integration runs from our skill (A16). |
 | **Paper** | A console that shows where every fact came from, who may read it, for what, until when, and how to revoke it. Screenshots are labelled Sample. |
 | **Sentry** | Tracing and logs validated offline. Dashboard evidence from a live account is still planned. |
