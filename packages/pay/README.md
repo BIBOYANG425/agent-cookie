@@ -12,7 +12,7 @@ pnpm --filter @agent-cookie/pay test
 
 `visaProvider` still refuses all non-sandbox targets unless `VISA_ACCEPTANCE_SIMULATOR=1`; then only the exact origin `http://127.0.0.1:<port>` is additionally allowed (no hostname, path, credentials, query, fragment, redirects or other interface). The signature Host is the loopback authority including port. Both the provider and its raw authorization result carry `label: "Visa Acceptance simulator", simulated: true` on this path. Sandbox behavior and existing signature goldens are unchanged; Stripe remains unwired.
 
-**Not workspace-ready:** shared `PaymentAuthorization`/receipt types cannot yet preserve that provenance. `createPayments` therefore refuses simulator providers rather than emitting an unlabelled public result. D1-label / D1-workspace in `docs/requests.md` request the lane-A contract, persistence, console, A21, workspace `smoke:visa --simulator` and CI wiring. The package smoke above is a provider-level substitute, not evidence that those requested workspace checks ran. After A lands the contract and propagation, D removes this safety gate and verifies the workspace path.
+**Workspace:** the contract carries the provenance (`PaymentAuthorization.provider` / `simulated`, A81) and `createPayments` puts it on every authorization a simulated provider answers; the workspace stores it and shows it on results, receipts and the activity log. Console and channel display are lanes C/B (A83/A84).
 
 Payment authorization, single-use capture and reversal for an accepted quote. The package keeps the payment-provider reference private and returns only the public authorization result (`id`, amount, currency, status). `payment_method` is only a provider token reference; no card number goes anywhere.
 

@@ -16,7 +16,7 @@ pnpm --filter @agent-cookie/pay test
 
 The start command starts an independent service on `127.0.0.1:4313` (`VISA_SIM_PORT` overrides the port). The smoke command starts and closes its **own** ephemeral simulator and prints only the simulation label and statuses, never instrument, credential, address or authorization-reference values. A pay test runs that exact smoke command, so the existing root test/CI job exercises it without a new workflow step.
 
-Every response has `X-Agent-Cookie-Simulation: Visa Acceptance simulator`; reset and startup also have `simulated: true`. Model bodies are SDK models, not invented Visa fields. Authorization ids are deterministic `sim00000001` etc., intentionally not real Visa references. The pay provider exposes `label: "Visa Acceptance simulator", simulated: true` only for the gated loopback origin. **Workspace, receipt and console provenance propagation is not landed**: see D1-label / D1-workspace in `docs/requests.md`. Do not use this as a workspace demo until lane A lands those changes. Stripe remains unwired.
+Every response has `X-Agent-Cookie-Simulation: Visa Acceptance simulator`; reset and startup also have `simulated: true`. Model bodies are SDK models, not invented Visa fields. Authorization ids are deterministic `sim00000001` etc., intentionally not real Visa references. The pay provider exposes `label: "Visa Acceptance simulator", simulated: true` only for the gated loopback origin. The workspace stores and shows that provenance (A81); console and channel display are pending (A83/A84). Stripe remains unwired.
 
 ## Independent SDK verification
 
