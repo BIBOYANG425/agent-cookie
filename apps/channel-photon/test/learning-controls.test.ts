@@ -1,6 +1,7 @@
 import {it,expect,vi} from 'vitest';
 import {createLearningControls,isShoppingRequest,respondWithLearning,type LearningLocalState} from '../src/learning-controls.js';
 import {createObservationSink} from '../src/learning-capture.js';
+import type { Conversation } from '../src/agent.js';
 const row={field:'pref.color',value:'黑色',evidence:[{contributionId:'p1',agentId:'personal',basis:'stated' as const,createdAt:'2026-10-17T22:00:00Z',snippet:'我喜欢黑色'}],sources:['p1'],status:'card' as const};
 function setup(){
  const workspace={getLearning:vi.fn().mockResolvedValue({paused:false}),getLearned:vi.fn().mockResolvedValue({paused:false,learned:[row]}),setLearning:vi.fn().mockResolvedValue({paused:false}),forgetLearning:vi.fn().mockResolvedValue({field:'pref.color',paused:true,removed:1,projection:'complete',historyErased:false})};
@@ -29,6 +30,15 @@ it('daily summary reads current active conclusions and occurs once',async()=>{
 it('ordinary preference speech is not a shopping intent',async()=>{
  const s=setup();const agent={find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};
  await respondWithLearning('我一直喜欢黑色衣服。','m1',{},agent,s.controls);expect(agent.find).not.toHaveBeenCalled();
+});
+it('uses the current chat language for a summary, not the prior shopping language',async()=>{
+ const s=setup();const agent={find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};
+ const conversation:Conversation={locale:'en'};
+ const zh=await respondWithLearning('我喜欢黑色衣服。','zh',conversation,agent,s.controls);
+ expect(zh).toContain('今日偏好摘要');expect(zh).not.toContain('Today’s preference summary');
+ delete s.state.lastSummaryDay;conversation.locale='zh';
+ const en=await respondWithLearning('I prefer black clothes.','en',conversation,agent,s.controls);
+ expect(en).toContain('Today');expect(en).not.toContain('今日偏好摘要');expect(agent.find).not.toHaveBeenCalled();
 });
 it.each(['我平时穿衣服常选深色','我挑衣服时总会先看黑色那件。','我的外套大多是蓝色','I usually buy plain shirts','鞋'])('does not turn incidental product speech into a search: %s',async text=>{
  const s=setup();const agent={find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};

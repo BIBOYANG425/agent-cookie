@@ -5,7 +5,7 @@ Two doors over the shared SDK: stdio (default, one personal key from the environ
 | Tool | Behavior |
 |---|---|
 | `get_my_card` | Read the current card and provenance; do not paste the full card into merchant messages |
-| `find_agents` | Preserve original `request`; optionally extract `query`, `budget`, `size`, `color`, `deadline` from that request only |
+| `find_agents` | Preserve original `text`; provide English catalog keywords in `query`; optionally extract `budget`, `size`, `count` (1–5 sellers), `color`, `deadline` from that text only |
 | `accept_quote` | Accept the user's selected quote; preserve ordered/handoff/blocked/failed and Sample |
 | `list_receipts` | List who read which fields for which purpose, without values |
 
@@ -45,7 +45,7 @@ Back up the existing desktop config and preserve all unrelated settings. Add:
 }
 ```
 
-Restart Desktop after adding the config. Ask: “Call get_my_card, show language and shoe size, and preserve Sample labels. Then call find_agents with request “Find a black coat, size M, under 150 dollars.” Preserve sizeNote and fixture warnings. Do not accept a quote.” Save actual Desktop tool output screenshots under `docs/evidence`. Automated stdio tests alone do not count as A10 Desktop acceptance.
+Restart Desktop after adding the config. Ask: “Call get_my_card, show language and shoe size, and preserve Sample labels. Then call find_agents with text “Find a black coat, size M, under 150 dollars.” and query “black coat”. Preserve sizeNote and fixture warnings. Do not accept a quote.” Save actual Desktop tool output screenshots under `docs/evidence`. Automated stdio tests alone do not count as A10 Desktop acceptance.
 
 The test-only Sample HTTP server remains for denial/cache regression coverage. Current integration uses `apps/workspace` (SQLite) on 4310; the offline stand-in workspace was retired on 2026-10-18 and there is no other fallback. Select the `sample-personal-desktop` entry from `fixtures/dev-keys.json` for the local `AGENT_COOKIE_KEY`; Photon uses its distinct `sample-personal-photon` key. Set `AGENT_COOKIE_SAMPLE=1` for the current stub/fixture backend so tool output retains Sample labels. Merchant MCP tools are not built (a merchant key is refused by the HTTP door). Account login and Desktop UI evidence are separate from a successful stdio protocol check.
 

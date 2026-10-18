@@ -1,15 +1,25 @@
 import { createHash } from 'node:crypto';
 import type { WorkspaceClient, FindResult } from '@agent-cookie/sdk';
 import { shoppingInput } from './intent.js';
+import { hasCjk } from './keywords.js';
+import { localeFromMessage, translator, type Locale } from './i18n.js';
 
 export type AgentWorkspace = Pick<WorkspaceClient, 'getMyCard' | 'find' | 'accept' | 'getReceipts'>;
-export interface Conversation { offers?: FindResult }
+export interface Conversation { offers?: FindResult; locale?: Locale; cardLang?: string }
 export const operationKey = (kind: string, id: string) => `photon:${kind}:${createHash('sha256').update(id).digest('hex')}`;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const help = '我可以读取你的身份卡、按你的需求搜索商品、查看读取回执。试试「帮我找件黑色外套，M码，150美元以内」，看到报价后回复「选1」或「选2」。';
 
 /** Deliberately bounded demo parser. It is not an LLM, and never invents identity or authority. */
 export async function respond(text: string, messageId: string, conversation: Conversation, workspace: AgentWorkspace): Promise<string> {
+  if (!hasCjk(text) && !/[a-z]/i.test(text) && !conversation.cardLang) {
+    try {
+      const card = await workspace.getMyCard();
+      if (object(card) && Array.isArray(card.card)) conversation.cardLang = card.card.filter(object).find(c => c.field === 'lang')?.value as string | undefined;
+    } catch { /* Language lookup must not prevent selection. */ }
+  }
+  const locale = localeFromMessage(text, conversation.cardLang, conversation.locale);
+  conversation.locale = locale;
+  const t = translator(locale);
   const input = text.trim();
   const selection = /^(?:要|选|选择|我要)?\s*(?:第)?\s*([1-9一二两三四五])\s*(?:双|个|款|件)?[。！!]?$/u.exec(input)
     ?? /^(?:choose|select|take)\s+([1-9])$/i.exec(input);
@@ -17,47 +27,49 @@ export async function respond(text: string, messageId: string, conversation: Con
     const number = ({一:1,二:2,两:2,三:3,四:4,五:5} as Record<string,number>)[selection[1]] ?? Number(selection[1]);
     const index = number - 1;
     const quote = conversation.offers?.quotes[index];
-    if (!quote) return '请先搜索商品，再按已显示的报价编号选择。';
+    if (!quote) return t('selectFirst');
     const result = await workspace.accept(quote.id, operationKey('accept', quote.id));
     // AcceptResult has no source field yet; retain the selected quote's provenance.
     const sample = result.sample || conversation.offers?.sample || quote.source === 'sample' || quote.source === 'fixture';
-    const prefix = sample ? '[Sample 演示] ' : '';
-    if (result.status === 'handoff') return `${prefix}${result.continueUrl ? `已准备好所选商品的交接链接：\n${result.continueUrl}` : '商家需要继续处理，后台未提供交接链接。'}\n${result.message ?? ''}\n尚未付款，也未确认订单。${sample ? '此结果仅供演示。' : result.continueUrl ? '请打开链接核实库存、配送和最终金额。' : ''}`;
-    if (result.status === 'ordered') return `${prefix}后台确认订单：${result.orderId}\n${result.message ?? ''}`;
-    return `${prefix}${result.status === 'blocked' ? '暂时不能继续' : '本次操作失败'}：${result.message ?? result.code ?? '请检查后台状态。'}${result.continueUrl ? `\n后台提供的后续处理链接：${result.continueUrl}\n未确认订单或付款。${sample ? '此结果仅供演示。' : ''}` : ''}`;
+    const prefix = sample ? t('sample') : '';
+    if (result.status === 'handoff') return `${prefix}${result.continueUrl ? t('handoffLink', result.continueUrl) : t('handoffMissing')}\n${result.message ?? ''}\n${t('unpaid')}${sample ? t('demoOnly') : result.continueUrl ? t('verify') : ''}`;
+    if (result.status === 'ordered') return `${prefix}${t('ordered', result.orderId ?? '')}\n${result.message ?? ''}`;
+    return `${prefix}${result.status === 'blocked' ? t('blocked') : t('failed')}：${result.message ?? result.code ?? t('check')}${result.continueUrl ? `${t('followUp', result.continueUrl)}${sample ? t('demoOnly') : ''}` : ''}`;
   }
   if (/^(?:身份卡|我的资料|读卡|查看身份卡|card)$/i.test(input)) {
     const card = await workspace.getMyCard();
     if (!object(card) || !Array.isArray(card.card)) throw new Error('INVALID_CARD');
+    conversation.cardLang = card.card.filter(object).find(c => c.field === 'lang')?.value as string | undefined;
     const rows = card.card.filter(object).filter(c => ['shoe_size','budget'].includes(String(c.field)));
-    return `${card.sample === true ? '[Sample 演示] ' : ''}身份卡\n${rows.map(c => `${c.field === 'shoe_size' ? '鞋码' : '预算'}：${String(c.value)}`).join('\n') || '还没有鞋码或预算。'}\n地址和支付资料不会显示在这条短信里。`;
+    return `${card.sample === true ? t('sample') : ''}${t('card')}\n${rows.map(c => `${c.field === 'shoe_size' ? t('size') : t('budget')}：${String(c.value)}`).join('\n') || t('noFields')}\n${t('private')}`;
   }
   if (/^(?:回执|查看回执|receipts)$/i.test(input)) {
     const result = await workspace.getReceipts();
-    return `${result.sample ? '[Sample 演示] ' : ''}最近的字段读取：\n${result.receipts.slice(-5).map(r => `${r.agentId} · ${r.fields.join(', ')} · ${r.purpose}`).join('\n') || '暂无读取回执。'}`;
+    return `${result.sample ? t('sample') : ''}${t('receipts')}${result.receipts.slice(-5).map(r => `${r.agentId} · ${r.fields.join(', ')} · ${r.purpose}`).join('\n') || t('noReceipts')}`;
   }
   if (!input || /^(?:帮助|你好|谢谢|help|hello|hi|thanks|ping)[!！。.]?$/i.test(input)
-    || /^(?:accept|checkout|pay)\s+(?:quoteId|userId|agentId|purpose)=/i.test(input)) return help;
+    || /^(?:accept|checkout|pay)\s+(?:quoteId|userId|agentId|purpose)=/i.test(input)) return t('help');
   {
     const intent = shoppingInput(text);
     const deadline = intent.public?.deadline;
     // Drop stale options before a new search so failure cannot select yesterday's offer.
     delete conversation.offers;
     const found = await workspace.find(intent, operationKey('find',messageId));
-    conversation.offers = { ...found, quotes: found.quotes.slice(0,2) };
-    const lines = conversation.offers.quotes.map((q,i) => `${i+1}. ${q.title ?? q.text} — $${(q.price/100).toFixed(2)} USD\n${q.etaDate ? `商家提供的到货日期：${q.etaDate}` : '到货时间未知'}${q.etaText ? `；${q.etaText}` : ''}${q.sizeNote ? `\n${q.sizeNote}` : ''}`);
-    const selectionHint = lines.length > 1 ? '\n\n回复「选1」或「选2」。' : lines.length === 1 ? '\n\n回复「选1」。' : '';
+    conversation.offers = { ...found, quotes: found.quotes.slice(0,Number(intent.public?.count ?? 2)) };
+    const lines = conversation.offers.quotes.map((q,i) => `${i+1}. ${q.title ?? q.text} — $${(q.price/100).toFixed(2)} USD\n${q.etaDate ? t('eta', q.etaDate) : t('etaUnknown')}${q.etaText ? `；${q.etaText}` : ''}${q.sizeNote ? `\n${q.sizeNote}` : ''}`);
+    const selectionHint = lines.length > 2 ? t('selectMany', lines.length) : lines.length > 1 ? t('selectTwo') : lines.length === 1 ? t('selectOne') : '';
     const sourceHint = found.quotes.some(q => q.source === 'fixture')
-      ? '[Sample 录制报价，非实时搜索；录制内容可能不对应本次需求]\n'
-      : found.sample ? '[Sample 演示报价，非真实库存]\n' : '';
-    return `${sourceHint}${lines.join('\n\n') || '没有找到符合条件的报价。'}${selectionHint}${deadline ? '\n目前不能保证你要求的到货时间。' : ''}`;
+      ? t('fixture')
+      : found.sample ? t('sampleQuotes') : '';
+    return `${sourceHint}${lines.join('\n\n') || t('noQuotes')}${!intent.query && hasCjk(text) ? t('untranslated') : ''}${selectionHint}${deadline ? t('deadline') : ''}`;
   }
 }
 
-export function publicFailure(error: unknown): string {
+export function publicFailure(error: unknown, locale: Locale = 'zh'): string {
+  const t = translator(locale);
   const code = object(error) && typeof error.code === 'string' ? error.code : '';
-  if (['GRANT_EXPIRED','GRANT_REVOKED','NOT_FOUND'].includes(code)) return '这次报价已失效或权限已撤销，请重新搜索商品。';
-  if (code === 'MISSING_FIELD') return '缺少必要资料或输入不完整，暂时无法继续。';
-  if (code === 'IDEMPOTENCY_CONFLICT') return '本次选择与之前的操作冲突，请重新搜索后选择。';
-  return '后台暂时无法完成请求；未确认新的订单或付款。请稍后查看回执再重试。';
+  if (['GRANT_EXPIRED','GRANT_REVOKED','NOT_FOUND'].includes(code)) return t('expired');
+  if (code === 'MISSING_FIELD') return t('missing');
+  if (code === 'IDEMPOTENCY_CONFLICT') return t('conflict');
+  return t('failure');
 }

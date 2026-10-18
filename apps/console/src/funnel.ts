@@ -1,3 +1,4 @@
+import { t, type MessageKey } from './i18n';
 import type { FunnelReport, FunnelRow, FunnelStage, SearchStats } from '../../../packages/contract/src/analytics';
 import type { AcceptResult, DataSource } from '../../../packages/contract/src/types';
 import { isExperimentArm, type ExperimentArm } from './experiments';
@@ -8,16 +9,16 @@ export type { FunnelReport, FunnelRow, SearchStats };
 export const FUNNEL_LIMIT = 50;
 
 export const outcomeLabels: Record<AcceptResult['status'], string> = {
-  ordered: '已下单', handoff: '转交商家完成', blocked: '已拦截', failed: '失败',
+  get ordered() { return t("ordered"); }, get handoff() { return t("handOffToMerchant"); }, get blocked() { return t("blocked"); }, get failed() { return t("failed"); },
 };
 export const stageLabels: Record<FunnelStage, string> = {
-  introduced: '介绍', quoted: '报价', accepted: '接受', checkout: '结账', payment: '支付', completed: '完成',
+  get introduced() { return t("introduced"); }, get quoted() { return t("quoted"); }, get accepted() { return t("accepted"); }, get checkout() { return t("checkout"); }, get payment() { return t("payment"); }, get completed() { return t("completed276"); },
 };
-export const sourceLabels: Record<DataSource, string> = { sample: 'Sample', fixture: '录制回放', live: '实时' };
+export const sourceLabels: Record<DataSource, string> = { sample: 'Sample', get fixture() { return t("recordedReplay"); }, get live() { return t("live"); } };
 /** Filter buckets in the order the workspace checks them (contract SearchStats). */
-export const searchBuckets: ReadonlyArray<[keyof SearchStats, string]> = [
-  ['droppedAvoid', '避开（pref.avoid）'], ['droppedCurrency', '非美元'], ['droppedUnavailable', '不可购买'],
-  ['droppedShipsTo', '不配送到所在国家'], ['droppedBudget', '超出本次预算'], ['droppedInvalid', '价格或卖家信息无效'],
+export const searchBuckets: ReadonlyArray<[keyof SearchStats, MessageKey]> = [
+  ['droppedAvoid', "avoidPrefAvoid"], ['droppedCurrency', "nonUsd"], ['droppedUnavailable', "unavailable"],
+  ['droppedShipsTo', "doesNotShipToDestinationCountry"], ['droppedBudget', "overThisRequestSBudget"], ['droppedInvalid', "invalidPriceOrSellerDetails"],
 ];
 const SEARCH_KEYS: ReadonlyArray<keyof SearchStats> = ['offers', 'droppedAvoid', 'droppedCurrency', 'droppedUnavailable',
   'droppedShipsTo', 'droppedBudget', 'droppedInvalid', 'eligible', 'eligibleSellers', 'picked'];
@@ -26,7 +27,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256;
 const date = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
-const malformed = () => new Error('漏斗响应格式与契约不一致。');
+const malformed = () => new Error(t("funnelResponseDoesNotMatchThe"));
 
 /** Copies only the contract's count and id keys, so nothing else a response carries can reach the page. */
 export function normalizeFunnelReport(body: unknown): FunnelReport {

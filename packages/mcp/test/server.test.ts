@@ -60,8 +60,8 @@ describe('generic shopping MCP protocol',()=>{
   it('advertises original request and optional extraction fields without a category default',async()=>{
     const client=await connect(async()=>sampleCard,{find:vi.fn()});
     const tool=(await client.listTools()).tools.find(t=>t.name==='find_agents')!;
-    expect(Object.keys(tool.inputSchema.properties!)).toEqual(['request','query','budget','size','color','deadline']);
-    expect(tool.inputSchema.required).toEqual(['request']);
+    expect(Object.keys(tool.inputSchema.properties!)).toEqual(['text','query','budget','size','count','color','deadline']);
+    expect(tool.inputSchema.required).toEqual(['text','query']);
     expect(tool.description).toContain('sizeNote verbatim');
     expect(tool.description).not.toContain('trail-shoe');
   });
@@ -70,13 +70,13 @@ describe('generic shopping MCP protocol',()=>{
     const find=vi.fn<NonNullable<PersonalWorkspaceBinding['find']>>().mockResolvedValue(payload);
     const client=await connect(async()=>sampleCard,{find});
     const request='  找件黑色外套，M码，100到160美元，周五前到。\n';
-    const args={request,query:'black jacket',budget:'100-160',size:'M',color:'黑色',deadline:'周五前到'};
+    const args={text:request,query:'black jacket',count:3,budget:'100-160',size:'M',color:'黑色',deadline:'周五前到'};
     const result=await client.callTool({name:'find_agents',arguments:args});
     expect(result.isError).not.toBe(true);
-    expect(find.mock.calls[0][0]).toEqual({text:request,query:args.query,public:{budget:args.budget,size:args.size,color:args.color,deadline:args.deadline}});
+    expect(find.mock.calls[0][0]).toEqual({text:request,query:args.query,public:{budget:args.budget,size:args.size,count:'3',color:args.color,deadline:args.deadline}});
     expect(result.content).toEqual([{type:'text',text:JSON.stringify(payload)}]);
-    await client.callTool({name:'find_agents',arguments:{request:'给朋友挑个礼物'}});
-    expect(find.mock.calls[1][0]).toEqual({text:'给朋友挑个礼物'});
+    await client.callTool({name:'find_agents',arguments:{text:'给朋友挑个礼物',query:'gift'}});
+    expect(find.mock.calls[1][0]).toEqual({text:'给朋友挑个礼物',query:'gift'});
     expect(find.mock.calls[1][1]).not.toBe(find.mock.calls[0][1]);
     const old=await client.callTool({name:'find_agents',arguments:{kind:'trail_shoes'}});
     expect(old.isError).toBe(true);expect(find).toHaveBeenCalledTimes(2);

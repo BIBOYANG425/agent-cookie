@@ -84,14 +84,15 @@ export async function createPersonalServer(binding: PersonalWorkspaceBinding): P
     try{return {content:[{type:'text' as const,text:JSON.stringify(await binding.observe!(text))}]};}catch(error){return toolError(error);}
   });
   if (binding.find) server.registerTool('find_agents', {
-    description: 'Search for products through the workspace. Put the user\'s exact original sentence in request. Extract query (search keywords), budget (USD amount or range), size, color and deadline only when supported by that sentence; omit fields you cannot extract. Do not assume a product category or copy saved card values into the request. In live mode the task is shared with external merchants. Preserve Sample labels and unknown delivery dates, and tell the user any quote sizeNote verbatim; never claim an unverified fit.',
-    inputSchema: { request: boundedText(1000).describe('The user\'s original words, unchanged.'),
-      query: boundedText(200).optional(), budget: boundedText(256).optional(), size: boundedText(256).optional(),
+    description: 'Search for any products through the workspace. Put the user\'s exact original words, in any language, in text. Produce English product keywords in query (for example, text "送妈妈的围巾", query "scarf for mom"); never translate or rewrite text. Extract budget (USD amount or range), size, count (1–5 sellers), color and deadline only when supported by that sentence; omit fields you cannot extract. Do not assume a product category or copy saved card values into the request. In live mode the task intent is shared with external merchants. Preserve Sample labels and unknown delivery dates, and tell the user any quote sizeNote verbatim; never invent offers, delivery dates, orders, payments or an unverified fit.',
+    inputSchema: { text: boundedText(1000).describe('The user\'s original words, unchanged, in any language.'),
+      query: boundedText(200).describe('English catalog product keywords, produced by the calling model.'), budget: boundedText(256).optional(), size: boundedText(256).optional(),
+      count: z.number().int().min(1).max(5).optional(),
       color: boundedText(256).optional(), deadline: boundedText(256).optional() },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-  }, async ({request,query,budget,size,color,deadline}) => {
-    const conditions = Object.fromEntries(Object.entries({budget,size,color,deadline}).filter(([,value]) => value !== undefined)) as Record<string,string>;
-    const input: FindInput = { text: request, ...(query !== undefined ? {query} : {}),
+  }, async ({text,query,budget,size,count,color,deadline}) => {
+    const conditions = Object.fromEntries(Object.entries({budget,size,count: count === undefined ? undefined : String(count),color,deadline}).filter(([,value]) => value !== undefined)) as Record<string,string>;
+    const input: FindInput = { text, ...(query !== undefined ? {query} : {}),
       ...(Object.keys(conditions).length ? {public: conditions} : {}) };
     try { return { content:[{type:'text' as const,text:JSON.stringify(await binding.find!(input,`mcp:find:${randomUUID()}`))}] }; }
     catch(error) {return toolError(error);}
