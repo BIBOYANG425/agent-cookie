@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { FieldName } from './fields';
 import type { ActivityEvent, GrantView } from './model';
 
@@ -10,8 +11,8 @@ export function GrantNeeds({ grant, events }: { grant: GrantView; events: readon
   const raw = grant.handshake?.unavailable;
   const unavailable = Array.isArray(raw) ? [...new Set(raw.filter((field): field is string => typeof field === 'string' && !!field))] : [];
   return <div className="grant-needs">
-    <p className="small"><span className="muted">最近一次申请 · </span>{declaration.object}</p>
-    {unavailable.length > 0 && <ul className="grant-fields" aria-label="握手中不可用的字段">
+    <p className="small"><span className="muted">{t("latestRequest")}</span>{declaration.object}</p>
+    {unavailable.length > 0 && <ul className="grant-fields" aria-label={t("fieldsUnavailableInTheHandshake")}>
       {unavailable.map(field => <li className="unavailable-field" key={field}><FieldName field={field} /></li>)}
     </ul>}
   </div>;

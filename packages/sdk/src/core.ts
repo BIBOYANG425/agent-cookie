@@ -10,7 +10,7 @@ import { observationBody, observeResult, type ObservationInput, type ObserveResu
  * "shoes": [a-z][a-z0-9_]{0,63}) is the hint that introduces registered stores: a store that registered with capability
  * X is introduced to intents whose kind is X. UCP stores are searched from the text either way.
  */
-export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public' | 'kind'>;
+export type FindInput = IntentRequest | (Omit<IntentRequest, 'text'> & { text?: undefined; kind: string });
 /** IntentRequest.kind, as the workspace validates it. */
 const KIND = /^[a-z][a-z0-9_]{0,63}$/;
 export interface QuoteList { quotes: Quote[]; sample: boolean }
@@ -415,14 +415,14 @@ export class ActingClient extends BaseClient {
 
   async createIntent(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<{ intentId: string; sample: boolean }> {
     // Match A's HTTP byte limits. Do not normalize the user's sentence or invent optional conditions.
-    if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
+    const intentText = input?.text ?? input?.kind;
+    if (!input || !text(intentText, 1000) || (input.query !== undefined && !text(input.query, 200))
       || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
         || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
           || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))
       || (input.kind !== undefined && (typeof input.kind !== 'string' || !KIND.test(input.kind)))) throw new Error('Invalid shopping intent.');
-    // Explicit wire shape: arbitrary runtime properties are not identity or authority. `kind` is only ever a hint
-    // beside the sentence, never the legacy kind-only request.
-    const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
+    // Legacy kind-only calls become text; arbitrary runtime properties are not identity or authority.
+    const body: IntentRequest = { text: intentText!, ...(input.query !== undefined ? { query: input.query } : {}),
       ...(input.public !== undefined ? { public: input.public } : {}), ...(input.kind !== undefined ? { kind: input.kind } : {}) };
     const payload = await this.request('/personal/intents', { ...options, body, idempotencyKey });
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
