@@ -68,3 +68,9 @@ it('capture failure cannot prevent an authorized reply',async()=>{
   await s.deliver(event('我一直喜欢黑色衣服。'));
   expect(s.send).toHaveBeenCalledOnce();expect(s.state.messages.fresh.phase).toBe('sent');
 });
+it('learns a shopping request only through its intent, not a second observation source',async()=>{
+  const s=await setup();s.workspace.find.mockResolvedValue({intentId:'test-intent',quotes:[],sample:true});
+  await s.deliver(event('帮我找一件蓝色外套'));
+  expect(s.workspace.find).toHaveBeenCalledOnce();expect(s.workspace.observe).not.toHaveBeenCalled();
+  expect(s.send).toHaveBeenCalledOnce();
+});

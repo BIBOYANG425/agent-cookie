@@ -1,4 +1,4 @@
-import {bounded,containsSensitive,explicitStatement} from '@agent-cookie/learn';
+import {bounded,containsSensitive} from '@agent-cookie/learn';
 import type {WorkspaceClient,LearnedResponse} from '@agent-cookie/sdk';
 import type {ObservationSink} from './learning-capture.js';
 import {respond,type AgentWorkspace,type Conversation} from './agent.js';
@@ -57,9 +57,11 @@ export function createLearningControls(options:{workspace:LearningWorkspace;sink
 }
 export type LearningControls=ReturnType<typeof createLearningControls>;
 export function isShoppingRequest(text:string):boolean {
-  if(explicitStatement(text)||/我.{0,5}(?:喜欢|偏好|习惯)|\bI (?:like|prefer|love)\b/iu.test(text))return false;
-  return /(?:帮我|想|我要|另)?(?:找|买|挑|选购|推荐)|\b(?:find|search|buy|shop|recommend|looking for)\b/iu.test(text)
-    || (text.length<40&&!/[。.!?？]/u.test(text)&&/(?:鞋|外套|礼物|收纳|衣服|coat|jacket|shoes?|gift|shirt|bag)/iu.test(text));
+  // A product noun or a habitual verb ("I usually buy...") is not a request.
+  // Match an imperative/request clause, including one after a preference clause.
+  return /(?:^|[。！？!?，,；;])\s*(?:请|麻烦)?\s*(?:(?:帮我|给我)(?:找|挑|选|买|推荐)|(?:我)?(?:想要|想|要|需要)(?:找|买|选购)|推荐|找|买|选购)/u.test(text)
+    || /(?:^|[.!?,;])\s*(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:find|search|buy|shop|recommend)\b/iu.test(text)
+    || /\bI(?:'m| am) looking for\b/iu.test(text);
 }
 export async function respondWithLearning(text:string,id:string,conversation:Conversation,workspace:AgentWorkspace,controls:LearningControls){
   const command=await controls.command(text);if(command!==undefined)return command;

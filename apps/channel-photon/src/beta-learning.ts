@@ -1,7 +1,7 @@
 import {createLearningTelemetry} from '@agent-cookie/learn';
 import type {WorkspaceClient} from '@agent-cookie/sdk';
 import {createLearningAdapter,createObservationSink,type CaptureMetric} from './learning-capture.js';
-import {createLearningControls,respondWithLearning,type LearningWorkspace} from './learning-controls.js';
+import {createLearningControls,isShoppingRequest,respondWithLearning,type LearningWorkspace} from './learning-controls.js';
 import type {AgentWorkspace} from './agent.js';
 import type {ChannelState} from './state.js';
 import type {DeliveryLearning} from './runtime.js';
@@ -32,6 +32,9 @@ export async function createBetaLearning(options:{
     capture(incoming){
       // Commands must affect learning, not become evidence for learning.
       if(/^(?:暂停学习|恢复学习|pause learning|resume learning|忘掉|忘记|forget)/i.test(incoming.text.trim()))return;
+      // The workspace already learns a submitted shopping intent. Do not count the
+      // same message again as an independent conversation source five minutes later.
+      if(isShoppingRequest(incoming.text))return;
       const event=adapter.toEvent({id:incoming.messageId,platform:'imessage',direction:'inbound',
         timestamp:new Date(incoming.occurredAt),sender:{id:options.ownerHandle,kind:'human'},
         space:{id:incoming.spaceId,type:'dm'},content:{type:'text',text:incoming.text}});

@@ -1,5 +1,5 @@
 import {it,expect,vi} from 'vitest';
-import {createLearningControls,respondWithLearning,type LearningLocalState} from '../src/learning-controls.js';
+import {createLearningControls,isShoppingRequest,respondWithLearning,type LearningLocalState} from '../src/learning-controls.js';
 import {createObservationSink} from '../src/learning-capture.js';
 const row={field:'pref.color',value:'黑色',evidence:[{contributionId:'p1',agentId:'personal',basis:'stated' as const,createdAt:'2026-10-17T22:00:00Z',snippet:'我喜欢黑色'}],sources:['p1'],status:'card' as const};
 function setup(){
@@ -29,6 +29,13 @@ it('daily summary reads current active conclusions and occurs once',async()=>{
 it('ordinary preference speech is not a shopping intent',async()=>{
  const s=setup();const agent={find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};
  await respondWithLearning('我一直喜欢黑色衣服。','m1',{},agent,s.controls);expect(agent.find).not.toHaveBeenCalled();
+});
+it.each(['我平时穿衣服常选深色','我挑衣服时总会先看黑色那件。','我的外套大多是蓝色','I usually buy plain shirts','鞋'])('does not turn incidental product speech into a search: %s',async text=>{
+ const s=setup();const agent={find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};
+ await respondWithLearning(text,'casual',{},agent,s.controls);expect(agent.find).not.toHaveBeenCalled();
+});
+it.each(['帮我找一件外套','我想买个礼物','推荐一双鞋','找黑色衣服','我喜欢黑色，帮我找一件外套','Please find a blue jacket','Can you recommend a gift?','I am looking for a shirt'])('requires an actual shopping request: %s',text=>{
+ expect(isShoppingRequest(text)).toBe(true);
 });
 it('slow or failed summaries cannot replace normal replies',async()=>{
  const s=setup();s.workspace.getLearned.mockRejectedValue(Error('secret'));expect(await s.controls.decorate('normal')).toBe('normal');
