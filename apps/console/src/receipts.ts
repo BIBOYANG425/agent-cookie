@@ -7,10 +7,11 @@ import type { ActivityEvent } from './model';
 /** The live adapter reads /personal/receipts without a query, so the workspace's default page applies: the newest 50. */
 export const RECEIPT_LIMIT = 50;
 
-const purposeLabels: Record<string, string> = { handshake: '首次介绍', checkout: '结账地址', payment: '支付授权', tier0: '零接入前缀' };
+const purposeLabels: Record<string, string> = { handshake: '首次介绍', checkout: '结账地址', payment: '支付授权', tier0: '零接入前缀', history: '历史记录' };
 /**
- * handshake → 首次介绍 (as in the grants panel), checkout → 结账地址, payment → 支付授权, tier0 → 零接入前缀, a funnel stage
- * (quoted, accepted) → 阶段 · 报价; else the raw purpose. The raw purpose always stays visible.
+ * handshake → 首次介绍 (as in the grants panel), checkout → 结账地址, payment → 支付授权, tier0 → 零接入前缀, history → 历史记录
+ * (GET /assistant/history; its receipts carry no fields), a funnel stage (quoted, accepted) → 阶段 · 报价; else the raw purpose.
+ * The raw purpose always stays visible.
  */
 export function purposeLabel(purpose: string): string {
   if (Object.hasOwn(purposeLabels, purpose)) return `${purposeLabels[purpose]}（${purpose}）`;

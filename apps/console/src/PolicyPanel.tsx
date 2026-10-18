@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PolicyResult } from './controller';
 import type { Section } from './model';
-import { categoryLabels, decisionLabels, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
+import { categoryLabels, decisionLabels, historyReadable, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
 
 const SHOWN_CHANGES = 100;
 
@@ -58,8 +58,8 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
             : '未设置：按指定商家、尺码、偏好、预算和目录顺序排列。'}</dd></div>
         </dl>
         <table className="policy-table stack-table">
-          <caption className="visually-hidden">每个类别的字段策略：自动、按用途、可写</caption>
-          <thead><tr><th scope="col">类别</th><th scope="col">自动（握手即可读）</th><th scope="col">按用途</th><th scope="col">可写</th></tr></thead>
+          <caption className="visually-hidden">每个类别的字段策略：自动、按用途、可写、历史记录</caption>
+          <thead><tr><th scope="col">类别</th><th scope="col">自动（握手即可读）</th><th scope="col">按用途</th><th scope="col">可写</th><th scope="col">历史记录</th></tr></thead>
           <tbody>{POLICY_CATEGORIES.map((category) => {
             const purposes = Object.entries(view.policy.purpose[category] ?? {});
             return <tr key={category}>
@@ -69,9 +69,11 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
                 : <ul className="policy-purposes">{purposes.map(([field, list]) => <li key={field}>
                   <code className="field-key">{field}</code> 仅用于 {(list ?? []).map((name, index) => <span key={name}>{index > 0 ? '、' : ''}<code>{name}</code></span>)}</li>)}</ul>}</td>
               <td data-label="可写"><FieldList fields={view.policy.write[category] ?? []} /></td>
+              <td data-label="历史记录">{historyReadable(view.policy, category) ? '可读' : <span className="muted">不可读</span>}</td>
             </tr>;
           })}</tbody>
         </table>
+        <p className="small muted policy-history-note">历史：可读取此人的意图与购买记录（商家永远不可读，个人 agent 永远可读，公司助理由你决定；每次读取写回执）</p>
       </>}
     <div className="policy-candidate">
       <h3>候选策略</h3>
