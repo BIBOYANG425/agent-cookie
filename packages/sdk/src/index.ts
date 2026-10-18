@@ -6,20 +6,24 @@ import { CATEGORIES, isField, isFunnelStage } from '@agent-cookie/contract';
 import { forgetBody, forgetResult, type ForgetLearningInput, learningState, learnedResponse, controlBody, type LearningControl } from './learning.js';
 import { ActingClient, count, isObject, resourceId, validDate, validId, validReceipt, strings, type RequestOptions } from './core.js';
 import { ownerLink } from './links.js';
+import { keyList, mintedKey, mintKeyBody, personalContribution, personalContributionBody, revokeAgentId, revokedKeys,
+  type KeyList, type MintedKey, type MintKeyRequest, type PersonalContribution, type PersonalContributionRequest, type RevokedKeys } from './keys.js';
 
 export * from './learning.js';
 export {
-  WorkspaceError, WORKSPACE_ERROR_CODES, isWorkspaceError, workspaceConfigFromEnv,
+  WorkspaceError, WORKSPACE_ERROR_CODES, isWorkspaceError, workspaceBase, workspaceConfigFromEnv,
   type CheckoutResult, type ClientOptions, type FindInput, type FindResult, type QuoteList, type QuoteStream, type RequestOptions,
   type StreamQuotesOptions, type WorkspaceConfig, type WorkspaceIdentity,
 } from './core.js';
 export { LINK_STATUSES } from './links.js';
+export type { KeyList, KeyView, KeysResponse, MintedKey, MintKeyRequest, MintKeyResult, PersonalContribution, PersonalContributionRequest,
+  RevokedKeys, RevokeKeyResult } from './keys.js';
 export * from './assistant.js';
 export * from './merchant.js';
 export * from './prompt.js';
 export { ASSISTANT_GRANT_TTL_MS, FIELDS, LINK_TTL_MS } from '@agent-cookie/contract';
 export type { AcceptResult, ActivityEvent, AssistantContext, AssistantHistoryQuery, AssistantHistoryResponse, AssistantStats, Basis, Card, Category, ErrorCode, Field, FunnelReport, FunnelRow,
-  FunnelStage, Grant, Handshake, IntentEvent, IntentHistoryEntry, JarAccess, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
+  FunnelStage, Grant, Handshake, Contribution, IntentEvent, IntentHistoryEntry, JarAccess, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
   Receipt, Registration, Role, SearchStats, ShadowReport } from '@agent-cookie/contract';
 
 // GET /personal/grants adds these display fields to the contract Grant.
@@ -71,6 +75,15 @@ export class WorkspaceClient extends ActingClient {
     }
     // Preserve the workspace card and provenance; consumers choose which fields to display.
     return payload;
+  }
+
+  /**
+   * POST /personal/contributions: one fact the person stated to their own agent ("my shoe size is EU 42"), stored with
+   * basis "stated" (one source is enough for the card). Personal key. `value` is at most 512 UTF-8 bytes; never a card
+   * number (payment_method takes a provider token reference only). Checked before sending; errors never echo it.
+   */
+  async remember(input: PersonalContributionRequest, options?: RequestOptions): Promise<PersonalContribution> {
+    return personalContribution(await this.request('/personal/contributions', { ...options, body: personalContributionBody(input) }));
   }
 
   async getReceipts(options?: RequestOptions): Promise<{ receipts: Receipt[]; sample: boolean }> {
@@ -196,6 +209,30 @@ export class WorkspaceClient extends ActingClient {
       throw new Error('Invalid link decision response.');
     }
     return { ...link, sample: isObject(payload) && payload.sample === true };
+  }
+
+  /**
+   * Requires the owner key. Mints a key for one of the person's own agents (`role: 'personal'`, reads the whole card)
+   * or a store's agent added by hand (`'merchant'`). `agentId` `[a-z0-9][a-z0-9_.-]{0,63}`, `label` 1–200 UTF-8 bytes,
+   * checked before sending. The key is in this answer once and never again: hand it to the agent's environment
+   * (AGENT_COOKIE_KEY), never to a log, a chat or a file in a repository. Explicit action; never retried.
+   */
+  async mintKey(input: MintKeyRequest, options?: RequestOptions): Promise<MintedKey> {
+    const body = mintKeyBody(input);
+    return mintedKey(await this.request('/owner/keys', { ...options, body }), body);
+  }
+
+  /** Requires the owner key. The keys the owner minted, newest first: labels and dates, never a key or a hash. */
+  async listKeys(options?: RequestOptions): Promise<KeyList> {
+    return keyList(await this.request('/owner/keys', options));
+  }
+
+  /**
+   * Requires the owner key. Revokes every live key of that agent (`revoked` counts them); its contributions, sessions
+   * and receipts stay. Unknown agent → WorkspaceError NOT_FOUND. Explicit action; never retried.
+   */
+  async revokeKey(agentId: string, options?: RequestOptions): Promise<RevokedKeys> {
+    return revokedKeys(await this.request(`/owner/keys/${encodeURIComponent(revokeAgentId(agentId))}/revoke`, { ...options, body: {} }));
   }
 
   /** Owner only, AGENT_COOKIE_DEMO=1. Explicit action; never called by polling or retried. */

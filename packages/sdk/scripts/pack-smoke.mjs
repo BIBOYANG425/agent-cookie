@@ -43,7 +43,7 @@ const refuse = async () => { throw new Error('pack-smoke: no network call is all
 const config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: 'http://127.0.0.1:4310', AGENT_COOKIE_KEY: 'pack-smoke-key' });
 const clients = [new WorkspaceClient({ ...config, fetch: refuse }), new AssistantClient({ ...config, fetch: refuse }),
   new MerchantClient({ ...config, fetch: refuse })];
-for (const method of ['find', 'accept', 'listLinks', 'approveLink']) if (typeof clients[0][method] !== 'function') throw new Error('WorkspaceClient.' + method);
+for (const method of ['find', 'accept', 'listLinks', 'approveLink', 'remember', 'getMyCard', 'mintKey', 'listKeys', 'revokeKey']) if (typeof clients[0][method] !== 'function') throw new Error('WorkspaceClient.' + method);
 for (const method of ['requestLink', 'waitForLink', 'context', 'remember', 'stats', 'history', 'find', 'accept', 'observe']) {
   if (typeof clients[1][method] !== 'function') throw new Error('AssistantClient.' + method);
 }
@@ -73,7 +73,8 @@ console.log('pack-smoke: imported and constructed WorkspaceClient, AssistantClie
 // Type-checked only, never run: the three quickstarts' calls against the installed declarations.
 const typedConsumer = `import {
   AssistantClient, MerchantClient, WorkspaceClient, assistantPrompt, isWorkspaceError, registerAgent, workspaceConfigFromEnv,
-  type AssistantContributionInput, type AssistantHistoryResult, type Field, type FieldsResult, type JarAccess, type LinkView, type Registration,
+  type AssistantContributionInput, type AssistantHistoryResult, type Field, type FieldsResult, type JarAccess, type KeyView, type LinkView, type MintedKey,
+  type PersonalContribution, type Registration,
 } from '${pkg.name}';
 export async function flow(): Promise<string> {
   const registration: Registration = await registerAgent('http://127.0.0.1:4310', { name: 'Smoke', category: 'assistant' });
@@ -96,13 +97,20 @@ export async function flow(): Promise<string> {
   catch (error) { if (!isWorkspaceError(error, 'SCOPE_DENIED', 'PURPOSE_MISMATCH')) throw error; }
   const owner = new WorkspaceClient(workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'owner-key' }));
   const { links } = await owner.listLinks();
+  // The person's own agent: a key the owner minted (agent-cookie init), a stated preference, the card.
+  const mintedKey: MintedKey = await owner.mintKey({ agentId: 'my-agent', role: 'personal', label: 'my own agent' });
+  const keys: KeyView[] = (await owner.listKeys()).keys;
+  await owner.revokeKey('old-laptop');
+  const mine = new WorkspaceClient({ baseUrl: 'http://127.0.0.1:4310', key: mintedKey.key });
+  const stated: PersonalContribution = await mine.remember({ field: 'shoe_size', value: 'EU 42' });
+  await mine.getMyCard();
   // Hosted: the global key at the gateway, then the person's jar (a base URL with a path prefix) for the rest.
   const gateway = new AssistantClient({ baseUrl: 'http://127.0.0.1:4320', key: registration.key });
   const approved = await gateway.waitForLink((await gateway.requestLink()).id);
   const jar: JarAccess | undefined = approved.jar;
   const jarred = jar ? AssistantClient.forJar(jar, { timeoutMs: 10000 }) : undefined;
   const hosted = jarred ? assistantPrompt(await jarred.context()) : '';
-  return assistantPrompt(context) + available.length + String(released) + links.length + stats.questionsSkipped + history.intents.length + hosted;
+  return assistantPrompt(context) + available.length + String(released) + links.length + stats.questionsSkipped + history.intents.length + hosted + keys.length + stated.basis;
 }
 `;
 

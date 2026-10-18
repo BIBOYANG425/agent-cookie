@@ -128,6 +128,14 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/owner/links/:id/decline", caller: "owner", summary: "→ Link declined; the assistant's GET sees declined and may ask again later; 404 unknown, 409 LINK_NOT_PENDING when decided or expired",
     response: "Link", responses: { 200: "Link", 401: KEY, 403: ROLE, 404: "NOT_FOUND", 409: "LINK_NOT_PENDING" } },
 
+  // ---- the person's own agents (bring-your-own-agent plan §7): keys the owner mints, lists and revokes
+  { method: "POST", path: "/owner/keys", caller: "owner", summary: "MintKeyRequest { agentId, role: personal | merchant, label } → 201 MintKeyResult { key, agentId, role, label, createdAt }: the key is returned once and never logged or shown again (only its hash is stored); an unknown agentId is created (category personal for role personal, retail for merchant, name = label), an existing one must have that role (422 MISSING_FIELD); an agent may hold several keys",
+    request: "MintKeyRequest", response: "MintKeyResult", responses: { 201: "MintKeyResult", 401: KEY, 403: ROLE, 422: "MISSING_FIELD" } },
+  { method: "GET", path: "/owner/keys", caller: "owner", summary: "→ KeysResponse { keys: KeyView[] } newest first: the keys the owner minted (agentId, role, label, createdAt, revokedAt?); never a key or a hash; the owner key, registered agents' keys and Sample keys are not listed",
+    response: "KeysResponse", responses: { 200: "KeysResponse", 401: KEY, 403: ROLE } },
+  { method: "POST", path: "/owner/keys/:agentId/revoke", caller: "owner", summary: "→ RevokeKeyResult { ok, revokedAt, revoked }: revoke every live key of that agent; from then on they answer 401 AUTH_REQUIRED; the agent keeps its contributions, sessions and receipts; 404 when the owner never minted a key for that agentId",
+    response: "RevokeKeyResult", responses: { 200: "RevokeKeyResult", 401: KEY, 403: ROLE, 404: "NOT_FOUND" } },
+
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)",
     query: "ActivityQuery", response: "ActivityResponse", responses: { 200: "ActivityResponse", 401: KEY, 403: ROLE } },
   { method: "GET", path: "/owner/funnel", caller: "owner", summary: "?since=&limit= → FunnelReport: one row per intent, counts only (introduced, quoted, first-quote ms, accepted, outcome, fields granted/read, receipts, search filter stats); never field values (docs/commerce-analytics-plan.md Phase 0)",
