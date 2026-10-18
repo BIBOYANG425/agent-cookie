@@ -407,3 +407,9 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A73 | A → B | Phase 5 的第三扇门未做：Photon 把手机号映射到人与钥匙（现在仍是单一测试 sender）。需要先决定一个号码对应哪个 jar（本机工作台或网关下的 `/u/<userId>`）。 | 待做 |
 | A74 | A → 人 | Python 包 `agent-cookie`（`packages/sdk-python`，Python ≥ 3.11）未发布到 PyPI；发布由人执行（需要 PyPI 账号与 token，不进仓库）。`pnpm test` 会跑它的 pytest：有 python3 时自动建 `.venv` 并从 PyPI 装依赖，没有 python3 时打印 skipped 并退出 0。 | 待人 |
 | A75 | B → B | Phase 4 合入后，`GET /assistant/history` 已在 `openapi.json` 与生成的 Python 客户端里（`agent_cookie_client.api.assistant.get_assistant_history`），但 Python `AssistantClient.history` 与 MCP 助理工具 `history` 尚未包装：两者都要像 TS `AssistantClient.history` 那样丢掉 `text`/`query`，按 `history.assistant` 策略 403 如实转告，所以留作下一单元，不进 Phase 5。 | 待做 |
+
+2026-10-18（续），Phase 3–5 合入 main 后的收尾（A 线，分支 `claude/amazing-allen-cnv3s6`）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A81 | A → 人（记录） | 按 owner 2026-10-18 的授权（A 线可直接改 `docs/plan.md`），A67 与 A71 已完成：§2 A29 改为已实现、A30 单列仍为计划；§4 环境变量加 `AGENT_COOKIE_SEED`、`AGENT_COOKIE_DATA_DIR`、`AGENT_COOKIE_MCP_TRANSPORT`、`MCP_HTTP_PORT`、`AGENT_COOKIE_OWNER_KEY`、`AGENT_COOKIE_WORKSPACE_DIR` 与网关变量，端口加 4320；§5 字段策略表加「历史记录」一列并在 floor 说明里写明，HTTP 段加 `GET /assistant/history`、三条 `/owner/keys`、`GET /healthz` 与新类型；§1 记下 Python 客户端。Phase 3 / 4 / 5 分别以 PR #33 / #35 / #34 合入 main（`6086bdd` / `abe3445` / `9712167`），`docs/bring-your-own-agent-plan.md` 的进展段落与 §9 状态同步。仍待人：npm 发布（`packages/sdk/PUBLISHING.md`）、PyPI 发布（A74）、A66、A73、A75。 | 已完成 |
