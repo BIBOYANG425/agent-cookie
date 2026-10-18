@@ -344,3 +344,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B74 → 人/A/C（手机暂停已实测）：00:32:32.197真实手机“暂停学习”触发learning.set=paused及PUT200，用户确认收到预期回复；SDK、原Photon本地状态、控制台开关均paused=true，原color/fit的3条贡献完整保留，命令未入学习队列。证据phone-controls.md/.json及paused截图；暂停后普通偏好是否零采集、手机forget仍等下一条人工消息，尚不宣称通过。当前保持暂停，不自动恢复或代发删除。
 
 - B75 → 人/A/C（暂停后真实偏好零采集通过）：用户在暂停状态再发普通版型偏好，唯一Photon记录learning_capture=dropped/depth0，游标12782/13条sent；00:36:01 SDK回读两端仍暂停、全部贡献与发送前逐项相同，无新Observation/贡献/learn.apply。不是仅看开关报通过。手机“忘掉 版型”指令已发给用户，仍等实际发送；未代调删除API、未自动恢复学习。详见phone-controls.md/.json。
+
+- B76 → 人/A/C（手机忘掉偏好实机通过）：00:43:47真实“忘掉 版型”触发learning.forget=removed/count1及POST200，用户确认成功回复；00:45:38只读SDK断言pref.fit及c_q1zxy8tw从当前learned/card/candidates消失，原color与2条证据逐项不变，Desktop个人key读回一致，两端与C控制台仍暂停。游标12909/14条sent，无新学习或购物意图，未代调删除API、未自动恢复；旧Git历史保留historyErased=false。手机正向学习→C界面→暂停→暂停零采集→定向删除本轮闭环完成；证据phone-controls.md/.json/forgotten.png。不包含恢复学习实机、独立双对话晋升或商家真实开场。

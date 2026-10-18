@@ -21,12 +21,26 @@ At **00:32:32.197 PDT**, the user's **暂停学习** command produced `learning.
 
 The user then sent the ordinary preference sentence again while learning was paused. The existing Photon listener reported `learning_capture: dropped, depth:0` and advanced to cursor12782 / thirteen sent records. Readback at **00:36:01.424 PDT** confirmed both pause flags remained true, all learned rows/evidence exactly matched the pre-message snapshot, and there was no new observation queue, contribution or learn-apply event. This verifies the actual paused phone-input path rather than only the switch display. The assistant did not call a model or re-submit that input.
 
-## Real phone forget — pending user input
+## Real phone forget — verified
 
-The next instruction is **忘掉 版型**, targeting the single `pref.fit=loose` candidate. Require the actual forget result, disappearance from current learned/card/candidates, preserved unrelated color, and learning remaining paused. Do not claim old Git history was erased (`historyErased:false`). This instruction has been issued; phone forget is not marked passed yet. No API mutation has been performed on the user's behalf to simulate either command. [Machine-readable evidence](2026-10-18-phone-controls.json) distinguishes completed and pending steps.
+The user's **忘掉 版型** command produced `learning.forget` event20547 at **00:43:47.141 PDT** (`actor:sample-personal-photon`, `object:pref.fit`, `result:removed`, `count=1`), followed by `POST /personal/learning/forget` event20548 at00:43:47.552 (HTTP200). The user confirmed the success reply and that learning remains paused.
 
-UI limitation retained for C: legacy rows without `models` currently render “本地规则”; missing metadata alone does not prove that an old record came from local rules. This does not affect the new fit row, whose two actual model IDs are present.
+Read-only SDK verification at **00:45:38.277 PDT** found:
+
+- `pref.fit=loose` and current contribution `c_q1zxy8tw` absent from learned records, card and candidates.
+- Unrelated `pref.color=black, white, gray` and contributions `c_2tgkeby2` / `c_0ggs1r0w` exactly unchanged from the paused-input baseline.
+- Backend and local capture both still paused; the Desktop personal key via SDK sees the same remaining learned records and no fit on its card/candidates. This is a cross-client SDK readback, not a new Claude Desktop UI run.
+- Channel cursor12909, fourteen outbox records, all sent. No new learning observation, contribution, or shopping-intent activity from the delete command.
+- The live console now shows only color in “学到的” and retains the paused notice. The screenshot expands the retained color evidence; full section inspection confirms the fit row is absent.
+
+The assistant made only read calls during this acceptance; it did not invoke a delete endpoint to simulate the phone command. Current preference and evidence deletion is verified. **Old Git history is retained (`historyErased:false`)**, so this is not physical erasure of all historical versions.
+
+**This acceptance is complete:** real phone learning → candidate visible in C console → pause → ordinary input dropped while paused → targeted forget with unrelated color preserved. Learning remains paused; no automatic resume was performed. [Machine-readable evidence](2026-10-18-phone-controls.json) records each stage separately. Recovery/resume on the actual phone, two independent-conversation promotion, and the separate merchant greeting are not claimed by this acceptance.
+
+UI limitation retained for C: legacy rows without `models` currently render “本地规则”; missing metadata alone does not prove that an old record came from local rules. The fit record had both actual model IDs before the requested deletion, as preserved in the earlier acceptance evidence.
 
 ![Updated connected console showing actual model provenance](2026-10-18-phone-controls-ui-ready.png)
 
 ![Phone pause reflected in the console with existing preferences retained](2026-10-18-phone-controls-paused.png)
+
+![After the phone forget command: learning remains paused and color evidence remains](2026-10-18-phone-controls-forgotten.png)
