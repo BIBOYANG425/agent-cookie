@@ -127,7 +127,8 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 15, table: "receipts", column: "provider", ddl: "ALTER TABLE receipts ADD COLUMN provider TEXT" },
   { version: 15, table: "receipts", column: "simulated", ddl: "ALTER TABLE receipts ADD COLUMN simulated INTEGER" },
 ];
-export const SCHEMA_VERSION = 15;
+// v15 shipped on both demo and payment branches with different columns. Advance both through the additive checks.
+export const SCHEMA_VERSION = 16;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations", "links"] as const;

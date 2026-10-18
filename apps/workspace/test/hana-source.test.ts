@@ -2,7 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {Store} from '../src/db.js';
+import {SCHEMA_VERSION, Store, type ReceiptRow} from '../src/db.js';
 import {harness, KEYS, callbackServer} from './harness.js';
 
 const cleanup: Array<() => unknown> = [];
@@ -15,9 +15,36 @@ describe('HANA conversation provenance', () => {
     if(lineage==='conversation')store.db.exec('ALTER TABLE keys DROP COLUMN label; ALTER TABLE keys DROP COLUMN revoked_at');
     else store.db.exec('ALTER TABLE intents DROP COLUMN conversation_id');
     store.db.pragma('user_version=14'); store.close(); store=new Store(file); cleanup.push(()=>store.close());
-    expect(store.schemaVersion()).toBe(15); expect(store.intent('retained')?.id).toBe('retained');
+    expect(store.schemaVersion()).toBe(SCHEMA_VERSION); expect(store.intent('retained')?.id).toBe('retained');
     expect((store.db.pragma('table_info(keys)') as Array<{name:string}>).map(c=>c.name)).toEqual(expect.arrayContaining(['label','revoked_at']));
     expect((store.db.pragma('table_info(intents)') as Array<{name:string}>).map(c=>c.name)).toContain('conversation_id');
+  });
+  it.each(['demo', 'payment'] as const)('repairs either v15 lineage and can write receipts after reopening (%s)', (lineage) => {
+    const dir = mkdtempSync(join(tmpdir(), 'cookie-v15-'));
+    cleanup.push(() => rmSync(dir, {recursive: true, force: true}));
+    const file = join(dir, 'workspace.sqlite');
+    let store = new Store(file);
+    const receipt: ReceiptRow = {id: 'before-upgrade', userId: 'u', sessionId: 'session', agentId: 'merchant',
+      fields: ['lang'], purpose: 'handshake', createdAt: new Date().toISOString()};
+    store.insertReceipt(receipt);
+    if (lineage === 'demo') {
+      for (const table of ['receipts', 'payment_authorizations']) {
+        store.db.exec(`ALTER TABLE ${table} DROP COLUMN provider; ALTER TABLE ${table} DROP COLUMN simulated`);
+      }
+    } else store.db.exec('ALTER TABLE intents DROP COLUMN conversation_id');
+    store.db.pragma('user_version=15');
+    store.close();
+    store = new Store(file);
+    cleanup.push(() => store.close());
+    expect(store.schemaVersion()).toBe(16);
+    expect(store.lastReceipt('session', 'handshake')?.id).toBe('before-upgrade');
+    expect(() => store.insertReceipt({...receipt, id: 'after-upgrade'})).not.toThrow();
+    expect(store.lastReceipt('session', 'handshake')?.id).toBe('after-upgrade');
+    for (const table of ['receipts', 'payment_authorizations']) {
+      expect((store.db.pragma(`table_info(${table})`) as Array<{name: string}>).map(c => c.name))
+        .toEqual(expect.arrayContaining(['provider', 'simulated']));
+    }
+    expect((store.db.pragma('table_info(intents)') as Array<{name: string}>).map(c => c.name)).toContain('conversation_id');
   });
   it('keeps the opaque conversation after reopening SQLite, without changing legacy rows', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hana-conversation-db-'));
