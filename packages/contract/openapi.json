@@ -34,6 +34,9 @@
       "description": "Demo mode only (AGENT_COOKIE_DEMO=1)."
     },
     {
+      "name": "healthz"
+    },
+    {
       "name": "me",
       "description": "Who the presented key belongs to."
     },
@@ -1400,6 +1403,39 @@
         },
         "x-agent-cookie-caller": "owner",
         "x-agent-cookie-gate": "AGENT_COOKIE_DEMO"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "getHealthz",
+        "tags": [
+          "healthz"
+        ],
+        "description": "→ HealthResponse { ok: true, seed }: liveness for a supervisor (the gateway); no key, no data\n\n**Key:** none.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK: HealthResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Any other failure, including 500 (code UPSTREAM_ERROR, message \"internal error\"). Every error is an ErrorBody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "x-agent-cookie-caller": "anyone"
       }
     },
     "/me": {
@@ -5275,6 +5311,27 @@
         ],
         "description": "A04 wording: lang / tone / length ARE three values — they say \"how to talk to me\" and travel with every handshake. \"No values in the handshake\" means `available` lists field NAMES only; every other value is fetched through GET /agent/fields and checked against policy, grant and purpose at read time."
       },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "seed": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "blank"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "seed"
+        ],
+        "description": "GET /healthz: liveness for a supervisor such as the gateway; no key, no data. `seed` is AGENT_COOKIE_SEED."
+      },
       "IntentEvent": {
         "anyOf": [
           {
@@ -5622,6 +5679,22 @@
           "sessionId": {
             "type": "string",
             "description": "Present once approved."
+          },
+          "jar": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "key"
+            ],
+            "description": "Hosted gateway only (gateway.ts): present once approved, until the link expires. The person's instance under the gateway and the assistant's key for it. A single workspace never sets it."
           }
         },
         "required": [

@@ -334,3 +334,9 @@ export interface PublicJwk {
 export interface JwksResponse {
   keys: PublicJwk[];
 }
+
+/** GET /healthz: liveness for a supervisor such as the gateway; no key, no data. `seed` is AGENT_COOKIE_SEED. */
+export interface HealthResponse {
+  ok: true;
+  seed: "sample" | "blank";
+}
