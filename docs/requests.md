@@ -397,3 +397,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
 
 - B79 → A/C/人（人取消06:00截止并授权B补身份/同源）：已合main b1e049a到B隔离分支，IntentRequest.conversationId与SQLite v14、学习来源去重已补；原单源candidate断言保留，重放/accept不新增来源，另一个真实conversation才晋升，原六场景+capture合成回归通过。HANA专用personal身份已通过owner注册到独立4314，key仅本机.env.demo；两家UCP实时搜索返回live $113/$112，尚未手机切换/accept/付款。main移除fake后HANA测试迁移正式隔离A；详见hana-demo/03-source-and-identity.md。现有商家note开场、三次手机排练与独立复现仍待，不将此准备标为实机通过。
+
+- B80 → 人/A/C（HANA切换准备）：lane-b37be7c8已推，HANA工具迁移正式A后9测试及类型通过。新4314使用专用HANA身份，实时UCP两报价；专用PG快照/重置及身份回读通过。原监听已退出，保留14sent/12909/paused状态并归档死锁；新HANA唯一回复者和listen-only旁听均ready，已请人发第一条真实手机消息，尚不报实机通过。原06:00截止已由人明确取消。

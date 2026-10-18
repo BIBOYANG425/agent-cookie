@@ -7,7 +7,7 @@ Status: preparation, **not a live HANA phone acceptance**. Original channel-phot
 1. The provided HANA-new.zip, extracted as `HANA-new` beside the `agent-cookie` checkout. Apply `docs/evidence/hana-demo/hana-integration.patch.gz` (decompress before `git apply`) to the clean extracted HANA source. Do not execute the archive's resetmem.sh.
 2. Node22, pnpm10, Docker, and the committed root lockfile of each repository. The HANA SDK dependency intentionally links the **sibling repository**. Agent Cookie's internal workspace dependencies still use `workspace:*`.
 3. A dedicated local PostgreSQL database, `hana_demo`, at 127.0.0.1:54430, with pgvector. The demo scripts refuse the original/other database. Local prepared container: `agent-cookie-hana-demo-pg`, image `pgvector/pgvector:pg17`. Credentials are provisioned locally, never in this document or the patch.
-4. A separate workspace at **127.0.0.1:4314**, with its own SQLite file and Git memory directory; A provisions the HANA personal identity/key and an owner key. Do not copy Cyrus's relationship database or reset the original 4310 workspace. Live UCP inventory/credentials are separate prerequisites; fixture runs must say Sample.
+4. A separate workspace at **127.0.0.1:4314**, with its own SQLite file and Git memory directory; An owner-authorized SDK registration provisions the dedicated HANA personal identity; save its key only in the local env. The private local reset seed must include that identity before restarting the demo workspace. Do not copy Cyrus's relationship database or reset the original 4310 workspace. Live UCP inventory/credentials are separate prerequisites; fixture runs must say Sample.
 5. The existing Photon Beta2.0 project, one allowlisted demo owner, and OpenRouter access. Spectrum Cloud credentials are not needed for this Beta adapter. Do not load HANA's old plugin-imessage/plugin-spectrum configuration.
 
 ## Local environment (names only)
@@ -47,7 +47,7 @@ pnpm --filter @agent-cookie/channel-photon typecheck
 pnpm --filter @agent-cookie/sdk exec node --import tsx test/hana-source.acceptance.ts
 ```
 
-The last probe **must pass before cutover**. At the recorded B baseline it exits1: A still creates two sources from find+observe. Do not remove that assertion or call the prematurely promoted card a success.
+The last probe **must pass before cutover**. It now passes on37be7c8: find+observe+accept keep one source/candidate, and a different conversation promotes it. The original two-source failure is preserved in02-source-collision.json; no assertion was weakened.
 
 From `HANA-new`:
 

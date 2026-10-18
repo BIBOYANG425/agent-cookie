@@ -12,3 +12,9 @@ The human explicitly cancelled the 06:00 cutoff and authorized B to implement th
 - First live UCP preflight returned two live offers ($113 and $112) from brooks-trove.myshopify.com and black-flag-outfitters-clothing.myshopify.com. No accept/payment/phone send. Safe source details in03-live-search.json.
 
 Original4310/phone credentials, cursor and pause state have not been reset or replaced. HANA phone cutover, failure screenshots, three full rehearsals and independent reproduction remain pending.
+
+## Cutover preparation
+
+HANA six-tool tests now run through SDK + the real isolated A HTTP app and fixture commerce (9 passed), plugin typecheck and the scoped demo entry pass. HANA no longer depends on the removed fake workspace. Original listener PID31923 was absent on an escalated process check; its14sent records/cursor12909/paused=true state was backed up and the stale lock archived. No live lock was deleted.
+
+The isolated HANA PostgreSQL and4314 workspace were reset only after a successful snapshot and no-active-client inspection; the registered HANA identity survived reset and /me was rechecked. Independent passive observer reported channel_ready/listen-only; HANA reported hana_beta_ready atcursor12909. No synthetic phone messages were sent; the user was asked to supply the first actual message. This is ready-for-phone status, not completed phone acceptance.
