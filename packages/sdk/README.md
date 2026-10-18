@@ -111,12 +111,18 @@ A purpose field is released only after the person accepted this store's quote; b
 
 ## Quickstart (c): the person's own agent
 
+```sh
+agent-cookie init --start   # a blank workspace in ~/.agent-cookie, then a personal key for "my-agent", shown once
+# paste the two printed lines into your agent's environment (never into a file you commit):
+# export AGENT_COOKIE_URL=http://127.0.0.1:4310
+# export AGENT_COOKIE_KEY=ck_…
+```
+
 ```ts
 import { WorkspaceClient, workspaceConfigFromEnv } from '@agent-cookie/sdk';
 
-// AGENT_COOKIE_KEY: a personal key the owner added; AGENT_COOKIE_URL defaults to http://127.0.0.1:4310.
-const me = new WorkspaceClient(workspaceConfigFromEnv(process.env));
-const { role } = await me.getMe(); // 'personal'
+const me = new WorkspaceClient(workspaceConfigFromEnv(process.env)); // the personal key from init
+await me.remember({ field: 'shoe_size', value: 'EU 42' }); // the person said it: stated, on the card at once
 const card = await me.getMyCard(); // the whole card with provenance: the person's own agent may see it
 
 const found = await me.find({ text: 'a black coat, size M, under $150' }, 'find-0002');
@@ -124,7 +130,7 @@ const result = await me.accept(found.quotes[0].id, `accept-${found.quotes[0].id}
 const { receipts } = await me.getReceipts(); // who read which field, for which purpose; never values
 ```
 
-The owner key (console, CLI) also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
+More agents of your own (a laptop, a speaker) each get their own key from the owner key: `mintKey({ agentId, role: 'personal', label })`, or `agent-cookie keys mint --agent laptop --role personal --label "laptop"`; `keys list` shows labels and dates, never keys; `keys revoke laptop` stops every key of that agent. The owner key also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
 
 ## Three plain facts
 
@@ -162,9 +168,9 @@ Every method takes an optional last `{ signal?: AbortSignal }`. Writes that crea
 
 **`registerAgent(url, { name, category, capabilities?, callbackUrl?, chatEndpoint? }, { fetch?, timeoutMs?, signal? })`** → `Registration { agentId, key, category, role }`. No key needed; an assistant takes no callback or chat endpoint; category `personal` needs the owner key and is refused.
 
-**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks({ limit? })` (1–500, workspace default 100), `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
+**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `remember({ field, value })` → `Contribution & { sample }` (POST /personal/contributions: a fact the person stated, basis `stated`; value ≤ 512 bytes, never a card number), `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks({ limit? })` (1–500, workspace default 100), `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `mintKey({ agentId, role, label })` → `MintKeyResult & { sample }` (`agentId` `[a-z0-9][a-z0-9_.-]{0,63}`, `role` `personal | merchant`, `label` 1–200 bytes; the key is in this answer once and never again, and never in an error), `listKeys()` → `{ keys: KeyView[], sample }` (labels and dates, never a key or a hash: a row that carries one is refused), `revokeKey(agentId)` → `RevokeKeyResult & { sample }` (`revoked` counts the keys revoked; `NOT_FOUND` for an agent the owner never minted a key for), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
 
-**Configuration.** `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`; `https://`, or `http://` on loopback, with an optional path prefix such as `/u/usr_abc`) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
+**Configuration.** `workspaceBase(url)` returns the base URL as clients accept it (normalised) or throws the one rule above. `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`; `https://`, or `http://` on loopback, with an optional path prefix such as `/u/usr_abc`) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
 
 ## Develop in this repository
 
