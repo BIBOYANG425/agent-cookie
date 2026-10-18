@@ -198,8 +198,8 @@ export const DEFAULT_SELLER_COUNT = 2;
 /**
  * POST /personal/observations body: turns of a conversation the personal agent took part in or overheard. Only the
  * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival. Turns are batched per
- * (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once OBSERVATION_BATCH_TURNS
- * turns have arrived. The text is held in workspace memory only (B49): at most OBSERVATION_MAX_CONVERSATIONS
+ * (personal agent, conversationId); Dreaming learns from a batch once it has been quiet for OBSERVATION_IDLE_MS or
+ * holds OBSERVATION_BATCH_TURNS turns, never on arrival. The text is held in workspace memory only (B49): at most OBSERVATION_MAX_CONVERSATIONS
  * conversations × OBSERVATION_MAX_QUEUED_TURNS turns, the oldest dropped (and counted in the activity log) past
  * that; SQLite keeps only the conversationId, turn count and times, and a restart loses what was waiting. While
  * learning is paused the observation is discarded.
@@ -453,6 +453,13 @@ export interface Card {
   candidates: Candidate[];
   /** Values that used to be on the card and were replaced by a newer qualified value. History, not card. */
   superseded: SupersededField[];
+  /**
+   * Additive (Dreaming, 2026-10-18; RulesApi.mergeCard fills it, lane C): fields that, at `now`, are held back purely
+   * by age — a card value downgraded to medium because lastSupportedAt is older than 180 days although it has two or
+   * more sources, or a field that left the card because its last support is older than 365 days. Pure: the same
+   * contributions and `now` give the same list. For logs only; never values.
+   */
+  decayed?: Field[];
   /** Set by the workspace on GET /personal/card (additive, B20): "sample" whenever a card value rests on Sample seed data. RulesApi.mergeCard does not set it. */
   source?: DataSource;
 }
@@ -484,6 +491,47 @@ export interface ActivityEvent {
   object: string;
   result: string;
   reason: string;
+  /** Additive (2026-10-18): set on events the periodic Dreaming job writes; absent on request events. */
+  kind?: "dreaming";
+  /** Dreaming events only: counts, never field values. */
+  stats?: DreamingStats;
+}
+
+// ---- Dreaming (2026-10-18, human direction; plan §规模与时间规则) ----
+
+/**
+ * One periodic job, out of every request path: (a) learn from observed conversations that are due (quiet for
+ * OBSERVATION_IDLE_MS or OBSERVATION_BATCH_TURNS turns), (b) regenerate the card at an explicit `now` (decay),
+ * (c) compact the memory repo — per field the current value plus the DREAMING_KEEP_SUPERSEDED most recent superseded
+ * values stay in contributions/, older ones move to archive/<YYYY-MM>.md —, (d) write one activity event with counts.
+ * A failing step is logged and the next one still runs. It reads no stored conversation text (there is none: (a)
+ * takes what waits in memory) and never touches merchants' notes, grants or sessions. Writes still regenerate the card at once; Dreaming only learns, decays
+ * and archives. DREAMING_INTERVAL_MS (default DREAMING_DEFAULT_INTERVAL_MS; 0 = off) schedules it; the owner can run
+ * it now with POST /owner/dreaming/run.
+ */
+export const DREAMING_KEEP_SUPERSEDED = 3;
+export const DREAMING_DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
+/** The git author of Dreaming's own commits (compaction, CARD.md regeneration). */
+export const DREAMING_AUTHOR = "dreaming";
+
+export interface DreamingStats {
+  /** Contributions written from observed conversations in this run. */
+  learned: number;
+  /** Card entries (field + value) that were not on the card at the previous run and are now. */
+  promoted: number;
+  /** Fields in Card.decayed at this run's `now`. */
+  decayed: number;
+  /** Contribution lines moved to archive/ by compaction. */
+  archived: number;
+}
+export type DreamingStepName = "learn" | "regenerate" | "compact" | "log";
+/** Response of POST /owner/dreaming/run (and what each scheduled run computes). */
+export interface DreamingRun {
+  at: string;
+  stats: DreamingStats;
+  /** Field names only. */
+  decayedFields: Field[];
+  steps: Array<{ step: DreamingStepName; result: "ok" | "skipped" | "failed"; reason?: string }>;
 }
 
 /** Wire shape of every error response. Never includes field names the caller is not allowed to know. */

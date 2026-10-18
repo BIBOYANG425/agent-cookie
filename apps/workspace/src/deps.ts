@@ -19,6 +19,7 @@ import { createLaneD, type LaneDHooks } from "./laneD.js";
 import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
 import { LearningService } from "./services/learning.js";
+import { Dreaming } from "./dreaming.js";
 import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
 import { NoteService } from "./services/notes.js";
@@ -43,6 +44,10 @@ export interface Deps {
   commerce: CommerceService;
   /** Dynamic memory: observation queue, learning hooks, learned/history views. */
   learning: LearningService;
+  /** The periodic job: learn, regenerate, compact, log (dreaming.ts). */
+  dreaming: Dreaming;
+  /** Whether a DREAMING_INTERVAL_MS timer is running (false when it is 0). */
+  dreamingScheduled: boolean;
   /** Requests enter it; reset takes it exclusively. */
   gate: Gate;
   /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
@@ -52,14 +57,16 @@ export interface Deps {
 }
 
 /** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
-export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks; learn?: LearnApi }
+export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks; learn?: LearnApi;
+  /** Tests inject a clock that does not read the system time (Clock.at). */
+  clock?: Clock }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
   const gate = new Gate();
   const store = new Store(config.sqlitePath, { busyTimeoutMs: config.sqliteBusyTimeoutMs });
   // A request overtaken by a reset must not write anything (gate.ts); it hears "not found", like any vanished object.
   store.setWriteGuard(() => { if (gate.stale()) fail("NOT_FOUND"); });
-  const clock = new Clock();
+  const clock = overrides.clock ?? new Clock();
   const log = activityLogger(store, clock, () => gate.stale());
   const fixtures = loadFixtures(config.fixturesDir, config.ucpFixturesDir);
   const rules = overrides.rules ?? loadRules();
@@ -94,12 +101,15 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     ensureOwnerKey(store, config, clock.nowIso());
   }
   card.get(fixtures.users[0]!.userId);
-  // Quiet conversations are learned from on a timer (the threshold path runs as observations arrive).
-  const learnTimer = setInterval(() => learning.tick((fn) => gate.run(fn)), config.learnTickMs);
-  learnTimer.unref();
+  // Dreaming: learning from observed conversations, decay and compaction, on its own period (0 = never scheduled).
+  const dreaming = new Dreaming(ctx, card, learning);
+  const dreamTimer = config.dreamingIntervalMs > 0
+    ? setInterval(() => dreaming.tick((fn) => gate.run(fn)), config.dreamingIntervalMs) : undefined;
+  dreamTimer?.unref();
 
   return {
     config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, learning, gate,
+    dreaming, dreamingScheduled: dreamTimer !== undefined,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
@@ -116,7 +126,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       return now;
     }, config.resetWaitMs),
     async close() {
-      clearInterval(learnTimer);
+      if (dreamTimer) clearInterval(dreamTimer);
+      await dreaming.settle();
       await learning.settle();
       await delivery.settle();
       store.close();

@@ -1,4 +1,5 @@
 // Activity log: who did what to which object, with what result. NEVER field values (plan §4 T1).
+import type { DreamingStats } from "@agent-cookie/contract";
 import type { Clock } from "./clock.js";
 import type { Store } from "./db.js";
 import { logActivity } from "./telemetry.js";
@@ -10,6 +11,9 @@ export interface ActivityInput {
   result: string;
   /** Codes, field NAMES, purposes, step names. Never values, never upstream message text. */
   reason?: string;
+  /** Dreaming's own events. */
+  kind?: "dreaming";
+  stats?: DreamingStats;
 }
 
 export type Log = (e: ActivityInput) => void;
@@ -18,7 +22,8 @@ export type Log = (e: ActivityInput) => void;
 export function activityLogger(store: Store, clock: Clock, stale: () => boolean = () => false): Log {
   return (e) => {
     if (stale()) return;
-    store.insertActivity({ at: clock.nowIso(), event: e.event, actor: e.actor, object: e.object ?? "", result: e.result, reason: e.reason ?? "" });
+    store.insertActivity({ at: clock.nowIso(), event: e.event, actor: e.actor, object: e.object ?? "", result: e.result, reason: e.reason ?? "",
+      ...(e.kind ? { kind: e.kind } : {}), ...(e.stats ? { stats: e.stats } : {}) });
     logActivity(e);
   };
 }
