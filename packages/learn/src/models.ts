@@ -27,6 +27,9 @@ export const JEV_MODEL = 'typesafe/jev-1.14';
 export const EXTRACTION_MODELS = [DEFAULT_EXTRACTION_MODEL, 'qwen/qwen3-235b-a22b-2507', 'meta-llama/llama-3.3-70b-instruct'] as const;
 export const ZDR_PROVIDER = Object.freeze({allow_fallbacks:true,require_parameters:true,data_collection:'deny',zdr:true});
 type Extractor = (input:ModelInput)=>Promise<unknown>;
+type Classifier = (input:ModelInput)=>Promise<Classification>;
+const classifierModels = new WeakMap<Classifier,string>();
+export function getClassifierModel(classify:Classifier):string|undefined { return classifierModels.get(classify); }
 type Defaults = {model:string;classifierModel:string;classify:(input:ModelInput)=>Promise<Classification>};
 const defaults = new WeakMap<Extractor, Defaults>();
 /** Metadata contains no credentials. The companion classifier keeps its key inside its closure. */
@@ -71,7 +74,7 @@ export function createHaikuExtractor(options:{apiKey:string;provider?:'anthropic
 export function createJevClassifier(options:{apiKey:string;model?:string;fetch?:typeof fetch}) {
   token(options.apiKey);
   const model=options.model??JEV_MODEL;if(model!==JEV_MODEL)throw new Error('Unsupported Jev model.');
-  return async(input:ModelInput):Promise<Classification>=>bounded(async signal=>{
+  const classify:Classifier = async(input:ModelInput):Promise<Classification>=>bounded(async signal=>{
     const keys=Object.keys(input.policy);
     const raw=await post(options.fetch??fetch,'https://openrouter.ai/api/alpha/decisions',{'Authorization':`Bearer ${options.apiKey}`},{
       model,state:{utterance:input.text},provider:ZDR_PROVIDER,
@@ -93,4 +96,6 @@ export function createJevClassifier(options:{apiKey:string;model?:string;fetch?:
     return {sensitive:false,stable:a.stable.noul>=0.9,
       keys:a.key.confidence>=0.9&&keys.includes(a.key.choice)&&a.key.probabilities[a.key.choice]>=0.9?[a.key.choice]:[]};
   },1500,input.signal);
+  classifierModels.set(classify,model);
+  return classify;
 }

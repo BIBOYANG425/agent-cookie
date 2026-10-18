@@ -32,7 +32,7 @@ export function createWorkspaceLearner(options:Omit<Parameters<typeof createLear
       const result=await learner.learn({...base,text:turn.text,occurredAt:turn.at});
       if(result.reason==='sensitive')return []; // do not retain earlier results from a sensitive batch
       rows.push(...result.preferences.filter(p=>turn.text.includes(p.evidence)).map(p=>({field:p.key,value:p.value,basis:p.basis,
-        evidence:{snippet:p.evidence,...(intentId?{intentId}:{conversationId})}})));
+        evidence:{snippet:p.evidence,...(intentId?{intentId}:{conversationId}),...(result.models?{models:{...result.models}}:{})}})));
     }
     return rows;
   };

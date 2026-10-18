@@ -79,3 +79,27 @@ it('forbids stated in the wire schema when the local explicit-statement check fa
  const body=JSON.parse(String((mock.mock.calls as unknown as [string,RequestInit][])[0][1].body));
  expect(body.response_format.json_schema.schema.properties.preferences.items.properties.basis.enum).toEqual(['observed','inferred']);
 });
+
+it('carries successful gate and extractor IDs on each workspace evidence, not in the snippet',async()=>{
+ const api=createWorkspaceLearner({extract:createExtractor({apiKey:'test',fetch:mockFetch()})});
+ const rows=await api.extractFromConversation([{role:'user',text:turn.text,at:turn.occurredAt}],{conversationId:'conv-models',channel:'imessage'});
+ expect(rows).toEqual([{field:'pref.color',value:'黑色',basis:'stated',evidence:{snippet:turn.text,conversationId:'conv-models',models:{gate:JEV_MODEL,extractor:DEFAULT_EXTRACTION_MODEL}}}]);
+});
+it('does not claim a Jev gate when its unavailable request fell back to extraction',async()=>{
+ const f=vi.fn(async(url:unknown)=>String(url).includes('/decisions')?Response.json({}, {status:503}):Response.json(completion()));
+ const result=await createLearner({policy,extract:createExtractor({apiKey:'test',fetch:f})}).learn(turn);
+ expect(result.preferences).toEqual([preference]);expect(result.models).toEqual({extractor:DEFAULT_EXTRACTION_MODEL});expect(f).toHaveBeenCalledTimes(2);
+});
+it('does not invent provenance for custom adapters and identifies an explicit native Jev override',async()=>{
+ const extract=async()=>extracted;
+ const custom=await createLearner({policy,extract,classify:async()=>({stable:true,sensitive:false,keys:['pref.color']})}).learn(turn);
+ expect(custom.preferences).toEqual([preference]);expect(custom).not.toHaveProperty('models');
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(jev)});
+ const gated=await createLearner({policy,extract,classify}).learn(turn);
+ expect(gated.models).toEqual({gate:JEV_MODEL});
+});
+it('does not attach provenance to rejected sensitive results',async()=>{
+ const f=vi.fn(async()=>Response.json({answers:{sensitive:{type:'noul',noul:1}}}));
+ const result=await createLearner({policy,extract:createExtractor({apiKey:'test',fetch:f})}).learn(turn);
+ expect(result).toEqual({preferences:[],reason:'sensitive'});expect(f).toHaveBeenCalledTimes(1);
+});

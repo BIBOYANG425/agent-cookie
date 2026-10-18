@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { getExtractorDefaults } from './models.js';
+import { getExtractorDefaults, getClassifierModel } from './models.js';
+import type { EvidenceModels } from '@agent-cookie/contract';
 
 export type LearningSource = 'photon' | 'mcp' | 'claude-code';
 export interface LearningTurn {
@@ -11,7 +12,7 @@ export interface ExtractedPreference { key: string; value: string; evidence: str
 export interface Classification { stable: boolean; sensitive: boolean; keys: string[] }
 export type ModelInput = { text: string; policy: PreferencePolicy; signal: AbortSignal };
 export type LearningReason = 'learned' | 'ineligible' | 'sensitive' | 'untrusted_text' | 'not_stable' | 'disabled' | 'invalid_output' | 'unavailable';
-export interface LearnResult { preferences: ExtractedPreference[]; reason: LearningReason }
+export interface LearnResult { preferences: ExtractedPreference[]; reason: LearningReason; models?: EvidenceModels }
 export type LearningMetric = { stage: 'filter' | 'classify' | 'extract'; status: 'ok' | 'dropped' | 'unavailable'; count: number; durationMs: number };
 export type Telemetry = (metric: LearningMetric) => void;
 export const characters = (s: string) => Array.from(s).length;
@@ -91,6 +92,7 @@ export function createLearner(options: {
       try {
         return await bounded(async signal => {
           let selected = policy;
+          let gate: string | undefined;
           if (classify) {
             try {
               const c = classificationSchema.parse(await bounded(s => classify({text:turn.text,policy,signal:s}), Math.min(1500,timeoutMs), signal));
@@ -98,6 +100,7 @@ export function createLearner(options: {
               if (c.sensitive || !c.stable) return {preferences:[],reason:c.sensitive?'sensitive':'not_stable'};
               selected = Object.fromEntries(Object.entries(policy).filter(([key]) => c.keys.includes(key)));
               if (!Object.keys(selected).length) return {preferences:[],reason:'not_stable'};
+              gate = getClassifierModel(classify);
             } catch {
               // Unavailable Jev falls back to extraction; a successful negative verdict never does.
               metric({stage:'classify',status:'unavailable',count:0,durationMs:performance.now()-start});
@@ -119,7 +122,11 @@ export function createLearner(options: {
             seen.add(p.key); return true;
           });
           metric({stage:'extract',status:'ok',count:preferences.length,durationMs:performance.now()-start});
-          return {preferences,reason:preferences.length?'learned':'invalid_output'};
+          // Only successful, known adapters supply provenance. A failed Jev
+          // request followed by extraction must not claim a gate decision.
+          const models = {...(gate ? {gate} : {}), ...(modelDefaults ? {extractor:modelDefaults.model} : {})};
+          return {preferences,reason:preferences.length?'learned':'invalid_output',
+            ...(preferences.length && Object.keys(models).length ? {models} : {})};
         }, timeoutMs, control.signal);
       } catch {
         metric({stage:'extract',status:'unavailable',count:0,durationMs:performance.now()-start});

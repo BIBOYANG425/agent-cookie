@@ -19,7 +19,7 @@ const learn = createWorkspaceLearner({ extract, telemetry: telemetry.metric,
 - `qwen/qwen3-235b-a22b-2507`
 - `meta-llama/llama-3.3-70b-instruct`
 
-An explicit `createExtractor({apiKey, model})` overrides the env value. Unknown model IDs fail configuration. The latter two are selectable alternatives, not automatic cross-model fallbacks and not yet live-validated. `getExtractorDefaults(extract)` exposes the selected model/classifier identity without credentials. The team has agreed on `ContributionEvidence.models?: { gate?, extractor? }`, persisted as `gate:` / `extractor:` and displayed by C. A/C implementation is still pending in this checkout; the existing contract only accepts snippet/conversation/intent. Do not stuff a model name into a user-evidence snippet or writer ID.
+An explicit `createExtractor({apiKey, model})` overrides the env value. Unknown model IDs fail configuration. The latter two are selectable alternatives, not automatic cross-model fallbacks and not yet live-validated. `getExtractorDefaults(extract)` exposes the selected model/classifier identity without credentials. The formal B60 contract now accepts `ContributionEvidence.models?: { gate?, extractor? }`. B attaches the known extractor ID and only a gate that actually accepted the turn; an unavailable Jev fallback omits `gate`, and custom adapters do not receive invented model identities. The SDK validates and preserves this field from the workspace. A persists it in SQLite and exposes it through `/personal/learned`; C still needs the `gate:` / `extractor:` Git codec and console display. Metadata never grants permission or changes promotion. Do not stuff a model name into a user-evidence snippet or writer ID.
 
 ## Jev wire protocol and gate
 
