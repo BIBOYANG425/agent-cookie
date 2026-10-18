@@ -95,6 +95,28 @@ cd tests/acceptance && node node_modules/vitest/vitest.mjs run --config vitest.c
 
 两个示例和 A32（两家助理公司之间的 churn：第二家助理第一次读 context 就知道第一家学到的）都对演示模式的真实工作台跑，输出只有计数、id 和字段名；数据为 Sample，UCP 报价为录制回放。设计见 `docs/bring-your-own-agent-plan.md`。
 
+### 托管 jar（网关）
+
+`apps/gateway` 让没有自己工作台的人也有一个 jar。它不是多租户工作台：**每人一个**真实的 `apps/workspace` 进程（blank seed、自己的数据目录、只听 127.0.0.1），网关用 passkey 注册和登录（没有密码，也没有邮箱），把 `/u/<userId>/*` 转给本人的实例。助理公司在网关注册**一次**，拿到只在网关有效的全局 key，为正在对话的人申请同意链接；本人点开 `/link/<id>`，用 passkey 登录或新建 jar，看到助理名和它能读的**字段名**，批准。网关随即在本人实例里注册该助理，用自己持有的 owner key 批准实例内的 link；助理轮询到 `jar: { url: "<origin>/u/<userId>", key }`，之后 `/assistant/*` 和 intent 路由原样走 `jar.url`（SDK：`AssistantClient.forJar(link.jar)`）。本人的 cookie 页 `/me`：回执（谁、哪些字段名、什么用途）、可撤销的授权、link 列表、删除我的数据、退出登录。契约在 `packages/contract/src/gateway.ts`，细节见 [网关 README](apps/gateway/README.md)。
+
+```sh
+pnpm --filter @agent-cookie/gateway start      # 127.0.0.1:4320；首次启动建 apps/gateway/data/
+# 本机试 passkey：浏览器不接受 IP 作 rpId，origin 要用 localhost
+AGENT_COOKIE_GATEWAY_ORIGIN=http://localhost:4320 pnpm --filter @agent-cookie/gateway start
+# 测试模式（POST /test/session 免 passkey 登录，绝不用于生产）跑托管示例与 A33
+AGENT_COOKIE_TEST=1 pnpm --filter @agent-cookie/gateway start
+AGENT_COOKIE_URL=http://127.0.0.1:4320 node examples/assistant-sdk/main-hosted.mjs --test-session
+cd tests/acceptance && node node_modules/vitest/vitest.mjs run --config vitest.config.mjs a33-gateway.test.ts
+```
+
+A33 自己在随机空闲端口起一个测试模式网关和临时数据目录，网关再为两个人各起一个实例：同一家助理两次 link 拿到两个不同的 jar，钥匙互不通用；`/u/` 下的 owner 和 demo 路由 404；cookie 页只有 id、名称和字段名；撤销后 403 GRANT_REVOKED；删除后 jar 与 link 都 404。2026-10-18 连续 3 次通过（每次约 8 秒）。
+
+**owner key 不出网关。** 每个实例的 owner key 只读进网关内存，owner 路由只由网关替已登录的本人调用（cookie 页）；`/u/<userId>/` 下的 `/owner/*`、`/demo/*`、`/test/*`、`/healthz` 和只给 owner 的路由一律 404，换编码、大小写或双斜杠也一样。放行和回执都在本人实例里决定，网关不加数据通路。全局 key 和会话 id 只存哈希；批准后交给助理的实例 key 加密存放，批准后 `LINK_TTL_MS` 内可读，之后清除。页面、日志和 `/me.json` 只有 id、名称、计数和字段名，没有字段值或 key。
+
+**前面的反向代理**（网关只说 127.0.0.1 上的明文 HTTP）必须：终止 TLS，并把 `AGENT_COOKIE_GATEWAY_ORIGIN` 设成那个 `https://` origin（cookie 随之 `Secure` 且带 `__Host-` 前缀）；原样转发 `Origin`（CSRF 和 WebAuthn 都核对它）；把客户端地址追加到 `X-Forwarded-For`（限流取最后一跳）；`/u/*/personal/intents/*/events` 不缓冲（SSE；网关已发 `X-Accel-Buffering: no`，nginx 另设 `proxy_buffering off` 和较长的 `proxy_read_timeout`）；透传 `Authorization`、`Cookie`、`Content-Type`、`Idempotency-Key`、`Last-Event-ID`、`Accept`，请求体放到 1 MiB。
+
+**还没做：** 不发邮件，passkey 丢了也找不回（每人一枚 passkey，没有“添加设备”；同步 passkey 是目前唯一的缓解）。`GET /operator/funnel` 是第 4 阶段的预留：只核对 operator key，`persons` 是真实人数，`measured: false`，其余计数是占位的 0，不是测量值。个人 agent（`personal`）还不能注册进托管 jar，因为那要 owner key；商家能在网关注册，但还没有路由用到商家 key。
+
 ### 环境变量与端口
 
 | 变量 | 默认 / 使用者 |
