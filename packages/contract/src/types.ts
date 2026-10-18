@@ -13,7 +13,13 @@ export type Basis = "observed" | "stated" | "inferred";
  * proxies (`ucp:<domain>`), whatever they sell. Same policy as "shoe" (policy.ts). "shoe" stays for registered
  * merchants that declared it.
  */
-export type Category = "personal" | "shoe" | "retail";
+export type Category = "personal" | "shoe" | "retail" | "assistant";
+/**
+ * "assistant" (bring-your-own-agent plan): a company-built personal assistant (Manus, Dots, Muse). It acts for the
+ * user (intents, accept, observe) through a pairwise session the OWNER approved via a consent link; it reads values
+ * by policy (auto.assistant), never provenance, never shipping_address or payment_method (the workspace hands those
+ * to the merchant at the stage that needs them). It is not the user's own agent ("personal" reads everything).
+ */
 
 /**
  * category === "personal" ? "personal" : "merchant" for registered agents.
@@ -21,7 +27,7 @@ export type Category = "personal" | "shoe" | "retail";
  * (/demo/reset additionally requires AGENT_COOKIE_DEMO=1). Owner keys are not tied to a category;
  * the fake workspace maps them from fixtures/dev-keys.json, the real one mints them at seed time.
  */
-export type Role = "personal" | "merchant" | "owner";
+export type Role = "personal" | "merchant" | "owner" | "assistant";
 
 /**
  * Learned-preference keys (2026-10-17, human direction "dynamic memory + learning from conversations"). Each is the
@@ -69,7 +75,7 @@ export function isField(x: unknown): x is Field {
 }
 
 export function roleOf(category: Category): Role {
-  return category === "personal" ? "personal" : "merchant";
+  return category === "personal" ? "personal" : category === "assistant" ? "assistant" : "merchant";
 }
 
 export interface Agent {
@@ -490,6 +496,7 @@ export type ErrorCode =
   | "PURPOSE_MISMATCH"       // 403
   | "NOT_FOUND"              // 404 — does not exist, or the caller may not know whether it exists
   | "IDEMPOTENCY_CONFLICT"   // 409
+  | "LINK_NOT_PENDING"       // 409 — approve/decline on a link already decided or expired
   | "MISSING_FIELD"          // 422
   | "UPSTREAM_ERROR"         // 502 — ucp / Photon / payment provider failed
   | "JAR_LOCKED"             // 403 — lane D
@@ -615,6 +622,51 @@ export interface Registration {
   key: string;
   category: Category;
   role: Role;
+}
+
+// ---- Consent link (bring-your-own-agent plan §3): how a company assistant gets its pairwise session.
+// The assistant asks for a link; the OWNER approves it (console, CLI, or the hosted gateway after a passkey tap);
+// approval creates the session and its grant (purpose "assist"). Single use, LINK_TTL_MS, never auto-approved.
+export type LinkStatus = "pending" | "approved" | "declined" | "expired";
+export const LINK_TTL_MS = 10 * 60_000;
+/** An approved link's grant lasts this long (a consumer links once, not every ten minutes); the owner can revoke it any time. */
+export const ASSISTANT_GRANT_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Owner view (GET /owner/links). */
+export interface Link {
+  id: string;
+  agentId: string;
+  agentName: string;
+  status: LinkStatus;
+  createdAt: string;
+  expiresAt: string;
+  /** When approved or declined. */
+  decidedAt?: string;
+  /** Set on approval: the assistant's pairwise session. */
+  sessionId?: string;
+}
+/** Assistant view (POST /assistant/link, GET /assistant/link/:id): never the owner's data, only the state of its own link. */
+export interface LinkView {
+  id: string;
+  status: LinkStatus;
+  /** Where the owner decides: the workspace resource; a console or gateway renders it. */
+  url: string;
+  expiresAt: string;
+  /** Present once approved. */
+  sessionId?: string;
+}
+/**
+ * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.
+ * `fields` = auto.assistant fields that have a value; `unknown` = auto.assistant fields without one (ask only when the
+ * task needs them); `writable` = write.assistant. Every call writes a receipt (purpose "assist", field names only).
+ */
+export interface AssistantContext {
+  v: 1;
+  sessionId: string;
+  policyId: string;
+  fields: Partial<Record<Field, string>>;
+  unknown: Field[];
+  writable: Field[];
+  expiresAt: string;
 }
 
 /** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */

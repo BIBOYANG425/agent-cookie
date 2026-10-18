@@ -58,6 +58,13 @@ export interface FunnelRow {
   /** Receipts written for this intent (purpose releases and Tier 0 deliveries). */
   purposeReleases: number;
   search?: SearchStats;
+  /** Bring-your-own-agent: the agent (personal or assistant) that created the intent; absent on legacy rows. */
+  createdBy?: string;
+  /**
+   * Questions the user was not asked: the sum of field names across this intent's receipts (fields served to agents by
+   * policy at the stage that needed them). Counts only; it is the plan's measure of "skip onboarding".
+   */
+  questionsSkipped?: number;
   /** Phase 4: the holdout arm the intent was assigned at creation (stored with it); absent when no experiment ran. */
   arm?: ExperimentArm;
 }
@@ -163,4 +170,19 @@ export interface MerchantStats {
   winRate: number;
   /** Median milliseconds from an intent's creation to this merchant's quote for it; absent when there are no quotes. */
   medianQuoteMs?: number;
+}
+
+/** GET /assistant/stats: counts over the intents the calling assistant created (bring-your-own-agent plan §5). */
+export interface AssistantStats {
+  /** Intents this assistant created. */
+  intents: number;
+  /** Of those, intents that received at least one quote. */
+  quoted: number;
+  /** Of those, intents whose user accepted a quote. */
+  accepted: number;
+  /** Of those, accepted intents whose result reached a terminal success (ordered or handoff). */
+  completed: number;
+  /** Sum of FunnelRow.questionsSkipped over those intents. */
+  questionsSkipped: number;
+  generatedAt: string;
 }

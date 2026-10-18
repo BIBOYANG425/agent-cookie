@@ -4,12 +4,14 @@
  * owner: the user's owner key (fixtures/dev-keys.json for demo; minted at seed by the real workspace) —
  * the console and `agent-cookie reset` use it. test: no key, only mounted with AGENT_COOKIE_TEST=1.
  */
-export type Caller = "anyone" | "keyed" | "personal" | "merchant" | "owner" | "test";
+export type Caller = "anyone" | "keyed" | "personal" | "merchant" | "owner" | "assistant" | "test";
 
 export interface Endpoint {
   method: "GET" | "POST" | "PUT";
   path: string;
   caller: Caller;
+  /** Other roles whose key the route also accepts (a linked assistant on the intent routes). */
+  also?: Caller[];
   /** Write operations that accept Idempotency-Key. */
   idempotent?: boolean;
   /** Only mounted when this environment variable is "1". */
@@ -23,10 +25,10 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once. Merchants self-register; category personal needs the owner key (A13, confirmed)" },
   { method: "GET", path: "/me", caller: "keyed", summary: "agentId, category, role for the presented key" },
 
-  { method: "POST", path: "/personal/intents", caller: "personal", idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
-  { method: "GET", path: "/personal/intents/:id/quotes", caller: "personal", summary: "Long-poll quotes, up to 20s" },
-  { method: "GET", path: "/personal/intents/:id/events", caller: "personal", summary: "text/event-stream of IntentEvent (events.ts; owner key too): existing quotes first, then each new quote as it is inserted (SSE id = the quote's seq; Last-Event-ID resumes after it), `complete` when every introduced merchant that can quote has quoted, `expired` when the intent expires; closes after complete/expired or INTENT_STREAM_MAX_MS; ':' heartbeat comments every INTENT_STREAM_HEARTBEAT_MS; never a field value beyond what GET …/quotes returns; the long-poll stays as the fallback (docs/commerce-analytics-plan.md §8)" },
-  { method: "POST", path: "/personal/quotes/:id/accept", caller: "personal", idempotent: true, summary: "Accept a quote; notifies the merchant (or runs UCP checkout)" },
+  { method: "POST", path: "/personal/intents", caller: "personal", also: ["assistant"], idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
+  { method: "GET", path: "/personal/intents/:id/quotes", caller: "personal", also: ["assistant"], summary: "Long-poll quotes, up to 20s" },
+  { method: "GET", path: "/personal/intents/:id/events", caller: "personal", also: ["assistant"], summary: "text/event-stream of IntentEvent (events.ts; owner key too): existing quotes first, then each new quote as it is inserted (SSE id = the quote's seq; Last-Event-ID resumes after it), `complete` when every introduced merchant that can quote has quoted, `expired` when the intent expires; closes after complete/expired or INTENT_STREAM_MAX_MS; ':' heartbeat comments every INTENT_STREAM_HEARTBEAT_MS; never a field value beyond what GET …/quotes returns; the long-poll stays as the fallback (docs/commerce-analytics-plan.md §8)" },
+  { method: "POST", path: "/personal/quotes/:id/accept", caller: "personal", also: ["assistant"], idempotent: true, summary: "Accept a quote; notifies the merchant (or runs UCP checkout)" },
   { method: "GET", path: "/personal/card", caller: "personal", summary: "Identity card + candidates" },
   { method: "GET", path: "/personal/receipts", caller: "personal", summary: "Recent sensitive-field read receipts (who, which fields, which purpose)" },
   { method: "POST", path: "/personal/grants/:id/revoke", caller: "personal", summary: "Revoke immediately" },
@@ -34,7 +36,7 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/personal/grants", caller: "personal", summary: "Current grants: agent, fields, purpose, remaining time; no values" },
   { method: "POST", path: "/personal/contributions/:id/revoke", caller: "personal", summary: "Revoke one contribution and recompute the card" },
   { method: "GET", path: "/personal/intents", caller: "personal", summary: "?q=&limit= → { intents: IntentHistoryEntry[] }, the user's own intent history, newest first (owner key too)" },
-  { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 ObservationAck { queued }: user turns are held in memory per conversation and learned from by Dreaming; never blocks; discarded while learning is paused; replayed messageIds ignored" },
+  { method: "POST", path: "/personal/observations", caller: "personal", also: ["assistant"], summary: "Observation → 202 ObservationAck { queued }: user turns are held in memory per conversation and learned from by Dreaming; never blocks; discarded while learning is paused; replayed messageIds ignored" },
   { method: "GET", path: "/personal/learning", caller: "personal", summary: "→ LearningState { paused } (owner key too)" },
   { method: "PUT", path: "/personal/learning", caller: "personal", summary: "{ paused } → LearningState; pausing also discards conversations waiting in the queue (owner key too)" },
   { method: "POST", path: "/personal/learning/forget", caller: "personal", summary: "{ field: PrefField } → ForgetLearningResult; atomically pauses, removes current preference/evidence, records suppression and a recoverable Git projection; owner key too. 202 if projection pending; historical Git commits retained" },
@@ -52,6 +54,16 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "PUT", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → write own note (≤ 2 KB)" },
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },
   { method: "GET", path: "/agent/stats", caller: "merchant", summary: "→ MerchantStats: counts over the caller's own sessions only (sessions, returning sessions, quotes, accepted, win rate, median ms to quote); never a session id, a field name or value, or anything about another merchant (docs/commerce-analytics-plan.md Phase 5)" },
+
+  // ---- company assistants (bring-your-own-agent plan §3): consent link, context, contributions, stats
+  { method: "POST", path: "/assistant/link", caller: "assistant", summary: "→ 201 LinkView { id, status: pending, url, expiresAt }: ask the owner for a pairwise session; single use, LINK_TTL_MS; a second pending link for the same agent returns the existing one" },
+  { method: "GET", path: "/assistant/link/:id", caller: "assistant", summary: "→ LinkView: own link only (anyone else 404); sessionId once approved; expired after LINK_TTL_MS" },
+  { method: "GET", path: "/assistant/context", caller: "assistant", summary: "→ AssistantContext: auto.assistant values + unknown + writable, no provenance; 403 SCOPE_DENIED until a link is approved; writes a receipt (purpose assist, field names only)" },
+  { method: "POST", path: "/assistant/contributions", caller: "assistant", summary: "{ field, value, basis } → 201 like /agent/contributions, filtered by write.assistant (candidates; corroboration promotes)" },
+  { method: "GET", path: "/assistant/stats", caller: "assistant", summary: "→ AssistantStats: counts over intents this assistant created (intents, quoted, accepted, completed, questionsSkipped)" },
+  { method: "GET", path: "/owner/links", caller: "owner", summary: "→ { links: Link[] } newest first: pending links to decide, and decided ones" },
+  { method: "POST", path: "/owner/links/:id/approve", caller: "owner", summary: "→ Link approved: creates the assistant's pairwise session and grant (purpose assist, stage introduced); 404 unknown, 409 CONFLICT when not pending" },
+  { method: "POST", path: "/owner/links/:id/decline", caller: "owner", summary: "→ Link declined; the assistant's GET sees declined and may ask again later" },
 
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)" },
   { method: "GET", path: "/owner/funnel", caller: "owner", summary: "?since=&limit= → FunnelReport: one row per intent, counts only (introduced, quoted, first-quote ms, accepted, outcome, fields granted/read, receipts, search filter stats); never field values (docs/commerce-analytics-plan.md Phase 0)" },
