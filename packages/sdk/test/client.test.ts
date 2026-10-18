@@ -78,19 +78,22 @@ describe('local configuration', () => {
     }
   });
   // http only on loopback (the key would otherwise cross a network in clear text); https on any host (a hosted jar).
+  // A path prefix is allowed (a person's instance under the gateway); test/base-path.test.ts covers its refusals.
   it.each(['http://remote.test:4310', 'http://192.168.1.20:4310', 'http://user:password@localhost:4310',
-    'http://localhost:4310/?key=secret', 'http://localhost:4310/api', 'not-a-url',
-    'https://user:password@jar.example.com', 'https://jar.example.com/u/42', 'https://jar.example.com/?key=secret',
+    'http://localhost:4310/?key=secret', 'http://localhost:4310/api/', 'not-a-url',
+    'https://user:password@jar.example.com', 'https://jar.example.com/u/42/', 'https://jar.example.com/?key=secret',
     'https://jar.example.com/#key', 'ftp://jar.example.com', 'ws://localhost:4310', 'file:///tmp/workspace'])('rejects unsupported origin %s', baseUrl => {
     expect(() => new WorkspaceClient({ ...config, baseUrl })).toThrow('AGENT_COOKIE_URL');
     expect(() => workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'sample', AGENT_COOKIE_URL: baseUrl }))
-      .toThrow('AGENT_COOKIE_URL must be an https:// origin, or http:// on loopback (127.0.0.1, localhost, [::1]), with no path, query or credentials.');
+      .toThrow('AGENT_COOKIE_URL must be an https:// URL, or http:// on loopback (127.0.0.1, localhost, [::1]), '
+        + 'optionally with a path prefix such as /u/usr_abc (no trailing slash), and no query, fragment or credentials.');
   });
   it.each([
     ['http://localhost:4310', 'http://localhost:4310'], ['http://[::1]:4310/', 'http://[::1]:4310'],
     ['https://127.0.0.1:4310', 'https://127.0.0.1:4310'], ['https://jar.example.com', 'https://jar.example.com'],
     ['https://jar.example.com:443/', 'https://jar.example.com'], ['https://bo.jars.example:8443', 'https://bo.jars.example:8443'],
-  ])('accepts %s as the origin %s', (url, origin) => {
+    ['http://localhost:4310/api', 'http://localhost:4310/api'], ['https://jar.example.com/u/42', 'https://jar.example.com/u/42'],
+  ])('accepts %s as the base %s', (url, origin) => {
     expect(workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'sample', AGENT_COOKIE_URL: url }).baseUrl).toBe(origin);
   });
   it('sends requests to a hosted https origin and nowhere else', async () => {
