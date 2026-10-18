@@ -57,6 +57,19 @@ The SDK preserves the backend's `source` metadata and marks cards or quote lists
 
 Tests cover authentication, revocation/reset, caller cancellation, redirect/timeout handling, redaction, malformed responses, unsafe handoff URLs, idempotency headers and result preservation. The fake workspace adds actual HTTP shopping tests. Merchant APIs, registration and creating contributions are still outside this client slice.
 
+## Funnel and policy document (A43, plan Phases 0–1)
+
+| Method | Endpoint | Key | Return shape |
+| --- | --- | --- | --- |
+| `getFunnel({since?, limit?}?, options?)` | `GET /owner/funnel` | owner | `FunnelReport` `{ rows, sample, generatedAt }` |
+| `getPolicy(options?)` | `GET /personal/policy` | personal or owner | `PolicyView & { sample }` |
+| `setPolicy(doc, options?)` | `PUT /personal/policy` | owner | `PolicyView & { sample }` |
+| `shadowPolicy(doc, options?)` | `POST /personal/policy/shadow` `{ policy }` | owner | `ShadowReport & { sample }` |
+
+`since` must parse as a date and `limit` must be an integer 1–1000; both are checked before sending. Funnel rows are projected to the contract's keys (counts and ids, optional `firstQuoteMs`, `outcome`, `search`, `arm`), so an extra upstream property never reaches a caller. The served policy document is checked structurally (v1, each section keyed by every category, contract field names); the floor itself stays the workspace's decision, so `setPolicy` sends the document as given. On a 422 `MISSING_FIELD` from `setPolicy` or `shadowPolicy`, the thrown `WorkspaceError` carries `violations: string[]` (the workspace's message split on `"; "`, control characters removed, bounded); its `message` stays the generic public text. No other route exposes upstream messages. Role denials propagate as `WorkspaceError` 403 like every other method.
+
+`getGrants` and `getReceipts` accept and return the additive contract keys: `policyId` and `stage` on grants, `intentId` and `policyId` on receipts. They stay optional, but a present key with the wrong type is rejected like any other malformed row.
+
 ## Conversation learning (A 0129f08 contract)
 
 `observe(input, options?)` accepts `Observation {channel,conversationId,turns:[{role,text,at}]}` and returns `{queued,paused?}`. It requires explicit `WorkspaceConfig.learning: true` to keep capture opt-in. The workspace now queues raw observations only in bounded memory. No invented idempotency header is sent. Per-turn limit is 2000 Unicode characters, at most 50 turns. Frontends send only their authenticated owner's turns; the backend independently enforces identity and policy.

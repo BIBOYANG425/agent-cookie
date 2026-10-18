@@ -1,20 +1,32 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
-  autoFields, canRead, isField, merchantKeyFor, readDecision,
-  GRANT_TTL_MS, WorkspaceError, type AcceptResult, type ActivityEvent, type Field,
-  type Grant, type Handshake, type IntentRequest, type Quote, type Receipt, type Session,
+  evaluateRead, isField, merchantKeyFor, policyAutoFields, policyId, policyViolations, DEFAULT_POLICY,
+  GRANT_TTL_MS, WorkspaceError, type AcceptResult, type ActivityEvent, type Category, type Field, type FunnelReport,
+  type Grant, type Handshake, type IntentRequest, type PolicyDocument, type PolicyView, type Quote, type Receipt, type Session,
 } from '@agent-cookie/contract';
 import { rules } from '@agent-cookie/rules';
 const { mergeCard, deriveSessionId } = rules;
 import { validateFixtures, type FixtureKey, type Fixtures } from './fixtures.js';
+import { SAMPLE_FUNNEL_ROWS, SAMPLE_RELEASE_HISTORY, shadowReport, type ReleaseRecord } from './policy-sample.js';
 
 interface Options { demo?: boolean; now?: () => number; onActivity?: (event: ActivityEvent) => void }
 interface StoredIntent { intent: IntentRequest & { id: string; userId: string; expiresAt: string; public: Record<string,string> }; quotes: Quote[] }
 interface StoredSession { session: Session; grant: Grant; intentId: string }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const reject = (code: ConstructorParameters<typeof WorkspaceError>[0]): never => { throw new WorkspaceError(code); };
-const allowed = (key: FixtureKey, role: string) => { if (key.role !== role) reject('SCOPE_DENIED'); };
+const allowed = (key: FixtureKey, ...roles: string[]) => { if (!roles.includes(key.role)) reject('SCOPE_DENIED'); };
+/** The one error whose message is public: the policy floor violations (section and field names, never values). */
+class PolicyRejected extends WorkspaceError {}
+const checkPolicy = (input: unknown): PolicyDocument => {
+  const violations = policyViolations(input);
+  if (violations.length) throw new PolicyRejected('MISSING_FIELD', violations.join('; '));
+  return structuredClone(input) as PolicyDocument;
+};
+// Same clamping as the workspace's intParam: absent or non-numeric → default, else 1..max.
+const intParam = (v: string | null, fallback: number, max: number) => {
+  const n = Number(v); return v === null || v === '' || !Number.isFinite(n) ? fallback : Math.min(Math.max(Math.trunc(n), 1), max);
+};
 // Sample-only lexical catalog. Unknown products return no quotes; no network or invented merchandise.
 const matchesText = (query: string, quote: Quote | Fixtures['quotes'][number]) =>
   `${quote.title ?? ''} ${quote.text}`.toLowerCase().split(/[^\p{L}\p{N}]+/u)
@@ -48,6 +60,14 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
   const receipts: Array<Receipt & { userId: string }> = [];
   const activity: ActivityEvent[] = [];
   const writes = new Map<string, { fingerprint: string; result: unknown }>();
+  // One installed document per user (owner PUT); otherwise the contract default. Reads, grants and receipts follow it.
+  const policies = new Map<string, PolicyDocument>();
+  const policyFor = (userId: string): PolicyDocument => policies.get(userId) ?? DEFAULT_POLICY;
+  const policyView = (userId: string): PolicyView => {
+    const doc = policyFor(userId);
+    return { policy: structuredClone(doc), policyId: policyId(doc), source: policies.has(userId) ? 'installed' : 'default' };
+  };
+  const categoryOf = (agentId: string): Category | undefined => fixtures.agents.find(a => a.agentId === agentId)?.category;
   const iso = () => new Date(now()).toISOString();
   const cardFor = (userId: string) => mergeCard(fixtures.contributions.filter(c => c.userId === userId), {
     now: iso(), personalAgentIds: fixtures.agents.filter(a => a.category === 'personal').map(a => a.agentId),
@@ -65,7 +85,8 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
     return found;
   };
   const receipt = (s: StoredSession, fields: Field[], purpose: string): Receipt => {
-    const entry = { id: randomUUID(), sessionId: s.session.sessionId, agentId: s.session.agentId, fields, purpose, createdAt: iso() };
+    const entry = { id: randomUUID(), sessionId: s.session.sessionId, agentId: s.session.agentId, fields, purpose, createdAt: iso(),
+      intentId: s.intentId, policyId: policyId(policyFor(s.session.userId)) };
     receipts.push({ ...entry, userId: s.session.userId }); return entry;
   };
 
@@ -80,13 +101,13 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
       if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin');
         res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Idempotency-Key');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
       }
       if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
       const url = new URL(req.url ?? '/', 'http://127.0.0.1:4310'); path = url.pathname;
       const key = fixtures.keys.find(k => req.headers.authorization === `Bearer ${k.key}`);
       if (!key) return reject('AUTH_REQUIRED'); actor = key.agentId;
-      const body = req.method === 'POST' ? await bodyOf(req) : {};
+      const body = req.method === 'POST' || req.method === 'PUT' ? await bodyOf(req) : {};
       const idempotent = async (action: () => unknown): Promise<unknown> => {
         const supplied = req.headers['idempotency-key'];
         if (typeof supplied !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(supplied)) return reject('MISSING_FIELD');
@@ -105,7 +126,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         const values = valuesFor(key.userId);
         const handshake: Handshake = { v: 1, sessionId: s.session.sessionId, jar: 'http://127.0.0.1:4310',
           lang: values.lang ?? 'zh', tone: values.tone ?? '简短', length: values.length ?? 'short',
-          available: Object.keys(values).filter(isField).filter(f => autoFields(key.category).includes(f) || f === 'shipping_address'),
+          available: Object.keys(values).filter(isField).filter(f => policyAutoFields(policyFor(key.userId), key.category).includes(f) || f === 'shipping_address'),
           expiresAt: s.grant.expiresAt };
         result = handshake;
       } else if (req.method === 'GET' && path === '/agent/fields') {
@@ -113,11 +134,13 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         const fields = [...new Set((url.searchParams.get('fields') ?? '').split(',').filter(Boolean))];
         const purpose = url.searchParams.get('purpose') ?? undefined;
         if (!fields.length || fields.length > 8) reject('MISSING_FIELD');
+        const doc = policyFor(key.userId);
         for (const f of fields) {
           if (!isField(f) || f === 'payment_method') reject('SCOPE_DENIED');
           const field = f as Field;
-          if (canRead(key.category, field, purpose) !== 'allow') reject(readDecision(key.category, field, purpose) === 'PURPOSE_MISMATCH' ? 'PURPOSE_MISMATCH' : 'SCOPE_DENIED');
-          if (!autoFields(key.category).includes(field)) {
+          const decision = evaluateRead(doc, key.category, field, purpose);
+          if (decision !== 'allow') reject(decision);
+          if (!policyAutoFields(doc, key.category).includes(field)) {
             const selected = intents.get(s.intentId)?.quotes.some(q => q.agentId === key.agentId && accepted.has(q.id));
             if (!selected || purpose !== 'checkout') reject('PURPOSE_MISMATCH');
           }
@@ -146,7 +169,9 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
             const user = fixtures.users.find(u => u.userId === key.userId)!;
             const sessionId = deriveSessionId(user.secret, merchantKeyFor(agent));
             const session: Session = { sessionId, userId: user.userId, agentId: agent.agentId, createdAt: iso() };
-            const grant: Grant = { id: randomUUID(), sessionId, fields: autoFields(agent.category), purpose: 'auto', expiresAt: intent.expiresAt };
+            const doc = policyFor(user.userId);
+            const grant: Grant = { id: randomUUID(), sessionId, fields: policyAutoFields(doc, agent.category), purpose: 'auto', expiresAt: intent.expiresAt,
+              policyId: policyId(doc), stage: 'introduced' };
             sessions.set(sessionId, { session, grant, intentId: intent.id });
             const quote = eligible.find(q => q.agentId === agent.agentId)!;
             quotes.push({ ...quote, id: randomUUID(), intentId: intent.id });
@@ -172,7 +197,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
           if (accepted.has(quoteId)) return accepted.get(quoteId);
           if (found.quotes.some(q => accepted.has(q.id))) return reject('IDEMPOTENCY_CONFLICT');
           const agent = fixtures.agents.find(a => a.agentId === quote.agentId)!;
-          if (canRead(agent.category, 'shipping_address', 'checkout') !== 'allow') return reject('SCOPE_DENIED');
+          if (evaluateRead(policyFor(key.userId), agent.category, 'shipping_address', 'checkout') !== 'allow') return reject('SCOPE_DENIED');
           if (!valuesFor(key.userId).shipping_address) return reject('MISSING_FIELD');
           const final: AcceptResult & { sample: true } = { sample: true, status: 'handoff', quoteId, continueUrl: quote.checkoutUrl ?? 'https://example.com/sample-checkout',
             message: 'Sample：这是演示报价与付款交接，不是真实库存或订单，请勿付款。到货时间未承诺。',
@@ -187,18 +212,40 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         allowed(key, 'personal'); const id = decodeURIComponent(path.split('/')[3]);
         const found = [...sessions.values()].find(s => s.grant.id === id && s.session.userId === key.userId);
         if (!found) return reject('NOT_FOUND'); found.grant.revokedAt = iso(); result = { revoked: true, sample: true };
+      } else if (req.method === 'GET' && path === '/personal/policy') {
+        allowed(key, 'personal', 'owner'); result = { ...policyView(key.userId), sample: true };
+      } else if (req.method === 'PUT' && path === '/personal/policy') {
+        allowed(key, 'owner'); policies.set(key.userId, checkPolicy(body)); result = { ...policyView(key.userId), sample: true };
+      } else if (req.method === 'POST' && path === '/personal/policy/shadow') {
+        allowed(key, 'owner'); const candidate = checkPolicy(body.policy);
+        // The fixed Sample history plus this process's own receipts; a purpose-less fake receipt is a logged read.
+        const own: ReleaseRecord[] = receipts.filter(r => r.userId === key.userId).flatMap(r => {
+          const category = categoryOf(r.agentId);
+          return category ? r.fields.map(field => r.purpose === 'auto' ? { ref: r.id, kind: 'read' as const, category, field }
+            : { ref: r.id, kind: 'receipt' as const, category, field, purpose: r.purpose }) : [];
+        });
+        result = { ...shadowReport(policyFor(key.userId), candidate, [...SAMPLE_RELEASE_HISTORY, ...own]), sample: true };
+      } else if (req.method === 'GET' && path === '/owner/funnel') {
+        allowed(key, 'owner'); const since = url.searchParams.get('since');
+        if (since !== null && !Number.isFinite(Date.parse(since))) reject('MISSING_FIELD');
+        const from = since === null ? undefined : new Date(since).toISOString();
+        const report: FunnelReport = { rows: structuredClone(SAMPLE_FUNNEL_ROWS.filter(r => from === undefined || r.createdAt >= from))
+          .slice(0, intParam(url.searchParams.get('limit'), 200, 1000)), sample: true, generatedAt: iso() };
+        result = report;
       } else if (req.method === 'GET' && path === '/owner/activity') {
         allowed(key, 'owner'); result = { activity, sample: true };
       } else if (req.method === 'POST' && path === '/demo/reset') {
         allowed(key, 'owner'); if (!options.demo) reject('NOT_FOUND');
         fixtures = structuredClone(seed); intents.clear(); sessions.clear(); accepted.clear(); receipts.length = 0; activity.length = 0; writes.clear();
+        policies.clear();
         result = { reset: true, sample: true };
       } else return reject('NOT_FOUND');
       audit(actor, req.method ?? 'GET', path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id'), 'ok');
       reply(200, result);
     } catch (error) {
       const safe = error instanceof WorkspaceError ? error : new WorkspaceError('MISSING_FIELD');
-      audit(actor, req.method ?? 'GET', 'request', safe.code); reply(safe.status, { error: { code: safe.code, message: safe.code }, sample: true });
+      audit(actor, req.method ?? 'GET', 'request', safe.code);
+      reply(safe.status, { error: { code: safe.code, message: safe instanceof PolicyRejected ? safe.message : safe.code }, sample: true });
     }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
