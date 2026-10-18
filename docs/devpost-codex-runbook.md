@@ -36,87 +36,9 @@ Press **Save & continue**.
 
 ### About the project (Markdown)
 
-Clear the placeholder and paste everything between the two lines of `~~~`, not the `~~~` lines themselves:
+Clear the placeholder. Open `docs/devpost-story.md` in this repository and paste its **entire raw contents**, exactly as written: Markdown, the `$$` formula blocks and the image line included. Do not paste the rendered preview.
 
-~~~
-## Inspiration
-
-The web got cookies in 1994 because a shopping cart could not survive the next click. Every request arrived as a stranger. The fix was a small token the site hands the browser and the browser hands back on the next visit, to that site only. Logins, carts and personalization followed, and with them e-commerce. The one thing left open, the third-party cookie, turned into cross-site tracking and a generation of consent banners.
-
-AI agents are where the web was before the cookie. Every assistant and every store agent meets you as a stranger. You repeat your language, your size, your taste, your address. Each company keeps its own memory, so switching assistants means starting over and handing a new company everything.
-
-We built the cookie for agents, with the 1994 lesson built in: one ID per agent that cannot be joined across agents, values released by purpose, a receipt for every read, and a jar the person owns.
-
-| The 1994 pitch | The 2026 pitch |
-| --- | --- |
-| The web is stateless. Every request is a stranger. | Agent conversations are stateless. Every agent is a stranger. |
-| The site hands the browser a small token. | The person's jar hands each agent a pairwise session ID and a handshake naming what it may know. |
-| The site recognizes a returning visitor without a user database. | The agent knows the person on its first message, with no user database, no address, no card. |
-| The user stops re-entering things. | The person stops re-answering, every read writes a receipt, and any cookie can be revoked. |
-| Left open: the third-party cookie. | Closed by construction: there is no global identifier to share. |
-
-## What it does
-
-Agent Cookie puts the person's profile in a jar they own and introduces them to each agent with a small, scoped token.
-
-- **A new assistant knows you on its first message.** An assistant company integrates our SDK and asks the person once, with a consent link. From then on its system prompt carries what the person's policy allows: language, tone, size, preferences. It asks nothing it already knows. It is never given the address or the payment method.
-- **A store gets your size before it speaks, your address only at checkout, and never your card.** The workspace introduces stores with a handshake of field names, releases the shipping address only to the store whose quote the person accepted and only at the checkout stage, and authorizes payment itself. Each release writes a receipt.
-- **One ID per agent.** Every agent gets its own pairwise session ID for the same person. The IDs cannot be joined, so there is no global identifier to leak or sell, and a store still recognizes a returning buyer after the person switches assistants.
-- **The person sees and controls everything.** The console and the hosted cookie page show who read which field names for which purpose. The person can revoke any grant, pause learning, or delete their data. Revocation stops future reads; it does not pretend to recall what was already delivered.
-
-- **It learns back without being poisoned.** Agents write back what they learned, and deterministic rules decide what reaches the card. What you said yourself counts at once. What an agent observed stays a candidate until a second, independent source agrees. Guesses never reach the card, and a store's note about you stays private to that store. The more agents you use, the fewer questions the next one asks.
-
-We measure a count we call *questions skipped*: field names served to agents by policy, summed over an intent's receipts. Counts and field names only. An unknown field stays unknown and is asked for when the task needs it.
-
-## How we built it
-
-- **Contract first.** A shared TypeScript contract (types, field policy, endpoints, error codes, an OpenAPI 3.1 document) sits under everything.
-- **Workspace.** A local Hono + SQLite service with a Git-backed memory repository. Authorization, merging, expiry and stage transitions are deterministic code. A model is never an input to an authorization decision.
-- **SDK.** `@agent-cookie/sdk` is the single integration surface: `AssistantClient` for assistant companies, `MerchantClient` for stores, `WorkspaceClient` for the person's own agent. A Python client is generated from the OpenAPI document, and an MCP server serves Claude Desktop over stdio or Streamable HTTP.
-- **Hosted jars.** A gateway runs one real workspace process per person behind a passkey (WebAuthn), renders the consent link and the cookie page, and never lets a jar's owner key leave the gateway.
-- **Channels.** A Photon iMessage line for the person's own agent, Claude Desktop through MCP, and a React console with an English toggle.
-- **Commerce.** Shopify's UCP CLI for catalog, cart and checkout, with responses recorded from real stores replayed in demo mode and labelled as such.
-- **Payments.** Visa Trusted Agent Protocol signatures (RFC 9421) with pairwise per-session keys. A Visa Acceptance provider checked byte for byte against Visa's official Node SDK, and a deterministic simulator that verifies every request with Visa's own SDK code.
-- **Learning.** Opt-in: local filter, a `typesafe/jev-1.14` gate, `openai/gpt-oss-120b` extraction through OpenRouter, then the same deterministic merge rules as every other write.
-- **Memory format.** The repository follows Cognition's Agent Memory Repo format, and the unmodified stock skill reads and writes it.
-
-Four coding agents (Claude Code, two Codex sessions and Devin) built it in parallel lanes, each owning its own directories, with every cross-lane change going through the contract.
-
-## Challenges we ran into
-
-- **Zero-code store integration did not survive contact.** A text prefix on the first message could not make a store's own protocol report the right size, so we retired that path and kept two honest ones: the store's protocol (UCP) and the SDK.
-- **Recorded inventory is not live inventory.** A replay reproduces a real response; it cannot promise stock today. Every quote carries its source, and the UI labels Sample, recorded and live separately.
-- **No Visa sandbox.** We validated the provider against Visa's SDK offline and built a simulator that uses Visa's own verification code. We claim no live payment.
-- **Concurrency between learning, regeneration and forgetting.** Serialized card mutations, SQLite transactions and recoverable Git projections keep a late model result from resurrecting a value the person deleted.
-- **The audience changed mid-build.** We started with "your own agent" and moved to "people who switch between companies' assistants and will never mint a key." That moved the SDK to the center and added consent links, the assistant role and hosted jars.
-
-## Accomplishments that we're proud of
-
-- The churn scenario passes over HTTP: assistant A learns two preferences and buys from store B; assistant C links and knows everything on its first read; store D gets the address only at checkout; `payment_method` appears in no assistant or merchant response.
-- Hosted jars with passkeys: two people, two isolated jars, cross-jar keys refused, owner routes refused through the proxy.
-- A real iMessage round trip on a Photon line: request, two quotes, selection, handoff link, one address receipt to the chosen store and none to the other.
-- Cognition's unmodified Agent Memory Repo skill reads and writes the same repository the workspace manages.
-- The whole monorepo test suite is green.
-
-## What we learned
-
-Memory needs a lifecycle, not a database: provenance, expiry, revocation, recovery. Two records from one conversation are still one source. Privacy is why a business says yes and convenience is why a person taps, so the two sides of the pitch are different sentences. And the cookie's 1994 lesson still holds: the design decides whether an identifier can be joined, and policy cannot fix it later.
-
-## Beyond shopping
-
-Shopping is the first vertical because that is where agents already transact. The primitives are not shopping-specific: pairwise IDs, a handshake of field names, values released by purpose at a stage, receipts and revoke. A hotel agent knows your room preferences and gets your passport only at check-in. An airline agent knows your seat preference and gets your Known Traveler number only at booking, and it cannot join your itinerary with the hotel's. A hospital intake agent knows your language and that you need an interpreter before it says hello, sees your allergies and insurance ID only after you book with that provider, and leaves a receipt when it does; your hospital, pharmacy and employer can never match records on one identifier. Banks get a verified-identity assertion instead of your documents. Only shopping is built today; each new industry needs its fields and purposes added to the contract.
-
-## What's next
-
-- A first fill for the jar from what the person already has (browser autofill, a wallet address, order history), so a new assistant has value on day one.
-- Verified assistant identity on the consent page.
-- Wiring the direct UCP checkout path so a store consumes the jar's payment authorization, and a real Visa run when test credentials exist.
-- Publishing the SDK to npm and the acceptance scenarios as a public conformance suite, so any implementation can prove it is compatible.
-
-## What is real and what is sample
-
-The workspace, policy, receipts, SDK, gateway and iMessage transport are real and tested. The person in the demo is Sample data. Store responses are recorded from real Shopify stores and replayed. No payment was completed: checkout ends in a merchant handoff link.
-~~~
+The image line points at `docs/assets/agent-cookie-loop.png` on `main`. It shows only once that file is on `main` and the repository is public; if Devpost's preview shows a broken image, leave the line in and tell the human.
 
 ### Built with (up to 25 tags)
 
