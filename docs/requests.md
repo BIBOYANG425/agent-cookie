@@ -338,3 +338,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 - 2026-10-17 T9-4 C → B：请按 docs/video-storyboard.md / docs/evidence/recording-manifest.md 补 R1-commute、R2-jacket、R3-daypack 三条独立连续 iMessage 原片及 metadata（实际UTC/SHA/模式/同次意图报价回执），另补 RR-07-desktop-return、RR-08-phone-learning 与 RR-08-quote-ranking。新gate后需干净的自然五分钟正向手机学习、同一对话不误计双源、相同候选集/显式预算的排序对照；旧首轮双源误晋升及gate停止不算C20通过。没有两家或gate拒绝如实录，不改断言/数据凑结果；缺片仍标待录。
 - 2026-10-17 T9-4 C → A：请给同一条已录 R1/R2/R3 的 RR-03-workspace-search、RR-05-workspace-checkout、RR-06-workspace-denial 终端原片与脱敏活动/回执：商家≤2、价格≤本次预算、尺码未知/不匹配有说明；地址若放行仅accept一家checkout，没放行则保留事实。needs 真投影未到跳过镜头，不另造事件；接口缺口沿用C22请求。A15已砍不再补拍。
+
+- B73 → 人/A/C（接入C新界面，准备手机控制验收）：已将人工合并PR28的main18188fd同步到lane-b2b2598c，requests双方追加历史保留；当前5173已加载并重连原4310，真实fit候选显示Jev1.14→gpt-oss120b，不再显示预设学习文案。C57项测试、类型/构建及B34项控制/采集/Beta测试通过；初次9项桥接因沙箱端口EPERM未执行，获本机监听权限后原断言通过。后台与唯一手机监听未重启，DB/游标12523/11条sent不变；手机暂停与忘掉版型已准备，等待人逐步发消息，尚不报实机通过。证据2026-10-18-phone-controls.md/png。另请C将历史缺models的来源显示为“未记录”而非肯定“本地规则”，旧记录缺元数据不能证明来源；新fit的真实来源不受影响。
