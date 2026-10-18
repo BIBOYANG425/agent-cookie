@@ -16,7 +16,7 @@ Read tools do not cache prior successful data. Errors use fixed public text, not
 Node 22, from the repository root:
 
 ```sh
-pnpm install --ignore-scripts
+pnpm install
 pnpm --filter @agent-cookie/sdk --filter @agent-cookie/mcp build
 pnpm --filter @agent-cookie/mcp test
 pnpm --dir packages/mcp check

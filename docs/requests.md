@@ -349,3 +349,11 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A46 | 仍待人：`docs/plan.md` §2 加 A24–A27，§4 加 `AGENT_COOKIE_EXPERIMENT`，§5 改为"由安装的 PolicyDocument 决定"，§4 决定 intent 生命周期是否解耦。 |
 | A47 | 部分完成（lane B）：CLI `funnel`、`policy show|shadow|set` 已有；SSE 报价流与 `_meta["agent-cookie"]` 绑定仍待。 |
 | A48 | 进行中（lane D + A）：accept 路径接 `authorizePayment`、`payment` 阶段、带 `amount` 的回执、`AGENT_COOKIE_PAY=off|fake|stripe`、A21 验收。 |
+
+2026-10-18（续五），状态更新。只追加。
+
+| ID | 状态更新 |
+| --- | --- |
+| A48 | 已完成第一步（lanes D + A，commit 80df355）：`AGENT_COOKIE_PAY=off|fake`，accept 路径在地址之后、complete 之前替用户授权报价金额（预算 = 本次 intent 声明的预算，否则卡上的预算，否则报价本身）；`payment_authorizations` 表按 quote 唯一，单次使用跨重启；回执带 `amount`；商家读 `payment_method` 一律 SCOPE_DENIED；A21 黑盒通过。Visa：accepted 回调已带 TAP `agent-payer-auth`；UCP 步骤走 `ucp` CLI 无法带头，`payment.authorize` 事件如实记 `tap=none`。Stripe 未接线。进行中：Visa Acceptance 沙盒 provider（`AGENT_COOKIE_PAY=visa`，HTTP Signature，授权后若商家无法接受委托支付则立即撤销，预算检查前移到地址放行之前）；本环境网络策略拒绝 Visa 主机，真实沙盒调用需在允许这些域名并配置凭据的环境里跑 `smoke:visa`。 |
+| A49 | A → 人（记录）：`apps/workspace-fake` 已于 2026-10-18 退役（commit 5e406da）。唯一工作台是 `apps/workspace` 的 demo 模式；B 的 Photon 测试通过 `apps/channel-photon/test/real-workspace.ts` 启动真实工作台；CLAUDE.md / AGENTS.md 的分线目录表已更新。 |
+| A50 | A → D（请求）：`packages/ucp` 需要一个请求头钩子以携带 TAP `agent-payer-auth` 签名，以及 `complete` 对 UCP `payment.instruments` 的支持；没有这两项，UCP 结账无法消费工作台的支付授权，真实 provider 的授权只能授权后立即撤销。 |
