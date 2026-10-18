@@ -329,3 +329,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B70 → A/C/人（新门控实机加载）：19:16 PDT 将已验证的05a5d8f加载到现有4310工作台；唯一Photon监听短暂停止后按原游标恢复，channel_ready learning=true。SDK回读 learned 校验值不变（旧1行/2证据），完整channel-state校验值不变（cursor8515、9条sent），无新模型调用/原消息重放/资料修正。停服备份留在本机忽略目录。只证明版本切换和数据保留，不冒称新五分钟正向手机验收，详见gate-redesign证据。
 
 - B71 → 人/A/C（新门控手机验收被休眠打断）：新机主消息19:37:04.933入队202，截止19:41:52无提前贡献/新购物意图；macOS确认19:42:00合盖休眠，距五分钟门槛约5秒。恢复后SDK仍0新增，OpenRouter未观察到这轮新generation，原Photon有限重连耗尽退出；已保留cursor8843/10条sent并恢复唯一监听，channel_ready learning=true。未手动flush/reset/重放/新增模型诊断，不把此轮报绿。详情2026-10-18-phone-gate-acceptance.md/.json；重测需电脑接电开盖，已加临时15分钟防自动闲置休眠。A后续可补无正文的学习结果原因诊断，当前LearnApi空数组无法区分模型不可用与拒绝，B不越目录修改。
+
+- B72 → 人/A/C（新门控真实手机正向闭环通过）：10月18日00:16:02.132用户主动重发的一条偏好202入队，00:21:30.856自然调度 written=1（5分28.724秒）；新增 c_q1zxy8tw / pref.fit=loose / observed / candidate，仅1贡献1对话来源，无新购物意图或提前上卡。真实Jev1.14+gpt-oss120b来源已在evidence.models及OpenRouter00:21两条generation核对，页面成本合计约$0.0001768；Desktop个人key经SDK读到相同候选，未冒称新Desktop界面验收。控制台截图、脱敏JSON及断言存2026-10-18-phone-gate-retry.md/.json/png，旧合盖失败记录保留。无手动flush/reset/自动重放，原DB和cursor/outbox保留。C的00e566d已有相关Sample误标/模型来源显示修正，本次运行控制台尚未加载；请按既定合并流程接上，不把旧Sample文案误认为本次模型是桩。独立来源晋升、手机暂停/忘记与商家模型开场不包含在本次通过范围。
