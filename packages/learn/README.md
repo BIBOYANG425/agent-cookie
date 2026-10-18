@@ -1,55 +1,77 @@
 # Conversation preference extraction — lane B
 
-`createWorkspaceLearner({extract, classify?, mode?, telemetry?})` implements A's actual `LearnApi`. A owns the runtime import in `apps/workspace/src/adapters.ts`; B does not write the workspace, rules, card or Git repository. The default policy is a safe subset of the contract's `PREF_FIELDS`; financial price bands and relationship recipients are excluded. An injected policy is still intersected with that whitelist. Unknown keys are dropped, not created from a prefix.
+The team pipeline now uses **OpenRouter only**: local filters → `typesafe/jev-1.14` → `openai/gpt-oss-120b`. Models classify and extract; A/C make deterministic authorization, promotion and revocation decisions. No model means no invented preferences.
 
 ```ts
-import { createWorkspaceLearner, createHaikuExtractor, createJevClassifier, createLearningTelemetry } from '@agent-cookie/learn';
+import { createExtractor, createWorkspaceLearner, createLearningTelemetry } from '@agent-cookie/learn';
 const telemetry = createLearningTelemetry({ endpoint: process.env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT });
-const learn = createWorkspaceLearner({
-  extract: createHaikuExtractor({ provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY! }),
-  ...(process.env.JEV_API_KEY ? { classify: createJevClassifier({ apiKey: process.env.JEV_API_KEY }) } : {}),
-  mode: process.env.AGENT_COOKIE_LEARN_MODE === 'explicit-only' ? 'explicit-only' : 'all',
-  telemetry: telemetry.metric,
-});
-// A injects learn and calls telemetry.shutdown() on shutdown.
+const extract = createExtractor({ apiKey: process.env.OPENROUTER_API_KEY! });
+const learn = createWorkspaceLearner({ extract, telemetry: telemetry.metric,
+  mode: process.env.AGENT_COOKIE_LEARN_MODE === 'explicit-only' ? 'explicit-only' : 'all' });
+// A injects learn and closes telemetry on shutdown. Keys stay in local ignored env files.
 ```
 
-No key is read automatically by the library; a missing key must not silently enable synthetic results. The team runtime uses OpenRouter exclusively; the library still retains an unused direct-provider adapter for compatibility. Jev uses `/v1/systemone` typed noul questions. Missing/unavailable Jev falls back to Haiku; a negative or uncertain safety verdict does not. Zod validates model envelopes, allowed keys, conclusions, basis and evidence. Evidence must be a literal substring of the owner's words and at most 200 Unicode code points. Outputs contain conclusions/evidence only; errors are fixed public text.
+`createExtractor` carries its companion Jev classifier; `createLearner` and `createWorkspaceLearner` automatically use it unless an explicit classifier is injected. Synthetic test extractors do not enable any real requests. No key is loaded automatically. `createHaikuExtractor` remains a compatibility function for A's existing import, but now delegates to `createExtractor`; its name does not describe the selected model. Direct Anthropic requests are disabled. A's existing `learnProvider=openrouter` is sufficient; the workspace source was not changed.
 
-Use the OpenRouter adapter in the workspace:
+`AGENT_COOKIE_LEARN_MODEL` selects one of:
+
+- `openai/gpt-oss-120b` (default; real validation recorded below)
+- `qwen/qwen3-235b-a22b-2507`
+- `meta-llama/llama-3.3-70b-instruct`
+
+An explicit `createExtractor({apiKey, model})` overrides the env value. Unknown model IDs fail configuration. The latter two are selectable alternatives, not automatic cross-model fallbacks and not yet live-validated. `getExtractorDefaults(extract)` exposes the selected model/classifier identity without credentials. Persisting that identity into the console's learned-item provenance still requires an A/C contract extension; current `ContributionEvidence` only accepts snippet/conversation/intent. Do not stuff a model name into a user-evidence snippet or writer ID.
+
+## Jev wire protocol and gate
+
+The [OpenRouter Jev reference](https://openrouter.ai/docs/guides/community/jev) and [Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) specify **`POST https://openrouter.ai/api/alpha/decisions`**, not chat completions. Live HTTP 200 confirmed this format on 2026-10-17. No separate Jev key/account or direct TypeSafe call is used.
 
 ```ts
-const extract = createHaikuExtractor({
-  provider: 'openrouter',
-  apiKey: process.env.OPENROUTER_API_KEY!,
-});
+{
+  model: 'typesafe/jev-1.14',
+  provider: { zdr: true, data_collection: 'deny', allow_fallbacks: true, require_parameters: true },
+  state: { utterance: ownerText },
+  questions: {
+    stable: { type: 'noul', instructions: 'Does the speaker express their own stable preference or fact?' },
+    sensitive: { type: 'noul', instructions: 'Health, religion, finances, relationships or whereabouts? Uncertain safety means yes.' },
+    key: { type: 'choice', instructions: 'Which supported preference?', criteria: { 'pref.color': 'Clothing color', none: 'None' } }
+  }
+}
 ```
 
-OpenRouter uses its canonical `anthropic/claude-haiku-4.5` alias; it is not a guarantee of Anthropic's dated snapshot ID. Requests require strict structured output, pin the provider endpoint to `amazon-bedrock/us`, disable provider fallback, deny data collection and require ZDR. First-party Anthropic is not available under OpenRouter's ZDR policy; the published [ZDR endpoint list](https://openrouter.ai/api/v1/endpoints/zdr) includes Bedrock US for this model. If this combination is unavailable, extraction returns no learned output; it does not relax retention or switch models. The accepted owner text is sent to OpenRouter and Amazon Bedrock for Haiku extraction; neither OTel nor the jar should receive the whole input. Keep account input/output logging disabled. See [OpenRouter Haiku](https://openrouter.ai/anthropic/claude-haiku-4.5/api), [ZDR policy](https://openrouter.ai/docs/guides/features/zdr), [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), and [routing controls](https://openrouter.ai/docs/guides/routing/provider-selection).
+The real response has `model`, `provider`, `answers`, `usage`, `id`; each noul answer contains a probability, and the choice contains `choice`, `confidence`, `probabilities`. The three questions share **one request per eligible owner turn**, not three requests. A batch is processed one owner turn at a time; other speakers are not concatenated into it. Any locally sensitive owner turn rejects the batch before requests. A Jev-sensitive turn drops the batch's results.
 
-Live synthetic checks on 2026-10-17: credential authentication returned 200, but extraction returned 403 both with pinned Bedrock US and with any ZDR provider plus fallback. The account Privacy page had empty Allowed/Ignored Providers and displayed a closed-model access restriction. This was not a user-configured provider exclusion. The requested default-routing change is conditional on a successful live check, so the library default remains unchanged. See `docs/evidence/2026-10-17-openrouter-live.md`. No real-model extraction is claimed. Do not automatically retry account/access failures or relax routing; resolve access with the provider first. Offline protocol tests remain available without credentials.
+Gate thresholds are explicit demo policy: stable ≥0.90; sensitive ≤0.10; selected whitelisted key confidence and selected probability both ≥0.90. Anything above the sensitive threshold, including uncertainty, is a hard stop. Missing/malformed safety is also a stop, parsed before the other answers. The extracted schema's key enum is narrowed to the selected key. A negative/uncertain decision never falls back. Only unavailable Jev (transport/non-2xx/timeout) permits extraction after the local rules; the extractor independently checks sensitivity too. These probabilities are not calibrated safety guarantees. Sensitive local-filter tests and malformed/positive Jev safety tests assert zero extractor calls.
 
-Local setup: put `OPENROUTER_API_KEY` in a Git-ignored `.env.openrouter` at the repository root, restrict that file to owner read/write, and never send its contents to chat. The library does not auto-load it. With Node22, from the root:
+## Extraction, privacy and bounds
+
+Chat completions uses strict `response_format.json_schema`, `additionalProperties:false`, a maximum of five items, bounded values/evidence, and Zod validation. Turns failing the local explicit-statement check also exclude `stated` from the wire schema; candidates remain observed/inferred. A truncated/refused response is rejected. Conclusions must use allowed `pref.*` keys; evidence is an exact substring of that owner's turn and ≤200 Unicode characters. Local validation rejects sensitive values, fabricated evidence, unsupported keys and false `stated` attribution. A/C's whitelist is an upper bound; price-band and recipient fields are excluded under the human's sensitive-topic rule.
+
+Both requests require `zdr:true`, `data_collection:"deny"`, `require_parameters:true` and permit fallback **only between eligible ZDR providers**, with no `only` pin. Extraction sorts eligible providers by latency. A failed provider does not authorize a different model, weaker retention, or synthetic output. The accepted owner text goes to OpenRouter and the selected provider; it must not be copied into jar, logs, traces or evidence files. See [ZDR endpoints](https://openrouter.ai/api/v1/endpoints/zdr), [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), [routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+
+The registered model pipeline has a 30s total deadline, Jev ≤1.5s and extraction ≤28s, with cancellation and late-result discard. Synthetic/custom extractors keep their prior 10s default. The H14 `explicit-only` mode rejects incidental input locally, still respects Jev safety, and accepts only locally confirmed `stated` outputs. No sensitive/group/merchant/assistant input is eligible. A 4,000-character total batch bound is preserved.
+
+Workspace collection is explicitly enabled by A's `AGENT_COOKIE_LEARN_PROVIDER=openrouter` (default off). Merely having an API key never enables collection. Dreaming/queue/forget behavior belongs to A/C. This package does not read all iMessage chats, persist transcripts, or modify the live phone listener.
+
+## Validation and cost
+
+Put `OPENROUTER_API_KEY` in local ignored `.env.openrouter`, owner-only permissions. From the repository root using Node22:
 
 ```sh
 pnpm --filter @agent-cookie/learn build
-# Offline protocol check: no credential or network needed.
 node packages/learn/scripts/check-openrouter.mjs --offline
-# Explicit live check: one bounded Haiku request, synthetic sentence only.
+# Real synthetic statement: one Jev request + one gated extraction, no workspace writes.
 node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs
-# Only after account access changes or a new explicit diagnostic authorization:
-# any ZDR provider, fallback allowed; same model, strict schema, ZDR and deny retained.
-node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs --zdr-fallback
+# Six scenarios; real temporary SQLite/Git, synthetic user inputs, real model adapters.
+cd packages/sdk
+node --env-file=../../.env.openrouter --import tsx test/learning-acceptance.check.ts --live
 ```
 
-The check rejects a synthetic sensitive sentence and other group speaker before any model call, then tests one explicit color preference. Output contains only status, timing, call count and extracted field names; no key, original response, real conversation or workspace write. A successful check proves the model adapter, not production learning, card promotion, historical erasure or Spectrum delivery. The remaining A/C dependencies still apply.
+Offline protocol fixtures are labeled synthetic. Do not call them live model recordings. The six-scenario runner retains its original pass conditions; it additionally reports actual model calls and latency per scenario. Queue-on-disk and commerce-history checks need no model calls. The extra capture acceptance is still explicitly synthetic. Access errors stop subsequent live requests. Reports omit original request/response text and credentials.
 
-The first filter rejects non-owner/group/merchant/assistant inputs, sensitive topics (health, religion, finance, relationships, whereabouts), personal identifiers, quotations and prompt-instruction text. The model also classifies sensitivity. `extractFromConversation` rejects the entire supplied batch if one owner turn is sensitive; it never concatenates other speakers. Overlarge batches (>4000 total characters) fail closed rather than hiding a sensitive portion by truncation. The intent adapter only uses `input.text`, never a merchant's quote or a model-invented query. This conservative filter is not a general natural-language safety proof; real-model quality still needs evaluation, and unsupported/ambiguous material should produce no preference.
+The first Jev probe: HTTP200, 402ms end-to-end, 384 input tokens, $0.000016128. The first gpt-oss probe returned HTTP200 but `finish_reason=length`; it failed validation and was not treated as success. With a bounded schema and latency-based ZDR routing, the subsequent complete pipeline passed: Jev355ms/$0.000017514 + gpt-oss1193ms/$0.00004915, total1557ms/$0.000066664. See `docs/evidence/2026-10-17-learning-live.md` for the six scenarios and full scope.
 
-The total learner deadline is 10 seconds, Jev at most 1.5s, Haiku at most 8s. Cancellation and adapters that ignore signals are bounded. `explicit-only` is the H14 fallback: first-person explicit rules plus Haiku `stated` confirmation, no Jev or candidate path. No model → no learned output. Promotion remains A/C's deterministic decision. The B49 repair connects this adapter to the workspace behind explicit `AGENT_COOKIE_LEARN_PROVIDER=off|openrouter` (default off); an API key alone never enables calls. `AGENT_COOKIE_LEARN_MODE=explicit-only` selects the fallback. The unchanged six-scenario probe now passes against real SQLite/rules/Git with a synthetic extractor. This is backend behavior evidence, not real-model quality or phone acceptance. OpenRouter model access remains blocked by the previously observed 403; no additional model requests were made for this repair.
+The public Jev price checked this date is $0.042/M input tokens and $0 output. A 400–1,000-input-token gate is about $0.0000168–$0.000042 (one thousand such gates ~$0.017–$0.042). Extraction runs only on accepted turns, except the explicitly documented Jev-unavailable fallback. GPT-oss prices depend on eligible provider; use returned `usage.cost`, not a universal price. The often-quoted “~50ms” is not our measured network latency: initial end-to-end Jev checks took355–402ms. Costs and latency above are small-sample measurements, not an SLA or zero-cost promise.
 
-OTel uses `createIsolatedOtel`, separate providers and an explicit endpoint; no global fetch instrumentation or message bodies. Only stage/status/count/duration are constructed for traces and logs. An actual local OTLP receiver tests both export streams for canary body/phone/email/value leakage. Automatic Photon phone/email scrubbing alone is not the privacy boundary. No endpoint means no exporter. Sentry account receipt is not yet verified.
+## Telemetry
 
-Offline fixtures are **synthetic-protocol-fixture**, not live model recordings. Run `pnpm --filter @agent-cookie/learn test`, `typecheck`, `build` from the root with Node22. The repository uses TypeScript7; Spectrum/OTel declare a TypeScript5/6 peer range. Builds pass, but that peer warning remains and a live cloud session is not validated.
-
-Estimated Haiku cost: 800–2000 input +150–200 output tokens at $1/M input and $5/M output ≈$0.00155–0.003 per extraction. At 100 messages/day and an assumed10% reaching the model, approximately $0.47–0.90 per month. Jev cost is unverified. These are planning estimates, not measured billings or latency. Sources: https://platform.claude.com/docs/en/models/haiku-4-5/overview, https://api.typesafe.ai/redoc, https://github.com/photon-hq/otel.
+`createLearningTelemetry` uses isolated Photon OTel, not global fetch instrumentation. Only allowlisted stage/status/count/duration leave the pipeline. No message bodies, evidence, values, phone numbers or emails are emitted. No configured endpoint means no exporter. Local OTLP trace/log canary tests cover leakage; external Sentry delivery and Spectrum Cloud collection are separate, unverified deployments.

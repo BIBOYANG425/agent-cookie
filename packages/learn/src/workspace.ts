@@ -1,5 +1,5 @@
 import {PREF_FIELDS,type LearnApi,type ContributionCandidate,type ObservationTurn} from '@agent-cookie/contract';
-import {createLearner,filterTurn,type PreferencePolicy} from './index.js';
+import {createLearner,filterTurn,characters,type PreferencePolicy} from './index.js';
 
 const descriptions:Record<string,string>={
   'pref.brand':'Preferred product brands','pref.color':'Preferred clothing colors',
@@ -24,10 +24,17 @@ export function createWorkspaceLearner(options:Omit<Parameters<typeof createLear
     // Fail closed on a mixed sensitive conversation and overlarge batches; never truncate past sensitive content.
     const base={source:'mcp' as const,speaker:'owner' as const,isGroup:false,messageId:conversationId,conversationId};
     if(own.some(t=>filterTurn({...base,text:t.text,occurredAt:t.at})))return [];
-    const text=own.map(t=>t.text).join('\n');
-    const result=await learner.learn({...base,text,occurredAt:own[0].at});
-    return result.preferences.filter(p=>own.some(t=>t.text.includes(p.evidence))).map(p=>({field:p.key,value:p.value,basis:p.basis,
-      evidence:{snippet:p.evidence,...(intentId?{intentId}:{conversationId})}}));
+    if(characters(own.map(t=>t.text).join('\n'))>4000)return [];
+    const rows:ContributionCandidate[]=[];
+    // One typed Jev request per eligible owner turn, never one per question or a
+    // concatenated batch. Each evidence snippet remains bound to that turn.
+    for(const turn of own){
+      const result=await learner.learn({...base,text:turn.text,occurredAt:turn.at});
+      if(result.reason==='sensitive')return []; // do not retain earlier results from a sensitive batch
+      rows.push(...result.preferences.filter(p=>turn.text.includes(p.evidence)).map(p=>({field:p.key,value:p.value,basis:p.basis,
+        evidence:{snippet:p.evidence,...(intentId?{intentId}:{conversationId})}})));
+    }
+    return rows;
   };
   return {
     extract:input=>input.text?extract([{role:'user',text:input.text,at:new Date().toISOString()}],input.intentId,'intent',input.intentId):Promise.resolve([]),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getExtractorDefaults } from './models.js';
 
 export type LearningSource = 'photon' | 'mcp' | 'claude-code';
 export interface LearningTurn {
@@ -35,7 +36,7 @@ export function filterTurn(turn: LearningTurn): LearningReason | undefined {
   return undefined;
 }
 
-const outputSchema = z.object({
+export const extractionOutputSchema = z.object({
   sensitive: z.boolean(), stable: z.boolean(),
   preferences: z.array(z.object({ key: z.string().min(1).max(100), value: z.string().min(1).max(200),
     evidence: z.string().min(1).refine(v => characters(v) <= 200), basis: z.enum(['stated','observed','inferred']),
@@ -75,8 +76,10 @@ export function createLearner(options: {
   const policy = Object.freeze(Object.fromEntries(Object.entries(options.policy)
     .filter(([key,p]) => /^pref\.[a-z_]+$/.test(key) && p.description && !containsSensitive(key + ' ' + p.description))
     .map(([key,p]) => [key, Object.freeze({ description: p.description, maxLength: Math.min(p.maxLength ?? 80, 200) })])));
-  const timeoutMs = options.timeoutMs ?? 10000;
-  if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw new Error('Invalid learning timeout.');
+  const modelDefaults = getExtractorDefaults(options.extract);
+  const classify = options.classify ?? modelDefaults?.classify;
+  const timeoutMs = options.timeoutMs ?? (modelDefaults ? 30000 : 10000);
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw new Error('Invalid learning timeout.');
   const metric = (m: LearningMetric) => { try { options.telemetry?.(m); } catch { /* observers never change learning */ } };
   return {
     async learn(turn: LearningTurn, control: { signal?: AbortSignal } = {}): Promise<LearnResult> {
@@ -88,22 +91,22 @@ export function createLearner(options: {
       try {
         return await bounded(async signal => {
           let selected = policy;
-          if (options.classify && options.mode !== 'explicit-only') {
+          if (classify) {
             try {
-              const c = classificationSchema.parse(await bounded(s => options.classify!({text:turn.text,policy,signal:s}), Math.min(1500,timeoutMs), signal));
+              const c = classificationSchema.parse(await bounded(s => classify({text:turn.text,policy,signal:s}), Math.min(1500,timeoutMs), signal));
               metric({stage:'classify',status:'ok',count:0,durationMs:performance.now()-start});
               if (c.sensitive || !c.stable) return {preferences:[],reason:c.sensitive?'sensitive':'not_stable'};
               selected = Object.fromEntries(Object.entries(policy).filter(([key]) => c.keys.includes(key)));
               if (!Object.keys(selected).length) return {preferences:[],reason:'not_stable'};
             } catch {
-              // Unavailable Jev falls back to Haiku; a successful negative verdict never does.
+              // Unavailable Jev falls back to extraction; a successful negative verdict never does.
               metric({stage:'classify',status:'unavailable',count:0,durationMs:performance.now()-start});
               if (signal.aborted) return {preferences:[],reason:'unavailable'};
             }
           }
           const raw = await options.extract({text:turn.text,policy:selected,signal});
           if (signal.aborted) return {preferences:[],reason:'unavailable'};
-          const parsed = outputSchema.safeParse(raw);
+          const parsed = extractionOutputSchema.safeParse(raw);
           if (!parsed.success) return {preferences:[],reason:'invalid_output'};
           if (parsed.data.sensitive || !parsed.data.stable) return {preferences:[],reason:parsed.data.sensitive?'sensitive':'not_stable'};
           const seen = new Set<string>();
@@ -126,6 +129,6 @@ export function createLearner(options: {
   };
 }
 
-export { createHaikuExtractor, createJevClassifier, HAIKU_MODEL, OPENROUTER_HAIKU_MODEL } from "./models.js";
+export { createExtractor, createHaikuExtractor, createJevClassifier, getExtractorDefaults, DEFAULT_EXTRACTION_MODEL, EXTRACTION_MODELS, JEV_MODEL, HAIKU_MODEL, OPENROUTER_HAIKU_MODEL } from "./models.js";
 export { createLearningTelemetry, type PipelineMetric } from './telemetry.js';
 export { createWorkspaceLearner, DEFAULT_LEARNING_POLICY } from './workspace.js';
