@@ -197,7 +197,14 @@ Gate: the report is reproducible from the database by a stranger; the plan state
 
 ## 10 · Order, size and the definition of done
 
-**Progress 2026-10-18 (lane A, branch `claude/amazing-allen-cnv3s6`).** Phases 0, 1, 2 (stages; intent lifetime parked, see §4) and 3 (ranking, off by default) are built with tests; the workspace suite went from 283 to 303 tests and the contract suite from 14 to 22, all green with the root typecheck. Phases 4–6 are not started: Phase 4 needs real runs, Phase 5 needs lanes C and D, Phase 6 needs lane B. The cross-lane lines in §9 are appended to `docs/requests.md`.
+**Progress 2026-10-18 (branch `claude/amazing-allen-cnv3s6`; from this point one session drives all four lanes, Opus agents write per lane, Fable reviews and commits each unit).**
+
+- Lane A: Phases 0, 1, 2 (stages; intent lifetime parked, see §4), 3 (ranking, off by default), 4 (holdout E1: `AGENT_COOKIE_EXPERIMENT=ranking`, arm from the low bit of HMAC-SHA256(user secret, intentId) stored on the intent, control unranked, `GET /owner/experiments` with clamped Wilson 95 % intervals) and the merchant half of Phase 5 (`GET /agent/stats`, counts over the caller's own agent id only). Workspace suite 283 → 314 tests, contract 14 → 22.
+- Lane C: `MemoryRepo.readPolicy/writePolicy` on POLICY.yaml through one codec in `packages/rules/src/policy-yaml.ts` (seed stays byte-identical; installed files carry an origin header; POLICY.yaml is a managed path so reset restores it); console 策略, 漏斗 and grant-stage panels behind the bridge's allowlist; the A23 reset check covers POLICY.yaml. memory-repo 50 → 58, rules 70 → 108, console 36 → 57.
+- Lane B: SDK `getFunnel`, `getPolicy`, `setPolicy` (422 → `WorkspaceError.violations`), `shadowPolicy`; CLI `funnel` and `policy show|shadow|set`; the fake workspace serves and enforces the four endpoints. SDK 89 → 145, CLI 5 → 26, fake 6 → 12.
+- Open after this pass: the payment stage with lane D's hook (§7, in progress), the quote event stream and the MCP `_meta` binding (§8), E2 of §6, the intent-lifetime decision of §4, and the plan.md edits only a human makes (A24–A27, `AGENT_COOKIE_EXPERIMENT`, §5 wording).
+
+Two follow-ups surfaced by the agents and not yet done: `packages/memory-repo/package.json` lists `@agent-cookie/rules` under devDependencies although it now imports the codec at runtime (moving it changes the lockfile); the contract's policy module imports `node:crypto`, which keeps the browser console from importing it even for types (the console mirrors the four types with a compile-time equality check).
 
 | Phase | Depends on | Size | Done when |
 | --- | --- | --- | --- |

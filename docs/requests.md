@@ -338,3 +338,14 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A46 | A → 人 | `docs/plan.md`：§2 新增 A24 漏斗、A25 策略文档、A26 影子、A27 阶段（测试已在 `apps/workspace/test/acceptance` 与 `apps/workspace/test`）；§5 字段策略表改为"由安装的 `PolicyDocument` 决定，`DEFAULT_POLICY` 为种子"；§4 决定 intent 生命周期是否与 grant 解耦（需要报价有效期规则，见计划 §4）。 | 待人 |
 | A47 | A → B | 计划 §8：quotes 的 SSE 端点与 `_meta["agent-cookie"]` 绑定契约草案待 A 起草，B 评估 Photon/MCP 切换成本；CLI 新增 `funnel`、`policy show|shadow|set` 子命令（走现有 SDK/HTTP）。 | 待 B |
 | A48 | A → D | accept 路径已有 `advance(session, intentId, "payment", category)` 钩子位（sessions.ts）：D 的 `authorizePayment` 成功后由 A 调用，打开 `payment_method`（purpose=payment）并写带 `amount` 的回执；A21 作为验收。 | 待 D |
+
+2026-10-18（续四），A 线状态更新：从本条起由同一会话驾驭四条线（Opus 按线写代码，Fable 审阅并逐单元提交，分支 `claude/amazing-allen-cnv3s6`）。只追加，不改上文。
+
+| ID | 状态更新 |
+| --- | --- |
+| A43 | 契约新增已全部落地并有 golden 测试锁定旧决策；另增 `MerchantStats`、`ExperimentArm/ExperimentArmStats/ExperimentReport`、`Intent.arm`、`FunnelRow.arm`，端点 `GET /agent/stats`、`GET /owner/experiments`，环境变量 `AGENT_COOKIE_EXPERIMENT=off|ranking`。SDK/CLI/控制台/假工作台均已按新形状接好。待合 main 时两线确认即可。 |
+| A44 | 已完成（lane C）：`readPolicy/writePolicy` 落在 `packages/memory-repo`，codec 在 `packages/rules/src/policy-yaml.ts`，POLICY.yaml 进 MANAGED，reset 恢复种子；memory-repo 58、rules 108 测试通过。遗留：memory-repo 的 `@agent-cookie/rules` 仍在 devDependencies，应移到 dependencies（改锁文件，待单独处理）。 |
+| A45 | 已完成（lane C）：控制台策略 / 漏斗 / 授权阶段面板，bridge 白名单与 16 KiB 体积上限；控制台 57 测试通过。bridge 对新路由直连 HTTP（TODO(sdk)），SDK 方法已有，可择机切换。 |
+| A46 | 仍待人：`docs/plan.md` §2 加 A24–A27，§4 加 `AGENT_COOKIE_EXPERIMENT`，§5 改为"由安装的 PolicyDocument 决定"，§4 决定 intent 生命周期是否解耦。 |
+| A47 | 部分完成（lane B）：CLI `funnel`、`policy show|shadow|set` 已有；SSE 报价流与 `_meta["agent-cookie"]` 绑定仍待。 |
+| A48 | 进行中（lane D + A）：accept 路径接 `authorizePayment`、`payment` 阶段、带 `amount` 的回执、`AGENT_COOKIE_PAY=off|fake|stripe`、A21 验收。 |
