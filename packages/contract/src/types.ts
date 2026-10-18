@@ -671,6 +671,27 @@ export interface AssistantContext {
   expiresAt: string;
 }
 
+/**
+ * POST /assistant/contributions body (bring-your-own-agent): a linked assistant records what the user told it.
+ *  - basis "stated": the user said it to this assistant. REQUIRES `evidence` with both fields — `conversationId`
+ *    (opaque, at most 128 bytes, never a phone number or email) and `snippet` (the user's own words, 1–EVIDENCE_SNIPPET_MAX
+ *    characters, no contact or payment data) — else 422 MISSING_FIELD. Stored as "stated" with its evidence. While the
+ *    assistant holds a live assist grant its stated values are trusted like the user's own agents' (a single source puts
+ *    the value on the card, MergeOptions.personalAgentIds); once the grant is revoked or expires they count as one learned
+ *    source and fall back to candidates; a new approved link restores them.
+ *  - "observed" (the default): stored as observed (evidence optional, same checks), a candidate until a second
+ *    independent source agrees.
+ *  - "inferred": the assistant's own record, never on the card.
+ * A field outside write.assistant, or unknown, is kept as the assistant's own inferred record (A11). shipping_address
+ * and payment_method → 403 SCOPE_DENIED whatever the policy says. The response never carries the user's id.
+ */
+export interface AssistantContributionInput {
+  field: Field;
+  value: string;
+  basis?: Basis;
+  evidence?: Required<Pick<ContributionEvidence, "conversationId" | "snippet">>;
+}
+
 /** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */
 export interface Me {
   agentId: string;

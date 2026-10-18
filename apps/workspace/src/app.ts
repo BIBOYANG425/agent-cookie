@@ -14,6 +14,7 @@ import { hashKey, mintKey, newId } from "./ids.js";
 import { idempotency } from "./idempotency.js";
 import { isJarLocked } from "./laneD.js";
 import { requestSpan } from "./telemetry.js";
+import { assistantEvidence } from "./services/assistant.js";
 import { theUser } from "./services/context.js";
 
 const CATEGORIES: Category[] = ["personal", "shoe", "retail", "assistant"];
@@ -324,8 +325,8 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json(deps.policy.shadow(user(), (body as { policy?: unknown }).policy));
   });
 
-  app.post("/personal/grants/:id/revoke", auth, personalOrOwner, (c) => {
-    const { revokedAt } = deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
+  app.post("/personal/grants/:id/revoke", auth, personalOrOwner, async (c) => {
+    const { revokedAt } = await deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
     return json({ ok: true, revokedAt });
   });
 
@@ -420,7 +421,8 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const basis = (body.basis ?? "observed") as Basis;
     if (!BASES.includes(basis)) fail("MISSING_FIELD", "invalid basis");
     const sessionId = optStr(body, "sessionId", { max: 64 });
-    const { stored, contribution } = await deps.assistant.contribute(c.get("agent"), user(), { field, value, basis }, sessionId);
+    const evidence = assistantEvidence(body.evidence);
+    const { stored, contribution } = await deps.assistant.contribute(c.get("agent"), user(), { field, value, basis, ...(evidence ? { evidence } : {}) }, sessionId);
     // Like a merchant: only its own record, never the user's global id.
     const { userId: _u, ...own } = contribution;
     return json({ stored, contribution: own }, 201);
@@ -429,7 +431,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
 
   // The owner decides links; nothing else approves one.
   app.get("/owner/links", auth, owner, (c) => json({ links: deps.links.list(intParam(c.req.query("limit"), 100, 500)) }));
-  app.post("/owner/links/:id/approve", auth, owner, (c) => json(deps.links.approve(c.get("agent").agentId, user(), c.req.param("id"))));
+  app.post("/owner/links/:id/approve", auth, owner, async (c) => json(await deps.links.approve(c.get("agent").agentId, user(), c.req.param("id"))));
   app.post("/owner/links/:id/decline", auth, owner, (c) => json(deps.links.decline(c.get("agent").agentId, c.req.param("id"))));
 
   // ---- owner, demo, test

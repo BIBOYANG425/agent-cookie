@@ -129,7 +129,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const funnel = new FunnelService(ctx);
   const experiments = new ExperimentService(ctx);
   const merchantStats = new MerchantStatsService(ctx);
-  const links = new LinkService(ctx, sessions);
+  const links = new LinkService(ctx, sessions, card);
   const assistant = new AssistantService(ctx, sessions, card);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
@@ -224,7 +224,7 @@ async function reconcileRepo(ctx: Ctx): Promise<void> {
       }
     }
     if (changed) {
-      await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.personalAgentIds() },
+      await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.trustedStatedAgentIds(ctx.clock.nowIso()) },
         writeMeta(ctx, "workspace", { regenerate: ctx.clock.nowIso() }));
     }
     if (unreadable > 0) ctx.log({ event: "reconcile", actor: "workspace", result: "skipped", reason: `unreadable=${unreadable}` });

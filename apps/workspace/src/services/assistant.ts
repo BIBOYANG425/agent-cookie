@@ -4,8 +4,12 @@
 // provenance, and NEVER shipping_address or payment_method, whatever any document says (the hard refusal below; the
 // contract floor says the same, this does not rely on it). The workspace hands those two to the merchant at checkout
 // and payment, with receipts, as it does for the user's own agents; the assistant orchestrates and never carries them.
-import type { AssistantContext, AssistantStats, Basis, Field, Receipt } from "@agent-cookie/contract";
+import {
+  EVIDENCE_SNIPPET_MAX,
+  type AssistantContext, type AssistantContributionInput, type AssistantStats, type Basis, type Field, type Receipt,
+} from "@agent-cookie/contract";
 import type { StoredContribution } from "../db.js";
+import { containsContactOrPayment, looksLikeContactHandle } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { questionsSkipped } from "./analytics.js";
@@ -34,6 +38,31 @@ export const ASSIST_RECEIPT_DEDUPE_MS = 60 * 60 * 1000;
 
 const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
+export type AssistantEvidence = NonNullable<AssistantContributionInput["evidence"]>;
+
+/**
+ * The `evidence` of POST /assistant/contributions, or 422: exactly { conversationId, snippet }. conversationId is opaque
+ * (at most 128 bytes, never a phone number or email, as for observations); snippet is the user's own words, 1 to
+ * EVIDENCE_SNIPPET_MAX characters after trimming, without contact or payment data (the rule learned evidence follows).
+ */
+export function assistantEvidence(raw: unknown): AssistantEvidence | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const bad = (why: string): never => fail("MISSING_FIELD", `evidence ${why}`);
+  if (typeof raw !== "object" || Array.isArray(raw)) bad("must be { conversationId, snippet }");
+  const e = raw as Record<string, unknown>;
+  if (Object.keys(e).some((k) => k !== "conversationId" && k !== "snippet")) bad("takes conversationId and snippet only");
+  const { conversationId, snippet } = e;
+  if (typeof conversationId !== "string" || conversationId.trim() === "" || Buffer.byteLength(conversationId, "utf8") > 128) {
+    bad("needs a conversationId of at most 128 bytes");
+  }
+  if (looksLikeContactHandle(conversationId as string)) bad("conversationId must be opaque, not a phone number or email");
+  const words = typeof snippet === "string" ? snippet.trim() : "";
+  const n = [...words].length;
+  if (n < 1 || n > EVIDENCE_SNIPPET_MAX) bad(`needs a snippet of 1–${EVIDENCE_SNIPPET_MAX} characters`);
+  if (containsContactOrPayment(words)) bad("snippet may not carry contact or payment data");
+  return { conversationId: conversationId as string, snippet: words };
+}
+
 export class AssistantService {
   /** Receipt decisions run one at a time, so two reads at once cannot both decide "no recent receipt". */
   private serial: Promise<unknown> = Promise.resolve();
@@ -41,16 +70,17 @@ export class AssistantService {
   constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {}
 
   /**
-   * GET /assistant/context. Needs a live assist grant (SessionService.assistAccess). `fields` = values of the installed
-   * document's auto.assistant fields that the live grant covers and the card has; `unknown` = the rest of that list;
-   * `writable` = write.assistant. A field the document gained after approval needs a new link (the grant is the
-   * consent); a field it lost is not served at once. Card values only: no intent overlay, no provenance.
+   * GET /assistant/context. Needs a live assist grant (SessionService.assistAccess): the grant proves the owner linked
+   * this assistant, and its expiry or revocation gates access. What is served is decided at read time by the INSTALLED
+   * document, not by the grant's stored field list: `fields` = values of auto.assistant (minus the two never-fields)
+   * that the card has, `unknown` = the rest of that list, `writable` = write.assistant. A field the owner adds to
+   * auto.assistant is served on the next read; a removed one stops at once. Card values only: no intent overlay, no
+   * provenance, and candidates are never served.
    */
   async context(agent: AuthedAgent, userId: string): Promise<AssistantContext> {
-    const { session, grant, live } = this.sessions.assistAccess(agent, userId);
+    const { session, grant } = this.sessions.assistAccess(agent, userId);
     const policy = this.ctx.policy;
-    const granted = new Set(live.flatMap((g) => g.fields));
-    const readable = assistantSafe(policy.autoFields("assistant")).filter((f) => granted.has(f));
+    const readable = assistantSafe(policy.autoFields("assistant"));
     const values = this.card.values(userId);
     const fields: Partial<Record<Field, string>> = {};
     const unknown: Field[] = [];
@@ -88,20 +118,25 @@ export class AssistantService {
   }
 
   /**
-   * POST /assistant/contributions: the merchant write path (CardService.record) evaluated for category "assistant"
-   * (write.assistant of the installed document, observed basis only): a field it may not write, an unknown field or
-   * another basis is kept as its own "inferred" record, never on the card (A11). shipping_address and payment_method
-   * are refused outright (403 SCOPE_DENIED), whatever the document says: an assistant never carries them.
+   * POST /assistant/contributions (contract AssistantContributionInput): the merchant write path (CardService.record)
+   * evaluated for category "assistant" against write.assistant of the installed document.
+   *  - "stated" needs evidence (conversationId + the user's own words), else 422; it is stored as stated with that
+   *    evidence, and the merge trusts it on a single source while this assistant's grant is live (trustedStatedAgentIds).
+   *  - "observed" is stored as observed (a candidate until a second independent source); "inferred" stays its own record.
+   *  - a field outside write.assistant, or unknown, is kept as its own "inferred" record, never on the card (A11).
+   *  - shipping_address and payment_method are refused outright (403 SCOPE_DENIED), whatever the document says.
    */
-  async contribute(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis }, sessionId?: string):
-    Promise<{ stored: Basis; contribution: StoredContribution }> {
+  async contribute(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: AssistantEvidence },
+    sessionId?: string): Promise<{ stored: Basis; contribution: StoredContribution }> {
     const { session } = this.sessions.assistAccess(agent, userId);
     if (sessionId !== undefined && sessionId !== session.sessionId) fail("NOT_FOUND");
     if (ASSISTANT_NEVER.has(input.field)) {
       this.ctx.log({ event: "assist.contribution", actor: agent.agentId, object: session.sessionId, result: "SCOPE_DENIED", reason: input.field });
       fail("SCOPE_DENIED");
     }
-    return this.card.record({ ...agent, category: "assistant", role: "assistant" }, userId, input);
+    if (input.basis === "stated" && !input.evidence) fail("MISSING_FIELD", "basis stated needs evidence { conversationId, snippet }");
+    const { evidence, ...rest } = input;
+    return this.card.record({ ...agent, category: "assistant", role: "assistant" }, userId, { ...rest, ...(evidence ? { evidence: { ...evidence } } : {}) });
   }
 
   /** GET /assistant/stats: counts over the intents this assistant created, nothing else. */

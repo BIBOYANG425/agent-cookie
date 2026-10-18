@@ -383,6 +383,20 @@ export class Store {
   personalAgentIds(): string[] {
     return (this.db.prepare("SELECT agent_id FROM agents WHERE category = 'personal' ORDER BY agent_id").all() as Row[]).map((r) => String(r.agent_id));
   }
+  /**
+   * agentIds whose "stated" contributions the merge trusts on a single source (MergeOptions.personalAgentIds): the user's
+   * own agents, then every company assistant holding a live assist grant at `now` — purpose "assist" (services/assistant.ts
+   * ASSIST_PURPOSE), no intent, not revoked, expiring after `now`. An assistant whose grant was revoked or expired drops
+   * out, and its stated values count like learned ones until a new approved link puts it back.
+   */
+  trustedStatedAgentIds(now: string): string[] {
+    const nowMs = Date.parse(now);
+    const rows = this.db.prepare(`SELECT s.agent_id AS agent_id, g.expires_at AS expires_at FROM grants g
+      JOIN sessions s ON s.session_id = g.session_id JOIN agents a ON a.agent_id = s.agent_id
+      WHERE a.category = 'assistant' AND g.purpose = 'assist' AND g.intent_id IS NULL AND g.revoked_at IS NULL`).all() as Row[];
+    const linked = new Set(rows.filter((r) => Date.parse(String(r.expires_at)) > nowMs).map((r) => String(r.agent_id)));
+    return [...this.personalAgentIds(), ...[...linked].sort()];
+  }
 
   // ---- keys
   insertKey(k: KeyRow): void {

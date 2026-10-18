@@ -123,7 +123,8 @@ export class LearningService {
     try {
       const repo = this.ctx.repo();
       if (!repo.forgetContributions) throw new Error('Projection unavailable');
-      await repo.forgetContributions(job.ids, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() },
+      const now = this.ctx.clock.nowIso();
+      await repo.forgetContributions(job.ids, { now, personalAgentIds: this.ctx.store.trustedStatedAgentIds(now) },
         writeMeta(this.ctx, actor, { field, ids: job.ids }));
       this.ctx.store.completeForget(userId, field);
       return true;

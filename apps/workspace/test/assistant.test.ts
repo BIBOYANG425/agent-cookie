@@ -11,6 +11,7 @@ import {
 import { Clock } from "../src/clock.js";
 import { ASSIST_RECEIPT_DEDUPE_MS } from "../src/services/assistant.js";
 import { harness, KEYS } from "./harness.js";
+import type { InMemoryRepo } from "./stubs/memory-repo.js";
 
 const START = "2026-10-18T09:00:00.000Z";
 const ADDRESS_NEEDLE = "1234 Sample St";
@@ -229,6 +230,32 @@ describe("GET /assistant/context", () => {
     }
   });
 
+  it("is decided at read time by the installed document: a field added after approval is served without a new link, a removed one stops at once", async () => {
+    const { h } = await setup();
+    const narrow = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    narrow.auto.assistant = narrow.auto.assistant.filter((f) => f !== "pref.color" && f !== "shoe_size");
+    expect((await h.put("/personal/policy", KEYS.owner, narrow)).status).toBe(200);
+    expect((await h.post("/personal/contributions", KEYS.personal, { field: "pref.color", value: "blue" })).status).toBe(201);
+    const a = await linkedAssistant(h);
+    // the grant keeps the list it was approved under, for display
+    expect((await assistGrant(h, a.agentId)).fields).toEqual(narrow.auto.assistant);
+    let ctx = (await h.get("/assistant/context", a.key)).body;
+    expect(ctx.fields["pref.color"]).toBeUndefined();
+    expect(ctx.fields.shoe_size).toBeUndefined();
+    expect([...Object.keys(ctx.fields), ...ctx.unknown]).not.toContain("pref.color");
+
+    expect((await h.put("/personal/policy", KEYS.owner, DEFAULT_POLICY)).status).toBe(200);
+    ctx = (await h.get("/assistant/context", a.key)).body;
+    expect(ctx.fields).toMatchObject({ "pref.color": "blue", shoe_size: "42" });
+    expect(ctx.policyId).toBe(policyId(DEFAULT_POLICY));
+
+    expect((await h.put("/personal/policy", KEYS.owner, narrow)).status).toBe(200);
+    ctx = (await h.get("/assistant/context", a.key)).body;
+    expect(ctx.fields["pref.color"]).toBeUndefined();
+    expect(ctx.fields.shoe_size).toBeUndefined();
+    expect(ctx.policyId).toBe(policyId(narrow));
+  });
+
   it("each read writes an assist receipt (field names, no intent) — except within the hour for the same field set; activity counts every read", async () => {
     const { h, clock } = await setup();
     const a = await linkedAssistant(h);
@@ -412,7 +439,9 @@ describe("assistant on the intent routes", () => {
 });
 
 describe("POST /assistant/contributions", () => {
-  it("write.assistant through the merchant path: preferences and shoe_size observed (candidates); others kept inferred (A11); never userId", async () => {
+  const said = (conversationId: string, snippet: string) => ({ conversationId, snippet });
+
+  it("write.assistant through the merchant path: observed stays observed (a candidate), others kept inferred (A11), never userId", async () => {
     const { h } = await setup();
     const a = await linkedAssistant(h);
     const w = async (body: Record<string, unknown>) => h.post("/assistant/contributions", a.key, body);
@@ -424,19 +453,125 @@ describe("POST /assistant/contributions", () => {
     expect(color.body.contribution.userId).toBeUndefined();
     expect(color.text).not.toContain("u_sample");
     expect((await w({ field: "shoe_size", value: "43" })).body.stored).toBe("observed");
-    // not in write.assistant, a basis it may not use, an unknown field: its own inferred record, never on the card
+    expect((await w({ field: "pref.brand", value: "Brooks", evidence: said("conv-1", "I only run in Brooks") })).body.contribution)
+      .toMatchObject({ basis: "observed", evidence: { conversationId: "conv-1", snippet: "I only run in Brooks" } });
+    // not in write.assistant, an unknown field, inferred: its own inferred record, never on the card
     expect((await w({ field: "budget", value: "100" })).body.stored).toBe("inferred");
-    expect((await w({ field: "pref.brand", value: "Brooks", basis: "stated" })).body.stored).toBe("inferred");
+    expect((await w({ field: "budget", value: "100", basis: "stated", evidence: said("conv-1", "my budget is 100") })).body.stored).toBe("inferred");
     expect((await w({ field: "favourite_planet", value: "Mars" })).body.stored).toBe("inferred");
+    expect((await w({ field: "pref.style", value: "minimal", basis: "inferred", evidence: said("conv-1", "I like minimal things") })).body.stored).toBe("inferred");
     expect((await w({ field: "pref.color", value: "blue", sessionId: "s_not_mine" })).text).toBe(NOT_FOUND);
     expect((await w({ field: "pref.color", value: "blue", sessionId: a.sessionId })).status).toBe(201);
     expect((await w({ field: "pref.color", value: "call me at +1 415 555 0100" })).status).toBe(422);
 
     const card = (await h.get("/personal/card", KEYS.personal)).body;
     expect((card.card as Json[]).find((f) => f.field === "pref.color")).toBeUndefined();
+    expect((card.card as Json[]).find((f) => f.field === "pref.brand")).toBeUndefined();
     expect((card.card as Json[]).find((f) => f.field === "budget")).toBeUndefined();
     expect((card.card as Json[]).find((f) => f.field === "shoe_size").value).toBe("42");
     expect((card.candidates as Json[]).some((c) => c.field === "pref.color" && c.value === "blue" && c.sources.includes(a.agentId))).toBe(true);
+  });
+
+  it("stated needs evidence: both fields, the user's own words of 1–200 characters, opaque conversation id — else 422", async () => {
+    const { h } = await setup();
+    const a = await linkedAssistant(h);
+    const w = async (evidence: unknown) => h.post("/assistant/contributions", a.key, { field: "pref.color", value: "blue", basis: "stated",
+      ...(evidence === undefined ? {} : { evidence }) });
+    for (const bad of [undefined, null, {}, { conversationId: "conv-1" }, { snippet: "I like blue" }, { conversationId: "", snippet: "I like blue" },
+      { conversationId: "conv-1", snippet: "   " }, { conversationId: "conv-1", snippet: "x".repeat(201) }, { conversationId: "conv-1", snippet: "I like blue", intentId: "i_1" },
+      { conversationId: "+1 415 555 0100", snippet: "I like blue" }, { conversationId: "conv-1", snippet: "blue, mail me at sample@example.com" }, "conv-1"]) {
+      const r = await w(bad);
+      expect(r.status, JSON.stringify(bad)).toBe(422);
+      expect(r.body.error.code).toBe("MISSING_FIELD");
+    }
+    expect(h.deps.store.contributionsForUser("u_sample").filter((c) => c.agentId === a.agentId)).toEqual([]);
+    const ok = await w({ conversationId: "conv-1", snippet: ` ${"y".repeat(199)}b ` });
+    expect(ok.status).toBe(201);
+    expect(ok.body.contribution.evidence.snippet).toHaveLength(200);
+    // the hard refusal comes first, evidence or not
+    expect((await h.post("/assistant/contributions", a.key, { field: "shipping_address", value: "1 Sample Way", basis: "stated",
+      evidence: { conversationId: "conv-1", snippet: "I live at 1 Sample Way" } })).status).toBe(403);
+  });
+
+  it("stated with evidence is on the card while the assistant is linked; a second assistant reads it; revoke → candidate (card and CARD.md); a new link restores it", async () => {
+    const { h } = await setup();
+    const a = await linkedAssistant(h);
+    const color = await h.post("/assistant/contributions", a.key, { field: "pref.color", value: "blue", basis: "stated",
+      evidence: said("conv-a1", "my favourite colour is blue") });
+    expect(color.status).toBe(201);
+    expect(color.body.stored).toBe("stated");
+    expect(color.body.contribution).toMatchObject({ basis: "stated", evidence: { conversationId: "conv-a1", snippet: "my favourite colour is blue" } });
+    expect((await h.post("/assistant/contributions", a.key, { field: "shoe_size", value: "44", basis: "stated",
+      evidence: said("conv-a1", "I am a 44 now") })).body.stored).toBe("stated");
+
+    const entry = (field: string) => h.deps.card.get("u_sample").card.find((f) => f.field === field);
+    expect(entry("pref.color")).toMatchObject({ value: "blue", confidence: "medium" });
+    expect(entry("pref.color")!.sources).toContain(a.agentId);
+    expect(entry("shoe_size")).toMatchObject({ value: "44", sources: [a.agentId] });
+    const repo = h.deps.repo as unknown as InMemoryRepo;
+    expect(repo.currentCard().card.find((f) => f.field === "pref.color")?.value).toBe("blue");
+
+    // the owner sees why (the user's own words); no assistant ever does
+    const learned = (await h.get("/personal/learned", KEYS.owner)).body.learned as Json[];
+    expect(learned.find((l) => l.field === "pref.color")).toMatchObject({ value: "blue", status: "card",
+      evidence: [expect.objectContaining({ agentId: a.agentId, basis: "stated", conversationId: "conv-a1", snippet: "my favourite colour is blue" })] });
+    expect((await h.get("/personal/learned", a.key)).status).toBe(403);
+
+    // another assistant knows it on its first read, without the evidence
+    const c = await linkedAssistant(h, "Pi · Sample");
+    const first = await h.get("/assistant/context", c.key);
+    expect(first.body.fields).toMatchObject({ "pref.color": "blue", shoe_size: "44" });
+    expect(first.text).not.toContain("favourite colour");
+    expect(first.text).not.toContain("conv-a1");
+
+    // the owner revokes A: its single-source stated values fall back to candidates, in the card and in CARD.md
+    const g = await assistGrant(h, a.agentId);
+    const commits = repo.commits.length;
+    expect((await h.post(`/personal/grants/${g.id}/revoke`, KEYS.owner)).status).toBe(200);
+    expect(repo.commits.slice(commits).map((x) => x.message)).toContain("regenerate CARD.md");
+    expect(repo.currentCard().card.find((f) => f.field === "pref.color")).toBeUndefined();
+    expect(entry("pref.color")).toBeUndefined();
+    expect(entry("shoe_size")!.value).toBe("42");
+    const card = h.deps.card.get("u_sample");
+    expect(card.candidates.some((x) => x.field === "pref.color" && x.value === "blue" && x.sources.includes(a.agentId))).toBe(true);
+    expect(card.candidates.some((x) => x.field === "shoe_size" && x.value === "44")).toBe(true);
+    const after = await h.get("/assistant/context", c.key);
+    expect(after.body.fields["pref.color"]).toBeUndefined();
+    expect(after.body.unknown).toContain("pref.color");
+    expect(after.body.fields.shoe_size).toBe("42");
+    expect(h.deps.store.trustedStatedAgentIds(h.deps.clock.nowIso())).not.toContain(a.agentId);
+
+    // a new approved link puts A back among the trusted writers
+    const l = (await h.post("/assistant/link", a.key)).body;
+    expect((await h.post(`/owner/links/${l.id}/approve`, KEYS.owner)).status).toBe(200);
+    expect(entry("pref.color")!.value).toBe("blue");
+    expect(repo.currentCard().card.find((f) => f.field === "pref.color")?.value).toBe("blue");
+    expect((await h.get("/assistant/context", c.key)).body.fields).toMatchObject({ "pref.color": "blue", shoe_size: "44" });
+  });
+
+  it("a linked assistant's trust ends with its grant's expiry too", async () => {
+    const { h, clock } = await setup();
+    const a = await linkedAssistant(h);
+    await h.post("/assistant/contributions", a.key, { field: "pref.color", value: "blue", basis: "stated", evidence: said("conv-a1", "blue, always blue") });
+    expect(h.deps.store.trustedStatedAgentIds(clock.nowIso())).toContain(a.agentId);
+    clock.advance(ASSISTANT_GRANT_TTL_MS);
+    expect(h.deps.store.trustedStatedAgentIds(clock.nowIso())).not.toContain(a.agentId);
+    expect(h.deps.card.get("u_sample").card.find((f) => f.field === "pref.color")).toBeUndefined();
+  });
+
+  it("observed is a candidate until a second independent source agrees; then it is on the card", async () => {
+    const { h } = await setup();
+    const a = await linkedAssistant(h);
+    const b = await linkedAssistant(h, "Dots · Sample");
+    const first = await h.post("/assistant/contributions", a.key, { field: "pref.brand", value: "Brooks", evidence: said("conv-a", "Brooks fit me best") });
+    expect(first.body.stored).toBe("observed");
+    let card = h.deps.card.get("u_sample");
+    expect(card.card.find((f) => f.field === "pref.brand")).toBeUndefined();
+    expect(card.candidates.some((x) => x.field === "pref.brand" && x.value === "Brooks")).toBe(true);
+    await h.post("/assistant/contributions", b.key, { field: "pref.brand", value: "Brooks", evidence: said("conv-b", "I keep buying Brooks") });
+    card = h.deps.card.get("u_sample");
+    expect(card.card.find((f) => f.field === "pref.brand")).toMatchObject({ value: "Brooks" });
+    expect(card.card.find((f) => f.field === "pref.brand")!.sources.sort()).toEqual([a.agentId, b.agentId].sort());
   });
 
   it("follows the installed document: a preference removed from write.assistant is kept inferred", async () => {
@@ -446,6 +581,8 @@ describe("POST /assistant/contributions", () => {
     expect((await h.put("/personal/policy", KEYS.owner, doc)).status).toBe(200);
     const a = await linkedAssistant(h);
     expect((await h.post("/assistant/contributions", a.key, { field: "pref.color", value: "blue" })).body.stored).toBe("inferred");
+    expect((await h.post("/assistant/contributions", a.key, { field: "pref.color", value: "blue", basis: "stated",
+      evidence: said("conv-1", "I like blue") })).body.stored).toBe("inferred");
     expect((await h.post("/assistant/contributions", a.key, { field: "pref.brand", value: "Brooks" })).body.stored).toBe("observed");
     expect((await h.get("/assistant/context", a.key)).body.writable).not.toContain("pref.color");
   });

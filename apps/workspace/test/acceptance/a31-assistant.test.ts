@@ -32,6 +32,15 @@ async function assistant(name: string): Promise<{ agentId: string; key: string; 
   return { agentId: reg.agentId, key: reg.key, api: api(ws.url, reg.key) };
 }
 
+/** Register, ask for a link, the owner approves it (with no request body, as the console bridge sends it). */
+async function linkedAssistant(name: string): Promise<{ agentId: string; key: string; api: Api }> {
+  const a = await assistant(name);
+  const l = await a.api.post("/assistant/link");
+  expect(l.status).toBe(201);
+  expect((await api(ws.url, KEYS.owner).post(`/owner/links/${l.body.id}/approve`)).status).toBe(200);
+  return a;
+}
+
 function expectNoSecrets(text: string): void {
   expect(text).not.toContain("shipping_address");
   expect(text).not.toContain("payment_method");
@@ -130,6 +139,53 @@ describe("A31 助理接入（proposed）", { timeout: 60_000 }, () => {
       expect(r.text).toBe(NOT_FOUND_TEXT);
     }
     expect((await dots.api.get("/assistant/stats")).body).toMatchObject({ intents: 0, quoted: 0, accepted: 0, completed: 0, questionsSkipped: 0 });
+  });
+
+  it("churn: assistant A states two facts with the user's words; assistant C knows them on its first read; A revoked → C no longer gets them", async () => {
+    const owner = api(ws.url, KEYS.owner);
+    const personal = api(ws.url, KEYS.personal);
+    const a = await linkedAssistant("Muse · Sample");
+    const before = Object.fromEntries(((await card(personal)).card as Json[]).map((f) => [f.field, f.value]));
+    const size = before.shoe_size === "44" ? "45" : "44";
+    expect(before["pref.color"]).not.toBe("teal");
+
+    const evidence = { conversationId: "sample-conv-a1", snippet: `Sample: I wear a ${size} now, and teal is my colour` };
+    expectError(await a.api.post("/assistant/contributions", { field: "pref.color", value: "teal", basis: "stated" }), 422, "MISSING_FIELD");
+    for (const [field, value] of [["shoe_size", size], ["pref.color", "teal"]]) {
+      const w = await a.api.post("/assistant/contributions", { field, value, basis: "stated", evidence });
+      expect(w.status, field).toBe(201);
+      expect(w.body).toMatchObject({ stored: "stated", contribution: { field, value, basis: "stated", evidence } });
+      expect(w.text).not.toContain(SEED.userId);
+    }
+
+    // A different company's assistant, linked today, knows both on its first context read — and not why.
+    const c = await linkedAssistant("Dots · Sample");
+    const first = await c.api.get("/assistant/context");
+    expect(first.status).toBe(200);
+    expect(first.body.fields).toMatchObject({ shoe_size: size, "pref.color": "teal" });
+    expect(first.text).not.toContain(evidence.snippet);
+    expect(first.text).not.toContain(evidence.conversationId);
+    expectNoSecrets(first.text);
+
+    // The owner sees the user's words behind the value; no assistant can ask.
+    const learned = ((await owner.get("/personal/learned")).body.learned as Json[]).find((l) => l.field === "pref.color" && l.value === "teal");
+    expect(learned).toMatchObject({ status: "card" });
+    expect(learned.evidence).toEqual([expect.objectContaining({ agentId: a.agentId, basis: "stated", snippet: evidence.snippet })]);
+    expectError(await a.api.get("/personal/learned"), 403, "SCOPE_DENIED");
+    expectError(await c.api.get("/personal/learned"), 403, "SCOPE_DENIED");
+
+    // The owner revokes A: its single-source statements are candidates again, and candidates are never served.
+    const g = (await grants(owner)).find((x) => x.agentId === a.agentId && x.purpose === "assist");
+    expect((await owner.post(`/personal/grants/${g.id}/revoke`)).status).toBe(200);
+    const next = await c.api.get("/assistant/context");
+    expect(next.status).toBe(200);
+    expect(next.body.fields["pref.color"]).toBeUndefined();
+    expect(next.body.unknown).toContain("pref.color");
+    expect(next.body.fields.shoe_size).not.toBe(size);
+    expect(next.body.fields.shoe_size).toBe(before.shoe_size);
+    const after = await card(personal);
+    expect((after.card as Json[]).some((f) => f.field === "pref.color" && f.value === "teal")).toBe(false);
+    expect((after.candidates as Json[]).some((x) => x.field === "pref.color" && x.value === "teal")).toBe(true);
   });
 
   it("a link expires after ten minutes and can no longer be approved; a declined link opens nothing", async () => {

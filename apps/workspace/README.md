@@ -84,21 +84,28 @@ network missing). The request shapes were written offline and have not been run 
 
 An assistant (Manus, Dots, Muse) asks `POST /assistant/link` (201 pending, or 200 with its pending link; `url` =
 `<AGENT_COOKIE_URL>/owner/links/<id>`) and polls `GET /assistant/link/:id` (own link only, else 404). Only the owner decides:
-`GET /owner/links`, `POST /owner/links/:id/approve|decline`; a link is single use and lives 10 minutes (then `expired`; deciding
-it again → 409 `LINK_NOT_PENDING`). Approval derives the assistant's pairwise session like a merchant's and issues one grant:
-the installed `auto.assistant` fields, purpose `assist`, stage `introduced`, 30 days; `POST /personal/grants/:id/revoke` ends it.
-Without a live grant every assistant call below is 403 `SCOPE_DENIED` (never linked), `GRANT_REVOKED` or `GRANT_EXPIRED`.
+`GET /owner/links`, `POST /owner/links/:id/approve|decline` (no body needed); a link is single use and lives 10 minutes (then
+`expired`; deciding it again → 409 `LINK_NOT_PENDING`). Approval derives the assistant's pairwise session like a merchant's and
+issues one grant: purpose `assist`, stage `introduced`, 30 days, its `fields` the `auto.assistant` list at approval (for display);
+`POST /personal/grants/:id/revoke` ends it. Without a live grant every assistant call below is 403 `SCOPE_DENIED` (never
+linked), `GRANT_REVOKED` or `GRANT_EXPIRED`. `GET /assistant/context` is decided at read time by the installed document: the
+card's values for `auto.assistant` (a field the owner adds is served on the next read, a removed one stops at once), the rest as
+`unknown`, `write.assistant` as `writable`; no provenance, no candidates, and never `shipping_address` or `payment_method`
+(refused in code whatever the document says). A read that serves values writes an `assist` receipt (field names), except when
+the session's last `assist` receipt named the same fields under the same policy less than an hour ago.
 
-`GET /assistant/context` returns the card's values for `auto.assistant` fields the grant covers, the rest as `unknown`, and
-`write.assistant` as `writable`; no provenance, and never `shipping_address` or `payment_method` (refused in code whatever the
-document says). A read that serves values writes an `assist` receipt (field names), except when the session's last `assist`
-receipt named the same fields under the same policy less than an hour ago; `assist.context` (counts) is logged every time. With
-its key an assistant also uses `POST /personal/intents` (stored with its agentId = `createdBy`), quotes, events and accept for
-**its own intents only** (anything else is the same 404), and `POST /personal/observations` (Dreaming learns from them as the
-assistant, `stated` written as `observed`, only while linked). The store gets the address at checkout and payment at the payment
-stage exactly as for the user's own agents. `POST /assistant/contributions` is the merchant write path under `write.assistant`
-(the address and token → 403); `GET /assistant/stats` counts its own intents (quoted, accepted, completed = ordered or handoff,
-`questionsSkipped`). Funnel rows carry `createdBy` and `questionsSkipped` (field names summed over the intent's receipts).
+`POST /assistant/contributions {field, value, basis?, evidence?: {conversationId, snippet}}` is the merchant write path under
+`write.assistant`. `stated` requires evidence (an opaque conversation id and the user's own words, 1–200 characters, no contact
+or payment data; else 422) and is stored as stated: while the assistant holds a live grant the merge trusts it like the user's
+own agents (`Store.trustedStatedAgentIds` = personal agents + assistants with a live assist grant, passed as
+`MergeOptions.personalAgentIds` to `mergeCard`, `regenerateCard`, `forgetContributions` and Dreaming), so a second assistant
+reads it on its first context call; revoking the grant regenerates the card and CARD.md at once and the values fall back to
+candidates, a new approved link restores them. `observed` stays a candidate until a second independent source; `inferred` and
+fields outside `write.assistant` are the assistant's own record; the address and token → 403. With its key an assistant also
+uses `POST /personal/intents` (its agentId = `createdBy`), quotes, events and accept for **its own intents only** (anything else
+is the same 404), and `POST /personal/observations` (Dreaming learns from them as the assistant, `stated` written as `observed`,
+only while linked). The store gets the address at checkout and payment at the payment stage as for the user's own agents.
+`GET /assistant/stats` counts its own intents; funnel rows carry `createdBy` and `questionsSkipped`.
 
 ## Learning (B49)
 

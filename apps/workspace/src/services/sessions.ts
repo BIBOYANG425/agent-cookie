@@ -163,14 +163,21 @@ export class SessionService {
     return h;
   }
 
-  revoke(actor: string, userId: string, grantId: string): { revokedAt: string } {
+  /**
+   * Revoke every grant of the grant's session, at once. For a company assistant that also ends the trust in its stated
+   * values (db.ts trustedStatedAgentIds): the card and CARD.md are regenerated before this returns, so they fall back to
+   * candidates.
+   */
+  async revoke(actor: string, userId: string, grantId: string): Promise<{ revokedAt: string }> {
     const g = this.ctx.store.grant(grantId);
     const session = g && this.ctx.store.session(g.sessionId);
     if (!g || !session || session.userId !== userId) fail("NOT_FOUND");
     const at = this.ctx.clock.nowIso();
     this.ctx.store.revokeSessionGrants(g.sessionId, at);
     this.ctx.log({ event: "grant.revoke", actor, object: grantId, result: "ok", reason: session.agentId });
-    return { revokedAt: this.ctx.store.grant(grantId)!.revokedAt ?? at };
+    const revokedAt = this.ctx.store.grant(grantId)!.revokedAt ?? at;
+    if (this.ctx.store.agent(session.agentId)?.category === "assistant") await this.card.refresh(actor, userId);
+    return { revokedAt };
   }
 
   list(userId: string): GrantView[] {

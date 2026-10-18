@@ -7,11 +7,12 @@ import { LINK_TTL_MS, type Link, type LinkStatus, type LinkView } from "@agent-c
 import type { LinkRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
+import type { CardService } from "./card.js";
 import type { Ctx } from "./context.js";
 import type { SessionService } from "./sessions.js";
 
 export class LinkService {
-  constructor(private ctx: Ctx, private sessions: SessionService) {}
+  constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {}
 
   private status(l: LinkRow): LinkStatus {
     return l.status === "pending" && Date.parse(l.expiresAt) <= this.ctx.clock.now() ? "expired" : l.status;
@@ -64,9 +65,10 @@ export class LinkService {
 
   /**
    * POST /owner/links/:id/approve (owner key only). One transaction: the assistant's pairwise session and its assist
-   * grant (SessionService.assist), the link marked approved with the session; `link.approve` logged.
+   * grant (SessionService.assist), the link marked approved with the session; `link.approve` logged. Then the card and
+   * CARD.md are regenerated: the assistant's stated values are trusted again while the grant lives.
    */
-  approve(actor: string, userId: string, id: string): Link {
+  async approve(actor: string, userId: string, id: string): Promise<Link> {
     const out = this.ctx.store.tx(() => {
       const l = this.pending(id);
       const agent = this.ctx.store.agent(l.agentId);
@@ -77,6 +79,7 @@ export class LinkService {
       this.ctx.log({ event: "link.approve", actor, object: l.id, result: "ok", reason: `${agent.agentId} session=${session.sessionId} grant=${grant.id}` });
       return this.ctx.store.link(l.id)!;
     });
+    await this.card.refresh(actor, userId);
     return this.toLink(out);
   }
 
