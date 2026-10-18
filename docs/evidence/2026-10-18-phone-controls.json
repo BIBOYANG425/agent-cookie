@@ -1,5 +1,5 @@
 {
-  "result": "pause-confirmed-forget-pending",
+  "result": "pause-and-suppression-passed-forget-pending",
   "integration": {
     "main": "18188fd",
     "mergeCommit": "2b2598c",
@@ -69,7 +69,31 @@
     }
   },
   "pausedInput": {
-    "result": "pending-user-message"
+    "result": "passed",
+    "checkedAt": "2026-10-18T07:36:01.424Z",
+    "newMessageHandled": true,
+    "captureMetric": {
+      "event": "learning_capture",
+      "status": "dropped",
+      "depth": 0
+    },
+    "newObservations": 0,
+    "newContributions": 0,
+    "preferencesUnchanged": true,
+    "backendPaused": true,
+    "localCapturePaused": true,
+    "channel": {
+      "cursor": 12782,
+      "messageCount": 13,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": true,
+        "lastSummaryDay": "2026-10-18"
+      }
+    },
+    "nonDreamingEvents": []
   },
   "forget": {
     "result": "pending"
