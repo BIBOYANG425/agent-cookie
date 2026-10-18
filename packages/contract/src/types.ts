@@ -113,20 +113,23 @@ export interface CardField {
   value: string;
   confidence: "high" | "medium";
   sources: string[];
-  /** Independent conversation/intent evidence units; sources remains writer agent IDs. */
-  evidenceSources?: string[];
   updatedAt: string;
   lastSupportedAt: string;
   changedRecently: boolean;
+  /**
+   * Learned values (B49, lane C fills it): canonical independent sources RulesApi.mergeCard counted for this value —
+   * distinct conversations / intents from evidence, not writers. `sources` stays the writers' agentIds.
+   */
+  evidenceSources?: string[];
 }
 
 export interface Candidate {
   field: Field;
   value: string;
   sources: string[];
-  /** Independent conversation/intent evidence units; sources remains writer agent IDs. */
-  evidenceSources?: string[];
   reason: "single_source" | "inferred";
+  /** As CardField.evidenceSources: independent conversations / intents behind this value (lane C fills it). */
+  evidenceSources?: string[];
 }
 
 export interface Session {
@@ -194,16 +197,23 @@ export const DEFAULT_SELLER_COUNT = 2;
 
 /**
  * POST /personal/observations body: turns of a conversation the personal agent took part in or overheard. Only the
- * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival and never stored. Turns
- * are batched per (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once
- * OBSERVATION_BATCH_TURNS turns have arrived; raw text lives only in a bounded memory queue. While learning is paused
- * the observation is discarded.
+ * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival. Turns are batched per
+ * (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once OBSERVATION_BATCH_TURNS
+ * turns have arrived. The text is held in workspace memory only (B49): at most OBSERVATION_MAX_CONVERSATIONS
+ * conversations × OBSERVATION_MAX_QUEUED_TURNS turns, the oldest dropped (and counted in the activity log) past
+ * that; SQLite keeps only the conversationId, turn count and times, and a restart loses what was waiting. While
+ * learning is paused the observation is discarded.
  */
 export interface ObservationTurn {
   role: "user" | "agent" | "other";
   text: string;
   /** ISO time the turn was said. */
   at: string;
+  /**
+   * Opaque id of the message on its channel (B49, optional). A turn whose messageId the same personal agent already
+   * posted within OBSERVATION_MESSAGE_TTL_MS is ignored, so a replay is not a second sighting.
+   */
+  messageId?: string;
 }
 export interface Observation {
   /** e.g. "imessage", "desktop". */
@@ -216,23 +226,39 @@ export const OBSERVATION_IDLE_MS = 5 * 60 * 1000;
 export const OBSERVATION_BATCH_TURNS = 10;
 export const OBSERVATION_MAX_TURNS = 50;
 export const OBSERVATION_TURN_MAX_CHARS = 2000;
+export const OBSERVATION_MESSAGE_ID_MAX = 128;
+/** Bounded in-memory queue (B49): conversations waiting per user, and turns kept per conversation. */
+export const OBSERVATION_MAX_CONVERSATIONS = 50;
+export const OBSERVATION_MAX_QUEUED_TURNS = 20;
+/** How long a messageId is remembered for de-duplication (memory only). */
+export const OBSERVATION_MESSAGE_TTL_MS = 60 * 60 * 1000;
+
+/** POST /personal/observations → 202. `duplicate`: every turn was a replay (messageId already seen); nothing queued. */
+export interface ObservationAck {
+  queued: boolean;
+  paused?: true;
+  duplicate?: true;
+}
+
+/**
+ * POST /personal/learned/forget (B49): forget what was learned from one conversation or one intent. Exactly one of
+ * the two. Every contribution whose evidence names it is revoked in one SQLite transaction and one memory-repo
+ * commit (with CARD.md); a waiting batch of that conversation is dropped, and a learner answer still in flight for
+ * it is discarded when it arrives. A later new message in the same conversation is learned from again.
+ */
+export interface ForgetRequest {
+  conversationId?: string;
+  intentId?: string;
+}
+export interface ForgetResult {
+  revoked: number;
+  contributionIds: string[];
+}
 
 /** GET/PUT /personal/learning. Default `{ paused: false }`. */
 export interface LearningState {
   paused: boolean;
 }
-
-/** One atomic workspace forget operation. Historical Git commits are not rewritten. */
-export interface ForgetLearningInput { field: PrefField }
-export interface ForgetLearningResult {
-  field: PrefField;
-  paused: true;
-  removed: number;
-  projection: "complete" | "pending";
-  historyErased: false;
-}
-/** Internal memory projection selector. HTTP authorization remains the workspace's responsibility. */
-export type ContributionRevocationTarget = string | { evidence: { intentId?: string; conversationId?: string } };
 
 /** One piece of evidence behind a learned value, as GET /personal/learned shows it. */
 export interface LearnedEvidence extends ContributionEvidence {
@@ -243,7 +269,9 @@ export interface LearnedEvidence extends ContributionEvidence {
 }
 /**
  * GET /personal/learned: every `pref.*` value on the card ("card") or waiting for a second source ("candidate"),
- * with who contributed it and why. A value reaches the card only with two distinct sources (RulesApi.mergeCard).
+ * with who contributed it and why. RulesApi.mergeCard decides: the user's own statement ("stated") is on the card
+ * at once (medium); an observed or inferred value needs two independent sources — two different conversations or
+ * intents, not two agents.
  */
 export interface LearnedEntry {
   field: PrefField;
@@ -274,9 +302,8 @@ export interface IntentHistoryEntry {
 
 /** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */
 export interface IntentRecord {
-  /** Original intent ID, retained across a handoff. */
-  id: string;
   evidence?: Pick<ContributionEvidence, "intentId">;
+  id: string;
   userId: string;
   agentId: string;
   text?: string;
@@ -486,3 +513,14 @@ export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;
 export const CARD_DROP_DAYS = 365;
 export const QUOTE_POLL_MAX_MS = 20_000;
+
+export interface ForgetLearningInput { field: PrefField }
+export interface ForgetLearningResult {
+  field: PrefField;
+  paused: true;
+  removed: number;
+  projection: "complete" | "pending";
+  historyErased: false;
+}
+
+export type ContributionRevocationTarget = string | { evidence: { intentId?: string; conversationId?: string } };

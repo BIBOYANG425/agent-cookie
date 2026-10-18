@@ -77,6 +77,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);
   const learner = overrides.learn ? { api: overrides.learn, shutdown: async () => {} } : loadLearn(config);
+  if (!overrides.learn && config.learnProvider === "off") log({ event: "learn.off", actor: "workspace", result: "off", reason: "learning provider off" });
   const learning = new LearningService(ctx, card, learner.api);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
 
@@ -98,13 +99,14 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
+      learning.reset();
       store.clearAll();
       const now = clock.nowIso();
       seedStore(store, fixtures, config, now);
       await repo.resetToSeed();
       await reconcileRepo(ctx);
       card.get(fixtures.users[0]!.userId);
-      // Queued conversation text was just deleted: do not leave a copy of it in the WAL.
+      // Deleted rows leave the WAL too.
       store.checkpoint();
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
@@ -112,8 +114,9 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     async close() {
       clearInterval(learnTimer);
       await learning.settle();
-      await learner.shutdown();
       await delivery.settle();
+      learning.reset();
+      await learner.shutdown();
       store.close();
       laneD.lock?.();
     },

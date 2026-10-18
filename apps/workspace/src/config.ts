@@ -37,7 +37,7 @@ export interface Config {
   /** A LearnApi call that takes longer is abandoned and logged as failed (LEARN_TIMEOUT_MS). */
   learnTimeoutMs: number;
   /** Explicit opt-in: a credential in the environment alone never enables model calls. */
-  learnProvider: "off" | "openrouter" | "anthropic";
+  learnProvider: "off" | "openrouter";
   learnApiKey?: string;
   learnMode: "all" | "explicit-only";
   learnTelemetryEndpoint?: string;
@@ -76,8 +76,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("AGENT_COOKIE_JAR_KEK must decode to exactly 32 bytes");
   }
   const learnProvider = env.AGENT_COOKIE_LEARN_PROVIDER ?? "off";
-  if (!["off", "openrouter", "anthropic"].includes(learnProvider)) throw new Error("Invalid learning provider");
-  const learnApiKey = learnProvider === "openrouter" ? env.OPENROUTER_API_KEY : learnProvider === "anthropic" ? env.ANTHROPIC_API_KEY : undefined;
+  if (!["off", "openrouter"].includes(learnProvider)) throw new Error("Invalid learning provider");
+  const learnApiKey = learnProvider === "openrouter" ? env.OPENROUTER_API_KEY : undefined;
   if (learnProvider !== "off" && !learnApiKey) throw new Error("Learning provider requires its API key");
   const learnMode = env.AGENT_COOKIE_LEARN_MODE ?? "all";
   if (learnMode !== "all" && learnMode !== "explicit-only") throw new Error("Invalid learning mode");

@@ -105,8 +105,8 @@ it('bounds queued raw text in memory and never inserts it into SQLite', async ()
     channel: 'test', conversationId: `bounded-${i}`,
     turns: [{ role: 'user', text: 'QueueOnlyCanary I prefer black.', at: new Date().toISOString() }],
   });
-  expect(h.deps.store.observationBatchCount('u_sample')).toBeLessThanOrEqual(100);
-  expect(h.deps.store.db.prepare('SELECT COUNT(*) n FROM observation_turns').get()).toEqual({ n: 0 });
+  expect(h.deps.learning.queue.count('u_sample')).toBeLessThanOrEqual(100);
+  expect(h.deps.store.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='observation_turns'").get()).toEqual({ n: 0 });
 });
 
 

@@ -1,19 +1,8 @@
-import type { CommitRef, Intent, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
+import type { CommitRef, ContributionEvidence, Intent, IntentRecord, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
 import type { LearningCard, LearningContribution, LearningMergeOptions, LearningRulesApi } from '@agent-cookie/rules';
 
-// Structural projection matching the shared IntentRecord; no extra flat history fields.
-export interface WorkspaceIntentRecord {
-  id: string;
-  evidence?: { intentId?: string };
-  userId: string;
-  agentId: string;
-  text?: string;
-  query?: string;
-  kind?: string;
-  public: Record<string, string>;
-  createdAt: string;
-  chosenQuote?: { id: string; title?: string; seller?: string; price: number; currency: 'USD' };
-}
+/** Existing C export name; the flat record is the formal shared type. */
+export type WorkspaceIntentRecord = IntentRecord;
 
 /** Compatibility input for C preview history already written before A's contract. */
 export interface AppendIntentInput {
@@ -33,7 +22,7 @@ export interface IntentHistoryApi {
   searchIntents(q: string): Promise<IntentSummary[]>;
 }
 
-/** Shared selector; evidence revocation does not grant callers wider write authority. */
+/** TODO(contract): additive C selector; the shared API currently accepts only a record ID. */
 export type ContributionRevocationTarget = import('@agent-cookie/contract').ContributionRevocationTarget;
 export interface ContributionRevocationApi {
   revokeContribution(target: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;

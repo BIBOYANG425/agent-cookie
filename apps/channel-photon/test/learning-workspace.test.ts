@@ -29,7 +29,7 @@ it('carries only owner non-sensitive DM speech through capture, SDK, A queue and
     await vi.waitFor(()=>expect(sink.pending).toBe(0));
     expect(responses).toEqual([{status:202,body:{queued:true}}]);
     expect(wire).toHaveLength(1);
-    expect(wire[0].turns).toEqual([{role:'user',text:own.content.text,at:own.timestamp.toISOString()}]);
+    expect(wire[0].turns).toEqual([{role:'user',text:own.content.text,at:own.timestamp.toISOString(),messageId:expect.stringMatching(/^[a-f0-9]{64}$/)}]);
     expect(wire[0].conversationId).toMatch(/^[a-f0-9]{64}$/);
     await h.post('/test/clock',undefined,{offsetMs:301000});await h.deps.learning.flushDue();await h.deps.learning.settle();
     expect(extract).toHaveBeenCalledOnce();

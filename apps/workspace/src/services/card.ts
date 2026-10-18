@@ -1,8 +1,8 @@
 // Identity card: contributions → RulesApi.mergeCard. Recomputed on every read so time rules (180/365 days)
 // follow the workspace clock; cached in SQLite and written through to CARD.md.
 import {
-  allowedBases, canWrite, isField, isPrefField, PREF_FIELDS, purposeFields,
-  type Basis, type Candidate, type Card, type Contribution, type ContributionEvidence, type Field, type MergeOptions,
+  allowedBases, canWrite, isField, isPrefField, purposeFields,
+  type Basis, type Card, type Contribution, type ContributionEvidence, type Field, type MergeOptions,
 } from "@agent-cookie/contract";
 import type { IntentRow, StoredContribution } from "../db.js";
 import { containsCardNumber, isTokenReference, prefValueProblem } from "../guards.js";
@@ -28,38 +28,16 @@ export class CardService {
   }
 
   get(userId: string): Card {
+    // Evidence travels with each contribution: RulesApi.mergeCard counts learned sources per conversation / intent
+    // (lane C, B49). The workspace does no source counting of its own.
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
-    const merged = this.mergePrefsStrictly(all, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() });
+    const merged = this.ctx.rules.mergeCard(all, this.mergeOptions());
     // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
     const seed = this.ctx.store.seedContributions(userId);
     const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
     const card: Card = { ...merged, source: sample ? "sample" : "live" };
     this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
     return card;
-  }
-
-  /**
-   * RulesApi.mergeCard, with the learning rule for pref.*: a value is on the card only with two distinct sources or the
-   * user's own statement. mergeCard lets one newer source replace an older agreed value (the 42 → 43 rule for the
-   * original fields); for pref.* that single-source value is held back as a candidate and the merge re-run without it,
-   * so the value two sources agreed on stays.
-   */
-  private mergePrefsStrictly(all: Contribution[], opts: MergeOptions): Card {
-    const personal = new Set(opts.personalAgentIds);
-    const statedByUser = (field: string, value: string) => all.some((c) => !c.revokedAt && c.field === field && c.value === value
-      && c.basis === "stated" && personal.has(c.agentId));
-    let input = all;
-    let merged = this.ctx.rules.mergeCard(input, opts);
-    const held: Candidate[] = [];
-    for (let round = 0; round <= PREF_FIELDS.length; round++) {
-      const weak = merged.card.filter((f) => isPrefField(f.field) && (f.evidenceSources?.length ?? 0) < 2 && !statedByUser(f.field, f.value));
-      if (weak.length === 0) break;
-      for (const w of weak) held.push({ field: w.field, value: w.value, sources: w.sources, evidenceSources: w.evidenceSources ?? [], reason: "single_source" });
-      const drop = new Set(weak.map((w) => `${w.field}\u0000${w.value}`));
-      input = input.filter((c) => !drop.has(`${c.field}\u0000${c.value}`));
-      merged = this.ctx.rules.mergeCard(input, opts);
-    }
-    return held.length ? { ...merged, candidates: [...merged.candidates, ...held] } : merged;
   }
 
   /** Card values, overlaid with the public values of the intent (budget, deadline… never purpose fields). */
@@ -132,14 +110,47 @@ export class CardService {
     return this.get(userId);
   }
 
+  /**
+   * Revoke several contributions as one act (forget, B49): one memory-repo commit that also rewrites CARD.md
+   * (MemoryRepo.revokeContributions), then one SQLite transaction. Until lane C ships revokeContributions: one
+   * revokeContribution per id, then one CARD.md regeneration. Git first, as for a single revoke.
+   */
+  revokeMany(actor: string, userId: string, ids: readonly string[]): Promise<void> {
+    return this.mutate(() => this.revokeManyNow(actor, userId, ids));
+  }
+  private async revokeManyNow(actor: string, userId: string, ids: readonly string[]): Promise<void> {
+    const mine = ids.map((id) => this.ctx.store.contribution(id)).filter((c): c is StoredContribution => !!c && c.userId === userId && !c.revokedAt);
+    if (mine.length === 0) return;
+    const at = this.ctx.clock.nowIso();
+    const inRepo = mine.filter((c) => isField(c.field)).map((c) => c.id);
+    let regenerated = false;
+    if (inRepo.length > 0) {
+      await persistStrict(this.ctx, "contribution.revoke", actor, async (r) => {
+        const meta = writeMeta(this.ctx, actor, { ids: inRepo, at });
+        if (r.revokeContributions) {
+          await r.revokeContributions(inRepo, at, this.mergeOptions(), meta);
+          regenerated = true;
+        } else {
+          for (const id of inRepo) await r.revokeContribution(id, at, meta);
+        }
+      });
+    }
+    this.ctx.store.tx(() => { for (const c of mine) this.ctx.store.revokeContribution(c.id, at); });
+    this.ctx.log({ event: "contribution.revoke", actor, object: mine.length === 1 ? mine[0]!.id : "batch", result: "ok", reason: `revoked=${mine.length}` });
+    if (!regenerated) await this.regenerate(actor);
+  }
+
   /** Regenerate CARD.md once after a batch of records written with `regenerate: false`. */
   regenerateNow(actor: string): Promise<void> {
     return this.regenerate(actor);
   }
 
   private async regenerate(actor: string): Promise<void> {
-    await persist(this.ctx, "card", actor, (r) => r.regenerateCard(
-      { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() },
+    await persist(this.ctx, "card", actor, (r) => r.regenerateCard(this.mergeOptions(),
       writeMeta(this.ctx, "workspace", { regenerate: this.ctx.clock.nowIso() })));
+  }
+
+  private mergeOptions(): MergeOptions {
+    return { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() };
   }
 }

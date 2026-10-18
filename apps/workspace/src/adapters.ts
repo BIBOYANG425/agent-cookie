@@ -20,10 +20,12 @@ export function loadMemoryRepoApi(): MemoryRepoApi {
   return { openMemoryRepo };
 }
 
+export const NO_LEARNING: LearnApi = { extract: async () => [], extractFromConversation: async () => [] };
+
 /** Explicitly configured extraction only; no key guessing, fallback provider, or global instrumentation. */
 export function loadLearn(config: Config): { api: LearnApi; shutdown: () => Promise<void> } {
   if (config.learnProvider === "off") return {
-    api: { extract: async () => [], extractFromConversation: async () => [] }, shutdown: async () => {},
+    api: NO_LEARNING, shutdown: async () => {},
   };
   const telemetry = createLearningTelemetry({ endpoint: config.learnTelemetryEndpoint });
   const extract = createHaikuExtractor({ provider: config.learnProvider, apiKey: config.learnApiKey! });

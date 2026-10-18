@@ -1,7 +1,7 @@
 import { OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, EVIDENCE_SNIPPET_MAX, isPrefField, type ForgetLearningInput, type ForgetLearningResult, type Observation, type LearningState, type LearnedResponse } from '@agent-cookie/contract';
 export type {ForgetLearningInput,ForgetLearningResult,Observation,ObservationTurn,LearningState,LearnedResponse,LearnedEntry} from '@agent-cookie/contract';
 export type ObservationInput=Observation;
-export interface ObserveResult {queued:boolean;paused?:true}
+export interface ObserveResult {queued:boolean;paused?:true;duplicate?:true}
 /** UI convenience; wire is PUT {paused: !enabled}, per A 0129f08. */
 export interface LearningControl {enabled:boolean}
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -10,12 +10,12 @@ const date=(v:unknown)=>str(v,40)&&Number.isFinite(Date.parse(v));
 const invalid=()=>new Error('Invalid learning payload.');
 export function observationBody(v:Observation):Observation {
   if(!v||!str(v.channel,64)||!str(v.conversationId,128)||!Array.isArray(v.turns)||!v.turns.length||v.turns.length>OBSERVATION_MAX_TURNS
-    ||!v.turns.every(t=>obj(t)&&['user','agent','other'].includes(String(t.role))&&typeof t.text==='string'&&Array.from(t.text).length<=OBSERVATION_TURN_MAX_CHARS&&date(t.at)))throw invalid();
-  return {channel:v.channel,conversationId:v.conversationId,turns:v.turns.map(t=>({role:t.role,text:t.text,at:t.at}))};
+    ||!v.turns.every(t=>obj(t)&&['user','agent','other'].includes(String(t.role))&&typeof t.text==='string'&&Array.from(t.text).length<=OBSERVATION_TURN_MAX_CHARS&&date(t.at)&&(t.messageId===undefined||str(t.messageId,128))))throw invalid();
+  return {channel:v.channel,conversationId:v.conversationId,turns:v.turns.map(t=>({role:t.role,text:t.text,at:t.at,...(t.messageId?{messageId:t.messageId}:{})}))};
 }
 export function observeResult(v:unknown):ObserveResult {
-  if(!obj(v)||typeof v.queued!=='boolean'||(v.paused!==undefined&&v.paused!==true))throw invalid();
-  return {queued:v.queued,...(v.paused===true?{paused:true}:{})};
+  if(!obj(v)||typeof v.queued!=='boolean'||(v.paused!==undefined&&v.paused!==true)||(v.duplicate!==undefined&&v.duplicate!==true))throw invalid();
+  return {queued:v.queued,...(v.paused===true?{paused:true}:{}),...(v.duplicate===true?{duplicate:true}:{})};
 }
 export function learningState(v:unknown):LearningState {
   if(!obj(v)||typeof v.paused!=='boolean')throw invalid();return {paused:v.paused};

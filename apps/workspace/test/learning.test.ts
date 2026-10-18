@@ -1,7 +1,9 @@
-// Dynamic memory (2026-10-17, human direction). A fake LearnApi stands in for lane B's learner; everything else is the
-// real workspace. Properties under test: only the user's own words are learned from; observed text is gone (from the
-// database files themselves) once processed; paused discards; a pref reaches the card only with two distinct sources;
-// a new card field shows up in the next handshake; learning never breaks the request that triggered it.
+// Dynamic memory (2026-10-17, human direction; B49 rulings 2026-10-18). A fake LearnApi stands in for lane B's learner;
+// everything else is the real workspace. Properties under test: only the user's own words are learned from; observed
+// text never reaches the database files (memory only); paused discards; a learned pref reaches the card with the
+// user's statement or two independent sources (conversations / intents); a new card field shows up in the next
+// handshake; learning never breaks the request that triggered it.
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import Database from "better-sqlite3";
 import { tmpdir } from "node:os";
@@ -48,6 +50,8 @@ const learned = async (h: H) => (await h.get("/personal/learned", KEYS.personal)
 const cardValue = async (h: H, field: string) =>
   ((await h.get("/personal/card", KEYS.personal)).body.card as Array<{ field: string; value: string }>).find((f) => f.field === field)?.value;
 const activity = async (h: H) => (await h.get("/owner/activity?limit=500", KEYS.owner)).body.events as Array<{ event: string; result: string; reason: string }>;
+/** The user turns waiting in memory for a conversation of the Photon agent. */
+const queued = (h: H, conversationId: string) => (h.deps.learning.queue.get("personal-photon", conversationId)?.turns ?? []).map((t) => t.text);
 
 describe("observations: only the user's own words are learned from", () => {
   it("agent and other turns never reach LearnApi; user turns arrive in order, with the conversation as context", async () => {
@@ -90,8 +94,7 @@ describe("observations: only the user's own words are learned from", () => {
     const learn = new FakeLearn();
     const h = await harness({ learn });
     await observe(h, "pay", [turn("user", "my card is 4111 1111 1111 1111"), turn("user", "mail me at a@b.co"), turn("user", "I like wool")]);
-    const stored = h.deps.store.db.prepare("SELECT text FROM observation_turns").all() as Array<{ text: string }>;
-    expect(stored).toEqual([]); // raw observations are never persisted
+    expect(queued(h, "pay")).toEqual(["I like wool"]);
     await quiet(h);
     expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["I like wool"]);
   });
@@ -113,8 +116,8 @@ describe("observations: only the user's own words are learned from", () => {
   });
 });
 
-describe("observed text is gone once processed", () => {
-  it("no row, and no byte in the database files, still holds it — and agent/other text was never written at all", async () => {
+describe("observed text never reaches the database files (B49: memory only)", () => {
+  it("no row and no byte on disk holds it while it waits, nor after it was learned from — whoever said it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ws-learn-"));
     const path = join(dir, "ws.sqlite");
     const learn = new FakeLearn();
@@ -125,19 +128,21 @@ describe("observed text is gone once processed", () => {
     const OTHER = "QX7OTHERMARKER";
     await observe(h, "secret", [turn("user", `${USER} I love Brooks trail shoes`), turn("agent", `${AGENT} sure`), turn("other", `${OTHER} hi`)]);
     const files = () => [path, `${path}-wal`].filter(existsSync).map((f) => readFileSync(f));
-    const dump = () => JSON.stringify(["observation_turns", "observation_batches", "contributions", "activity", "intents", "idempotency", "settings"]
+    const dump = () => JSON.stringify(["observation_batches", "contributions", "activity", "intents", "idempotency", "settings"]
       .map((t) => h.deps.store.db.prepare(`SELECT * FROM ${t}`).all()));
-    // queued: the user's turn is held until processing; the others never were
-    expect(dump()).not.toContain(USER);
-    for (const f of files()) expect(f.includes(Buffer.from(USER))).toBe(false);
-    for (const m of [AGENT, OTHER]) {
+    // queued: the user's turn waits in memory, SQLite has only the conversation's id, count and times
+    expect(queued(h, "secret")).toEqual([`${USER} I love Brooks trail shoes`]);
+    expect(h.deps.store.observationBatch("personal-photon", "secret")).toMatchObject({ conversationId: "secret", turnsSeen: 3 });
+    for (const m of [USER, AGENT, OTHER]) {
       expect(dump()).not.toContain(m);
       for (const f of files()) expect(f.includes(Buffer.from(m))).toBe(false);
     }
     await quiet(h);
     expect(learn.conversationCalls).toHaveLength(1);
+    expect(queued(h, "secret")).toEqual([]);
+    expect(h.deps.store.observationBatch("personal-photon", "secret")).toBeUndefined();
     expect(dump()).not.toContain(USER);
-    for (const f of files()) expect(f.includes(Buffer.from(USER)), "observed text still on disk").toBe(false);
+    for (const f of files()) expect(f.includes(Buffer.from(USER)), "observed text on disk").toBe(false);
     // what was learned stays, with the user's own words as evidence
     expect((await learned(h)).learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "candidate",
       evidence: [expect.objectContaining({ conversationId: "secret", snippet: "I love Brooks" })] })]);
@@ -153,7 +158,7 @@ describe("pause", () => {
     expect((await h.get("/personal/learning", KEYS.personal)).body).toEqual({ paused: false });
     await observe(h, "before", [turn("user", "I like blue")]);
     expect((await h.put("/personal/learning", KEYS.owner, { paused: true })).body).toEqual({ paused: true });
-    expect(h.deps.store.db.prepare("SELECT COUNT(*) AS n FROM observation_turns").get()).toEqual({ n: 0 });
+    expect(h.deps.learning.queue.count("u_sample")).toBe(0);
 
     const r = await observe(h, "during", [turn("user", "I like red")]);
     expect(r.status).toBe(202);
@@ -173,32 +178,29 @@ describe("pause", () => {
   });
 });
 
-describe("a learned preference reaches the card only with two distinct sources", () => {
-  it("one source → candidate; independent conversations from the same agent → card, with evidence preserved", async () => {
+describe("a learned preference reaches the card only with two independent sources", () => {
+  it("a source is a conversation or an intent (lane C's rule): the same conversation twice is one source; another conversation or an intent is a second", async () => {
     const learn = new FakeLearn();
     learn.onConversation = () => [{ field: "pref.brand", value: "Brooks", evidence: { snippet: "Brooks only" } }];
     learn.onExtract = () => [{ field: "pref.brand", value: "Brooks", evidence: { snippet: "Brooks again" } }];
     const h = await harness({ learn });
     await observe(h, "c1", [turn("user", "Brooks only, please")]);
     await quiet(h);
-    expect((await learned(h)).learned[0].status).toBe("candidate");
-    await observe(h, "c1", [turn("user", "Brooks only, please")]); // replay is the same evidence source
-    await quiet(h);
-    expect((await learned(h)).learned[0].evidence).toHaveLength(1);
-    await observe(h, "c2", [turn("user", "Brooks only, please")]); // same agent, independent second conversation
+    await observe(h, "c1", [turn("user", "Brooks only, please")]); // the same conversation again
     await quiet(h);
     let l = await learned(h);
-    expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "card", sources: ["personal-photon"] })]);
-    expect(await cardValue(h, "pref.brand")).toBe("Brooks");
+    expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "candidate", sources: ["personal-photon"] })]);
+    expect(l.learned[0].evidence).toHaveLength(1);
+    expect(await cardValue(h, "pref.brand")).toBeUndefined();
 
-    // the other personal agent learns the same from an intent
+    // the other personal agent learns the same from an intent: a second source
     await h.post("/personal/intents", KEYS.desktop, { text: "Brooks again, trail shoes" });
     await h.deps.learning.settle();
     l = await learned(h);
     expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "card",
       sources: ["personal-desktop", "personal-photon"] })]);
     const ev = l.learned[0].evidence as Array<Record<string, string>>;
-    expect(ev).toHaveLength(3);
+    expect(ev).toHaveLength(2);
     expect(ev.find((e) => e.agentId === "personal-photon")).toMatchObject({ conversationId: "c1", snippet: "Brooks only", basis: "observed" });
     expect(ev.find((e) => e.agentId === "personal-desktop")).toMatchObject({ intentId: expect.stringMatching(/^i_/), snippet: "Brooks again" });
     expect(await cardValue(h, "pref.brand")).toBe("Brooks");
@@ -234,7 +236,7 @@ describe("a learned preference reaches the card only with two distinct sources",
 });
 
 describe("what the learner proposes is a parameter, not authority", () => {
-  it("drops non-whitelisted or non-pref fields, contact data, unsaid snippets; retains authorized personal stated; bounds snippets to 200", async () => {
+  it("drops non-whitelisted or non-pref fields, contact data, unsaid snippets; keeps the extraction's basis; truncates snippets to 200", async () => {
     const learn = new FakeLearn();
     const long = "I really like merino wool socks ".repeat(10).trim();
     learn.onConversation = () => [
@@ -253,7 +255,7 @@ describe("what the learner proposes is a parameter, not authority", () => {
     const rows = h.deps.store.contributionsForUser("u_sample").filter((c) => c.agentId === "personal-photon" && c.createdAt > "2026-10-02");
     const byField = Object.fromEntries(rows.map((c) => [c.field, c]));
     expect(Object.keys(byField).sort()).toEqual(["pref.avoid", "pref.color", "pref.material", "pref.style"]);
-    expect(byField["pref.avoid"]!.basis).toBe("stated");
+    expect(byField["pref.avoid"]!.basis).toBe("stated"); // B49: the extraction's basis is kept
     expect(byField["pref.style"]!.basis).toBe("inferred");
     expect(byField["pref.color"]!.evidence).toEqual({ conversationId: "c" }); // unsaid snippet dropped
     expect([...byField["pref.material"]!.evidence!.snippet!].length).toBe(200);
@@ -311,7 +313,7 @@ describe("intent and accept hooks", () => {
     await quiet(h);
     const failed = (await activity(h)).filter((e) => e.event.startsWith("learn.") && e.result === "failed").map((e) => e.event).sort();
     expect(failed).toEqual(["learn.accept", "learn.conversation", "learn.intent"]);
-    expect(h.deps.store.db.prepare("SELECT COUNT(*) AS n FROM observation_turns").get()).toEqual({ n: 0 }); // text dropped anyway
+    expect(h.deps.learning.queue.count("u_sample")).toBe(0); // text dropped anyway
   });
 });
 
@@ -355,7 +357,8 @@ describe("reset", () => {
     await observe(h, "d", [turn("user", "hello")]);
     expect((await h.post("/demo/reset", KEYS.owner)).status).toBe(200);
     expect((await h.get("/personal/learning", KEYS.personal)).body).toEqual({ paused: false });
-    expect(h.deps.store.db.prepare("SELECT (SELECT COUNT(*) FROM observation_turns) + (SELECT COUNT(*) FROM observation_batches) AS n").get()).toEqual({ n: 0 });
+    expect(h.deps.learning.queue.count("u_sample")).toBe(0);
+    expect(h.deps.store.observationBatches()).toEqual([]);
   });
 });
 
@@ -463,8 +466,19 @@ describe("review fixes", () => {
 
   it("PRIV6: a conversationId that is a phone number or email is refused", async () => {
     const h = await harness();
-    for (const conversationId of ["+1 415 555 0100", "someone@example.com"]) {
-      expect((await observe(h, conversationId, [turn("user", "hi")])).status).toBe(422);
+    for (const conversationId of ["+1 415 555 0100", "someone@example.com", "4155550100", "tel:415-555-0100", "iMessage;-;+14155550100",
+      "dm 415 555 0100", "chat_4155550100", "+４１５５５５０１００", "iMessage;-;someone@example.com", "card 4111 1111 1111 1111"]) {
+      expect((await observe(h, conversationId, [turn("user", "hi")])).status, conversationId).toBe(422);
+    }
+  });
+
+  it("PRIV6 (B49 integration): an opaque hash is accepted even when digits inside it look like a phone number", async () => {
+    const h = await harness();
+    // lane B's hashed DM id that the old check refused (13 digits in a row inside the hash)
+    const ids = ["83e1df2216e24e62d22b4341b27344da51933a33778be5aa1190461701663bae", "conv-7f3a", "sample-dm", "c1"];
+    for (let i = 0; i < 300; i++) ids.push(createHash("sha256").update(`conversation ${i}`).digest("hex"));
+    for (const conversationId of ids) {
+      expect((await observe(h, conversationId, [turn("user", "hi")])).status, conversationId).toBe(202);
     }
   });
 
@@ -503,23 +517,22 @@ describe("review fixes", () => {
     await h.deps.close();
   });
 
-  it("SEMA2: basis upgrades and independent conversations are retained without the old 30-day dedupe", async () => {
+  it("SEMA2: within one source an inferred guess does not block a later observation; a repeat is skipped; another source is written", async () => {
     const learn = new FakeLearn();
     const h = await harness({ learn });
     learn.onConversation = () => [{ field: "pref.fit", value: "wide", basis: "inferred" }];
     await observe(h, "a", [turn("user", "wide")]);
     await quiet(h);
     learn.onConversation = () => [{ field: "pref.fit", value: "wide" }];
-    await observe(h, "b", [turn("user", "wide")]);
+    await observe(h, "a", [turn("user", "wide")]); // the same conversation, later
     await quiet(h);
     expect(rows(h, "pref.fit").map((c) => c.basis)).toEqual(["inferred", "observed"]);
-    await observe(h, "c", [turn("user", "wide")]);
+    await observe(h, "a", [turn("user", "wide")]);
     await quiet(h);
-    expect(rows(h, "pref.fit")).toHaveLength(3); // another conversation is independent evidence
-    offset += 31 * 86_400_000;
-    await observe(h, "d", [turn("user", "wide")]);
+    expect(rows(h, "pref.fit")).toHaveLength(2); // same source, same value: skipped
+    await observe(h, "b", [turn("user", "wide")]); // B49: another conversation is new evidence, however recent
     await quiet(h);
-    expect(rows(h, "pref.fit")).toHaveLength(4); // later independent evidence also survives
+    expect(rows(h, "pref.fit").map((c) => c.evidence?.conversationId)).toEqual(["a", "a", "b"]);
   });
 
   it("SEMA7: a blocked accept is not a choice", async () => {
@@ -545,38 +558,37 @@ describe("review fixes", () => {
     expect((await titles("Altra trail shoes")).some((t) => /Altra/.test(t))).toBe(true);
   });
 
-  it("CONC7: a checkpoint never waits for another connection; the text leaves the WAL on a later tick", async () => {
+  it("CONC7: a checkpoint never waits for another connection, and observing never needs one", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ws-ckpt-"));
     const path = join(dir, "ws.sqlite");
     const learn = new FakeLearn();
     const h = await harness({ learn, env: { SQLITE_PATH: path, AGENT_COOKIE_DATA_DIR: dir } });
-    const M = "QX7CKPTMARKER";
-    await observe(h, "c", [turn("user", `${M} hi`)]);
+    await observe(h, "c", [turn("user", "hi")]);
     const reader = new Database(path);
     reader.prepare("BEGIN").run();
-    reader.prepare("SELECT COUNT(*) FROM observation_turns").get(); // holds a snapshot that includes the WAL frames
+    reader.prepare("SELECT COUNT(*) FROM observation_batches").get(); // holds a snapshot that includes the WAL frames
     const t0 = Date.now();
-    await quiet(h); // takes the batch; the checkpoint cannot complete while the reader holds its snapshot
-    expect(Date.now() - t0).toBeLessThan(2000);
+    await quiet(h);
     expect(learn.conversationCalls).toHaveLength(1);
     expect(h.deps.store.checkpoint()).toBe(false); // really blocked, and returned at once
     expect(Date.now() - t0).toBeLessThan(2000);
     reader.prepare("COMMIT").run();
     reader.close();
-    await h.deps.learning.flushDue(); // the owed checkpoint runs now
     expect(h.deps.store.checkpoint()).toBe(true);
-    for (const f of [path, `${path}-wal`].filter(existsSync)) expect(readFileSync(f).includes(Buffer.from(M))).toBe(false);
     await h.deps.close();
   });
 
-  it("CROS2: a restart discards pending original conversation text", async () => {
+  it("CROS2 (B49): a restart loses what was waiting — it was only in memory — and the activity log says how much", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ws-restart-"));
     const env = { SQLITE_PATH: join(dir, "ws.sqlite"), AGENT_COOKIE_DATA_DIR: dir };
     const first = await harness({ env });
     await observe(first, "c", [turn("user", "one"), turn("user", "two")]);
+    await observe(first, "d", [turn("user", "four")]);
     await first.deps.close();
     const learn = new FakeLearn();
     const second = await harness({ learn, env });
+    expect(second.deps.store.observationBatches()).toEqual([]);
+    expect((await activity(second)).find((e) => e.event === "observation.drop" && e.result === "restart")).toMatchObject({ reason: "conversations=2" });
     await observe(second, "c", [turn("user", "three")]);
     await quiet(second);
     expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["three"]);
@@ -595,8 +607,7 @@ describe("review fixes", () => {
   it("ABUS1: a full-width or dotted card number typed into a chat is not stored", async () => {
     const h = await harness();
     await observe(h, "c", [turn("user", "４１１１ １１１１ １１１１ １１１１"), turn("user", "4111.1111.1111.1111"), turn("user", "ok")]);
-    expect(h.deps.store.db.prepare("SELECT text FROM observation_turns").all()).toEqual([]);
-    expect(h.deps.store.takeObservationBatch("personal-photon", "c")?.turns.map(t => t.text)).toEqual(["ok"]);
+    expect(queued(h, "c")).toEqual(["ok"]);
   });
 
   it("ABUS6: a candidate whose field changes between reads cannot slip past the whitelist", async () => {
@@ -619,27 +630,21 @@ describe("review fixes", () => {
     expect((await learned(h)).learned).toEqual([]);
   });
 
-  it("CONC4: concurrent independent intent and conversation sources are both retained", async () => {
+  it("CONC4: learning the same value from one source twice at once (the intent, then its accept) writes it once", async () => {
     const learn = new FakeLearn();
     learn.onExtract = () => [{ field: "pref.color", value: "blue" }];
-    learn.onConversation = () => [{ field: "pref.color", value: "blue" }];
     const h = await harness({ learn });
-    await observe(h, "c", [turn("user", "blue")]);
-    offset += 301_000;
-    await h.post("/test/clock", undefined, { offsetMs: offset });
     // both learner calls answer in the same tick, so both writes would start from the same snapshot
     const d = deferred();
     learn.hold = d.p;
-    await h.post("/personal/intents", KEYS.personal, { text: "blue shoes" });
-    const flushing = h.deps.learning.flushDue();
+    const r = await h.post("/personal/intents", KEYS.personal, { text: "blue shoes" });
+    const quotes = (await h.get(`/personal/intents/${r.body.intentId}/quotes?wait=0`, KEYS.personal)).body.quotes;
+    await h.post(`/personal/quotes/${quotes[0].id}/accept`, KEYS.personal);
     await new Promise((r) => setTimeout(r, 20));
-    expect(learn.extractCalls).toHaveLength(1);
-    expect(learn.conversationCalls).toHaveLength(1);
+    expect(learn.extractCalls).toHaveLength(2);
     d.open();
-    await flushing;
     await h.deps.learning.settle();
-    expect(rows(h, "pref.color")).toHaveLength(2);
-    expect(await cardValue(h, "pref.color")).toBe("blue");
+    expect(rows(h, "pref.color")).toHaveLength(1);
   });
 });
 

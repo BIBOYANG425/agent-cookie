@@ -33,11 +33,12 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/personal/grants", caller: "personal", summary: "Current grants: agent, fields, purpose, remaining time; no values" },
   { method: "POST", path: "/personal/contributions/:id/revoke", caller: "personal", summary: "Revoke one contribution and recompute the card" },
   { method: "GET", path: "/personal/intents", caller: "personal", summary: "?q=&limit= → { intents: IntentHistoryEntry[] }, the user's own intent history, newest first (owner key too)" },
-  { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 { queued }: user turns are queued per conversation and learned from later; never blocks; discarded while learning is paused" },
+  { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 ObservationAck { queued }: user turns are held in memory per conversation and learned from later; never blocks; discarded while learning is paused; replayed messageIds ignored" },
   { method: "GET", path: "/personal/learning", caller: "personal", summary: "→ LearningState { paused } (owner key too)" },
   { method: "PUT", path: "/personal/learning", caller: "personal", summary: "{ paused } → LearningState; pausing also discards conversations waiting in the queue (owner key too)" },
   { method: "POST", path: "/personal/learning/forget", caller: "personal", summary: "{ field: PrefField } → ForgetLearningResult; atomically pauses, removes current preference/evidence, records suppression and a recoverable Git projection; owner key too. 202 if projection pending; historical Git commits retained" },
   { method: "GET", path: "/personal/learned", caller: "personal", summary: "→ LearnedResponse: pref.* values on the card or waiting as candidates, with sources and evidence (owner key too)" },
+  { method: "POST", path: "/personal/learned/forget", caller: "personal", summary: "ForgetRequest { conversationId | intentId } → ForgetResult: revoke everything learned from it in one transaction and one commit, drop its waiting turns (owner key too)" },
 
   { method: "GET", path: "/agent/handshake", caller: "merchant", summary: "?sessionId= → Handshake (field names only)" },
   { method: "GET", path: "/agent/fields", caller: "merchant", summary: "?sessionId=&fields=a,b&purpose= → 200 values | 403 SCOPE_DENIED (incl. names outside the field table, A13) | 403 PURPOSE_MISMATCH; purpose releases write a receipt" },

@@ -43,7 +43,7 @@ export function createObservationSink(options:{
       controller=new AbortController();
       try{
         const t=item.turn;
-        const body:ObservationInput={channel:'imessage',conversationId:t.conversationId,turns:[{role:'user',text:t.text,at:t.occurredAt}]};
+        const body:ObservationInput={channel:'imessage',conversationId:t.conversationId,turns:[{role:'user',text:t.text,at:t.occurredAt,messageId:t.messageId}]};
         const result=await bounded(s=>options.observe(body,{signal:s}),timeout,controller.signal);
         metric(item.generation===generation&&result.queued?'accepted':'dropped');
       }catch{metric('unavailable');}

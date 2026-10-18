@@ -1,32 +1,39 @@
 import { createHmac } from "node:crypto";
-// Dynamic memory (2026-10-17, human direction; lane B's LearnApi does the classifying). Three ways in:
+// Dynamic memory (2026-10-17, human direction; lane B's LearnApi does the classifying; B49 rulings). Two ways in:
 //   - POST /personal/observations: turns of a conversation. Only the user's own turns are kept, per (personal agent,
-//     conversation), until the conversation has been quiet for OBSERVATION_IDLE_MS or OBSERVATION_BATCH_TURNS turns
-//     have arrived; then text is removed from the bounded volatile queue, handed to
-//     LearnApi.extractFromConversation, and dropped. Agent/other turns are never stored or passed on.
+//     conversation), in process memory (observations.ts, bounded; SQLite mirrors only ids, counts and times), until
+//     the conversation has been quiet for OBSERVATION_IDLE_MS or OBSERVATION_BATCH_TURNS turns have arrived; then the
+//     text is taken out of the queue, handed to LearnApi.extractFromConversation, and dropped. Agent/other turns are
+//     never kept or passed on; a replayed messageId is ignored.
 //   - every intent, and every accept (with the chosen quote): LearnApi.extract.
 // What comes back is a list of CANDIDATES. Each one is checked here, deterministically: pref.* fields only (the
-// contract's whitelist), no contact/payment data, a snippet only if it is the user's own words, stated preserved,
-// never a value the user revoked, never duplicate support from the same evidence source. Survivors are written as the
-// personal agent through the normal contribution path (git first, then SQLite), and RulesApi.mergeCard decides what
-// reaches the card: a personal statement or two distinct conversation/intent sources. Paused → nothing is queued or learned. Learning failures are logged and
-// never affect the request that triggered them.
+// contract's whitelist), a value that passes the contract's format check (no contact/payment data), a snippet only if
+// it is the user's own words, never a value the user revoked, never a second record of the same value from the same
+// source (conversation / intent). Survivors are written through the normal contribution path (git first, then
+// SQLite) with the basis the extractor gave — stated, observed or inferred — by the personal agent that did the
+// operation (who heard the conversation, who made the request, who accepted the quote), and RulesApi.mergeCard
+// decides what reaches the card: the user's statement at once, anything else with two independent sources.
+// Paused → nothing is queued or learned. Forget revokes everything learned from one conversation or intent at once.
+// Learning failures are logged and never affect the request that triggered them.
 import {
   EVIDENCE_SNIPPET_MAX, isField, isPrefField, OBSERVATION_BATCH_TURNS, OBSERVATION_IDLE_MS,
-  type ForgetLearningResult, type PrefField, type Basis, type ContributionCandidate, type ContributionEvidence, type IntentHistoryEntry, type IntentRecord, type LearnApi,
-  type LearnedEntry, type LearnedResponse, type LearningState, type Observation, type Quote,
+  type ForgetLearningResult, type PrefField, type Basis, type ContributionCandidate, type ContributionEvidence, type ForgetRequest, type ForgetResult, type IntentHistoryEntry,
+  type IntentRecord, type LearnApi, type LearnedEntry, type LearnedResponse, type LearningState, type Observation, type ObservationAck, type Quote,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow, StoredContribution } from "../db.js";
 import { containsContactOrPayment, prefValueProblem } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import type { CardService } from "./card.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
+import { ObservationQueue, type QueuedConversation } from "./observations.js";
 
 const PAUSED_KEY = "learning.paused";
 /** Bumped on every pause: a learner answer that started before a pause is dropped even if learning was resumed since. */
 const EPOCH_KEY = "learning.epoch";
-/** Same-source stronger statements may supersede weaker evidence. */
 const BASIS_RANK: Record<Basis, number> = { inferred: 0, observed: 1, stated: 2 };
+const BASES: ReadonlySet<string> = new Set(["stated", "observed", "inferred"]);
+type Source = Pick<ContributionEvidence, "intentId" | "conversationId">;
+const sourceKey = (s: Source) => (s.conversationId !== undefined ? `conversation\u0000${s.conversationId}` : `intent\u0000${s.intentId ?? ""}`);
 
 /** Collapse width, whitespace and case: "Brooks", " brooks ", "ＢＲＯＯＫＳ" are one value. */
 const norm = (t: string) => t.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
@@ -38,11 +45,18 @@ class LearnerTimeout extends Error {
 export class LearningService {
   private pending = new Set<Promise<unknown>>();
   private inflight = new Map<string, Promise<void>>();
-  /** apply() runs one at a time, so duplicate checks see every earlier write. */
+  /** apply() and forget() run one at a time, so duplicate checks and forgets see every earlier write. */
   private applying: Promise<unknown> = Promise.resolve();
-  private checkpointOwed = false;
+  readonly queue = new ObservationQueue();
+  /** Forget counter, and the value it had when each source was last forgotten: older in-flight answers are dropped. */
+  private forgets = 0;
+  private forgotten = new Map<string, number>();
 
-  constructor(private ctx: Ctx, private card: CardService, private learn: LearnApi) {}
+  constructor(private ctx: Ctx, private card: CardService, private learn: LearnApi) {
+    // The text of conversations that were waiting did not survive the restart; their mirror rows go with it.
+    const lost = ctx.store.dropObservations();
+    if (lost > 0) ctx.log({ event: "observation.drop", actor: "workspace", result: "restart", reason: `conversations=${lost}` });
+  }
 
   state(userId: string): LearningState {
     return { paused: this.ctx.store.setting(userId, PAUSED_KEY) === "1" };
@@ -66,7 +80,7 @@ export class LearningService {
         if (paused) this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
         this.ctx.log({ event: "learning.set", actor, result: paused ? "paused" : "on" });
       });
-      if (paused) this.ctx.store.dropObservations(userId);
+      if (paused) { this.queue.dropUser(userId); this.ctx.store.dropObservations(userId); }
       return this.state(userId);
     });
   }
@@ -77,7 +91,7 @@ export class LearningService {
   }
 
   /** One serving-store transaction, followed by a recoverable current-files projection. */
-  forget(actor: string, userId: string, field: PrefField): Promise<ForgetLearningResult> {
+  forgetField(actor: string, userId: string, field: PrefField): Promise<ForgetLearningResult> {
     const run = this.applying.then(() => this.card.mutate(async () => {
       const removed = this.ctx.store.tx(() => {
         const rows = this.ctx.store.contributionsForUser(userId).filter(c => c.field === field);
@@ -91,10 +105,10 @@ export class LearningService {
         this.ctx.log({ event: 'learning.forget', actor, object: field, result: 'removed', reason: `count=${rows.length}` });
         return rows.length;
       });
-      this.ctx.store.dropObservations(userId);
+      this.queue.dropUser(userId); this.ctx.store.dropObservations(userId);
       this.card.get(userId);
       const complete = await this.projectForget(actor, userId, field);
-      this.checkpoint();
+      this.ctx.store.checkpoint();
       return { field, paused: true as const, removed, projection: complete ? 'complete' as const : 'pending' as const, historyErased: false as const };
     }));
     this.applying = run.catch(() => undefined);
@@ -129,32 +143,79 @@ export class LearningService {
   }
 
   /** Queue the user's turns of an observation (already validated by app.ts). Never blocks on learning. */
-  observe(personal: AuthedAgent, userId: string, obs: Observation): { queued: boolean; paused?: true } {
+  observe(personal: AuthedAgent, userId: string, obs: Observation): ObservationAck {
+    const nowMs = this.ctx.clock.now();
+    const at = { agentId: personal.agentId, conversationId: obs.conversationId, userId, channel: obs.channel };
     if (this.state(userId).paused) {
+      // Remember the message ids anyway: what was said while paused is not learned when it is replayed later.
+      this.queue.unseen(personal.agentId, obs.turns, nowMs);
       this.ctx.log({ event: "observation.drop", actor: personal.agentId, result: "paused", reason: `turns=${obs.turns.length}` });
       return { queued: false, paused: true };
     }
-    const user = obs.turns.filter((t) => t.role === "user");
-    // A card number or contact detail typed into a chat is never stored, not even until processing.
-    const kept = user.filter((t) => !containsContactOrPayment(t.text));
-    const batch = this.ctx.store.enqueueObservation({ agentId: personal.agentId, conversationId: obs.conversationId, userId, channel: obs.channel },
-      obs.turns.length, kept.map((t) => ({ text: t.text, at: t.at })), this.ctx.clock.nowIso());
+    let unsafe = 0;
+    // A card number or contact detail typed into a chat is never kept, not even until processing.
+    const keep = (t: Observation["turns"][number]) => {
+      if (t.role !== "user") return false;
+      if (containsContactOrPayment(t.text)) { unsafe++; return false; }
+      return true;
+    };
+    const r = this.queue.add(at, obs.turns, keep, nowMs);
+    for (const old of r.droppedConversations) this.ctx.store.deleteObservationBatch(old.agentId, old.conversationId);
+    if (r.droppedConversations.length > 0 || r.droppedTurns > 0) {
+      this.ctx.log({ event: "observation.drop", actor: personal.agentId, result: "overflow",
+        reason: [r.droppedConversations.length ? `conversations=${r.droppedConversations.length}` : "", r.droppedTurns ? `turns=${r.droppedTurns}` : ""].filter(Boolean).join(" ") });
+    }
+    if (r.fresh === 0) {
+      this.ctx.log({ event: "observation.drop", actor: personal.agentId, result: "duplicate", reason: `turns=${r.duplicates}` });
+      return { queued: false, duplicate: true };
+    }
+    this.ctx.store.mirrorObservation(mirror(r.batch));
     this.ctx.log({ event: "observation.queue", actor: personal.agentId, result: "ok",
-      reason: `turns=${obs.turns.length} user=${kept.length}${kept.length < user.length ? ` dropped=${user.length - kept.length}` : ""}` });
-    if (batch.turnsSeen >= OBSERVATION_BATCH_TURNS && this.pending.size < 4) this.track(this.ctx.hold(() => this.process(batch.agentId, batch.conversationId)));
+      reason: [`turns=${obs.turns.length}`, `user=${obs.turns.filter((t) => t.role === "user").length - unsafe}`,
+        unsafe ? `dropped=${unsafe}` : "", r.duplicates ? `duplicates=${r.duplicates}` : ""].filter(Boolean).join(" ") });
+    if (r.batch.turnsSeen >= OBSERVATION_BATCH_TURNS) this.track(this.ctx.hold(() => this.process(r.batch.agentId, r.batch.conversationId)));
     return { queued: true };
   }
 
   /** Process every conversation that has been quiet long enough or is full. */
   async flushDue(): Promise<void> {
-    const idleBefore = () => new Date(this.ctx.clock.now() - OBSERVATION_IDLE_MS).toISOString();
-    for (const b of this.ctx.store.dueObservationBatches(idleBefore(), OBSERVATION_BATCH_TURNS)) {
-      // Re-read: while earlier ones were processed this one may have been taken and started again.
-      const now = this.ctx.store.observationBatch(b.agentId, b.conversationId);
+    const idleBefore = () => this.ctx.clock.now() - OBSERVATION_IDLE_MS;
+    for (const b of this.queue.due(idleBefore(), OBSERVATION_BATCH_TURNS)) {
+      // Re-check: while earlier ones were processed this one may have been taken and started again.
+      const now = this.queue.get(b.agentId, b.conversationId);
       if (!now || (now.lastAt > idleBefore() && now.turnsSeen < OBSERVATION_BATCH_TURNS)) continue;
       await this.process(b.agentId, b.conversationId);
     }
-    if (this.checkpointOwed) this.checkpoint();
+  }
+
+  /**
+   * POST /personal/learned/forget: revoke every contribution learned from this conversation or intent — one SQLite
+   * transaction, one memory-repo commit with CARD.md (CardService.revokeMany) — drop its waiting turns, and drop any
+   * learner answer for it that is still in flight. Runs in line with apply(), so nothing it misses is written after.
+   */
+  forget(actor: string, userId: string, by: ForgetRequest): Promise<ForgetResult> {
+    const source: Source = by.conversationId !== undefined ? { conversationId: by.conversationId } : { intentId: by.intentId! };
+    this.forgotten.set(sourceKey(source), ++this.forgets);
+    if (source.conversationId !== undefined) {
+      for (const b of this.queue.dropConversation(userId, source.conversationId)) this.ctx.store.deleteObservationBatch(b.agentId, b.conversationId);
+    }
+    const run = this.applying.then(async () => {
+      const ids = this.ctx.store.contributionsForUser(userId).filter((c) => !c.revokedAt && c.evidence
+        && (source.conversationId !== undefined ? c.evidence.conversationId === source.conversationId : c.evidence.intentId === source.intentId))
+        .map((c) => c.id);
+      await this.card.revokeMany(actor, userId, ids);
+      this.ctx.log({ event: "learning.forget", actor, object: source.conversationId !== undefined ? "conversation" : "intent", result: "ok",
+        reason: `revoked=${ids.length}` });
+      return { revoked: ids.length, contributionIds: ids };
+    });
+    this.applying = run.catch(() => undefined);
+    return run;
+  }
+
+  /** POST /demo/reset: nothing queued before a reset is learned after it. */
+  reset(): void {
+    this.queue.clear();
+    this.forgotten.clear();
   }
 
   /** The timer's entry point (deps.ts): one flush, run by `runner` (the reset gate), counted by settle(). */
@@ -169,12 +230,16 @@ export class LearningService {
 
   /**
    * After an intent is created or a quote accepted: append the request to the user's intent history in the memory
-   * repo, and (unless paused) learn from it. What the user said belongs to the personal agent they said it to (the
-   * intent's), so another agent accepting the quote does not count as a second source. Fire and forget.
+   * repo, and (unless paused) learn from it. Both are written by `actor`, the agent that did this operation (B49:
+   * the record's agentId, the git author and the contribution writer are the same agent — on an accept, the
+   * accepting agent, even when another of the user's agents made the request); the request itself is named by
+   * intentId (the record's id, the learned contributions' evidence.intentId), so the intent and its accept are one
+   * source however many agents touch it. Fire and forget.
    */
   afterIntent(actor: AuthedAgent, userId: string, intent: IntentRow, chosen?: QuoteRow): void {
     this.track(this.ctx.hold(async () => {
       const epoch = this.epoch(userId);
+      const started = this.forgets;
       try {
         const record: IntentRecord = { id: intent.id, userId, agentId: actor.agentId, evidence: { intentId: intent.id }, public: intent.public, createdAt: intent.createdAt };
         if (intent.text) record.text = intent.text;
@@ -188,13 +253,13 @@ export class LearningService {
         await persist(this.ctx, "intent", actor.agentId, async (repo) => {
           if (repo.appendIntent) await repo.appendIntent(record, writeMeta(this.ctx, actor.agentId, record));
         });
-        const heardBy = this.ctx.store.agent(intent.agentId);
-        if (!heardBy || heardBy.category !== "personal" || !this.stillOn(userId, epoch)) return;
+        const writer = this.ctx.store.agent(actor.agentId);
+        if (!writer || writer.category !== "personal" || !this.stillOn(userId, epoch)) return;
         const candidates = await this.withTimeout(this.learn.extract({ intentId: intent.id, public: intent.public,
           ...(intent.text ? { text: intent.text } : {}), ...(intent.query ? { query: intent.query } : {}), ...(intent.kind ? { kind: intent.kind } : {}),
           ...(chosen ? { chosenQuote: publicQuote(chosen) } : {}) }));
-        await this.applySerial({ ...heardBy, role: "personal" }, userId, candidates, { intentId: intent.id },
-          [intent.text ?? "", intent.query ?? ""], epoch);
+        await this.applySerial({ ...writer, role: "personal" }, userId, candidates, { intentId: intent.id },
+          [intent.text ?? "", intent.query ?? ""], epoch, started);
       } catch (err) {
         this.failed(actor.agentId, chosen ? "accept" : "intent", err);
       }
@@ -253,10 +318,6 @@ export class LearningService {
     void safe.finally(() => this.pending.delete(safe));
   }
 
-  private checkpoint(): void {
-    this.checkpointOwed = !this.ctx.store.checkpoint();
-  }
-
   /** A learner that never answers must not hold a conversation, the reset gate or shutdown hostage. */
   private withTimeout<T>(p: Promise<T>): Promise<T> {
     let timer: NodeJS.Timeout | undefined;
@@ -264,28 +325,28 @@ export class LearningService {
     return Promise.race([p, t]).finally(() => clearTimeout(timer));
   }
 
-  /** One conversation, at most once at a time. The text leaves SQLite before LearnApi sees it. */
+  /** One conversation, at most once at a time. The text leaves the queue before LearnApi sees it. */
   private process(agentId: string, conversationId: string): Promise<void> {
     const key = `${agentId}\u0000${conversationId}`;
     const running = this.inflight.get(key);
     if (running) return running;
-    if (this.inflight.size >= 4) return Promise.resolve(); // leave the bounded batch for the next tick
+    if (this.inflight.size >= 4) return Promise.resolve();
     const run = this.processNow(agentId, conversationId).finally(() => this.inflight.delete(key));
     this.inflight.set(key, run);
     return run;
   }
 
   private async processNow(agentId: string, conversationId: string): Promise<void> {
-    let taken: ReturnType<Ctx["store"]["takeObservationBatch"]>;
+    const batch = this.queue.take(agentId, conversationId);
+    if (!batch) return;
+    const { turns } = batch;
+    const started = this.forgets;
     try {
-      taken = this.ctx.store.takeObservationBatch(agentId, conversationId);
-      this.checkpoint();
+      this.ctx.store.deleteObservationBatch(agentId, conversationId);
     } catch (err) {
       this.failed(agentId, "conversation", err);
       return;
     }
-    if (!taken) return;
-    const { batch, turns } = taken;
     const epoch = this.epoch(batch.userId);
     const personal = this.ctx.store.agent(agentId);
     if (!personal || personal.category !== "personal" || this.state(batch.userId).paused) {
@@ -296,7 +357,7 @@ export class LearningService {
     try {
       const userTurns = turns.map((t) => ({ role: "user" as const, text: t.text, at: t.at }));
       const candidates = await this.withTimeout(this.learn.extractFromConversation(userTurns, { conversationId, channel: batch.channel }));
-      await this.applySerial({ ...personal, role: "personal" }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch);
+      await this.applySerial({ ...personal, role: "personal" }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch, started);
     } catch (err) {
       this.failed(agentId, "conversation", err);
     }
@@ -308,15 +369,22 @@ export class LearningService {
     return run;
   }
 
+  /** The source was forgotten after this work started (`started`: the forget counter then). */
+  private forgottenSince(source: Source, started: number): boolean {
+    return (this.forgotten.get(sourceKey(source)) ?? 0) > started;
+  }
+
   /**
    * Check each candidate and write the survivors as `personal`. `said` is what the user said: a snippet must quote it
-   * and name the value. Nothing is written if learning was paused since `epoch` (even if resumed again). Returns how
-   * many were written. CARD.md is regenerated once at the end.
+   * and name the value. Nothing is written if learning was paused since `epoch` (even if resumed again), or the
+   * source was forgotten since `started`. Returns how many were written. CARD.md is regenerated once at the end.
    */
-  private async apply(personal: AuthedAgent, userId: string, raw: unknown, source: Pick<ContributionEvidence, "intentId" | "conversationId">,
-    said: readonly string[], epoch: string): Promise<number> {
-    if (!this.stillOn(userId, epoch)) {
-      this.ctx.log({ event: "learn.apply", actor: personal.agentId, object: source.intentId ?? "conversation", result: "dropped", reason: "paused" });
+  private async apply(personal: AuthedAgent, userId: string, raw: unknown, source: Source,
+    said: readonly string[], epoch: string, started: number): Promise<number> {
+    const live = () => this.stillOn(userId, epoch) && !this.forgottenSince(source, started);
+    if (!live()) {
+      this.ctx.log({ event: "learn.apply", actor: personal.agentId, object: source.intentId ?? "conversation", result: "dropped",
+        reason: this.stillOn(userId, epoch) ? "forgotten" : "paused" });
       return 0;
     }
     // The learner's answer is data: copy it once (no getters re-read later), keep plain candidate objects only.
@@ -339,28 +407,26 @@ export class LearningService {
       if (!isField(field) || !isPrefField(field)) { skip("field"); continue; }
       let value = c.value.normalize("NFKC").replace(/\s+/g, " ").trim();
       if (prefValueProblem(value)) { skip("value"); continue; }
+      if (this.ctx.store.setting(userId, this.suppressedKey(userId, field, value))) { skip("forgotten"); continue; }
       const same = (x: StoredContribution) => x.field === field && norm(x.value) === norm(value);
       // One spelling per value: a later "brooks" joins the existing "Brooks", so sources add up.
       value = existing.find((x) => same(x) && !x.revokedAt)?.value ?? value;
-      const basis: Basis = c.basis === "stated" ? "stated" : c.basis === "inferred" ? "inferred" : "observed";
-      if (this.ctx.store.setting(userId, this.suppressedKey(userId, field, value)) === "1") { skip("forgotten"); continue; }
+      // B49: the extractor's basis is kept (stated reaches the card on its own); anything unknown is "observed".
+      const basis: Basis = typeof c.basis === "string" && BASES.has(c.basis) ? c.basis : "observed";
       if (existing.some((x) => same(x) && x.revokedAt)) { skip("revoked"); continue; }
-      // Retry of the same evidence is not another source. A different conversation is,
-      // even if the same personal agent heard both. Intent handoffs retain the original source.
-      const sameSource = (x: StoredContribution) =>
-        (source.conversationId !== undefined && x.evidence?.conversationId === source.conversationId) ||
-        (source.intentId !== undefined && x.evidence?.intentId === source.intentId);
-      if (existing.some((x) => same(x) && !x.revokedAt && sameSource(x) && BASIS_RANK[x.basis] >= BASIS_RANK[basis])) {
-        skip("duplicate"); continue;
-      }
+      // One record per value per source: the same conversation (or intent) repeating itself is one source, whoever
+      // wrote it; a different conversation is new evidence, however recent the last one.
+      const sameSource = (x: StoredContribution) => (x.evidence?.conversationId ?? "") === (source.conversationId ?? "")
+        && (x.evidence?.intentId ?? "") === (source.intentId ?? "");
+      if (existing.some((x) => same(x) && !x.revokedAt && sameSource(x) && BASIS_RANK[x.basis] >= BASIS_RANK[basis])) { skip("duplicate"); continue; }
       const evidence: ContributionEvidence = { ...source };
       const snippet = typeof c.evidence?.snippet === "string" ? [...c.evidence.snippet.trim()].slice(0, EVIDENCE_SNIPPET_MAX).join("") : "";
       // A snippet is kept only if the user said it, it names the value, and it carries no contact or payment data.
       if (snippet && heard.includes(norm(snippet)) && norm(snippet).includes(norm(value)) && !containsContactOrPayment(snippet)) {
         evidence.snippet = snippet;
       }
-      if (!this.stillOn(userId, epoch)) break;
-      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false, canWrite: () => this.stillOn(userId, epoch) });
+      if (!live()) break;
+      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false, canWrite: live });
       existing.push(contribution);
       written.push(field);
     }
@@ -381,4 +447,10 @@ export class LearningService {
 function publicQuote(q: QuoteRow): Quote {
   const { sessionId: _s, status: _st, createdAt: _c, acceptedAt: _a, result: _r, ...quote } = q;
   return quote;
+}
+
+/** What SQLite keeps of a waiting conversation: ids, count and times, never the text. */
+function mirror(b: QueuedConversation) {
+  return { agentId: b.agentId, conversationId: b.conversationId, userId: b.userId, channel: b.channel, turnsSeen: b.turnsSeen,
+    firstAt: new Date(b.firstAt).toISOString(), lastAt: new Date(b.lastAt).toISOString() };
 }
