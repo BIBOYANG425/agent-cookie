@@ -359,3 +359,6 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A50 | A → D（请求）：`packages/ucp` 需要一个请求头钩子以携带 TAP `agent-payer-auth` 签名，以及 `complete` 对 UCP `payment.instruments` 的支持；没有这两项，UCP 结账无法消费工作台的支付授权，真实 provider 的授权只能授权后立即撤销。 |
 
 | A51 | A → 人（Visa 接入前置）：Visa Acceptance 沙盒 provider 已实现但未真实调用。要跑 `smoke:visa` 和下一单元 Visa Intelligent Commerce，需要：① 云环境 Allowed domains 加 `apitest.cybersource.com`、`developer.cybersource.com`、`developer.visa.com`、`sandbox.api.visa.com`；② Visa Acceptance 沙盒凭据（`VISA_ACCEPTANCE_MERCHANT_ID/KEY_ID/SHARED_SECRET`，以及一个 TMS 测试 instrument）作为环境 secret；③ Visa Developer Platform 项目（Intelligent Commerce 沙盒：mTLS 证书或 X-Pay-Token，MLE 证书对）。文档已确认：HTTP Signature 被 Cybersource 标记弃用，production 前必须改 JWT。 |
+
+| A47 | 状态更新：SSE 报价流已实现（`GET /personal/intents/:id/events`，契约 `events.ts`；SDK `streamQuotes`，`find()` 先走流再回退长轮询；Photon/MCP 无需改码即受益）；`_meta["agent-cookie"]` 绑定与 `accepted`/`result` 事件仍待。 |
+| A52 | A → B（请求）：SDK `FindInput` 不传 `kind`，而回调商家只按 `kind` 匹配，所以 `find()` 的推送收益目前只有 UCP 报价（创建时即存在）能体现；请 B 评估在 `FindInput` 加可选 `kind`（契约 `IntentRequest.kind` 已有）。 |
