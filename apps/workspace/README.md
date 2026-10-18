@@ -28,8 +28,10 @@ network missing). The request shapes were written offline and have not been run 
 | `MEMORY_REPO_PATH` | `apps/workspace/data/memory` | the user's git memory repo; must be empty or a repo created by `@agent-cookie/memory-repo` |
 | `AGENT_COOKIE_UCP` | `fixture` | `fixture` replays `fixtures/ucp`; `live` runs the pinned ucp CLI |
 | `UCP_BIN` | unset | only to override lane D's pinned CLI |
-| `AGENT_COOKIE_DEMO` | unset | `1` mounts `POST /demo/reset` and loads `dev-keys.json` |
-| `AGENT_COOKIE_TEST` | unset | `1` mounts `POST /test/clock` and loads `dev-keys.json` |
+| `AGENT_COOKIE_DATA_DIR` | `apps/workspace/data` | `owner.key`, and by default SQLite and the memory repo; created if missing |
+| `AGENT_COOKIE_SEED` | `sample` | `sample` seeds lane C's Sample persona; `blank` seeds one generated owner and nothing else (see "Running under the gateway") |
+| `AGENT_COOKIE_DEMO` | unset | `1` mounts `POST /demo/reset` and loads `dev-keys.json` (sample seed only) |
+| `AGENT_COOKIE_TEST` | unset | `1` mounts `POST /test/clock` and loads `dev-keys.json` (sample seed only) |
 | `CALLBACK_TIMEOUT_MS`, `CALLBACK_RETRIES` | `5000`, `3` | merchant callbacks and Tier 0 deliveries |
 | `AGENT_COOKIE_LEARN_PROVIDER` / `OPENROUTER_API_KEY` | `off` / unset | explicitly select `openrouter` with its key; a key alone never enables learning |
 | `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only`: lane B's fallback, first-person statements only |
@@ -43,7 +45,8 @@ network missing). The request shapes were written offline and have not been run 
 
 - Demo and tests: the Sample keys in `fixtures/dev-keys.json` (lane C): two personal agents, the owner (console), and the ACME
   merchant. Callers read the key from `AGENT_COOKIE_KEY`.
-- Without demo/test mode the workspace mints an owner key once and writes it to `data/owner.key` (mode 0600). It never prints keys.
+- Without demo/test mode, and always with `AGENT_COOKIE_SEED=blank`, the workspace mints an owner key once and writes it to
+  `<AGENT_COOKIE_DATA_DIR>/owner.key` (mode 0600). It never prints keys.
 - Merchants self-register: `POST /agents/register {name, category:"shoe", capabilities, callbackUrl?|chatEndpoint?}` → the key is shown once.
 - Company assistants register the same way with `category:"assistant"` (no `callbackUrl`/`chatEndpoint`); the key opens nothing about the user until the owner approves a consent link.
 - Registering a personal agent needs the owner key, because a personal agent reads the whole card.
@@ -56,6 +59,37 @@ network missing). The request shapes were written offline and have not been run 
 - `source` on `GET /personal/card` and on every quote (B20): `sample` while the card rests on seed data; UCP quotes are
   `fixture` in fixture mode and `live` in live mode; quotes submitted by merchant agents are `live`.
 - In live mode a Sample address is never sent to a real store: accept hands off to the merchant page instead.
+
+## Running under the gateway
+
+The hosted gateway (`packages/contract/src/gateway.ts`, Phase 3 of `docs/bring-your-own-agent-plan.md`) runs one workspace
+process per person on the same host:
+
+```sh
+AGENT_COOKIE_SEED=blank AGENT_COOKIE_DATA_DIR=/srv/jars/<person> PORT=<free port> \
+  AGENT_COOKIE_URL=<the person's URL under the gateway> AGENT_COOKIE_UCP=fixture node_modules/.bin/tsx src/server.ts
+```
+
+- **Blank seed.** One user with a generated id (`usr_…`) and secret and the name `owner`; no contribution, no agent, never a
+  Sample key (demo/test mode or not). The memory repo starts empty: the workspace writes a seed to `<dataDir>/memory-seed`
+  at every start (`MEMORY.md`, empty `contributions/` and `notes/`, `CARD.md` generated from no contributions,
+  `receipts.md`, and `POLICY.yaml` rendered from `DEFAULT_POLICY` with a generated-seed header, so the served policy is the
+  default until the owner installs one) and hands it to `@agent-cookie/memory-repo` as its `seedDir`; nothing from
+  `fixtures/memory` is copied. A restart keeps the user (read back from SQLite) and adds no fixture agent; the SQLite file
+  and the memory repo belong together, so delete the whole data dir, never one of them. A data dir that holds the Sample
+  seed is refused. With `AGENT_COOKIE_DEMO=1`, `POST /demo/reset` returns to blank (same user, same owner key).
+- **owner.key.** Minted into `<dataDir>/owner.key` (0600) before the server listens; the supervisor reads it from there.
+  It is the only key at start; the gateway uses it for the owner routes (link approval, revoke).
+- **Listening line.** Once the listener accepts connections, stdout carries exactly one line
+  `[workspace] listening on http://127.0.0.1:<port>` (the real port, also with `PORT=0`); a second `[workspace] seed=…`
+  line follows with the mode. With `PORT=0` set `AGENT_COOKIE_URL`, since links and handshakes carry it.
+- **Liveness.** `GET /healthz`, no key: `{ "ok": true, "seed": "blank" }` (`HealthResponse`), nothing else; it does not
+  wait on a reset and writes no activity row.
+- **Stop.** SIGTERM (or SIGINT) closes the listener, waits for deliveries and background work, closes SQLite and exits 0
+  (1 if closing failed). Send it to the `tsx` process (it relays to Node) or run `node --import tsx src/server.ts`;
+  `pnpm start` does not forward signals reliably.
+- **Fixture replay** (`AGENT_COOKIE_UCP=fixture`, the default) is a data-source choice and works without demo mode; a blank
+  instance needs no seed fixtures (`FIXTURES_DIR` is read only for the UCP replay and to refuse Sample data).
 
 ## Behaviour in one screen
 

@@ -1,4 +1,5 @@
 // Wires the store, clock, the three plug-in packages (stubs today) and the services.
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   FIXTURE_FILES, isField, type Contribution, type LearnApi, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi,
@@ -12,7 +13,9 @@ import { Store } from "./db.js";
 import { fail } from "./http.js";
 import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
-import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
+import {
+  blankFixtures, ensureOwnerKey, loadFixtures, prepareBlankStore, seedStore, upgradeSeed, writeBlankMemorySeed, type Fixtures,
+} from "./seed.js";
 import { FunnelService } from "./services/analytics.js";
 import { AssistantService } from "./services/assistant.js";
 import { LinkService } from "./services/links.js";
@@ -75,7 +78,10 @@ export interface Deps {
   dreamingScheduled: boolean;
   /** Requests enter it; reset takes it exclusively. */
   gate: Gate;
-  /** POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. */
+  /**
+   * POST /demo/reset: wipe SQLite, reseed fixtures, reset the memory repo to its seed commit, clock offset 0. A blank
+   * instance returns to blank: its one user (same id and secret) and its minted owner key, nothing else.
+   */
   reset(): Promise<string>;
   /** Waits for in-flight deliveries (they log their result), then closes SQLite. */
   close(): Promise<void>;
@@ -92,17 +98,28 @@ export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; ru
   paymentProvider?: PaymentProvider }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
+  // A supervisor may hand over a data directory that does not exist yet (owner.key, SQLite and the memory repo live there).
+  mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   const gate = new Gate();
   const store = new Store(config.sqlitePath, { busyTimeoutMs: config.sqliteBusyTimeoutMs });
   // A request overtaken by a reset must not write anything (gate.ts); it hears "not found", like any vanished object.
   store.setWriteGuard(() => { if (gate.stale()) fail("NOT_FOUND"); });
   const clock = overrides.clock ?? new Clock();
   const log = activityLogger(store, clock, () => gate.stale());
-  const fixtures = loadFixtures(config.fixturesDir, config.ucpFixturesDir);
+  const blank = config.seed === "blank";
+  if (blank) {
+    try { prepareBlankStore(store, config.fixturesDir); } catch (err) { store.close(); throw err; }
+  }
+  // The user this database already has, else the seed's (blank: generated now, inserted by seedStore below).
+  const existingUser = store.firstUser();
+  const seededAt = existingUser?.createdAt ?? clock.nowIso();
+  const fixtures = blank ? blankFixtures(existingUser, config.ucpFixturesDir) : loadFixtures(config.fixturesDir, config.ucpFixturesDir);
   const rules = overrides.rules ?? loadRules();
   const ucp = overrides.ucp ?? loadUcp(config);
+  // Blank: an empty memory seed generated under the data dir, never lane C's Sample memory (fixtures/memory).
+  const seedDir = blank ? writeBlankMemorySeed(config, rules, fixtures.users[0]!.userId, seededAt) : resolve(config.fixturesDir, FIXTURE_FILES.memory);
   const repo = await (overrides.memoryRepoApi ?? loadMemoryRepoApi()).openMemoryRepo({
-    path: config.memoryRepoPath, seedDir: resolve(config.fixturesDir, FIXTURE_FILES.memory), userId: fixtures.users[0]!.userId, rules,
+    path: config.memoryRepoPath, seedDir, userId: fixtures.users[0]!.userId, rules,
   });
   const laneD: LaneDHooks = overrides.laneD ?? createLaneD(config, clock);
   const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log, laneD);
@@ -132,16 +149,17 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const links = new LinkService(ctx, sessions, card);
   const assistant = new AssistantService(ctx, sessions, card);
 
-  if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
+  if (!existingUser) seedStore(store, fixtures, config, seededAt);
   else upgradeSeed(store, fixtures, config, clock.nowIso());
   // The installed field policy, before anything is served: repo → SQLite → DEFAULT_POLICY.
   await policy.load(fixtures.users[0]!.userId);
   if (await learning.recoverForgets()) await reconcileRepo(ctx);
-  // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
+  // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them (a blank
+  // instance never has them: prepareBlankStore). Then the minted owner key, unless the Sample keys are loaded.
   if (!config.demo && !config.test) {
     for (const key of Object.keys(fixtures.devKeys)) store.deleteKey(hashKey(key));
-    ensureOwnerKey(store, config, clock.nowIso());
   }
+  ensureOwnerKey(store, config, clock.nowIso());
   card.get(fixtures.users[0]!.userId);
   // Dreaming: learning from observed conversations, decay and compaction, on its own period (0 = never scheduled).
   const dreaming = new Dreaming(ctx, card, learning);
@@ -157,8 +175,11 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       await delivery.settle();
       clock.setOffset(0);
       learning.reset();
+      // A blank instance keeps its minted owner key (owner.key; a supervisor holds it), as a sample reset keeps the Sample owner key.
+      const ownerKeys = blank ? store.ownerKeys() : [];
       store.clearAll();
       const now = clock.nowIso();
+      for (const k of ownerKeys) store.insertKey(k);
       seedStore(store, fixtures, config, now);
       await repo.resetToSeed();
       // settings were wiped with the tables and the repo is back at its seed: the policy returns to repo/default.

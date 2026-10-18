@@ -24,9 +24,15 @@ export interface Config {
   ucpMode: "live" | "fixture";
   /** Only when UCP_BIN is set; otherwise lane D's package runs its pinned CLI. */
   ucpBin?: string;
-  /** AGENT_COOKIE_DEMO=1: POST /demo/reset exists, dev keys load. */
+  /**
+   * AGENT_COOKIE_SEED: "sample" (default) seeds lane C's Sample persona, agents and (demo/test) keys from the fixtures;
+   * "blank" seeds one owner with a generated id and secret, no contribution, no agent, never a Sample key (demo or not),
+   * an empty memory repo, and always mints <dataDir>/owner.key. The hosted gateway runs one blank instance per person.
+   */
+  seed: "sample" | "blank";
+  /** AGENT_COOKIE_DEMO=1: POST /demo/reset exists, dev keys load (sample seed only). */
   demo: boolean;
-  /** AGENT_COOKIE_TEST=1: POST /test/clock exists, dev keys load. */
+  /** AGENT_COOKIE_TEST=1: POST /test/clock exists, dev keys load (sample seed only). */
   test: boolean;
   callbackTimeoutMs: number;
   callbackRetries: number;
@@ -93,7 +99,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = int(env.PORT, WORKSPACE_PORT, 0, 65535);
   const dataDir = resolve(env.AGENT_COOKIE_DATA_DIR ?? resolve(WORKSPACE_DIR, "data"));
   const fixturesDir = resolve(env.FIXTURES_DIR ?? resolve(REPO_ROOT, "fixtures"));
-  if (!existsSync(resolve(fixturesDir, "users.json"))) throw new Error(`no fixtures at ${fixturesDir} (set FIXTURES_DIR)`);
+  const seed = env.AGENT_COOKIE_SEED || "sample";
+  if (seed !== "sample" && seed !== "blank") throw new Error("AGENT_COOKIE_SEED must be sample or blank");
+  // A blank instance seeds nothing from the fixtures; they may still serve the UCP replay (AGENT_COOKIE_UCP=fixture).
+  if (seed === "sample" && !existsSync(resolve(fixturesDir, FIXTURE_FILES.users))) throw new Error(`no fixtures at ${fixturesDir} (set FIXTURES_DIR)`);
   if (env.AGENT_COOKIE_UCP !== undefined && env.AGENT_COOKIE_UCP !== "live" && env.AGENT_COOKIE_UCP !== "fixture") {
     throw new Error("AGENT_COOKIE_UCP must be live or fixture");
   }
@@ -111,6 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (learnProvider !== "off" && !learnApiKey) throw new Error("Learning provider requires its API key");
   const learnMode = env.AGENT_COOKIE_LEARN_MODE ?? "all";
   if (learnMode !== "all" && learnMode !== "explicit-only") throw new Error("Invalid learning mode");
+  // Fixture replay is a data-source choice, independent of AGENT_COOKIE_DEMO (which is about reset and Sample keys).
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   const experiment = env.AGENT_COOKIE_EXPERIMENT || "off";
   if (experiment !== "off" && experiment !== "ranking") throw new Error("AGENT_COOKIE_EXPERIMENT must be off or ranking");
@@ -128,6 +138,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ucpFixturesDir: resolve(env.AGENT_COOKIE_UCP_FIXTURES ?? resolve(fixturesDir, FIXTURE_FILES.ucp)),
     ucpMode,
     ...(env.UCP_BIN ? { ucpBin: env.UCP_BIN } : {}),
+    seed,
     demo: env.AGENT_COOKIE_DEMO === "1",
     test: env.AGENT_COOKIE_TEST === "1",
     callbackTimeoutMs: int(env.CALLBACK_TIMEOUT_MS, 5000, 50, 60_000),
