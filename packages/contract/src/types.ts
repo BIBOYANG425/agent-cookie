@@ -628,6 +628,7 @@ export interface Registration {
 // The assistant asks for a link; the OWNER approves it (console, CLI, or the hosted gateway after a passkey tap);
 // approval creates the session and its grant (purpose "assist"). Single use, LINK_TTL_MS, never auto-approved.
 export type LinkStatus = "pending" | "approved" | "declined" | "expired";
+export const LINK_STATUSES: readonly LinkStatus[] = ["pending", "approved", "declined", "expired"];
 export const LINK_TTL_MS = 10 * 60_000;
 /** An approved link's grant lasts this long (a consumer links once, not every ten minutes); the owner can revoke it any time. */
 export const ASSISTANT_GRANT_TTL_MS = 30 * 24 * 60 * 60_000;
@@ -648,7 +649,7 @@ export interface Link {
 export interface LinkView {
   id: string;
   status: LinkStatus;
-  /** Where the owner decides: the workspace resource; a console or gateway renders it. */
+  /** Where the owner decides: an ABSOLUTE URL of the workspace resource (`${jar}/owner/links/${id}`); a console or gateway renders it. */
   url: string;
   expiresAt: string;
   /** Present once approved. */

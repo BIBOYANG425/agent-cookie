@@ -22,7 +22,7 @@ export interface Endpoint {
 }
 
 export const ENDPOINTS: Endpoint[] = [
-  { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once. Merchants self-register; category personal needs the owner key (A13, confirmed)" },
+  { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once. Merchants self-register; category personal needs the owner key (A13, confirmed); category assistant: like a merchant (no key needed), role assistant, callbackUrl and chatEndpoint refused (422)" },
   { method: "GET", path: "/me", caller: "keyed", summary: "agentId, category, role for the presented key" },
 
   { method: "POST", path: "/personal/intents", caller: "personal", also: ["assistant"], idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
@@ -61,7 +61,7 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/assistant/context", caller: "assistant", summary: "→ AssistantContext: auto.assistant values + unknown + writable, no provenance; 403 SCOPE_DENIED until a link is approved, GRANT_REVOKED / GRANT_EXPIRED after; writes a receipt (purpose assist, field names only), none when the session's last assist receipt named the same fields under the same policy less than an hour ago" },
   { method: "POST", path: "/assistant/contributions", caller: "assistant", summary: "AssistantContributionInput { field, value, basis?, evidence?: { conversationId, snippet } } → 201 { stored, contribution } like /agent/contributions, filtered by write.assistant. basis stated REQUIRES evidence (both fields; snippet 1–200 characters, the user's own words) else 422 MISSING_FIELD, and is stored as stated with its evidence: a single-source card value while the assistant holds a live assist grant, a candidate again once the grant is revoked or expires. observed (default) is stored as observed and stays a candidate until a second independent source; inferred stays the assistant's own record, never on the card; shipping_address and payment_method → 403 SCOPE_DENIED whatever the policy says" },
   { method: "GET", path: "/assistant/stats", caller: "assistant", summary: "→ AssistantStats: counts over intents this assistant created (intents, quoted, accepted, completed, questionsSkipped)" },
-  { method: "GET", path: "/owner/links", caller: "owner", summary: "→ { links: Link[] } newest first: pending links to decide, and decided ones" },
+  { method: "GET", path: "/owner/links", caller: "owner", summary: "?limit= (default 100, max 500) → { links: Link[] } newest first: pending links to decide, and decided ones" },
   { method: "POST", path: "/owner/links/:id/approve", caller: "owner", summary: "→ Link approved: creates the assistant's pairwise session and grant (purpose assist, stage introduced); 404 unknown, 409 LINK_NOT_PENDING when decided or expired" },
   { method: "POST", path: "/owner/links/:id/decline", caller: "owner", summary: "→ Link declined; the assistant's GET sees declined and may ask again later; 404 unknown, 409 LINK_NOT_PENDING when decided or expired" },
 
