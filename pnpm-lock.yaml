@@ -314,11 +314,10 @@ importers:
         version: 2.1.9(@types/node@22.7.5)(lightningcss@1.33.0)
 
   packages/sdk:
-    dependencies:
+    devDependencies:
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../contract
-    devDependencies:
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
