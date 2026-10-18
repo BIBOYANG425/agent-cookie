@@ -422,6 +422,12 @@ C 线合入时的原始交接记录（保留全部原文）：
 | D2-workspace | D → A：只有当前 checkout 完成响应有 order、selected instrument id/handler 与请求相同且 agreed handler 表明接管授权时，记录 accepted/merchant-owned，不再自动 capture 或 reverse；`UCP_STORE_TAKES_PAYMENT` 不可当全局真值。不支持 handler 时保持当前 CLI reversal + handoff。mutating 请求超时/响应丢失、complete_in_progress 或响应无法验证时标 unknown，先查询对账，不可自动重试、capture、reverse 或声称支付成功。A21 加成功不撤销、拒绝回退、未知状态不盲目操作和 token 不泄漏；回执写明谁持有/捕获 hold。TAP payer 仍签 authority/path（不是金额或 body 的签名），需 HTTPS 和 provider-side checkout/merchant 绑定。 | 待 A；依赖 D2-contract |
 | D2-fixtures | D → C/A：支付 replay 先放 D 拥有的 `packages/ucp/test/fixtures`，标 recorded replay from local simulated merchant、Sample/test-only，不能称为 Shopify/Visa 实录。请 C 审核后同步到 `fixtures/ucp`；没有实际支持授权引用 handler 的 live merchant，不能编造支持证明或把既有 INSUFFICIENT_PERMISSIONS 录制改成成功。 | 待 C/A |
 | D3-auth | D → A：Visa JWT v2 / RS256 P12（SDK 0.0.84 JWTSigToken/KeyCertificateGenerator oracle）在 pay 实现，模拟器同时验证 HTTP Signature 与 JWT（digest/host/path/method/merchant/time/kid/jti replay）。只用公开 Sample 自签 P12，非 Visa 证书，无生产或 Visa server acceptance 声明。建议工作台用 server-only auth mode + P12 bytes/password 配置，不经 assistant/merchant 传密钥；A 接线时勿回退成共享密钥 JWT，勿接线 Stripe。 | D3 包内实现；工作台配置待 A |
+
+2026-10-18（续），Phase 3–5 合入 main 后的收尾（A 线，分支 `claude/amazing-allen-cnv3s6`）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A81 | A → 人（记录） | 按 owner 2026-10-18 的授权（A 线可直接改 `docs/plan.md`），A67 与 A71 已完成：§2 A29 改为已实现、A30 单列仍为计划；§4 环境变量加 `AGENT_COOKIE_SEED`、`AGENT_COOKIE_DATA_DIR`、`AGENT_COOKIE_MCP_TRANSPORT`、`MCP_HTTP_PORT`、`AGENT_COOKIE_OWNER_KEY`、`AGENT_COOKIE_WORKSPACE_DIR` 与网关变量，端口加 4320；§5 字段策略表加「历史记录」一列并在 floor 说明里写明，HTTP 段加 `GET /assistant/history`、三条 `/owner/keys`、`GET /healthz` 与新类型；§1 记下 Python 客户端。Phase 3 / 4 / 5 分别以 PR #33 / #35 / #34 合入 main（`6086bdd` / `abe3445` / `9712167`），`docs/bring-your-own-agent-plan.md` 的进展段落与 §9 状态同步。D 线的 PR #32（D1–D3：Visa Acceptance 模拟器、UCP 付款传输、JWT）也已于同日合入 main（`a38b8f3`）。仍待人：npm 发布（`packages/sdk/PUBLISHING.md`）、PyPI 发布（A74）、A66、A73、A75。 | 已完成 |
 2026-10-18，A 线回复 D1（A21 接线）。只追加。
 
 | ID | 请求 / 状态 |
