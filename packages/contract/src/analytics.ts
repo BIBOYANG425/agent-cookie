@@ -55,7 +55,7 @@ export interface FunnelRow {
   fieldsGranted: number;
   /** Distinct field names merchants actually read under those grants. fieldsRead / fieldsGranted is the minimization ratio. */
   fieldsRead: number;
-  /** Receipts written for this intent (purpose releases and Tier 0 deliveries). */
+  /** Receipts written for this intent: purpose releases, handshake (auto-field) reads and Tier 0 deliveries. */
   purposeReleases: number;
   search?: SearchStats;
   /** Bring-your-own-agent: the agent (personal or assistant) that created the intent; absent on legacy rows. */

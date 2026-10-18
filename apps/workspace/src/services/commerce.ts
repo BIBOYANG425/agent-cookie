@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import {
   DEFAULT_SELLER_COUNT, FIELDS, GRANT_TTL_MS, INTENT_STREAM_HEARTBEAT_MS, INTENT_STREAM_MAX_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS,
-  UpstreamError, WorkspaceError,
+  UpstreamError, WorkspaceError, policyAutoFields,
   type AcceptResult, type Agent, type ErrorCode, type Field, type IntentEvent, type PaymentAuthorization, type PaymentBillTo, type Quote,
   type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
@@ -213,8 +213,13 @@ export class CommerceService {
       // merchant reading its handshake's auto fields. `consulted` collects the NAMES of the card values this search
       // used (a value this request states itself is not a card read); each picked store's session gets one "handshake"
       // receipt naming them (below). The values never leave the workspace and never enter a log line.
+      // Only the fields this intent's policy document lists in `auto.retail` (every UCP store proxy is a "retail" agent)
+      // are read from the card: a field the owner's installed document leaves out is neither used by the search nor
+      // named in a receipt. A value the request states itself is still used, as before (it is not a card read).
+      const readable = new Set<Field>(policyAutoFields(policyDoc, "retail"));
       const consulted = new Set<Field>();
       const fromCard = (f: Field): string | undefined => {
+        if (!readable.has(f)) return undefined;
         const v = card[f];
         if (v !== undefined && v !== "") consulted.add(f);
         return v;

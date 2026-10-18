@@ -1,9 +1,10 @@
 // A32 (proposed, docs/bring-your-own-agent-plan.md §3): the churn. Two company assistants and two stores, over HTTP.
 // Assistant A links (the owner approves), reads the seeded card, states two facts with the person's own words and buys
 // from a UCP fixture store (B). Assistant C links and knows both facts on its FIRST context read, then buys from an
-// off-protocol store (D) that gets the address only at checkout. Receipts name four sessions; the funnel names who asked
-// and how many questions nobody had to ask; C cannot see A's intent; once the owner revokes A, A is refused and C no
-// longer gets A's single-source values. No assistant- or merchant-facing response ever names payment_method.
+// off-protocol store (D) that gets the address only at checkout. Receipts name five sessions (A, C, the two UCP stores
+// both searches quoted from, one of them B, and D), with a "handshake" receipt for every read of auto fields; the funnel
+// names who asked and how many questions nobody had to ask; C cannot see A's intent; once the owner revokes A, A is
+// refused and C no longer gets A's single-source values. No assistant- or merchant-facing response ever names payment_method.
 // HTTP only: the workspace is a child process this file starts (a32-workspace.ts); no workspace import, no storage access.
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -169,10 +170,20 @@ describe('A32 churn between company assistants (proposed)', { timeout: 120_000 }
     expect(assistA.length).toBeGreaterThanOrEqual(1);
     for (const r of assistA) expect(r).toMatchObject({ sessionId: A.sessionId });
     for (const r of assistA) expect(r.intentId).toBeUndefined();
-    const checkoutB = all.filter((r) => r.intentId === intentA.body.intentId);
+    const checkoutB = all.filter((r) => r.intentId === intentA.body.intentId && r.purpose === 'checkout');
     expect(checkoutB).toHaveLength(1);
     expect(checkoutB[0]).toMatchObject({ purpose: 'checkout', agentId: storeB.agentId, fields: ['shipping_address'] });
     const sessionB: string = checkoutB[0].sessionId;
+    // The search read the card for each UCP store it quoted from: one "handshake" receipt per store, naming the values
+    // the search used (the request states the budget; lang from the seed, the size and brand A stated). B is one of them.
+    const handshakeA = all.filter((r) => r.intentId === intentA.body.intentId && r.purpose === 'handshake');
+    expect(handshakeA).toHaveLength(2);
+    expect(handshakeA.map((r) => r.agentId).sort()).toEqual([...new Set((quotesA.body.quotes as Json[]).map((q) => q.agentId))].sort());
+    for (const r of handshakeA) expect(r.fields).toEqual(['lang', 'shoe_size', 'pref.brand']);
+    expect(new Set(handshakeA.map((r) => r.sessionId)).size).toBe(2);
+    expect(handshakeA.find((r) => r.agentId === storeB.agentId)?.sessionId).toBe(sessionB);
+    const sessionB2: string = handshakeA.find((r) => r.agentId !== storeB.agentId)!.sessionId;
+    expect(all.filter((r) => r.intentId === intentA.body.intentId)).toHaveLength(3);
 
     // ---- Assistant C: another company, linked today. Its FIRST read carries both facts A wrote, and not why.
     const C = await linkedAssistant(`Sample · Assistant C (A32 ${run})`);
@@ -200,7 +211,11 @@ describe('A32 churn between company assistants (proposed)', { timeout: 120_000 }
     expect(autoD.status).toBe(200);
     expect(autoD.body.fields.shoe_size, 'the size A stated reaches store D too').toBe(size);
     expectError(await D.as('GET', fieldsQuery(sessionD, ['shipping_address'], 'checkout')), 403, 'PURPOSE_MISMATCH');
-    expect((await receipts()).filter((r) => r.sessionId === sessionD), 'no address before checkout').toEqual([]);
+    const beforeD = (await receipts()).filter((r) => r.sessionId === sessionD);
+    expect(beforeD.filter((r) => r.fields.includes('shipping_address')), 'no address before checkout').toEqual([]);
+    // D's auto read is a release too: one "handshake" receipt naming exactly the two values it received.
+    expect(beforeD).toHaveLength(1);
+    expect(beforeD[0]).toMatchObject({ purpose: 'handshake', agentId: D.agentId, intentId: intentC.body.intentId, fields: ['shoe_size', 'lang'] });
 
     const quoteD = await D.as('POST', '/agent/quotes', { intentId: intentC.body.intentId, text: `Sample · A32 store D quote ${run}`, price: 9900 },
       `a32-${run}-quote-d`);
@@ -218,12 +233,18 @@ describe('A32 churn between company assistants (proposed)', { timeout: 120_000 }
     expect(ship.body.fields).toEqual({ shipping_address: ADDRESS });
     expectError(await D.as('GET', fieldsQuery(sessionD, ['payment_method'], 'payment')), 403, 'SCOPE_DENIED');
 
-    // ---- Receipts: four sessions (A's and C's assist reads, B's and D's checkout reads); the address only at checkout.
+    // ---- Receipts: five sessions (A's and C's assist reads; the two UCP stores' handshake reads for both intents, with
+    // B's checkout read; D's handshake and checkout reads); the address only at checkout.
     all = await receipts();
-    expect([...new Set(all.map((r) => r.sessionId))].sort()).toEqual([A.sessionId, C.sessionId, sessionB, sessionD].sort());
-    expect(new Set([A.sessionId, C.sessionId, sessionB, sessionD]).size).toBe(4);
+    expect([...new Set(all.map((r) => r.sessionId))].sort()).toEqual([A.sessionId, C.sessionId, sessionB, sessionB2, sessionD].sort());
+    expect(new Set([A.sessionId, C.sessionId, sessionB, sessionB2, sessionD]).size).toBe(5);
     expect(all.filter((r) => r.purpose === 'assist' && r.agentId === C.agentId).every((r) => r.sessionId === C.sessionId)).toBe(true);
-    const checkoutD = all.filter((r) => r.sessionId === sessionD);
+    // C's search quoted from the same two UCP stores, through the same pairwise sessions.
+    const handshakeCUcp = all.filter((r) => r.intentId === intentC.body.intentId && r.purpose === 'handshake' && r.sessionId !== sessionD);
+    expect(handshakeCUcp.map((r) => r.sessionId).sort()).toEqual([sessionB, sessionB2].sort());
+    for (const r of handshakeCUcp) expect(r.fields).toEqual(['lang', 'shoe_size', 'pref.brand']);
+    expect(all.filter((r) => r.sessionId === sessionD).map((r) => r.purpose).sort()).toEqual(['checkout', 'handshake']);
+    const checkoutD = all.filter((r) => r.sessionId === sessionD && r.purpose === 'checkout');
     expect(checkoutD).toHaveLength(1);
     expect(checkoutD[0]).toMatchObject({ purpose: 'checkout', agentId: D.agentId, intentId: intentC.body.intentId, fields: ['shipping_address'] });
     for (const r of all) {
@@ -237,11 +258,13 @@ describe('A32 churn between company assistants (proposed)', { timeout: 120_000 }
     // ---- Funnel: who asked, and the questions nobody had to ask (field names served, summed over the intent's receipts).
     const funnel = await owner('GET', '/owner/funnel');
     expect(funnel.status).toBe(200);
-    for (const [who, intentId] of [[A, intentA.body.intentId], [C, intentC.body.intentId]] as Array<[Agent, string]>) {
+    // A: 2 UCP stores × (lang, shoe_size, pref.brand) + shipping_address = 7.
+    // C: the same 2 × 3 + D's (shoe_size, lang) + shipping_address = 9.
+    for (const [who, intentId, skipped] of [[A, intentA.body.intentId, 7], [C, intentC.body.intentId, 9]] as Array<[Agent, string, number]>) {
       const row = (funnel.body.rows as Json[]).find((x) => x.intentId === intentId);
       expect(row, `funnel row for ${intentId}`).toBeDefined();
       expect(row!.createdBy).toBe(who.agentId);
-      expect(row!.questionsSkipped).toBeGreaterThanOrEqual(1);
+      expect(row!.questionsSkipped).toBe(skipped);
       expect(row!.questionsSkipped).toBe(all.filter((r) => r.intentId === intentId).reduce((n, r) => n + r.fields.length, 0));
       const stats = await who.as('GET', '/assistant/stats');
       expect(stats.body).toMatchObject({ intents: 1, accepted: 1, questionsSkipped: row!.questionsSkipped });

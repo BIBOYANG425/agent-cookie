@@ -5095,7 +5095,7 @@
           },
           "purposeReleases": {
             "type": "number",
-            "description": "Receipts written for this intent (purpose releases and Tier 0 deliveries)."
+            "description": "Receipts written for this intent: purpose releases, handshake (auto-field) reads and Tier 0 deliveries."
           },
           "search": {
             "$ref": "#/components/schemas/SearchStats"

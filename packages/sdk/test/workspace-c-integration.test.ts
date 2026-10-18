@@ -41,13 +41,29 @@ it('connects A SQLite to real C rules and Git receipt persistence through SDK re
   ]) });
   const found = await client.find({ text: 'trail shoes', public: { budget: '120' } }, 'ac:find');
   expect(found.quotes).toHaveLength(2); // Real D adapter replays the two EU 42 recordings.
-  expect((await client.getReceipts()).receipts).toEqual([]); // No kind hint: no ACME/Tier 0 introduction.
+  // No kind hint: no ACME/Tier 0 introduction. The UCP search read the card for each store it quoted from, so each UCP
+  // store session has one "handshake" receipt naming the values the search used: the request states the budget, so
+  // the card's lang and shoe_size (the Sample card holds no pref.*). Never the address.
+  const handshakes = (await client.getReceipts()).receipts;
+  expect(handshakes).toHaveLength(2);
+  expect(handshakes.map(r => r.agentId).sort()).toEqual(found.quotes.map(q => q.agentId).sort());
+  const grants = (await client.getGrants()).grants; // a session is pairwise: its grants name its one merchant
+  for (const r of handshakes) {
+    expect(r).toMatchObject({ purpose: 'handshake', intentId: found.intentId, fields: ['lang', 'shoe_size'] });
+    expect(r.fields).not.toContain('shipping_address');
+    expect(grants.find(g => g.sessionId === r.sessionId)?.agentId).toBe(r.agentId);
+  }
+  expect(new Set(handshakes.map(r => r.sessionId)).size).toBe(2);
+  expect(append).toHaveBeenCalledTimes(2);
   await client.accept(found.quotes[0].id, 'ac:accept');
-  expect(append).toHaveBeenCalledOnce();
-  expect(await append.mock.results[0].value).toMatchObject({ sha: expect.stringMatching(/^[a-f0-9]{40}$/) });
+  expect(append).toHaveBeenCalledTimes(3);
+  expect(await append.mock.results[2].value).toMatchObject({ sha: expect.stringMatching(/^[a-f0-9]{40}$/) });
   const receipts = await client.getReceipts();
+  expect(receipts.receipts).toHaveLength(3);
   expect(receipts.receipts).toEqual(expect.arrayContaining([
-    expect.objectContaining({ agentId: found.quotes[0].agentId, purpose: 'checkout', fields: ['shipping_address'] }),
+    ...handshakes,
+    expect.objectContaining({ agentId: found.quotes[0].agentId, purpose: 'checkout', fields: ['shipping_address'],
+      sessionId: handshakes.find(r => r.agentId === found.quotes[0].agentId)!.sessionId }),
   ]));
   expect((await connect(deps, ownerKey).getActivity()).activity.filter(e => e.event === 'memory.write' && e.result === 'failed')).toEqual([]);
   await deps.delivery.settle();

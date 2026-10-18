@@ -254,6 +254,43 @@ describe("a UCP store proxy: the workspace's own read of the card when it search
     for (const e of ev) expect(e.reason).toMatch(/^fields=\d intent=i_[0-9a-z]{8}$/);
   });
 
+  it("the search reads only the card fields the installed document lists in auto.retail: a field left out is neither used nor named", async () => {
+    // A third store whose title names the colour: a search that uses the card's pref.color ranks it first.
+    const blue: UcpOffer = { ...offer("gamma.example", "g1", 11_000), productTitle: "gamma.example trail shoe · Blue · Sample" };
+    const { h } = await setup({ ucp: new StubUcp([offer("alpha.example", "a1", 9_900), offer("beta.example", "b1", 10_500), blue]) });
+    expect((await h.post("/personal/contributions", KEYS.personal, { field: "pref.color", value: "blue" })).status).toBe(201);
+    const search = async (pub: Record<string, string>) => {
+      const intentId = (await h.post("/personal/intents", KEYS.personal, { text: "Sample · trail shoes", public: pub })).body.intentId as string;
+      const quotes = (await h.get(`/personal/intents/${intentId}/quotes?wait=0`, KEYS.personal)).body.quotes as Json[];
+      const rs = (await receipts(h)).filter((x) => x.intentId === intentId);
+      return { intentId, sellers: quotes.map((q) => q.seller).sort(), rs };
+    };
+
+    // The default document lists pref.color in auto.retail: the search uses it and the receipts name it.
+    const before = await search({ budget: "120" });
+    expect(before.sellers).toEqual(["alpha.example", "gamma.example"]);
+    expect(before.rs.map((x) => [x.purpose, x.fields, x.policyId])).toEqual([
+      ["handshake", ["lang", "shoe_size", "pref.color"], policyId(DEFAULT_POLICY)], ["handshake", ["lang", "shoe_size", "pref.color"], policyId(DEFAULT_POLICY)]]);
+
+    // The owner installs a document whose auto.retail omits pref.color.
+    const narrow = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    narrow.auto.retail = narrow.auto.retail.filter((f) => f !== "pref.color");
+    expect((await h.put("/personal/policy", KEYS.owner, narrow)).status).toBe(200);
+    const after = await search({ budget: "120" });
+    // catalog order: the card's colour no longer ranks the blue store in
+    expect(after.sellers).toEqual(["alpha.example", "beta.example"]);
+    expect(after.rs.map((x) => [x.purpose, x.fields, x.policyId])).toEqual([
+      ["handshake", ["lang", "shoe_size"], policyId(narrow)], ["handshake", ["lang", "shoe_size"], policyId(narrow)]]);
+    for (const x of after.rs) expect(x.fields).not.toContain("pref.color");
+    const ev = (await activity(h)).filter((e) => e.event === "ucp.handshake" && String(e.reason).endsWith(`intent=${after.intentId}`));
+    expect(ev.map((e) => e.reason)).toEqual([`fields=2 intent=${after.intentId}`, `fields=2 intent=${after.intentId}`]);
+
+    // A colour the request states is still used (it is not a card read), and still not named in a receipt.
+    const stated = await search({ budget: "120", color: "blue" });
+    expect(stated.sellers).toEqual(["alpha.example", "gamma.example"]);
+    expect(stated.rs.map((x) => x.fields)).toEqual([["lang", "shoe_size"], ["lang", "shoe_size"]]);
+  });
+
   it("the receipts cannot be written → the intent fails with nothing committed: no intent, no quote, no receipt", async () => {
     let failing = true;
     const { h } = await setup({ ucp: twoStores(), memoryRepoApi: failingReceipts((r) => failing && r.purpose === "handshake") });
