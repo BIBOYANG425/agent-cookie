@@ -138,9 +138,10 @@ describe("routes", () => {
     const withTest = routes(gateway({ AGENT_COOKIE_TEST: "1" }));
     for (const e of GATEWAY_ENDPOINTS) expect(withTest.has(`${e.method} ${e.path}`), `${e.method} ${e.path}`).toBe(true);
     const contract = new Set(GATEWAY_ENDPOINTS.map((e) => `${e.method} ${e.path}`));
-    // The one route the contract does not list: the passkey browser bundle the pages load.
-    expect([...withTest].filter((r) => !contract.has(r))).toEqual(["GET /vendor/webauthn.js"]);
-    expect(routes(gateway()).has("POST /test/session")).toBe(false);
+    expect([...withTest].filter((r) => !contract.has(r))).toEqual([]);
+    const withoutTest = routes(gateway());
+    expect(withoutTest.has("POST /test/session")).toBe(false);
+    expect(withoutTest.size).toBe(contract.size - 1);
   });
 
   it("answers health with counts only", async () => {
@@ -213,22 +214,34 @@ describe("global registration and consent links", () => {
     expect((await gw.app.request("/link/lk_unknown")).status).toBe(404);
   });
 
-  it("hands the jar only while the link lives, then purges the encrypted key", async () => {
-    let clock = Date.parse("2026-10-18T12:00:00.000Z");
+  it("hands the jar for LINK_TTL_MS after the APPROVAL (even past the link's own expiry), then purges the encrypted key", async () => {
+    const asked = Date.parse("2026-10-18T12:00:00.000Z");
+    let clock = asked;
     const gw = gateway({}, { now: () => clock });
     const muse = await register(gw);
     const client = sdkClient(gw, muse.key);
     const link = await client.requestLink();
-    // Stand in for an approval (the integration test runs the real one): the row as approve stores it.
+    expect(Date.parse(link.expiresAt)).toBe(asked + LINK_TTL_MS);
+    // The person approves late in the link's life. Stand in for the approval (the integration test runs the real one):
+    // the row exactly as approve stores it.
+    clock = asked + LINK_TTL_MS - 30_000;
+    const approvedAt = clock;
     gw.store.insertPerson({ userId: "usr_aaaaaaaaaaaaaaaa", createdAt: clock, dataDir: "/nonexistent" });
     const keys = deriveKeys(gw.config.secret);
     expect(gw.store.approveLink(link.id, {
-      decidedAt: clock, userId: "usr_aaaaaaaaaaaaaaaa", instanceLinkId: "lk_inst", instanceAgentId: "ag_inst", instanceSessionId: "sess_1",
+      decidedAt: approvedAt, userId: "usr_aaaaaaaaaaaaaaaa", instanceLinkId: "lk_inst", instanceAgentId: "ag_inst", instanceSessionId: "sess_1",
       jarUrl: `${ORIGIN}/u/usr_aaaaaaaaaaaaaaaa`, jarKeyCiphertext: encryptSecret(keys.jarKey, "ck_instancekey000000000000000000000", `jar-key:${link.id}`),
     }, clock)).toBe(true);
-    const approved = await client.link(link.id);
-    expect(approved).toMatchObject({ status: "approved", sessionId: "sess_1", jar: { url: `${ORIGIN}/u/usr_aaaaaaaaaaaaaaaa`, key: "ck_instancekey000000000000000000000" } });
-    clock += LINK_TTL_MS + 1;
+    const jar = { url: `${ORIGIN}/u/usr_aaaaaaaaaaaaaaaa`, key: "ck_instancekey000000000000000000000" };
+    expect(await client.link(link.id)).toMatchObject({ status: "approved", sessionId: "sess_1", jar });
+    // Past the link's own expiry, still inside the window that started at the approval: the jar is still there.
+    clock = asked + LINK_TTL_MS + 60_000;
+    expect(await client.link(link.id)).toMatchObject({ status: "approved", sessionId: "sess_1", jar });
+    expect(gw.store.purgeJarKeysDecidedBefore(clock - LINK_TTL_MS)).toBe(0);
+    // The last millisecond of the window, then the first one after it.
+    clock = approvedAt + LINK_TTL_MS - 1;
+    expect((await client.link(link.id)).jar).toEqual(jar);
+    clock = approvedAt + LINK_TTL_MS;
     const later = await client.link(link.id);
     expect(later.status).toBe("approved");
     expect(later.sessionId).toBe("sess_1");
@@ -375,7 +388,14 @@ describe("operator (Phase 4 reserve)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(Date.parse(body.generatedAt as string)).toBeGreaterThan(0);
-    expect(body).toMatchObject({ persons: 0, intents: 0, quoted: 0, accepted: 0, questionsSkipped: 0, byAssistant: [], byMerchant: [] });
+    expect(body).toEqual({
+      generatedAt: body.generatedAt, measured: false, persons: 0, intents: 0, quoted: 0, accepted: 0, questionsSkipped: 0, byAssistant: [], byMerchant: [],
+    });
+    // persons is the real count, the one counter the gateway knows before Phase 4.
+    await register(gw);
+    gw.store.insertPerson({ userId: "usr_dddddddddddddddd", createdAt: Date.now(), dataDir: "/nonexistent" });
+    const again = (await (await gw.app.request("/operator/funnel", { headers: { authorization: `Bearer ${key}` } })).json()) as Record<string, unknown>;
+    expect(again).toMatchObject({ measured: false, persons: 1, intents: 0 });
   });
 });
 

@@ -39,6 +39,8 @@ export const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
 const JSON_BODY_MAX = 64 * 1024;
 const PROXY_BODY_MAX = 1024 * 1024;
 const SWEEP_MS = 60_000;
+/** An approved link's `jar` (and the stored instance key behind it) is readable this long after the APPROVAL. */
+const JAR_READABLE_MS = LINK_TTL_MS;
 /** Categories a company registers at the gateway: an assistant, or a store's agent. A personal agent lives in a jar. */
 const GATEWAY_CATEGORIES: readonly Category[] = ["assistant", "shoe", "retail"];
 
@@ -245,7 +247,7 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
 
   const sweep = setInterval(() => {
     const t = now();
-    store.purgeExpiredJarKeys(t);
+    store.purgeJarKeysDecidedBefore(t - JAR_READABLE_MS);
     store.purgeExpiredSessions(t);
     for (const [k, v] of challenges) if (v.expiresAt <= t) challenges.delete(k);
     signInLimiter.sweep();
@@ -378,8 +380,9 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
   const linkView = (l: LinkRow, t: number): LinkView => {
     const view: LinkView = { id: l.id, status: linkStatus(l, t), url: `${config.origin}/link/${l.id}`, expiresAt: iso(l.expiresAt) };
     if (l.status === "approved" && l.instanceSessionId) view.sessionId = l.instanceSessionId;
-    // The person's jar and this assistant's key in it: approved links only, until the link expires (then purged).
-    if (l.status === "approved" && l.jarUrl && l.jarKeyCiphertext && t < l.expiresAt) {
+    // The person's jar and this assistant's key in it: approved links only, for JAR_READABLE_MS after the approval
+    // (then purged), whenever in the link's own life the person approved it.
+    if (l.status === "approved" && l.jarUrl && l.jarKeyCiphertext && l.decidedAt !== null && t < l.decidedAt + JAR_READABLE_MS) {
       const key = decryptSecret(keys.jarKey, l.jarKeyCiphertext, `jar-key:${l.id}`);
       if (key) view.jar = { url: l.jarUrl, key };
     }
@@ -502,7 +505,7 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
   app.post("/assistant/link", assistant, (c) => {
     const agent = c.get("agent");
     const t = now();
-    store.purgeExpiredJarKeys(t);
+    store.purgeJarKeysDecidedBefore(t - JAR_READABLE_MS);
     const open = store.openLinkForAgent(agent.agentId, t);
     if (open) return c.json(linkView(open, t), 200);
     const id = newId("lk", 10);
@@ -513,7 +516,7 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
 
   app.get("/assistant/link/:id", assistant, (c) => {
     const t = now();
-    store.purgeExpiredJarKeys(t);
+    store.purgeJarKeysDecidedBefore(t - JAR_READABLE_MS);
     const l = store.link(c.req.param("id"));
     if (!l || l.agentId !== c.get("agent").agentId) fail("NOT_FOUND");
     c.header("cache-control", "no-store");
@@ -658,7 +661,7 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
         if (typeof asked.id !== "string") fail("UPSTREAM_ERROR", "the jar answered unexpectedly");
         const approved = await upstreamJson(await lease.fetch(`/owner/links/${encodeURIComponent(asked.id)}/approve`, { method: "POST", owner: true }), [200]);
         if (approved.status !== "approved" || typeof approved.sessionId !== "string") fail("UPSTREAM_ERROR", "the jar answered unexpectedly");
-        // 4. The mapping, and the assistant's jar access (key encrypted at rest, readable until the link expires).
+        // 4. The mapping, and the assistant's jar access (key encrypted at rest, readable for JAR_READABLE_MS from now).
         const t = now();
         const stored = store.approveLink(id, {
           decidedAt: t,
@@ -795,12 +798,14 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
   };
   app.on(["GET", "POST", "PUT"], "/u/:userId/*", proxy);
 
-  // ---- operator (Phase 4 reserve): counts across instances; not measured yet, so the instance counters are zero
+  // ---- operator (Phase 4 reserve): counts across instances. Not measured yet: `measured: false`, the real persons
+  // count, and placeholder zeros for every per-instance counter until Phase 4 computes them.
   app.get("/operator/funnel", (c) => {
     const key = bearer(c);
     if (!config.operatorKey || !key || !safeEqual(key, config.operatorKey)) fail("AUTH_REQUIRED");
     return c.json<OperatorFunnel>({
       generatedAt: iso(now()),
+      measured: false,
       persons: store.countPersons(),
       intents: 0,
       quoted: 0,

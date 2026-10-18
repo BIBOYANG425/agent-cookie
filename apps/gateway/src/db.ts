@@ -1,6 +1,6 @@
 // Gateway SQLite (<dataDir>/gateway.sqlite): persons, passkey credentials, global agents, gateway-level links and
 // browser sessions. Keys and session ids are stored hashed. The one secret kept readable is the per-person instance
-// key an approved link hands its assistant: encrypted at rest (crypto.ts) and purged when the link expires. No card
+// key an approved link hands its assistant: encrypted at rest (crypto.ts) and purged LINK_TTL_MS after the approval. No card
 // field value ever reaches this database: the person's data lives in their own instance's directory.
 import Database from "better-sqlite3";
 import type { Category, Role } from "@agent-cookie/contract";
@@ -239,9 +239,13 @@ export class GatewayStore {
     return this.db.prepare("UPDATE links SET status = 'declined', decided_at = ?, user_id = ? WHERE id = ? AND status = 'pending' AND expires_at > ?")
       .run(now, userId, id, now).changes === 1;
   }
-  /** The instance key of every link past its expiry is dropped; returns how many were purged. */
-  purgeExpiredJarKeys(now: number): number {
-    return this.db.prepare("UPDATE links SET jar_key_ciphertext = NULL WHERE jar_key_ciphertext IS NOT NULL AND expires_at <= ?").run(now).changes;
+  /**
+   * Drops the instance key of every link decided at or before `cutoff` (the caller passes now − LINK_TTL_MS: the key is
+   * readable for LINK_TTL_MS after the approval). Returns how many were purged.
+   */
+  purgeJarKeysDecidedBefore(cutoff: number): number {
+    return this.db.prepare("UPDATE links SET jar_key_ciphertext = NULL WHERE jar_key_ciphertext IS NOT NULL AND (decided_at IS NULL OR decided_at <= ?)")
+      .run(cutoff).changes;
   }
 
   // ---- sessions

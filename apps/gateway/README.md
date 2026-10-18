@@ -15,8 +15,8 @@ What it guarantees:
   around it.
 - Pages, logs and `/me.json` carry ids, names, counts and field **names** only, never a field value or a key.
 - Global agent keys and session ids are stored hashed. The one secret kept readable is the instance key an approved
-  link hands its assistant. It is encrypted at rest (AES-256-GCM, key derived from the gateway secret) and purged when
-  the link expires.
+  link hands its assistant. It is encrypted at rest (AES-256-GCM, key derived from the gateway secret) and purged
+  `LINK_TTL_MS` after the approval.
 
 ## Run locally
 
@@ -35,6 +35,15 @@ the default origin `http://127.0.0.1:4320`. For local passkey testing set
 Tests: `pnpm --filter @agent-cookie/gateway test`. The integration file spawns real `apps/workspace` instances.
 Passkeys are verified by injected functions, as in `apps/unlock`, and a second person signs in through
 `POST /test/session`.
+
+The tests drive the assistant side through the real SDK, which is imported from its built `dist/`. The root
+`pnpm test` builds it first. When you run the gateway on its own (`pnpm --filter @agent-cookie/gateway test` or
+`typecheck`), build the SDK once beforehand, and again after the SDK changes:
+
+```sh
+pnpm --filter @agent-cookie/sdk build
+pnpm --filter @agent-cookie/gateway test
+```
 
 ## Environment
 
@@ -66,8 +75,9 @@ developer's workspace settings are not passed on. `AGENT_COOKIE_DEMO` and `AGENT
    field **names** you may receive (the default policy's `auto.assistant`), and approve or decline. The gateway then
    registers you inside their instance, approves the instance-level link with the owner key it holds, and stores the mapping.
 4. **Poll** `GET /assistant/link/:id` (global key). Once approved it carries `sessionId` and
-   `jar: { url: "<origin>/u/<userId>", key }` until the link expires (`LINK_TTL_MS` after you asked). Keep `jar.key`
-   in your own secret store.
+   `jar: { url: "<origin>/u/<userId>", key }` for `LINK_TTL_MS` after the person **approved**. After that the
+   stored key is purged and `jar` disappears, while `status` and `sessionId` stay. Keep `jar.key` in your own secret
+   store the first time you see it.
 5. **Use the jar**: every `/assistant/*` and intent route of the workspace, unchanged, under `jar.url`, with `jar.key`.
 
 With the SDK:
@@ -100,11 +110,11 @@ The gateway speaks plain HTTP on 127.0.0.1. Whatever faces the internet (nginx, 
 
 ## Routes
 
-Exactly `GATEWAY_ENDPOINTS` (contract), plus `GET /vendor/webauthn.js` (the `@simplewebauthn/browser` bundle the
-pages load).
+Exactly `GATEWAY_ENDPOINTS` (contract). A test checks that the mounted routes and the list match.
 
 - **Anyone:** `GET /healthz` returns `{ ok, instances: { running, known } }`. Also `POST /agents/register`,
-  `GET /link/:id`, and the four `/webauthn/*` routes.
+  `GET /link/:id`, the four `/webauthn/*` routes, and `GET /vendor/webauthn.js` (the `@simplewebauthn/browser`
+  bundle the pages load, served locally).
 - **Assistant** (global key): `POST /assistant/link`, `GET /assistant/link/:id`.
 - **Browser** (signed session cookie, `HttpOnly`, `SameSite=Lax`, 7 days, rotated on every sign-in):
   `POST /links/:id/approve|decline`, `GET /me`, `GET /me.json` (`MeView`), `POST /me/grants/:id/revoke`,
@@ -114,7 +124,7 @@ pages load).
   instance checks its own keys. Refused with 404 in every spelling (percent-encoding, case, doubled slashes):
   `/owner/*`, `/demo/*`, `/test/*`, `/healthz`, and every route the workspace contract gives to the owner key only
   (`PUT /personal/policy`, `POST /personal/policy/shadow`).
-- **Operator:** `GET /operator/funnel`, `OperatorFunnel` (Phase 4 reserve, see below).
+- **Operator:** `GET /operator/funnel`, `OperatorFunnel` with `measured: false` (Phase 4 reserve, see below).
 - **Test:** `POST /test/session { userId? }`, only with `AGENT_COOKIE_TEST=1`.
 
 ## Data layout
@@ -134,9 +144,9 @@ SIGTERMs the instance and removes `persons/<userId>/`. Their jar URL answers 404
 
 ## Not done yet
 
-- **Operator aggregate** (`GET /operator/funnel`) is a Phase 4 reserve. It checks the operator key and returns the
-  real `persons` count. Every per-instance counter is `0` and both lists are empty, because nothing is measured
-  across instances yet.
+- **Operator aggregate** (`GET /operator/funnel`) is a Phase 4 reserve. It checks the operator key and returns
+  `measured: false` with the real `persons` count. Every per-instance counter is a placeholder `0` and both lists are
+  empty, because nothing is measured across instances yet.
 - **No email and no recovery of a lost passkey.** A person whose only passkey is gone cannot get back into their jar.
   Synced passkeys (iCloud Keychain, Google Password Manager) are the mitigation for now.
 - One passkey per person: there is no "add another device" flow yet.
