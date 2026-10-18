@@ -10,6 +10,10 @@ export function stageIndex(stage: FunnelStage): number {
   return FUNNEL_STAGES.indexOf(stage);
 }
 
+export function isFunnelStage(x: unknown): x is FunnelStage {
+  return typeof x === "string" && (FUNNEL_STAGES as readonly string[]).includes(x);
+}
+
 /**
  * What the hard filters did to one catalog search (apps/workspace ucp-filter: USD, ships to the user's country,
  * available, the budget stated in this request, the card's learned `pref.avoid`). `offers` = eligible + every dropped

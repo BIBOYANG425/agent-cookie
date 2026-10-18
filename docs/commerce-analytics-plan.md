@@ -121,39 +121,24 @@ Gate: suite green; editing `POLICY.yaml` in a dev memory repo to remove `deadlin
 
 Proposed acceptance IDs: **A25 · policy document** — `GET /personal/policy` returns a document whose id matches the `policyId` on the next receipt; `PUT` of a document that puts `payment_method` under `auto.retail` returns 422 naming the violation and changes nothing. **A26 · shadow** — shadow of the installed document returns `changed: []`.
 
-## 4 · Phase 2 — Stage-gated disclosure and a longer intent (A)
+## 4 · Phase 2 — Stage-gated disclosure (A) · built 2026-10-18, intent lifetime parked
 
-Goal: fields open as the funnel advances, not only at accept; an intent outlives a grant.
+Goal: fields open as the funnel advances, not only at accept.
 
-Contract additions:
+**What was built, and why it is smaller than first drafted.** No second document shape was needed: the stage names (`quoted`, `accepted`, `checkout`, `payment`) double as purpose names in the v1 document. A document that says `purpose.shoe.budget = ["quoted"]` means "budget opens once this merchant has quoted, and must be read with purpose quoted". The floor keeps `shipping_address` at `checkout` and `payment_method` at `payment`.
 
-```ts
-export type FieldTier = "style" | "preference" | "logistics" | "identity" | "payment";
-export interface PolicyDocumentV2 {
-  v: 2;
-  tiers: Record<Field, FieldTier>;                                  // every field exactly once
-  /** Per category: the stage at which each tier opens, and the purpose a read must declare (undefined = none). */
-  opens: Record<Category, Partial<Record<FieldTier, { stage: FunnelStage; purpose?: string }>>>;
-  write: Record<Category, Field[]>;
-}
-export type AnyPolicyDocument = PolicyDocument | PolicyDocumentV2;
-export function upgradePolicy(doc: PolicyDocument): PolicyDocumentV2;   // v1 → v2 with identical decisions
-export const INTENT_TTL_MS = 24 * 60 * 60 * 1000;                       // was GRANT_TTL_MS
-export interface Grant { /* existing */ stage?: FunnelStage }
-```
+Contract: `Grant.stage?: FunnelStage`, `isFunnelStage`, and `INTENT_TTL_MS` as a named constant **equal to `GRANT_TTL_MS`** (see the decision below).
 
-The v1 → v2 upgrade is mechanical and must be decision-identical: style and preference and logistics tiers open at `introduced` with no purpose (today's `auto`), identity (`shipping_address`) opens at `checkout` with purpose `checkout`, payment opens at `payment` with purpose `payment`. The v1 golden test runs again through `upgradePolicy`.
+Workspace (`sessions.ts`, `commerce.ts`, schema v9 `grants.stage`):
 
-Workspace work:
+1. The handshake grant carries `stage: "introduced"`.
+2. `advance(session, intentId, stage, category)`: the fields the installed document lists under a purpose named like the stage get a grant whose purpose is the stage, for one TTL; nothing opens → no grant, so the default document issues exactly the grants it always did.
+3. Transitions: first quote by a merchant for an intent → `quoted`; accept → `accepted` then `checkout` (this replaces the hard-coded `widen(["shipping_address"], "checkout")`); a failed accept withdraws every grant it opened. `payment` is the hook lane D's `authorizePayment` calls (Phase 5).
+4. The purpose-grounding check in `fields.ts` is unchanged: a purpose field needs a live grant whose purpose matches, which only a stage transition creates.
 
-1. `sessions.ts`: `widen(session, intentId, fields, purpose)` becomes `advance(session, intentId, stage)`; the grant's fields come from `policy.fieldsOpenAt(category, stage)`, `purpose` from the document, `stage` stored on the grant. `widen` stays as a one-line wrapper until callers move.
-2. Stage transitions, each a call to `advance`: `commit` → `introduced`; `submitQuote` (first quote by this merchant for this intent) → `quoted`; `accept` → `accepted`; UCP `createCheckout` succeeded → `checkout` (this replaces today's `widen(["shipping_address"], "checkout")`, keeping the "address read only once a live checkout exists" promise from `ucpCheckout`); lane D `authorizePayment` succeeded → `payment`; UCP `complete` ordered → `completed`. Callback merchants without a checkout signal: `accepted` implies `checkout` as today.
-3. `fields.ts`: the purpose-grounding check ("a live grant widened for exactly this purpose, which only exists after accept") is unchanged in effect; it now reads "a live grant at a stage ≥ the field's opening stage with the document's purpose".
-4. `createIntent`: `expiresAt = clock.isoIn(INTENT_TTL_MS)`; `quotes()` long-poll unchanged. Grants still last `GRANT_TTL_MS`. Renewal: a fresh grant for the current stage is issued only by user-side actions (a new intent against the same merchant, an accept) — never by a merchant read, so a merchant cannot keep itself alive. The user-facing sentence becomes "every permission expires in ten minutes unless you act again".
-5. Migration v8: `grants.stage TEXT`.
-6. Tests: A05, A06, A07 unchanged. New: address denied with `purpose=checkout` at `quoted` stage; allowed after `createCheckout`; `payment_method` denied at `checkout` even with `purpose=payment`; intent still accepts a quote at T+11 min while a read at T+10 min 1 s is 403 `GRANT_EXPIRED`; a merchant read never extends `expiresAt`. fast-check: stage per `(intentId, sessionId)` is monotonic; no grant ever lists a field whose tier opens later than the grant's stage.
+Tests (`apps/workspace/test/stages.test.ts`, proposed **A27**): default document → stages `introduced` and `checkout` only, quoting opens nothing; an installed document with budget at `quoted` and deadline at `accepted` → each readable only after its stage, only with its purpose, receipts name the stage purpose, a second quote adds no second grant; a failed accept leaves the merchant with nothing new.
 
-Gate: suite green; proposed **A27 · stages** covering the five assertions above through HTTP only.
+**Decision parked for a human: intent lifetime.** The draft set intents to 24 hours with grants renewed by user actions. A lane A test (`review-fixes.test.ts`, "accepting after the offer expired is blocked before anything goes upstream") pins that an accept after the merchant's grant expired is refused before any cart is created, because a 10-minute-old quote may no longer be the store's price. Lengthening intents therefore needs a quote-validity rule (re-quote on accept, or a merchant-declared quote TTL) before it is a pure refactor. `INTENT_TTL_MS` exists so the knob is one constant once that rule is chosen.
 
 ## 5 · Phase 3 — Outcome-aware ranking, deterministic and logged (A)
 

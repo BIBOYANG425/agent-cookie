@@ -2,7 +2,7 @@
 // (A03, A22). A new 10-minute grant per introduction; every merchant read checks it against the server clock.
 import {
   GRANT_TTL_MS, merchantKeyFor,
-  type Agent, type Field, type Handshake, type Session,
+  type Agent, type Category, type Field, type FunnelStage, type Handshake, type Session,
 } from "@agent-cookie/contract";
 import type { Channel, GrantRow, IntentRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
@@ -17,6 +17,8 @@ export interface GrantView {
   createdAt: string; expiresAt: string; remainingMs: number; revokedAt?: string; status: "live" | "expired" | "revoked";
   /** Phase 1: the policy document the grant was issued under. */
   policyId?: string;
+  /** Phase 2: the funnel stage that issued the grant. */
+  stage?: FunnelStage;
 }
 
 const STYLE: Field[] = ["lang", "tone", "length"];
@@ -37,7 +39,7 @@ export class SessionService {
     if (existing && (existing.agentId !== agent.agentId || existing.userId !== userId)) throw new Error("session id collision between merchants");
     const session: Session = existing ?? { sessionId, userId, agentId: agent.agentId, createdAt: clock.nowIso() };
     const grant: GrantRow = { id: newId("g"), sessionId, intentId: intent.id, fields: this.ctx.policy.autoFields(agent.category), purpose: "handshake",
-      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id() };
+      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id(), stage: "introduced" };
     const handshake = await this.handshake(session, grant, agent, intent);
     return { agent, channel, session, grant, handshake };
   }
@@ -69,14 +71,28 @@ export class SessionService {
 
   /**
    * "按用途自动扩大": when the user accepts a merchant's quote, the grant for that intent widens to the purpose
-   * fields the accepted step needs (shipping_address for checkout), for one more TTL. Only accept calls this.
+   * fields the accepted step needs (shipping_address for checkout), for one more TTL.
    */
-  widen(session: Session, intentId: string, fields: Field[], purpose: string): GrantRow {
+  widen(session: Session, intentId: string, fields: Field[], purpose: string, stage?: FunnelStage): GrantRow {
     const grant: GrantRow = { id: newId("g"), sessionId: session.sessionId, intentId, fields, purpose,
-      createdAt: this.ctx.clock.nowIso(), expiresAt: this.ctx.clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id() };
+      createdAt: this.ctx.clock.nowIso(), expiresAt: this.ctx.clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id(), ...(stage ? { stage } : {}) };
     this.ctx.store.insertGrant(grant);
-    this.ctx.log({ event: "grant.widen", actor: "workspace", object: session.sessionId, result: "ok", reason: `${fields.join(",")} purpose=${purpose}` });
+    this.ctx.log({ event: "grant.widen", actor: "workspace", object: session.sessionId, result: "ok",
+      reason: `${fields.join(",")} purpose=${purpose}${stage ? ` stage=${stage}` : ""}` });
     return grant;
+  }
+
+  /**
+   * Phase 2, stage-gated disclosure: the merchant reached `stage` for this intent (quoted, accepted, checkout,
+   * payment). The installed document lists, per category, which fields open under a purpose named like the stage
+   * (DEFAULT_POLICY: shipping_address at "checkout", payment_method at "payment", nothing at "quoted"/"accepted");
+   * those fields get a grant whose purpose is the stage, for one TTL. Returns undefined when nothing opens, so the
+   * default document issues exactly the grants it always did. Only workspace transitions call this, never a merchant.
+   */
+  advance(session: Session, intentId: string, stage: FunnelStage, category: Category): GrantRow | undefined {
+    const fields = this.ctx.policy.purposeFields(category).filter((f) => this.ctx.policy.purposesFor(category, f).includes(stage));
+    if (fields.length === 0) return undefined;
+    return this.widen(session, intentId, fields, stage, stage);
   }
 
   withdraw(grantId: string): void {
@@ -120,6 +136,7 @@ export class SessionService {
         remainingMs: status === "live" ? exp - now : 0, status };
       if (g.revokedAt) v.revokedAt = g.revokedAt;
       if (g.policyId) v.policyId = g.policyId;
+      if (g.stage) v.stage = g.stage;
       return v;
     });
   }

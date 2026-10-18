@@ -1,7 +1,7 @@
 // Intents → matching → introductions → quotes → accept. UCP stores are reached through UcpApi via per-domain
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
-  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
+  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
   type AcceptResult, type Agent, type Field, type Quote, type Receipt, type SearchStats, type UcpCheckout, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow } from "../db.js";
@@ -80,7 +80,7 @@ export class CommerceService {
     if (statedBudget !== undefined && maxPriceCents === undefined) fail("MISSING_FIELD", "budget is not an amount");
     const { store, clock } = this.ctx;
     const intent: IntentRow = { id: newId("i"), userId, agentId: personal.agentId, public: input.public,
-      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS) };
+      createdAt: clock.nowIso(), expiresAt: clock.isoIn(INTENT_TTL_MS) };
     if (input.kind) intent.kind = input.kind;
     if (input.text) intent.text = input.text;
     if (input.query) intent.query = input.query;
@@ -221,8 +221,11 @@ export class CommerceService {
     if (input.etaText) q.etaText = input.etaText;
     if (input.title) q.title = input.title;
     if (input.checkoutUrl) q.checkoutUrl = input.checkoutUrl;
+    const firstQuote = !this.ctx.store.quotesForIntent(intent.id).some((x) => x.agentId === agent.agentId);
     this.ctx.store.insertQuote(q);
     this.ctx.log({ event: "quote.submit", actor: agent.agentId, object: q.id, result: "ok", reason: intent.id });
+    // Stage "quoted" (Phase 2), once per merchant per intent: opens the fields the installed document lists for it.
+    if (firstQuote) this.sessions.advance(session, intent.id, "quoted", agent.category);
     return toQuote(q);
   }
 
@@ -274,22 +277,27 @@ export class CommerceService {
       this.ctx.store.markQuoteAccepted(q.id, this.ctx.clock.nowIso());
       this.ctx.log({ event: "quote.accept", actor: personal.agentId, object: q.id, result: "ok", reason: agent.agentId });
       const session = this.ctx.store.session(q.sessionId)!;
+      // Stages (Phase 2): "accepted" opens whatever the installed document lists under that purpose (nothing by
+      // default); "checkout" opens what the checkout step needs (shipping_address by default). Both are withdrawn
+      // when the step fails before anything went upstream — the merchant then holds nothing it did not hold before.
+      const opened = [this.sessions.advance(session, intent.id, "accepted", agent.category),
+        this.sessions.advance(session, intent.id, "checkout", agent.category)];
+      const withdrawOpened = () => { for (const g of opened) if (g) this.sessions.withdraw(g.id); };
       if (agent.domain) {
-        const widened = this.sessions.widen(session, intent.id, ["shipping_address"], "checkout");
         result = await this.ucpCheckout(asMerchant, q);
-        if (result.status !== "ordered" && result.status !== "handoff") this.sessions.withdraw(widened.id);
+        if (result.status !== "ordered" && result.status !== "handoff") withdrawOpened();
       } else if (agent.callbackUrl) {
-        const widened = this.sessions.widen(session, intent.id, ["shipping_address"], "checkout");
         const r = await this.ctx.delivery.callback(agent, { type: "accepted", sessionId: q.sessionId, quoteId: q.id });
         if (r.ok) {
           result = { status: "handoff", quoteId: q.id, ...(q.checkoutUrl ? { continueUrl: q.checkoutUrl } : {}),
             message: q.checkoutUrl ? "Finish and pay on the merchant's page." : "The merchant was notified and continues the checkout." };
         } else {
-          this.sessions.withdraw(widened.id);
+          withdrawOpened();
           result = { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The merchant could not be reached; nothing was sent.",
             ...(q.checkoutUrl ? { continueUrl: q.checkoutUrl } : {}) };
         }
       } else {
+        withdrawOpened();
         result = { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "This merchant cannot be reached; nothing was sent." };
       }
     }

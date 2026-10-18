@@ -3,7 +3,7 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
-import type { SearchStats } from "./analytics.js";
+import type { FunnelStage, SearchStats } from "./analytics.js";
 
 export type Basis = "observed" | "stated" | "inferred";
 
@@ -164,6 +164,12 @@ export interface Grant {
   revokedAt?: string;
   /** Additive (Phase 1): id of the policy document the grant was issued under (policy-document.ts policyId). */
   policyId?: string;
+  /**
+   * Additive (Phase 2): the funnel stage that issued the grant — "introduced" for the handshake grant; "quoted",
+   * "accepted", "checkout", "payment" for grants the workspace opens when the merchant reaches that stage for the
+   * intent. A stage grant's purpose is the stage name; the installed document decides which fields it opens.
+   */
+  stage?: FunnelStage;
 }
 
 /**
@@ -580,6 +586,13 @@ export interface Me {
 }
 
 export const GRANT_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long an intent (and the quotes made for it) stays acceptable. Named separately from GRANT_TTL_MS (Phase 2) but
+ * kept equal to it on purpose: accepting an offer after its merchant's grant expired is blocked before anything goes
+ * upstream (a 10-minute-old quote may no longer be the store's price). Lengthening it needs a quote-validity rule and
+ * a human decision — docs/commerce-analytics-plan.md Phase 2.
+ */
+export const INTENT_TTL_MS = GRANT_TTL_MS;
 export const NOTE_MAX_BYTES = 2048;
 export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;

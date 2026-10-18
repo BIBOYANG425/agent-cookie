@@ -7,7 +7,7 @@ import type {
   ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
   Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
-import type { SearchStats } from "@agent-cookie/contract";
+import { isFunnelStage, type SearchStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS keys (key_hash TEXT PRIMARY KEY, agent_id TEXT NOT NU
 CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE (user_id, agent_id));
 CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, intent_id TEXT, fields TEXT NOT NULL, purpose TEXT NOT NULL,
-  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT);
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT, stage TEXT);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
   text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT);
@@ -78,8 +78,9 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 7, table: "receipts", column: "intent_id", ddl: "ALTER TABLE receipts ADD COLUMN intent_id TEXT" },
   { version: 8, table: "grants", column: "policy_id", ddl: "ALTER TABLE grants ADD COLUMN policy_id TEXT" },
   { version: 8, table: "receipts", column: "policy_id", ddl: "ALTER TABLE receipts ADD COLUMN policy_id TEXT" },
+  { version: 9, table: "grants", column: "stage", ddl: "ALTER TABLE grants ADD COLUMN stage TEXT" },
 ];
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
@@ -101,6 +102,7 @@ function toGrant(r: Row): GrantRow {
   if (r.revoked_at) g.revokedAt = String(r.revoked_at);
   if (r.intent_id) g.intentId = String(r.intent_id);
   if (r.policy_id) g.policyId = String(r.policy_id);
+  if (isFunnelStage(r.stage)) g.stage = r.stage;
   return g;
 }
 function toIntent(r: Row): IntentRow {
@@ -362,9 +364,9 @@ export class Store {
 
   // ---- grants
   insertGrant(g: GrantRow): void {
-    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq, policy_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
-      g.expiresAt, g.revokedAt ?? null, this.next(), g.policyId ?? null);
+    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq, policy_id, stage)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
+      g.expiresAt, g.revokedAt ?? null, this.next(), g.policyId ?? null, g.stage ?? null);
   }
   grant(id: string): GrantRow | undefined {
     const r = this.db.prepare("SELECT * FROM grants WHERE id = ?").get(id) as Row | undefined;
