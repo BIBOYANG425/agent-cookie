@@ -477,6 +477,6 @@ We make no compliance claim for regulated data. Purpose-bound release, receipts 
 
 ## Author
 
-Built at **LA Hacks 2026** by Bo ([@BIBOYANG425](https://github.com/BIBOYANG425)) and Cyrus, with four coding agents in parallel lanes: Claude Code, two Codex sessions and Devin.
+Built at **LA Hacks 2026** by Bob ([@BIBOYANG425](https://github.com/BIBOYANG425)) and Cyrus Gu ([@a1gmm](https://github.com/a1gmm)), with four coding agents in parallel lanes: Claude Code, two Codex sessions and Devin.
 
 Questions, ideas or bugs: open an [issue](https://github.com/BIBOYANG425/agent-cookie/issues).
