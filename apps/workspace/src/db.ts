@@ -7,6 +7,7 @@ import type {
   ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
   Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
+import type { SearchStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
@@ -57,7 +58,7 @@ CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
   updated_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY (agent_id, user_id, key));
 CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, fields TEXT NOT NULL,
-  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL);
+  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL, intent_id TEXT);
 CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, event TEXT NOT NULL, actor TEXT NOT NULL,
   object TEXT NOT NULL, result TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, status INTEGER NOT NULL,
@@ -74,8 +75,9 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 6, table: "contributions", column: "archived_at", ddl: "ALTER TABLE contributions ADD COLUMN archived_at TEXT" },
   { version: 6, table: "activity", column: "kind", ddl: "ALTER TABLE activity ADD COLUMN kind TEXT" },
   { version: 6, table: "activity", column: "stats", ddl: "ALTER TABLE activity ADD COLUMN stats TEXT" },
+  { version: 7, table: "receipts", column: "intent_id", ddl: "ALTER TABLE receipts ADD COLUMN intent_id TEXT" },
 ];
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
@@ -129,10 +131,18 @@ function toContribution(r: Row): StoredContribution {
   if (r.evidence) c.evidence = JSON.parse(String(r.evidence)) as ContributionEvidence;
   return c;
 }
+function toActivity(r: Row): ActivityEvent {
+  const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
+    result: String(r.result), reason: String(r.reason) };
+  if (r.kind === "dreaming" || r.kind === "search") e.kind = r.kind;
+  if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
+  return e;
+}
 function toReceipt(r: Row): ReceiptRow {
   const x: ReceiptRow = { id: String(r.id), userId: String(r.user_id), sessionId: String(r.session_id), agentId: String(r.agent_id),
     fields: JSON.parse(String(r.fields)) as Field[], purpose: String(r.purpose), createdAt: String(r.created_at) };
   if (r.amount !== null && r.amount !== undefined) x.amount = Number(r.amount);
+  if (r.intent_id) x.intentId = String(r.intent_id);
   return x;
 }
 function toNote(r: Row): NoteRow {
@@ -483,10 +493,30 @@ export class Store {
 
   // ---- receipts
   insertReceipt(r: ReceiptRow): void {
-    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next());
+    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null);
   }
   receiptsForUser(userId: string, limit: number): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE user_id = ? ORDER BY seq DESC LIMIT ?").all(userId, limit) as Row[]).map(toReceipt);
+  }
+  /** Receipts attributed to one intent (purpose releases and Tier 0 deliveries), oldest first. Funnel only. */
+  receiptsForIntent(intentId: string): ReceiptRow[] {
+    return (this.db.prepare("SELECT * FROM receipts WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toReceipt);
+  }
+  /** Every grant issued for one intent (introduction and widenings), oldest first. Funnel only. */
+  grantsForIntent(intentId: string): GrantRow[] {
+    return (this.db.prepare("SELECT * FROM grants WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toGrant);
+  }
+  /** `fields.read` allows whose reason ends in `intent=<id>` (services/fields.ts), oldest first. Funnel only. */
+  fieldReadsForIntent(intentId: string): ActivityEvent[] {
+    const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' AND instr(reason, ?) > 0 ORDER BY id ASC")
+      .all(` intent=${intentId}`) as Row[];
+    return rows.map(toActivity);
+  }
+  /** The filter counts the intent's `ucp.search` event carried, if the search ran. Funnel only. */
+  searchStatsForIntent(intentId: string): SearchStats | undefined {
+    const r = this.db.prepare("SELECT stats FROM activity WHERE event = 'ucp.search' AND kind = 'search' AND object = ? ORDER BY id DESC LIMIT 1")
+      .get(intentId) as Row | undefined;
+    return r?.stats ? (JSON.parse(String(r.stats)) as SearchStats) : undefined;
   }
   releasedPurposeFields(sessionId: string): Field[] {
     const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0')").all(sessionId) as Row[];
@@ -499,13 +529,7 @@ export class Store {
       e.object, e.result, e.reason, e.kind ?? null, e.stats ? JSON.stringify(e.stats) : null);
   }
   activity(limit: number): ActivityEvent[] {
-    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((r) => {
-      const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
-        result: String(r.result), reason: String(r.reason) };
-      if (r.kind === "dreaming") e.kind = "dreaming";
-      if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
-      return e;
-    });
+    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map(toActivity);
   }
 
   // ---- idempotency

@@ -49,14 +49,16 @@ export class FieldService {
     let receipt: Receipt | undefined;
     const released = purposeOnes.filter((f) => out[f] !== undefined);
     if (released.length > 0) {
-      receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: released, purpose: purpose!, createdAt: this.ctx.clock.nowIso() };
+      receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: released, purpose: purpose!, createdAt: this.ctx.clock.nowIso(),
+        ...(source.intentId ? { intentId: source.intentId } : {}) };
       // "每次放行写回执": no durable receipt, no release. Git first, then SQLite, then the values.
       const r0 = receipt;
       await persistStrict(this.ctx, "receipt", agent.agentId, (r) => r.appendReceipt(r0, writeMeta(this.ctx, "workspace", r0)));
       this.ctx.store.insertReceipt({ ...receipt, userId: session.userId });
     }
+    // `intent=` attributes the read to the intent whose grant authorized it (funnel: fields read vs granted).
     this.ctx.log({ event: "fields.read", actor: agent.agentId, object: sessionId, result: "allow",
-      reason: `${fields.join(",")} purpose=${purpose ?? ""}` });
+      reason: `${fields.join(",")} purpose=${purpose ?? ""} intent=${source.intentId ?? ""}` });
     return { sessionId, purpose: purpose ?? "", fields: out, ...(receipt ? { receipt } : {}) };
   }
 }

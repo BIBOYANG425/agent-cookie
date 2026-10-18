@@ -8,3 +8,4 @@ export * from "./endpoints.js";
 export * from "./tier0.js";
 export * from "./apis.js";
 export * from "./fixtures.js";
+export * from "./analytics.js";

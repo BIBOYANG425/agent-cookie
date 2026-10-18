@@ -3,6 +3,8 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
+import type { SearchStats } from "./analytics.js";
+
 export type Basis = "observed" | "stated" | "inferred";
 
 /**
@@ -411,6 +413,8 @@ export interface Receipt {
   /** Filled by lane D's payment authorization. */
   amount?: number;
   createdAt: string;
+  /** Additive (Phase 0): the intent whose grant authorized the release; absent on legacy rows. Funnel attribution only. */
+  intentId?: string;
 }
 
 // ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
@@ -505,10 +509,13 @@ export interface ActivityEvent {
   object: string;
   result: string;
   reason: string;
-  /** Additive (2026-10-18): set on events the periodic Dreaming job writes; absent on request events. */
-  kind?: "dreaming";
-  /** Dreaming events only: counts, never field values. */
-  stats?: DreamingStats;
+  /**
+   * Additive (2026-10-18): "dreaming" on events the periodic Dreaming job writes; "search" on the `ucp.search` event
+   * of an intent (docs/commerce-analytics-plan.md Phase 0); absent on request events.
+   */
+  kind?: "dreaming" | "search";
+  /** Dreaming and search events only: counts, never field values. */
+  stats?: DreamingStats | SearchStats;
 }
 
 // ---- Dreaming (2026-10-18, human direction; plan §规模与时间规则) ----

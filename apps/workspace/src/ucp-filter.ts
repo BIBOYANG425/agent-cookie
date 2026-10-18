@@ -3,7 +3,7 @@
 // learned `pref.avoid` names. Everything else ranks: the wanted size (stated, else the card's), then learned brand /
 // color preferences, then the card's budget. Then the first N distinct sellers.
 // No model involved. An unknown delivery date (etaDate null) never disqualifies an offer.
-import { DEFAULT_SELLER_COUNT, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
+import { DEFAULT_SELLER_COUNT, type SearchStats, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
 import { parseSize, sizeMatch, sizeMatches, toSystem } from "@agent-cookie/ucp";
 
 // Size matching is shared with lane D (B22): one strict men's EU↔US table and one label parser, in @agent-cookie/ucp.
@@ -64,15 +64,45 @@ export function mentions(o: UcpOffer, term: string): boolean {
   return hay.includes(t);
 }
 
+export type Ineligibility = "avoid" | "currency" | "unavailable" | "shipsTo" | "invalid" | "budget";
+
+/**
+ * Why an offer fails the hard filters ("ok" when it passes). The first failing check names the bucket SearchStats
+ * counts it in, so `offers = eligible + Σ dropped` always holds.
+ */
+export function eligibility(o: UcpOffer, q: Pick<SearchConditions, "shipsTo" | "maxPriceCents" | "prefs">): "ok" | Ineligibility {
+  if (q.prefs?.avoid.some((t) => mentions(o, t))) return "avoid";
+  if (o.currency !== "USD") return "currency";
+  if (!o.available) return "unavailable";
+  if (!Array.isArray(o.shipsTo) || !o.shipsTo.includes(q.shipsTo)) return "shipsTo";
+  if (!Number.isSafeInteger(o.priceCents) || o.priceCents < 0) return "invalid";
+  if (q.maxPriceCents !== undefined && o.priceCents > q.maxPriceCents) return "budget";
+  return o.sellerDomain && o.variantId ? "ok" : "invalid";
+}
+
 /** Hard filters only. */
 export function isEligible(o: UcpOffer, q: Pick<SearchConditions, "shipsTo" | "maxPriceCents" | "prefs">): boolean {
-  if (q.prefs?.avoid.some((t) => mentions(o, t))) return false;
-  if (o.currency !== "USD") return false;
-  if (!o.available) return false;
-  if (!Array.isArray(o.shipsTo) || !o.shipsTo.includes(q.shipsTo)) return false;
-  if (!Number.isSafeInteger(o.priceCents) || o.priceCents < 0) return false;
-  if (q.maxPriceCents !== undefined && o.priceCents > q.maxPriceCents) return false;
-  return Boolean(o.sellerDomain && o.variantId);
+  return eligibility(o, q) === "ok";
+}
+
+/** Filter counts for the intent's `ucp.search` activity event (docs/commerce-analytics-plan.md Phase 0). Counts only. */
+export function searchStats(offers: readonly UcpOffer[], q: Pick<SearchConditions, "shipsTo" | "maxPriceCents" | "prefs">, picked: number): SearchStats {
+  const s: SearchStats = { offers: offers.length, droppedAvoid: 0, droppedCurrency: 0, droppedUnavailable: 0, droppedShipsTo: 0,
+    droppedBudget: 0, droppedInvalid: 0, eligible: 0, eligibleSellers: 0, picked };
+  const sellers = new Set<string>();
+  for (const o of offers) {
+    switch (eligibility(o, q)) {
+      case "ok": s.eligible++; sellers.add(o.sellerDomain); break;
+      case "avoid": s.droppedAvoid++; break;
+      case "currency": s.droppedCurrency++; break;
+      case "unavailable": s.droppedUnavailable++; break;
+      case "shipsTo": s.droppedShipsTo++; break;
+      case "invalid": s.droppedInvalid++; break;
+      case "budget": s.droppedBudget++; break;
+    }
+  }
+  s.eligibleSellers = sellers.size;
+  return s;
 }
 
 export interface Picked { offer: UcpOffer; sizeNote?: string }

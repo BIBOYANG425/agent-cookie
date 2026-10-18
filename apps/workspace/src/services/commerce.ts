@@ -2,13 +2,13 @@
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
   DEFAULT_SELLER_COUNT, GRANT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type Field, type Quote, type Receipt, type UcpCheckout, type UcpMessage, type UcpOffer,
+  type AcceptResult, type Agent, type Field, type Quote, type Receipt, type SearchStats, type UcpCheckout, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
-import { parseAddress, parseBudgetCents, parseCount, pickSellers, terms, type SearchConditions } from "../ucp-filter.js";
+import { parseAddress, parseBudgetCents, parseCount, pickSellers, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
 import { persistStrict, writeMeta, type Ctx } from "./context.js";
@@ -96,7 +96,7 @@ export class CommerceService {
         const x = await this.sessions.prepare(userId, agent, intent, "tier0");
         const values = this.card.values(userId, intent);
         // Every Tier 0 delivery discloses auto values: the receipt is committed before the attempt.
-        const receipt: Receipt = { id: newId("r"), sessionId: x.session.sessionId, agentId: agent.agentId,
+        const receipt: Receipt = { id: newId("r"), sessionId: x.session.sessionId, agentId: agent.agentId, intentId: intent.id,
           fields: this.ctx.delivery.tier0Fields(agent, x.handshake, values), purpose: "tier0", createdAt: clock.nowIso() };
         plans.push({ ...x, receipt, values });
       }
@@ -104,6 +104,8 @@ export class CommerceService {
     // UCP: the user's words drive the search (query, else the sentence itself; a legacy kind-only request searches
     // for its kind). Only the budget stated in this request excludes; the card's budget and size only rank.
     let ucpNote: { result: string; reason: string } | undefined;
+    // Filter counts for the funnel (Phase 0): what the hard filters dropped before sellers were picked. Counts only.
+    let stats: SearchStats | undefined;
     const query = input.query ?? input.text ?? input.kind?.replace(/_/g, " ");
     if (query) {
       const card = this.card.values(userId);
@@ -131,6 +133,7 @@ export class CommerceService {
         const pinned = this.ctx.config.ucpMode === "fixture" ? this.pinned : [];
         const picked = pickSellers(offers, conditions, count, pinned);
         ucpNote = { result: "ok", reason: `offers=${offers.length} picked=${picked.length}` };
+        stats = searchStats(offers, conditions, picked.length);
         for (const { offer, sizeNote } of picked) {
           const existing = store.agentByDomain(offer.sellerDomain);
           const proxy: Agent = existing ?? { agentId: `ucp:${offer.sellerDomain}`, name: `${offer.sellerName} (UCP proxy)`, category: "retail",
@@ -153,7 +156,7 @@ export class CommerceService {
       store.insertIntent(intent);
       this.ctx.log({ event: "intent.create", actor: personal.agentId, object: intent.id, result: "ok",
         reason: input.text ? (input.kind ?? "text") : `${input.kind} (legacy: no text)` });
-      if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote });
+      if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote, ...(stats ? { kind: "search" as const, stats } : {}) });
       for (const p of plans) {
         if (p.newAgent) {
           store.insertAgent(p.newAgent);

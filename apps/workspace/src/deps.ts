@@ -12,6 +12,7 @@ import { fail } from "./http.js";
 import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
 import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
+import { FunnelService } from "./services/analytics.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
@@ -43,6 +44,8 @@ export interface Deps {
   fields: FieldService;
   notes: NoteService;
   commerce: CommerceService;
+  /** Funnel report over existing tables (GET /owner/funnel): counts only. */
+  funnel: FunnelService;
   /** Dynamic memory: observation queue, learning hooks, learned/history views. */
   learning: LearningService;
   /** The periodic job: learn, regenerate, compact, log (dreaming.ts). */
@@ -88,6 +91,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   if (!overrides.learn && config.learnProvider === "off") log({ event: "learn.off", actor: "workspace", result: "off", reason: "learning provider off" });
   const learning = new LearningService(ctx, card, learner.api);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
+  const funnel = new FunnelService(ctx);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
@@ -105,7 +109,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   dreamTimer?.unref();
 
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, learning, gate,
+    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, learning, gate,
     dreaming, dreamingScheduled: dreamTimer !== undefined,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();

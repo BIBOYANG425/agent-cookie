@@ -346,6 +346,14 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ events: store.activity(limit) });
   });
 
+  // Funnel (docs/commerce-analytics-plan.md Phase 0): one row per intent, counts and ids only, never a field value.
+  app.get("/owner/funnel", auth, owner, (c) => {
+    const limit = intParam(c.req.query("limit"), 200, 1000);
+    const since = c.req.query("since");
+    if (since !== undefined && Number.isNaN(Date.parse(since))) fail("MISSING_FIELD", "since must be an ISO-8601 timestamp");
+    return json(deps.funnel.report(user(), { limit, ...(since !== undefined ? { since: new Date(since).toISOString() } : {}) }));
+  });
+
   if (config.demo) {
     app.post("/demo/reset", auth, owner, async () => json({ ok: true, seededAt: await deps.reset() }));
   }
