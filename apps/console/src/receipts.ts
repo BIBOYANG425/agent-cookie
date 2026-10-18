@@ -7,7 +7,7 @@ import type { ActivityEvent } from './model';
 /** The live adapter reads /personal/receipts without a query, so the workspace's default page applies: the newest 50. */
 export const RECEIPT_LIMIT = 50;
 
-const purposeLabels: Record<string, string> = { handshake: 'Introduction', checkout: 'Checkout address', payment: 'Payment authorization', tier0: 'Text-prefix delivery' };
+const purposeLabels: Record<string, string> = { handshake: 'Introduction', checkout: 'Checkout address', payment: 'Payment authorization', tier0: 'Text-prefix delivery', history: 'History records' };
 /**
  * handshake → Introduction (as in the grants panel), checkout → Checkout address, payment → Payment authorization, tier0 → Text-prefix delivery, a funnel stage
  * (quoted, accepted) → Stage · Quoted; else the raw purpose. The raw purpose always stays visible.

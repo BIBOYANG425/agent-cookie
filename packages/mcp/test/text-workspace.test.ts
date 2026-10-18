@@ -13,6 +13,7 @@ import { WorkspaceClient } from '@agent-cookie/sdk';
 import { createApp } from '../../../apps/workspace/src/app.js';
 import { createDeps } from '../../../apps/workspace/src/deps.js';
 import { loadConfig } from '../../../apps/workspace/src/config.js';
+import { catalogQuery } from '../../../apps/channel-photon/src/keywords.js';
 import { respond } from '../../../apps/channel-photon/src/agent.js';
 
 // Actual built stdio MCP → SDK → TCP/HTTP → A SQLite + real C rules/Git memory.
@@ -54,27 +55,27 @@ it('carries shoe, coat and gift requests through MCP and Photon into the text wo
     mcp=new Client({name:'text-integration',version:'1'});await mcp.connect(transport);
     const phone=new WorkspaceClient({baseUrl:url,key:Object.keys(keys).find(k=>keys[k].agentId==='sample-personal-photon')!,sample:true});
     const needs=[
-      {request:'帮我找双日常通勤鞋，42码，预算90美元。',query:'walking shoes',budget:'90',size:'42'},
-      {request:'帮我找件黑色外套，M码，150美元以内，周五前到。',query:'black coat',budget:'150',size:'M',color:'黑色',deadline:'周五前到'},
-      {request:'给朋友挑个生日礼物，60美元以内，下周三前送到。',query:'birthday gift',budget:'60',deadline:'下周三前送到'},
+      {text:'帮我找双日常通勤鞋，42码，预算90美元。',query:'walking shoes',budget:'90',size:'42'},
+      {text:'帮我找件黑色外套，M码，150美元以内，周五前到。',query:'black coat',budget:'150',size:'M',color:'黑色',deadline:'周五前到'},
+      {text:'给朋友挑个生日礼物，60美元以内，下周三前送到。',query:'birthday gift',budget:'60',deadline:'下周三前送到'},
     ];
     for(const [index,need] of needs.entries()) {
       const reply=await mcp.callTool({name:'find_agents',arguments:need});expect(reply.isError).not.toBe(true);
       const quoteResult=JSON.parse((reply.content as Array<{text:string}>)[0].text);
       expect(quoteResult.quotes).toHaveLength(2);expect(quoteResult.sample).toBe(true);
       const last=searchOffers.mock.calls.at(-1)![0];
-      expect(last).toMatchObject({query:need.query,intentText:need.request,maxPriceCents:Number(need.budget)*100});
-      const {request,query,...conditions}=need;
-      expect(bodies.at(-1)).toEqual({text:request,query,public:conditions});
-      const sms=await respond(need.request,`sample-${index}`,{},phone);
-      expect(searchOffers.mock.calls.at(-1)![0]).toMatchObject({query:need.request,intentText:need.request});
-      expect(bodies.at(-1)).toEqual({text:request,public:conditions});
+      expect(last).toMatchObject({query:need.query,intentText:need.text,maxPriceCents:Number(need.budget)*100});
+      const {text,query,...conditions}=need;
+      expect(bodies.at(-1)).toEqual({text,query,public:conditions});
+      const sms=await respond(need.text,`sample-${index}`,{},phone);
+      expect(searchOffers.mock.calls.at(-1)![0]).toMatchObject({query:catalogQuery(need.text)??need.text,intentText:need.text});
+      expect(bodies.at(-1)).toEqual({text,...(catalogQuery(text)?{query:catalogQuery(text)}:{}),public:conditions});
       expect(sms).toContain('Sample');expect(sms).toContain('选1');
       if(index===0){expect(quoteResult.quotes[0].sizeNote).toBeTruthy();expect(sms).toContain(quoteResult.quotes[0].sizeNote);}
     }
-    await mcp.callTool({name:'find_agents',arguments:{request:'a gift'}});
+    await mcp.callTool({name:'find_agents',arguments:{text:'a gift',query:'gift'}});
     const unqualified:UcpSearchQuery=searchOffers.mock.calls.at(-1)![0];
-    expect(unqualified).not.toHaveProperty('maxPriceCents');expect(bodies.at(-1)).toEqual({text:'a gift'});
+    expect(unqualified).not.toHaveProperty('maxPriceCents');expect(bodies.at(-1)).toEqual({text:'a gift',query:'gift'});
     // No checkout happened, so no purpose release: every receipt is a UCP store's handshake read (auto fields only).
     const receipts=(await phone.getReceipts()).receipts;
     expect(receipts.length).toBeGreaterThan(0);

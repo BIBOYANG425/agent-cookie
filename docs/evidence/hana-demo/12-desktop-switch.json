@@ -1,0 +1,60 @@
+{
+  "verifiedAt": "2026-10-18T18:24:02.892Z",
+  "client": "Actual Claude Desktop through agent-cookie MCP",
+  "workspace": "Existing HANA demo on port 4314",
+  "intent": {
+    "id": "i_2bjm4jed",
+    "agentId": "sample-personal-desktop",
+    "createdAt": "2026-10-18T18:13:21.163Z"
+  },
+  "card": {
+    "label": "Sample",
+    "usualShoeSize": "42"
+  },
+  "observedEnglishResponse": {
+    "merchants": [
+      "Shoebacca",
+      "Fleet Feet"
+    ],
+    "offers": [
+      "Genesis Trail Running Shoes",
+      "Men’s Altra Lone Peak 9"
+    ],
+    "pricesUSD": [
+      119.97,
+      145
+    ],
+    "sizeAvailability": "Not confirmed",
+    "orderPlaced": false,
+    "paymentMade": false
+  },
+  "receipts": [
+    {
+      "id": "r_6gtt53td",
+      "agentId": "ucp:fleetfeet.myshopify.com",
+      "sessionId": "jh6xbay3",
+      "purpose": "handshake",
+      "fields": [
+        "lang",
+        "shoe_size"
+      ],
+      "createdAt": "2026-10-18T18:13:22.352Z"
+    },
+    {
+      "id": "r_7eb541md",
+      "agentId": "ucp:shoebacca-prod.myshopify.com",
+      "sessionId": "zfq0958a",
+      "purpose": "handshake",
+      "fields": [
+        "lang",
+        "shoe_size"
+      ],
+      "createdAt": "2026-10-18T18:13:22.351Z"
+    }
+  ],
+  "limits": [
+    "Desktop uses the personal-agent role, not the company-assistant role.",
+    "Latest live search returned different stores than the phone search. It did not itself prove reuse of the phone merchant sessions.",
+    "Earlier matching merchant receipts showed stable sessions 2p64pm9h and 4bft69yp across phone and SDK requests."
+  ]
+}

@@ -3,7 +3,7 @@
 // and the floor must reject every dangerous single edit while allowing the harmless ones.
 import { describe, expect, it } from "vitest";
 import {
-  canonicalPolicy, DEFAULT_POLICY, evaluateRead, evaluateWrite, isPolicyDocument, policyAutoFields, policyId, policyPurposeFields,
+  canonicalPolicy, DEFAULT_POLICY, evaluateRead, evaluateWrite, isPolicyDocument, policyAutoFields, policyHistory, policyId, policyPurposeFields,
   policyPurposesFor, policyViolations, STYLE_FIELDS, type PolicyDocument,
 } from "../src/policy-document.js";
 import { autoFields, canWrite, purposeFields, purposesFor, readDecision } from "../src/policy.js";
@@ -59,7 +59,7 @@ describe("policy document · id", () => {
   it("is 12 hex chars, independent of key order, and changes when a field moves", () => {
     const id = policyId(DEFAULT_POLICY);
     expect(id).toMatch(/^[0-9a-f]{12}$/);
-    const reordered = { write: clone().write, purpose: clone().purpose, auto: clone().auto, v: 1 as const };
+    const reordered = { history: clone().history, write: clone().write, purpose: clone().purpose, auto: clone().auto, v: 1 as const };
     expect(policyId(reordered)).toBe(id);
     expect(canonicalPolicy(reordered)).toBe(canonicalPolicy(DEFAULT_POLICY));
     const changed = clone();
@@ -164,5 +164,66 @@ describe("policy document · floor (exhaustive single edits)", () => {
     emptyPurpose.auto.shoe = emptyPurpose.auto.shoe.filter((f) => f !== "deadline");
     expect(policyViolations(emptyPurpose)).toContain("purpose.shoe.deadline must list at least one purpose");
     expect(isPolicyDocument("nope")).toBe(false);
+  });
+});
+
+describe("policy document · history", () => {
+  it("DEFAULT_POLICY reads history for personal, not for an assistant, and is valid", () => {
+    expect(DEFAULT_POLICY.history).toEqual({ personal: true, assistant: false });
+    expect(policyViolations(DEFAULT_POLICY)).toEqual([]);
+  });
+
+  it("policyHistory: personal always, merchants never, assistant only when the document says true", () => {
+    expect(policyHistory(DEFAULT_POLICY, "personal")).toBe(true);
+    expect(policyHistory(DEFAULT_POLICY, "shoe")).toBe(false);
+    expect(policyHistory(DEFAULT_POLICY, "retail")).toBe(false);
+    expect(policyHistory(DEFAULT_POLICY, "assistant")).toBe(false);
+    const on = clone();
+    on.history = { personal: true, assistant: true };
+    expect(policyViolations(on)).toEqual([]);
+    expect(policyHistory(on, "assistant")).toBe(true);
+    // even a (floor-violating) document cannot open history to a merchant or close it to the user's own agents
+    const bad = clone() as PolicyDocument;
+    bad.history = { personal: false, shoe: true, retail: true };
+    expect(policyHistory(bad, "personal")).toBe(true);
+    expect(policyHistory(bad, "shoe")).toBe(false);
+    expect(policyHistory(bad, "retail")).toBe(false);
+  });
+
+  it("the floor: merchants never read history, personal must be true, values are booleans, keys are categories", () => {
+    for (const c of ["shoe", "retail"] as const) {
+      const d = clone();
+      d.history = { ...d.history, [c]: true };
+      expect(policyViolations(d)).toEqual([`history.${c}: merchants never read history`]);
+      const off = clone();
+      off.history = { ...off.history, [c]: false };
+      expect(policyViolations(off)).toEqual([]);
+    }
+    const p = clone();
+    p.history = { personal: false, assistant: false };
+    expect(policyViolations(p)).toEqual(["history.personal must be true (the user's own agents read their history)"]);
+    const nb = clone() as unknown as Record<string, unknown>;
+    nb.history = { personal: true, assistant: "yes" };
+    expect(policyViolations(nb)).toEqual(["history.assistant must be true or false"]);
+    const unk = clone() as unknown as Record<string, unknown>;
+    unk.history = { personal: true, hotel: false };
+    expect(policyViolations(unk)).toEqual(["history.hotel: unknown category"]);
+    for (const h of [true, ["assistant"], null, "assistant"]) {
+      const notObj = clone() as unknown as Record<string, unknown>;
+      notObj.history = h;
+      expect(policyViolations(notObj), JSON.stringify(h)).toContain("history must be an object keyed by category");
+    }
+    const partial = clone();
+    partial.history = { assistant: true };
+    expect(policyViolations(partial)).toEqual([]);
+  });
+
+  it("a document without history stays valid, reads as personal only, and has a different id", () => {
+    const { history: _h, ...older } = clone();
+    expect(policyViolations(older)).toEqual([]);
+    expect(policyHistory(older, "assistant")).toBe(false);
+    expect(policyHistory(older, "personal")).toBe(true);
+    expect(policyId(older)).not.toBe(policyId(DEFAULT_POLICY));
+    expect(policyId(older)).toBe("3526a909e404"); // the pre-Phase-4 default's id, unchanged for documents already installed
   });
 });

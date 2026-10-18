@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PolicyResult } from './controller';
 import type { Section } from './model';
-import { categoryLabels, decisionLabels, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
+import { categoryLabels, decisionLabels, historyReadable, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
 
 const SHOWN_CHANGES = 100;
 
@@ -59,7 +59,7 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
         </dl>
         <table className="policy-table stack-table">
           <caption className="visually-hidden">Field access by category: automatic, purpose-based and writable</caption>
-          <thead><tr><th scope="col">Category</th><th scope="col">Automatic on introduction</th><th scope="col">By purpose</th><th scope="col">Writable</th></tr></thead>
+          <thead><tr><th scope="col">Category</th><th scope="col">Automatic on introduction</th><th scope="col">By purpose</th><th scope="col">Writable</th><th scope="col">History</th></tr></thead>
           <tbody>{POLICY_CATEGORIES.map((category) => {
             const purposes = Object.entries(view.policy.purpose[category] ?? {});
             return <tr key={category}>
@@ -69,9 +69,11 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
                 : <ul className="policy-purposes">{purposes.map(([field, list]) => <li key={field}>
                   <code className="field-key">{field}</code> only for {(list ?? []).map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<code>{name}</code></span>)}</li>)}</ul>}</td>
               <td data-label="Writable"><FieldList fields={view.policy.write[category] ?? []} /></td>
+              <td data-label="History">{historyReadable(view.policy, category) ? 'Allowed' : <span className="muted">Not allowed</span>}</td>
             </tr>;
           })}</tbody>
         </table>
+        <p className="small muted">History access covers intents and purchases. Personal agents can read it; merchants cannot. Connected assistants need your permission. Every read creates a receipt.</p>
       </>}
     <div className="policy-candidate">
       <h3>Candidate policy</h3>

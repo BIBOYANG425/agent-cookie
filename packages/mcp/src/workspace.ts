@@ -1,5 +1,5 @@
 import type { WorkspaceConfig } from './config.js';
-import type { PersonalWorkspaceBinding } from './server.js';
+import type { AssistantWorkspaceBinding, PersonalWorkspaceBinding } from './server.js';
 import {createHmac} from 'node:crypto';
 import {bounded} from '@agent-cookie/learn';
 
@@ -24,4 +24,19 @@ export function bindWorkspace(config: WorkspaceConfig): PersonalWorkspaceBinding
     }}:{}),
   };
 }
-import { WorkspaceClient } from '@agent-cookie/sdk';
+import { AssistantClient, WorkspaceClient } from '@agent-cookie/sdk';
+
+/** One wrapper per AssistantClient method; the client is bound to (url, key) and holds no data between calls. */
+export function bindAssistant(config: WorkspaceConfig): AssistantWorkspaceBinding {
+  const client = new AssistantClient({ baseUrl: config.baseUrl, key: config.key, ...(config.sample ? { sample: true } : {}) });
+  return {
+    getAuthenticatedRole: async () => (await client.getMe()).role,
+    requestLink: () => client.requestLink(),
+    link: id => client.link(id),
+    context: () => client.context(),
+    remember: input => client.remember(input),
+    find: (input, key) => client.find(input, key),
+    accept: (quoteId, key) => client.accept(quoteId, key),
+    stats: () => client.stats(),
+  };
+}

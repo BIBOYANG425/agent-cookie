@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { catalogQuery } from '../src/keywords.js';
 import { shoppingInput } from '../src/intent.js';
 import { respond, type AgentWorkspace, type Conversation } from '../src/agent.js';
 
@@ -10,10 +11,10 @@ it.each([
   ['鞋码 US 9，预算100到160美元',{budget:'100到160',size:'US 9'}],
   ['找个礼物，预算1,200美元',{budget:'1200'}],
 ] as const)('extracts only stated conditions from %s', (text,conditions)=>{
-  expect(shoppingInput(text)).toEqual({text,public:conditions});
+  expect(shoppingInput(text)).toEqual({text,...(catalogQuery(text)?{query:catalogQuery(text)}:{}),public:conditions});
 });
 it.each(['  给朋友挑个礼物\n','一件外套','shoe size unknown','找件外套，300人民币以内','budget 80 EUR gift'])('preserves the raw request without guessing missing values: %s',text=>{
-  expect(shoppingInput(text)).toEqual({text});
+  expect(shoppingInput(text)).toEqual({text,...(catalogQuery(text)?{query:catalogQuery(text)}:{})});
 });
 const quotes=[{id:'q',intentId:'i',agentId:'retail',text:'Sample jacket',title:'Sample jacket',price:8900,currency:'USD' as const,etaDate:null,source:'fixture' as const}];
 function workspace() {
@@ -23,7 +24,7 @@ function workspace() {
 it.each(['一件外套','给朋友挑个礼物','walking shoes'])('routes any product request without a category keyword: %s',async text=>{
   const client=workspace();
   await respond(text,'message',{},client);
-  expect(client.find).toHaveBeenCalledWith({text},expect.any(String));
+  expect(client.find).toHaveBeenCalledWith({text,...(catalogQuery(text)?{query:catalogQuery(text)}:{})},expect.any(String));
   expect(client.accept).not.toHaveBeenCalled();
 });
 it('keeps sizeNote exactly as received and never adds a missing warning',async()=>{

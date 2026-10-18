@@ -30,6 +30,14 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
 }
 
 describe('server SDK bridge', () => {
+  it('allows only the configured loopback port and same origin for a second recording console', async () => {
+    const factory = vi.fn(() => ({ getMe: async () => owner }));
+    const send = await start({ key: () => key, sdk: Promise.resolve(factory), port: 5174 });
+    expect((await send('/me')).status).toBe(403);
+    expect((await send('/me', 'GET', { Host: '127.0.0.1:5174', Origin: 'http://127.0.0.1:5174' })).status).toBe(200);
+    expect((await send('/me', 'GET', { Host: '127.0.0.1:5174', Origin: 'http://127.0.0.1:5173' })).status).toBe(403);
+    expect((await send('/me', 'GET', { Host: 'evil.test:5174' })).status).toBe(403);
+  });
   it('uses an explicit loopback origin for both SDK and direct calls', async () => {
     vi.stubEnv('AGENT_COOKIE_URL', 'http://127.0.0.1:4314/');
     const factory = vi.fn(() => ({ getMe: async () => owner }));

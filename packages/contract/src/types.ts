@@ -328,7 +328,15 @@ export interface IntentHistoryEntry {
   createdAt: string;
   expiresAt: string;
   /** The quote the user accepted for this intent, if any. */
-  accepted?: { quoteId: string; title?: string; seller?: string; price: number; status: string };
+  accepted?: {
+    quoteId: string;
+    title?: string;
+    seller?: string;
+    price: number;
+    status: string;
+    /** The merchant (or UCP store proxy) whose quote was accepted. */
+    agentId?: string;
+  };
 }
 
 /** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */
@@ -658,6 +666,11 @@ export interface LinkView {
   expiresAt: string;
   /** Present once approved. */
   sessionId?: string;
+  /**
+   * Hosted gateway only (gateway.ts): present once approved, for LINK_TTL_MS after the approval (then purged). The
+   * person's instance under the gateway and the assistant's key for it. A single workspace never sets it.
+   */
+  jar?: { url: string; key: string };
 }
 /**
  * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.

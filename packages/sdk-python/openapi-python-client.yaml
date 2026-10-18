@@ -1,0 +1,8 @@
+# openapi-python-client 0.29.1 configuration, read by scripts/generate.sh.
+# The output is agent_cookie_client/: generated and committed, never edited by hand.
+project_name_override: agent-cookie-client
+package_name_override: agent_cookie_client
+# Ruff (pinned in requirements-dev.txt) formats the output, so a regeneration is byte-for-byte stable.
+post_hooks:
+  - "ruff check . --fix-only --quiet --no-cache"
+  - "ruff format . --quiet --no-cache"

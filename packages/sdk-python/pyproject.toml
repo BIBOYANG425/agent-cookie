@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-cookie"
+version = "0.1.0"
+description = "Python client for the Agent Cookie workspace: a client generated from the contract's OpenAPI document plus thin AssistantClient, MerchantClient and WorkspaceClient wrappers."
+readme = "README.md"
+license = "MIT"
+# The generated client uses enum.StrEnum and typing.Self (Python 3.11).
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.23,<0.29",
+  "attrs>=22.2.0",
+]
+
+[tool.setuptools]
+packages = { find = { include = ["agent_cookie", "agent_cookie.*", "agent_cookie_client", "agent_cookie_client.*"] } }
+
+[tool.setuptools.package-data]
+agent_cookie = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

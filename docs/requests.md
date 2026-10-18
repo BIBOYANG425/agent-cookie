@@ -409,3 +409,29 @@ Native traces: two one-job inbound turns, repeated updateWorkingMemory/hanaActiv
 - B83 → 人/A/C（HANA手机自然学习通过）：真实机主偏好轮次在17:41:04 UTC入队，17:46:11 learn.apply；自然等待5分7秒、无flush/reset/replay。pref.fit=loose保持candidate，一条贡献、一个conversation来源；Jev/gpt-oss记录与OpenRouter10:46日志对齐。PG生成/发送各一作业零重试、Photon delivered。证据hana-demo/06-phone-preference.md/.json。手机重新找商品→选第二件正在继续；4314控制台上游B81及商家真实开场未完成。
 
 - 2026-10-18 B/C consolidated demo delivery (Cyrus-authorized takeover): English console, loopback4314 bridge, current-context/request layout, collapsed advanced/history controls, and cross-assistant continuity derived only from matching receipt sessions and distinct requesting agents. HANA English controls/phone learning/live handoff evidence consolidated; patch regenerated through2886cde with reverse-check. No main merge, payment, merchant greeting, repeated reset rehearsal, or independent reproduction claimed. The original4310 data is preserved.
+| A62 | A → D（交接，2026-10-18）：人决定把全部商业轨道代码交给 D 线（Devin）。交接文档 `docs/handoff/devin-commerce.md`：D1 Visa Acceptance 模拟器（`apps/visa-sim`，用官方 SDK 代码独立验签，脚本化场景而非随机，`VISA_ACCEPTANCE_SIMULATOR=1` 只放行回环主机，页面与回执标注"模拟器"），D2 UCP 支付工具与 payer 签名（A50），D3 Visa JWT 鉴权。Visa 不会提供沙盒，Intelligent Commerce 不模拟、继续搁置。A 线的 /loop 不再做 Phase 2。 |
+| A80 | A → 人（记录，2026-10-18）：Phase 3 托管 jar 已建成（分支 `claude/amazing-allen-cnv3s6`，PR 待开）：契约 `gateway.ts`、工作台 `AGENT_COOKIE_SEED=blank` 与 `GET /healthz`、SDK 路径前缀与 `forJar`、新应用 `apps/gateway`（每人一个工作台进程、passkey、consent link、cookie 页、反向代理、owner key 不出网关）、验收 A33。未做并已写明：邮箱、passkey 找回、第二设备；operator 汇总留待 Phase 4（`measured: false`）。Phase 4/5 已分别交给独立会话（分支 `claude/phase-4-history-operator`、`claude/phase-5-doors`，各自开 PR；requests 编号分别从 A63、A70 起）。 |
+| BC-i18n | B/C → 各线（负责人已批准跨线）：SDK/MCP 保留原话 text 并传英文 query、显式条件与商家数量，兼容旧 kind；Photon 用确定性双语词典搜通用品并按消息语言回复；控制台随卡片语言并支持持久化中英切换，保留 Sample、未知到货及未确认订单/支付提示；不改工作台或契约，不新增依赖或模型调用。 |
+
+| BC-i18n-CI | B/C → D（2026-10-18）：在最新 main `b1e049a` 独立 worktree 第 12 次复现 auth unlock token 的 bad-MAC 断言偶发失败（test/auth.test.ts:180）；固定替换 base64url 末字符为 x 可能不改变解码字节，请 D 线改成确定翻转 MAC 字节的测试；本 PR 不改 D 线代码。 |
+
+2026-10-18（续六），Phase 4（分支 `claude/phase-4-history-operator`）：历史记录策略类别与运营方漏斗。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A63 | A → 全部 | 契约新增（commit `1cbacb8`，增量）：`PolicyDocument.history?: Partial<Record<Category, boolean>>`（可读此人的意图与购买记录）与底线（shoe/retail 必须为 false 或缺省，personal 若出现必须为 true，assistant 由 owner 决定）；`policyHistory(doc, category)`；`DEFAULT_POLICY.history = { personal: true, assistant: false }`，默认 policyId 由 `3526a909e404` 变为 `1fcaae3c5185`（不含 history 的已安装文档 id 不变）；`POLICY_TABLE` 带 history。OpenAPI 已重新生成。 | 已交付 |
+| A64 | A → B/C | 契约新增端点 `GET /assistant/history?limit=`（默认 50，上限 200）→ `AssistantHistoryResponse { intents: IntentHistoryEntry[] }`（不含 text/query）；仅当安装的策略 `history.assistant` 为 true 时放行，否则 403 SCOPE_DENIED；每次放行写回执（purpose `history`，`fields: []`，每 session 每小时一条），不改 `questionsSkipped`。`IntentHistoryEntry.accepted.agentId` 新增。SDK `AssistantClient.history`（`2c1dc53`）、控制台回执标签「历史记录」（`110fb54`）已接。 | 已交付 |
+| A65 | A → C | POLICY.yaml 编解码支持 `true`/`false`，种子已重生成（`110fb54`），rules 与 memory-repo 测试里的 policyId 已更新。 | 已交付 |
+| A66 | A → 人（记录） | 网关 `GET /operator/funnel` 改为实测（`163e6d7`）：契约 `OperatorFunnel.coverage { live, snapshot, missing }` 新增；`byMerchant` 暂为空（owner 漏斗没有按商家的拆分，见 `apps/gateway/README.md`）。若要按商家汇总，需要在工作台契约里给 `FunnelRow` 增加按商家的计数，待人决定。托管实例用 fixture 回放报价，运营方的报价/接受计数在接入真实商家前属 Sample；`OperatorFunnel` 没有 sample 标记，是否加字段待人决定。 | 待人 |
+| A67 | A → 人 | `docs/plan.md`：§5 字段策略加「历史记录」一列（personal 可读、商家永不、assistant 默认关由 owner 开）与端点 `GET /assistant/history`；§2 若需要可加对应验收行。 | 待人 |
+
+2026-10-18（续），Phase 5（分支 `claude/phase-5-doors`，PR #34）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A70 | A → 人（记录） | Phase 5 已建成：契约 `POST/GET /owner/keys`、`POST /owner/keys/:agentId/revoke`（`126e0fe`）；工作台实现与 A29（`846d8c7`、`4c6a269`）；SDK `mintKey/listKeys/revokeKey/remember`，CLI `init`、`keys mint\|list\|revoke`（`b89b368`）；MCP Streamable HTTP 门 127.0.0.1:4311 与助理工具集（`a64baff`）；Python 客户端 `packages/sdk-python`（`eb28e9b`）。钥匙只在铸造响应里出现一次，只存哈希，不进日志、不写文件。 | 已完成 |
+| A71 | A → 人 | `docs/plan.md`：§2 把 A29 从“计划/未实现”改为已实现（空白工作台 → owner 铸 personal 钥匙 → 只用 SDK 写两条偏好并读回 → 撤销 → 下一次 401）；§5 契约加三条 `/owner/keys` 端点与 `MintKeyRequest/MintKeyResult/KeyView/KeysResponse/RevokeKeyResult`；§4 环境变量加 `AGENT_COOKIE_MCP_TRANSPORT`（stdio\|http）、`MCP_HTTP_PORT`（4311）、`AGENT_COOKIE_OWNER_KEY`（CLI `init`）、`AGENT_COOKIE_WORKSPACE_DIR`（CLI `init --start`）。 | 待人 |
+| A72 | B → B（记录） | `packages/mcp` 在运行时无法 import `@agent-cookie/contract`（其入口是 TS 源码），所以 `MCP_HTTP_PORT = 4311` 在 `packages/mcp/src/config.ts` 里复制了一份，测试断言两者相等。可选：SDK 再导出 `MCP_HTTP_PORT`，MCP 改从 SDK 取。 | 待评估 |
+| A73 | A → B | Phase 5 的第三扇门未做：Photon 把手机号映射到人与钥匙（现在仍是单一测试 sender）。需要先决定一个号码对应哪个 jar（本机工作台或网关下的 `/u/<userId>`）。 | 待做 |
+| A74 | A → 人 | Python 包 `agent-cookie`（`packages/sdk-python`，Python ≥ 3.11）未发布到 PyPI；发布由人执行（需要 PyPI 账号与 token，不进仓库）。`pnpm test` 会跑它的 pytest：有 python3 时自动建 `.venv` 并从 PyPI 装依赖，没有 python3 时打印 skipped 并退出 0。 | 待人 |
+| A75 | B → B | Phase 4 合入后，`GET /assistant/history` 已在 `openapi.json` 与生成的 Python 客户端里（`agent_cookie_client.api.assistant.get_assistant_history`），但 Python `AssistantClient.history` 与 MCP 助理工具 `history` 尚未包装：两者都要像 TS `AssistantClient.history` 那样丢掉 `text`/`query`，按 `history.assistant` 策略 403 如实转告，所以留作下一单元，不进 Phase 5。 | 待做 |

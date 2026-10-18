@@ -151,8 +151,12 @@ export function createWorkspaceBridge(options: {
   key: () => string | undefined;
   sdk: Promise<ClientFactory | undefined>;
   sample?: boolean;
+  port?: number;
   fetcher?: typeof fetch;
 }) {
+  const port = options.port ?? 5173;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid console port.');
+  const allowedHost = `127.0.0.1:${port}`;
   const upstream = localWorkspaceUrl(process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310');
   const send = (response: ServerResponse, status: number, body: unknown) => {
     if (response.destroyed) return;
@@ -168,7 +172,7 @@ export function createWorkspaceBridge(options: {
     try {
       const host = request.headers.host;
       // Custom header prevents cross-origin form/fetch access; Host prevents DNS rebinding.
-      if (!host || !/^127\.0\.0\.1:5173$/u.test(host)
+      if (!host || host !== allowedHost
         || request.headers['x-agent-cookie-console'] !== '1'
         || (request.headers.origin !== undefined && request.headers.origin !== `http://${host}`)
         || request.headers['sec-fetch-site'] === 'cross-site') throw new BridgeError(403, 'SCOPE_DENIED');

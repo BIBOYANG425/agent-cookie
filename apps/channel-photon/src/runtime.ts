@@ -1,3 +1,4 @@
+import { localeFromMessage } from './i18n.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { io } from 'socket.io-client';
@@ -58,7 +59,7 @@ export async function handleDelivery(event: unknown, state: ChannelState, config
     try{learning?.capture(incoming);}catch{/* Learning failure must never break the reply path. */}
     const conversation = state.conversations[incoming.spaceId] ??= {};
     try { pending.text = learning?await learning.respond(incoming,conversation):await respond(incoming.text,key,conversation,workspace); }
-    catch(error) { pending.text = publicFailure(error); }
+    catch(error) { pending.text = publicFailure(error, localeFromMessage(incoming.text, conversation.cardLang, conversation.locale)); }
     pending.phase = 'ready'; await save();
   }
   if (pending.phase !== 'ready' || !pending.text) throw new ChannelFailure('INVALID_OUTBOX');

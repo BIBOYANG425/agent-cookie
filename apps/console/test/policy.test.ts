@@ -3,11 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Contract from '../../../packages/contract/src/policy-document';
 import type * as ContractPolicy from '../../../packages/contract/src/policy';
-import { DEFAULT_POLICY, policyViolations } from '../../../packages/contract/src/policy-document';
+import { DEFAULT_POLICY, policyHistory, policyViolations } from '../../../packages/contract/src/policy-document';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController } from '../src/controller';
 import type { ConsoleSnapshot } from '../src/model';
-import { parseViolations, PolicyViolationError, samplePolicyView, type PolicyDocument, type PolicyView, type ReadDecision,
+import { historyReadable, normalizePolicyView, parseViolations, PolicyViolationError, samplePolicyView, type PolicyDocument, type PolicyView, type ReadDecision,
   type ShadowReport } from '../src/policy';
 import { PolicyPanel, PolicyResultView } from '../src/PolicyPanel';
 
@@ -192,5 +192,57 @@ describe('policy actions through the live adapter', () => {
     const snapshot = await bad.load();
     expect(snapshot.policy).toEqual({ availability: 'error', message: expect.stringContaining('Policy data does not match') });
     expect(snapshot.card.card).toEqual([]);
+  });
+});
+
+describe('policy panel: history (Phase 4)', () => {
+  const cells = (html: string) => [...html.matchAll(/<td data-label="History">(.*?)<\/td>/gu)].map((match) => match[1]);
+  const NOTE = 'History access covers intents and purchases. Personal agents can read it; merchants cannot. Connected assistants need your permission. Every read creates a receipt.';
+
+  it('Sample policy carries the default history switches', () => {
+    expect(samplePolicyView().policy.history).toEqual({ personal: true, assistant: false });
+  });
+
+  it('renders a History column for the default: personal Allowed, merchants and the assistant Not allowed, plus the note', () => {
+    const html = panel({});
+    expect(html).toContain('<th scope="col">History</th>');
+    expect(cells(html)).toEqual(['Allowed', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>']);
+    expect(html).toContain(NOTE);
+    expect(html.match(/<tr>/gu)).toHaveLength(5);
+  });
+
+  it('shows the assistant as Allowed once history.assistant is true; merchants stay Not allowed whatever the document says', () => {
+    const on: PolicyView = { ...view, policy: { ...structuredClone(DEFAULT_POLICY), history: { personal: true, assistant: true } } };
+    expect(cells(panel({ state: { availability: 'ready', data: on } })))
+      .toEqual(['Allowed', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>', 'Allowed']);
+    // A floor-breaking or absent section is shown with the contract's evaluator semantics, never as written.
+    const odd: PolicyView = { ...view, policy: { ...structuredClone(DEFAULT_POLICY), history: { personal: false, shoe: true, retail: true } } };
+    expect(cells(panel({ state: { availability: 'ready', data: odd } })))
+      .toEqual(['Allowed', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>']);
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY);
+    expect(cells(panel({ state: { availability: 'ready', data: { ...view, policy: older } } })))
+      .toEqual(['Allowed', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>', '<span class="muted">Not allowed</span>']);
+  });
+
+  it('historyReadable matches the contract policyHistory for every category and document shape', () => {
+    const docs = [DEFAULT_POLICY, { ...DEFAULT_POLICY, history: { personal: true, assistant: true } },
+      { ...DEFAULT_POLICY, history: { personal: false, shoe: true, retail: true, assistant: false } }, { ...DEFAULT_POLICY, history: undefined }];
+    for (const doc of docs) for (const category of ['personal', 'shoe', 'retail', 'assistant'] as const) {
+      expect(historyReadable(doc as PolicyDocument, category)).toBe(policyHistory(doc, category));
+    }
+  });
+
+  it('normalizePolicyView keeps a boolean history per known category and rejects anything else as malformed', () => {
+    const body = (history: unknown) => ({ policyId: 'a1b2c3d4e5f6', source: 'installed',
+      policy: { ...structuredClone(DEFAULT_POLICY), history } });
+    expect(normalizePolicyView(body({ personal: true, assistant: true })).policy.history).toEqual({ personal: true, assistant: true });
+    expect(normalizePolicyView(body({ personal: true, assistant: false })).policy).toEqual(DEFAULT_POLICY);
+    expect(normalizePolicyView(body({})).policy.history).toEqual({});
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY);
+    const olderView = normalizePolicyView({ policyId: '3526a909e404', source: 'repo', policy: older });
+    expect(Object.hasOwn(olderView.policy, 'history')).toBe(false);
+    for (const bad of [{ assistant: 'true' }, { assistant: 1 }, { assistant: null }, { company: true }, [], 'personal', null, true]) {
+      expect(() => normalizePolicyView(body(bad))).toThrow('Policy data does not match the workspace contract.');
+    }
   });
 });

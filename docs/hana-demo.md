@@ -1,6 +1,14 @@
 # HANA demo reproduction and cutover
 
-Status: real phone offers, natural candidate learning and merchant handoff have been verified; see `docs/evidence/hana-demo/06-phone-preference.md`, `07-phone-handoff.json` and the checkout screenshot. The shortened hackathon demonstration uses these verified steps plus the current console and a second personal client. Merchant-model greetings, three reset rehearsals and independent-machine reproduction remain unverified. Original channel-photon is the fallback. The human cancelled the original 06:00 PDT cutoff on 2026-10-18 at 10:13 PDT; continue HANA acceptance with the original agent retained as rollback. Full elapsed rehearsal time includes the real five-minute idle wait; the edited film budget is 4:30.
+Status: real phone offers, natural candidate learning, merchant handoff, and actual Claude Desktop MCP calls have been verified. A separate Sample company-assistant scenario verified owner consent, inherited context, merchant-session continuity, fixture address release, and denial after revocation. The current English demo script targets approximately three minutes. Merchant-model greetings, three reset rehearsals and independent-machine reproduction remain unverified. Original channel-photon is the fallback. The human cancelled the original 06:00 PDT cutoff on 2026-10-18 at 10:13 PDT; the submission deadline is 12:00 PDT. A full live learning demonstration includes the real five-minute idle wait.
+
+## Current evidence
+
+- [Phone preference](evidence/hana-demo/06-phone-preference.md) and [phone handoff](evidence/hana-demo/07-phone-handoff.json).
+- [Actual Claude Desktop switch](evidence/hana-demo/12-desktop-switch.json): personal-agent MCP access to the same Sample card and live merchant offers.
+- [Company-assistant verification](evidence/hana-demo/17-company-assistant-recording.json): a distinct consent flow with actual SDK calls, UI approval and revocation, stable sessions across Dots and Muse, and fixture-only checkout.
+- [English overview](evidence/hana-demo/16-english-overview.png), [context](evidence/hana-demo/13-english-recording-context.png), and [receipts](evidence/hana-demo/15-english-receipts.png), captured at 1920 × 1080.
+- [English script](demo-script-en.md) and [submission copy](devpost-submission-en.md). Video production is handled separately; these files do not establish that a video has been uploaded.
 
 ## Inputs an independent operator needs
 

@@ -10,6 +10,8 @@ npm i @agent-cookie/sdk   # Node 22 or later; ESM, types included, no runtime de
 
 ## Quickstart (a): an assistant company
 
+Local: one workspace (`http://127.0.0.1:4310`), one key.
+
 ```ts
 import { AssistantClient, assistantPrompt, registerAgent } from '@agent-cookie/sdk';
 
@@ -36,6 +38,33 @@ await muse.remember({ field: 'pref.brand', value: 'Brooks', basis: 'stated',
   evidence: { conversationId: 'chat-8812', snippet: 'I only run in Brooks' } });
 const { intents, accepted, questionsSkipped } = await muse.stats(); // counts only
 ```
+
+Hosted: the gateway runs one jar per person, each under `/u/:userId`. You register once at the gateway; each approved link hands you that person's jar.
+
+```ts
+import { AssistantClient, assistantPrompt, registerAgent } from '@agent-cookie/sdk';
+
+const gatewayUrl = 'https://gateway.example'; // a local gateway: http://127.0.0.1:4320
+// Once, at setup: the global key. It is shown once and works only at the gateway.
+const { key } = await registerAgent(gatewayUrl, { name: 'Muse', category: 'assistant' });
+const gateway = new AssistantClient({ baseUrl: gatewayUrl, key }); // requestLink, link, waitForLink only
+
+// Once per person: they open the link, sign in or up with a passkey, and approve.
+const link = await gateway.requestLink();
+console.log(`Continue with Agent Cookie: ${link.url}`); // show this to the person
+const approved = await gateway.waitForLink(link.id); // approved.jar = { url: '…/u/usr_abc', key }
+// Store approved.jar as a secret now: the link shows it only until it expires. Its key works only in that jar.
+const muse = AssistantClient.forJar(approved.jar!); // everything else goes to the person's own instance
+
+const system = `You are Muse.\n\n${assistantPrompt(await muse.context())}`;
+const found = await muse.find({ text: 'trail running shoes under $150, size 42', kind: 'shoes' }, 'find-0001');
+const result = await muse.accept(found.quotes[0].id, 'accept-0001');
+await muse.remember({ field: 'pref.brand', value: 'Brooks', basis: 'stated',
+  evidence: { conversationId: 'chat-8812', snippet: 'I only run in Brooks' } });
+const { intents, accepted, questionsSkipped } = await muse.stats();
+```
+
+Two keys, two places: the global key works only at the gateway (`requestLink`, `link`, `waitForLink`), and a jar key only in that one person's instance, so keep one `{ url, key }` per person. Neither is shown again: the global key comes once from `registerAgent`, the jar key only on the approved link until it expires. The person's instance decides every release, exactly as the local workspace does; the gateway only routes to it.
 
 `find` searches the catalog stores from the person's own words (`text`). The optional `kind` (a lower-case token such as `shoes`) also brings in stores that integrated `MerchantClient`: a store that registered with capability X is introduced to intents whose kind is X. Without `kind` only the catalog stores are searched.
 
@@ -82,12 +111,18 @@ A purpose field is released only after the person accepted this store's quote; b
 
 ## Quickstart (c): the person's own agent
 
+```sh
+agent-cookie init --start   # a blank workspace in ~/.agent-cookie, then a personal key for "my-agent", shown once
+# paste the two printed lines into your agent's environment (never into a file you commit):
+# export AGENT_COOKIE_URL=http://127.0.0.1:4310
+# export AGENT_COOKIE_KEY=ck_…
+```
+
 ```ts
 import { WorkspaceClient, workspaceConfigFromEnv } from '@agent-cookie/sdk';
 
-// AGENT_COOKIE_KEY: a personal key the owner added; AGENT_COOKIE_URL defaults to http://127.0.0.1:4310.
-const me = new WorkspaceClient(workspaceConfigFromEnv(process.env));
-const { role } = await me.getMe(); // 'personal'
+const me = new WorkspaceClient(workspaceConfigFromEnv(process.env)); // the personal key from init
+await me.remember({ field: 'shoe_size', value: 'EU 42' }); // the person said it: stated, on the card at once
 const card = await me.getMyCard(); // the whole card with provenance: the person's own agent may see it
 
 const found = await me.find({ text: 'a black coat, size M, under $150' }, 'find-0002');
@@ -95,7 +130,7 @@ const result = await me.accept(found.quotes[0].id, `accept-${found.quotes[0].id}
 const { receipts } = await me.getReceipts(); // who read which field, for which purpose; never values
 ```
 
-The owner key (console, CLI) also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
+More agents of your own (a laptop, a speaker) each get their own key from the owner key: `mintKey({ agentId, role: 'personal', label })`, or `agent-cookie keys mint --agent laptop --role personal --label "laptop"`; `keys list` shows labels and dates, never keys; `keys revoke laptop` stops every key of that agent. The owner key also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
 
 ## Three plain facts
 
@@ -103,7 +138,7 @@ The owner key (console, CLI) also decides consent links: `listLinks({ limit? })`
 - **Keys are bearer credentials, shown once.** `registerAgent` returns the key in its response and never again. Keep it in your secret store (`AGENT_COOKIE_KEY`), never in a prompt, a chat message, a log or a commit. The SDK never puts a key or a field value in an error message.
 - **Demo mode is Sample data.** A workspace started with `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture` serves a Sample persona (its card, receipts and stats), Sample keys (`fixtures/dev-keys.json`, e.g. `ck_assistant_sample`, `ck_merchant_acme_sample`, `ck_personal_desktop_sample`) and recorded store answers replayed from fixtures. Quotes and cards with `source: sample | fixture` come back with `sample: true`; contexts, handshakes, links and stats carry no source, so set `AGENT_COOKIE_SAMPLE=1` (or `sample: true` in the client options) to label those too. Never show Sample data as a real person, real inventory or a real order.
 
-**Where the workspace is.** The URL is an origin: `https://` on any host (a person's hosted jar behind its TLS gateway), or `http://` on loopback only (`127.0.0.1`, `localhost`, `[::1]`; the local workspace listens on `http://127.0.0.1:4310`). No path, query or credentials in it. Anything else, `http://` to another machine included, is refused before a request, so a key never crosses a network in clear text. The SDK never follows a redirect. The hosted gateway itself is a later phase of the plan; the quickstarts use the local workspace.
+**Where the workspace is.** The URL is `https://` on any host (a person's hosted jar), or `http://` on loopback only (`127.0.0.1`, `localhost`, `[::1]`; the local workspace listens on `http://127.0.0.1:4310`, a local gateway on `http://127.0.0.1:4320`). It is an origin, optionally followed by a path prefix: a person's instance under the gateway is `https://gateway.example/u/usr_abc`, and every route goes under it (`/u/usr_abc/assistant/context`, the event stream and `registerAgent` included). The prefix is plain segments (`[A-Za-z0-9._~-]`) with no trailing slash: `…/u/usr_abc/` is refused, not normalised. No query, fragment or credentials. Anything else, `http://` to another machine included, is refused before a request, so a key never crosses a network in clear text and never leaves the prefix. The SDK never follows a redirect.
 
 ## Errors
 
@@ -125,17 +160,17 @@ On `SCOPE_DENIED` or `PURPOSE_MISMATCH`, do not retry with another purpose: the 
 
 Every method takes an optional last `{ signal?: AbortSignal }`. Writes that create something take a caller-chosen idempotency key (`createIntent`, `find`, `accept`, `quote`): reuse it to retry safely. Each request authenticates anew, omits browser cookies, does not cache, never follows a redirect and is never retried automatically; the default timeout is 25 s (`timeoutMs`, 1–120000). Responses are validated and projected to the contract's keys, so an extra upstream property never reaches you; in contexts, handshakes and field reads a field name this SDK does not know yet passes through.
 
-**Shared by `WorkspaceClient` and `AssistantClient`** (one implementation): `getMe()`, `createIntent({ text, query?, public?, kind? }, key)` (`kind`: `[a-z][a-z0-9_]{0,63}`, checked before sending), `getQuotes(intentId)` (long-poll, up to 20 s), `streamQuotes(intentId, { lastEventId? })` (server-sent events: existing quotes, then live ones, then `complete` or `expired`; never reconnects; `lastEventId` resumes), `find(input, key)` (create, then quotes from the stream until complete, expired or 20 s; falls back to the long-poll when the workspace cannot stream), `accept(quoteId, key)` (`ordered | handoff | blocked | failed`, with `message`, `continueUrl` and `receipts` passed through; a handoff is not an order or a payment), `observe(observation)` (needs `learning: true` in the client options; queued is not learned).
+**Shared by `WorkspaceClient` and `AssistantClient`** (one implementation): `getMe()`, `createIntent({ text, query?, public?, kind? }, key)` (`text`: the exact user words in any language; `query`: caller-supplied English catalog keywords; `public`: only explicit conditions, including seller `count` 1–5. Legacy kind-only calls remain type-valid and normalize to `text: kind`. `kind`: `[a-z][a-z0-9_]{0,63}`, checked before sending), `getQuotes(intentId)` (long-poll, up to 20 s), `streamQuotes(intentId, { lastEventId? })` (server-sent events: existing quotes, then live ones, then `complete` or `expired`; never reconnects; `lastEventId` resumes), `find(input, key)` (create, then quotes from the stream until complete, expired or 20 s; falls back to the long-poll when the workspace cannot stream), `accept(quoteId, key)` (`ordered | handoff | blocked | failed`, with `message`, `continueUrl` and `receipts` passed through; a handoff is not an order or a payment), `observe(observation)` (needs `learning: true` in the client options; queued is not learned).
 
-**`AssistantClient`**: `requestLink()` → `LinkView` (201, or 200 with the link already pending); `link(id)`; `waitForLink(id, { intervalMs = 2000, timeoutMs = LINK_TTL_MS, signal })`; `context()` → `AssistantContext & { sample }`; `remember({ field, value, basis?, evidence? })` → `{ stored, contribution, sample }` (`basis` defaults to `observed`; `stated` needs `evidence: { conversationId, snippet }`); `stats()` → `AssistantStats & { sample }` (`intents`, `quoted`, `accepted`, `completed`, `questionsSkipped`). `assistantPrompt(ctx)` is a pure function: same context, same text.
+**`AssistantClient`**: `requestLink()` → `LinkView` (201, or 200 with the link already pending); `link(id)`; `waitForLink(id, { intervalMs = 2000, timeoutMs = LINK_TTL_MS, signal })` (through the gateway the approved view carries `jar: { url, key }`, validated like a client's URL and key); `AssistantClient.forJar(jar, { sample?, learning?, fetch?, timeoutMs? })` → the client bound to that person's instance (a malformed jar throws `Invalid jar access.`, naming neither value); `context()` → `AssistantContext & { sample }`; `remember({ field, value, basis?, evidence? })` → `{ stored, contribution, sample }` (`basis` defaults to `observed`; `stated` needs `evidence: { conversationId, snippet }`); `stats()` → `AssistantStats & { sample }` (`intents`, `quoted`, `accepted`, `completed`, `questionsSkipped`). `history({ limit? })` → `AssistantHistoryResponse & { sample }`: the person's intent and purchase history with outcomes, only when the person's policy allows history for assistants (`history.assistant`, off by default), 403 `SCOPE_DENIED` otherwise; each read writes a receipt the owner sees, and it never carries the user's own words (`text`, `query`). `assistantPrompt(ctx)` is a pure function: same context, same text.
 
 **`MerchantClient`**: `handshake(sessionId)`; `fields(sessionId, names, purpose?)` (all or nothing; at most 32 names); `quote(input, key)`; `contribute({ field, value, basis, sessionId? })`; `getNote(sessionId, key)` (`NOT_FOUND` when absent) and `setNote(sessionId, key, value)` (key `[A-Za-z0-9_.-]{1,64}`, value ≤ 2048 bytes); `stats()` → `MerchantStats & { sample }`.
 
 **`registerAgent(url, { name, category, capabilities?, callbackUrl?, chatEndpoint? }, { fetch?, timeoutMs?, signal? })`** → `Registration { agentId, key, category, role }`. No key needed; an assistant takes no callback or chat endpoint; category `personal` needs the owner key and is refused.
 
-**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks({ limit? })` (1–500, workspace default 100), `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
+**`WorkspaceClient`** (personal key unless noted): `getMyCard()`, `remember({ field, value })` → `Contribution & { sample }` (POST /personal/contributions: a fact the person stated, basis `stated`; value ≤ 512 bytes, never a card number), `getReceipts()`, `getGrants()`, `revokeGrant(id)`, `revokeContribution(id)`, `getPolicy()`; learning: `getLearning()`, `setLearning({ enabled })` (PUT `{ paused: !enabled }`), `getLearned()`, `forgetLearning({ field })`. Owner key: `getActivity()`, `getFunnel({ since?, limit? })` (counts and ids; `createdBy` and `questionsSkipped` when present), `setPolicy(doc)` and `shadowPolicy(doc)` (a 422 carries `violations`: section and field names, never values), `listLinks({ limit? })` (1–500, workspace default 100), `approveLink(id)`, `declineLink(id)` (`LINK_NOT_PENDING` once decided or expired), `mintKey({ agentId, role, label })` → `MintKeyResult & { sample }` (`agentId` `[a-z0-9][a-z0-9_.-]{0,63}`, `role` `personal | merchant`, `label` 1–200 bytes; the key is in this answer once and never again, and never in an error), `listKeys()` → `{ keys: KeyView[], sample }` (labels and dates, never a key or a hash: a row that carries one is refused), `revokeKey(agentId)` → `RevokeKeyResult & { sample }` (`revoked` counts the keys revoked; `NOT_FOUND` for an agent the owner never minted a key for), `demoReset()` (demo mode only). Revocation stops future reads; it does not recall what was already released. Cancelling a write after it was sent does not prove it was rolled back: read the state back before telling the person.
 
-**Configuration.** `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`; an `https://` origin, or `http://` on loopback) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
+**Configuration.** `workspaceBase(url)` returns the base URL as clients accept it (normalised) or throws the one rule above. `workspaceConfigFromEnv(process.env)` reads `AGENT_COOKIE_KEY` (required), `AGENT_COOKIE_URL` (default `http://127.0.0.1:4310`; `https://`, or `http://` on loopback, with an optional path prefix such as `/u/usr_abc`) and `AGENT_COOKIE_SAMPLE` (`0` or `1`). Every client also takes `{ baseUrl, key, sample?, learning?, fetch?, timeoutMs? }` directly.
 
 ## Develop in this repository
 

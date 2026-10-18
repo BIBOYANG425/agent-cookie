@@ -10,7 +10,8 @@ import type {
 import { isExperimentArm, isFunnelStage, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
-export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
+/** `label` is set only on keys the owner minted (POST /owner/keys); `revokedAt` once POST /owner/keys/:agentId/revoke revoked it. */
+export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string; label?: string; revokedAt?: string }
 /** Grant plus the intent it was issued under (purpose grounding needs it). */
 export interface GrantRow extends Grant { intentId?: string; createdAt: string }
 /** `kind` is the optional hint; `text` is absent only on legacy kind-only requests (see app.ts). */
@@ -55,7 +56,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS agents (agent_id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, capabilities TEXT NOT NULL,
   callback_url TEXT, chat_endpoint TEXT, domain TEXT UNIQUE, created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS keys (key_hash TEXT PRIMARY KEY, agent_id TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS keys (key_hash TEXT PRIMARY KEY, agent_id TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, label TEXT, revoked_at TEXT);
 CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE (user_id, agent_id));
 CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, intent_id TEXT, fields TEXT NOT NULL, purpose TEXT NOT NULL,
@@ -114,14 +115,24 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   // v13 (bring-your-own-agent): `links` (consent links of company assistants) is a new TABLE, added by SCHEMA's
   // CREATE TABLE IF NOT EXISTS like v11; the bump records that the database has it.
   { version: 14, table: "intents", column: "conversation_id", ddl: "ALTER TABLE intents ADD COLUMN conversation_id TEXT" },
+  // v14 (owner key minting): keys the owner minted carry a label; revoking one stamps revoked_at (it stops authenticating).
+  { version: 14, table: "keys", column: "label", ddl: "ALTER TABLE keys ADD COLUMN label TEXT" },
+  { version: 14, table: "keys", column: "revoked_at", ddl: "ALTER TABLE keys ADD COLUMN revoked_at TEXT" },
 ];
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations", "links"] as const;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : String(v));
+
+function toKey(r: Row): KeyRow {
+  const k: KeyRow = { keyHash: String(r.key_hash), agentId: String(r.agent_id), role: r.role as Role, createdAt: String(r.created_at) };
+  if (r.label !== null && r.label !== undefined) k.label = String(r.label);
+  if (r.revoked_at) k.revokedAt = String(r.revoked_at);
+  return k;
+}
 
 function toAgent(r: Row): Agent {
   const a: Agent = { agentId: String(r.agent_id), name: String(r.name), category: r.category as Category,
@@ -402,17 +413,35 @@ export class Store {
 
   // ---- keys
   insertKey(k: KeyRow): void {
-    this.exec("INSERT OR REPLACE INTO keys (key_hash, agent_id, role, created_at) VALUES (?, ?, ?, ?)", k.keyHash, k.agentId, k.role, k.createdAt);
+    this.exec("INSERT OR REPLACE INTO keys (key_hash, agent_id, role, created_at, label, revoked_at) VALUES (?, ?, ?, ?, ?, ?)",
+      k.keyHash, k.agentId, k.role, k.createdAt, k.label ?? null, k.revokedAt ?? null);
   }
+  /** The live key with that hash: a revoked key is not returned, so it authenticates nothing (401 AUTH_REQUIRED). */
   keyByHash(keyHash: string): KeyRow | undefined {
-    const r = this.db.prepare("SELECT * FROM keys WHERE key_hash = ?").get(keyHash) as Row | undefined;
-    return r && { keyHash: String(r.key_hash), agentId: String(r.agent_id), role: r.role as Role, createdAt: String(r.created_at) };
+    const r = this.db.prepare("SELECT * FROM keys WHERE key_hash = ? AND revoked_at IS NULL").get(keyHash) as Row | undefined;
+    return r && toKey(r);
   }
   deleteKey(keyHash: string): void {
     this.exec("DELETE FROM keys WHERE key_hash = ?", keyHash);
   }
   hasOwnerKey(): boolean {
     return this.db.prepare("SELECT 1 FROM keys WHERE role = 'owner' LIMIT 1").get() !== undefined;
+  }
+  /** The owner key rows (hashes only): a blank instance's POST /demo/reset keeps its minted owner key. */
+  ownerKeys(): KeyRow[] {
+    return (this.db.prepare("SELECT * FROM keys WHERE role = 'owner' ORDER BY rowid").all() as Row[]).map(toKey);
+  }
+  /** Keys the owner minted (they carry a label), revoked ones included, newest first. */
+  mintedKeys(): KeyRow[] {
+    return (this.db.prepare("SELECT * FROM keys WHERE label IS NOT NULL ORDER BY created_at DESC, rowid DESC").all() as Row[]).map(toKey);
+  }
+  /** Whether the owner ever minted a key for the agent (revoked or not). */
+  hasMintedKey(agentId: string): boolean {
+    return this.db.prepare("SELECT 1 FROM keys WHERE agent_id = ? AND label IS NOT NULL LIMIT 1").get(agentId) !== undefined;
+  }
+  /** Revokes every live minted key of the agent; returns how many this call revoked. */
+  revokeMintedKeys(agentId: string, at: string): number {
+    return this.exec("UPDATE keys SET revoked_at = ? WHERE agent_id = ? AND label IS NOT NULL AND revoked_at IS NULL", at, agentId).changes;
   }
 
   // ---- sessions
@@ -571,6 +600,10 @@ export class Store {
   }
   markSeed(id: string): void {
     this.exec("UPDATE contributions SET origin = 'seed' WHERE id = ?", id);
+  }
+  /** Whether any contribution, revoked or not, came from the Sample seed (a blank instance refuses such a database). */
+  hasSeedContribution(): boolean {
+    return this.db.prepare("SELECT 1 FROM contributions WHERE origin = 'seed' LIMIT 1").get() !== undefined;
   }
   /** Non-revoked Sample seed contributions of the user (card provenance, B20). */
   seedContributions(userId: string): StoredContribution[] {

@@ -1,8 +1,6 @@
-# CLAUDE.md
+# Agent Cookie — 给 coding agent 的工作规则
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-同一份内容也在 AGENTS.md。Claude Code 读这份，Codex 读那份。
+同一份内容也在 CLAUDE.md。Codex 读这份，Claude Code 读那份。
 
 ## 项目一句话
 

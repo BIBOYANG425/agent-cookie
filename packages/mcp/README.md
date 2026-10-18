@@ -1,16 +1,16 @@
-# Agent Cookie personal MCP
+# Agent Cookie MCP
 
-Stdio server using the shared SDK. Startup calls `/me` and requires `role=personal`. Implemented tools:
+Two doors over the shared SDK: stdio (default, one personal key from the environment) and Streamable HTTP on `127.0.0.1:4311` (each request's bearer key picks the tool set). Stdio startup calls `/me` and requires `role=personal`. Personal tools:
 
 | Tool | Behavior |
 |---|---|
 | `get_my_card` | Read the current card and provenance; do not paste the full card into merchant messages |
-| `find_agents` | Preserve original `request`; optionally extract `query`, `budget`, `size`, `color`, `deadline` from that request only |
+| `find_agents` | Preserve original `text`; provide English catalog keywords in `query`; optionally extract `budget`, `size`, `count` (1–5 sellers), `color`, `deadline` from that text only |
 | `accept_quote` | Accept the user's selected quote; preserve ordered/handoff/blocked/failed and Sample |
 | `list_receipts` | List who read which fields for which purpose, without values |
 
 Each tool is a thin wrapper over one `@agent-cookie/sdk` method (`getMyCard`, `find`, `accept`, `getReceipts`, `observe`); the SDK is the only HTTP client and the workspace decides every release.
-An assistant tool set would be the same door: one wrapper per `AssistantClient` method (`requestLink`, `waitForLink`, `context`, `find`, `accept`, `remember`, `stats`); it is not built.
+The assistant tool set (HTTP door only, below) is the same shape: one wrapper per `AssistantClient` method.
 
 Read tools do not cache prior successful data. Errors use fixed public text, not raw SDK/HTTP details. stdout contains MCP frames only. Mutation tools have write annotations; accept is marked destructive/open-world because live workspaces may checkout. In demo mode (`AGENT_COOKIE_UCP=fixture`) the workspace replays recorded quotes and only returns a Sample handoff to the recorded merchant checkout.
 
@@ -45,9 +45,51 @@ Back up the existing desktop config and preserve all unrelated settings. Add:
 }
 ```
 
-Restart Desktop after adding the config. Ask: “Call get_my_card, show language and shoe size, and preserve Sample labels. Then call find_agents with request “Find a black coat, size M, under 150 dollars.” Preserve sizeNote and fixture warnings. Do not accept a quote.” Save actual Desktop tool output screenshots under `docs/evidence`. Automated stdio tests alone do not count as A10 Desktop acceptance.
+Restart Desktop after adding the config. Ask: “Call get_my_card, show language and shoe size, and preserve Sample labels. Then call find_agents with text “Find a black coat, size M, under 150 dollars.” and query “black coat”. Preserve sizeNote and fixture warnings. Do not accept a quote.” Save actual Desktop tool output screenshots under `docs/evidence`. Automated stdio tests alone do not count as A10 Desktop acceptance.
 
-The test-only Sample HTTP server remains for denial/cache regression coverage. Current integration uses `apps/workspace` (SQLite) on 4310; the offline stand-in workspace was retired on 2026-10-18 and there is no other fallback. Select the `sample-personal-desktop` entry from `fixtures/dev-keys.json` for the local `AGENT_COOKIE_KEY`; Photon uses its distinct `sample-personal-photon` key. Set `AGENT_COOKIE_SAMPLE=1` for the current stub/fixture backend so tool output retains Sample labels. Merchant MCP tools and streamable HTTP on 4311 remain unimplemented. Account login and Desktop UI evidence are separate from a successful stdio protocol check.
+The test-only Sample HTTP server remains for denial/cache regression coverage. Current integration uses `apps/workspace` (SQLite) on 4310; the offline stand-in workspace was retired on 2026-10-18 and there is no other fallback. Select the `sample-personal-desktop` entry from `fixtures/dev-keys.json` for the local `AGENT_COOKIE_KEY`; Photon uses its distinct `sample-personal-photon` key. Set `AGENT_COOKIE_SAMPLE=1` for the current stub/fixture backend so tool output retains Sample labels. Merchant MCP tools are not built (a merchant key is refused by the HTTP door). Account login and Desktop UI evidence are separate from a successful stdio protocol check.
+
+## HTTP door (Streamable HTTP on 4311)
+
+```sh
+AGENT_COOKIE_MCP_TRANSPORT=http AGENT_COOKIE_URL=http://127.0.0.1:4310 node --env-file-if-exists=.env dist/main.js
+```
+
+| Variable | Meaning |
+|---|---|
+| `AGENT_COOKIE_MCP_TRANSPORT` | `stdio` (default, unchanged) or `http` |
+| `AGENT_COOKIE_URL` | The workspace, by the SDK's `workspaceConfigFromEnv` rules (https, or http on loopback) |
+| `AGENT_COOKIE_SAMPLE` | `1` labels every response Sample, as over stdio |
+| `MCP_HTTP_PORT` | Override of the contract's `MCP_HTTP_PORT` (4311); `0` picks a free port (tests) |
+| `AGENT_COOKIE_KEY` | Not read in http mode: keys arrive per request |
+
+- Endpoint: `http://127.0.0.1:4311/mcp` (POST, GET for the server stream, DELETE to end a session). The server binds 127.0.0.1 only; there is no host option.
+- Bearer mapping: `Authorization: Bearer <key>` on every request. A new session (an `initialize` POST without `mcp-session-id`) calls `GET /me` through `WorkspaceClient.getMe()` with that key: `personal` → the personal tools above (`observe` only with the learning env, as over stdio), `assistant` → the assistant tools below. A missing or malformed header, a key the workspace answers 401/403, or any other role (owner, merchant) → HTTP 401 with one fixed JSON-RPC body (`{"jsonrpc":"2.0","error":{"code":-32001,...},"id":null}`), never the key. The owner key is never exposed over MCP. A workspace that cannot be reached is 503 with fixed text. The role is not cached: one `/me` per new session.
+- Sessions, not stateless: each session gets its own `McpServer` + `StreamableHTTPServerTransport`, bound to the SHA-256 of the key that opened it. A request carrying that session id with any other key gets the same 404 "Session not found." as an unknown session id (compared in constant time). Why sessions: the MCP client keeps one tool list per connection and a stateless door would have to call `/me` and rebuild a server on every request; with sessions the role is checked once and the per-key binding (the learning dedup set) lives as long as the conversation. Every tool call still goes to the workspace with the key, so a revoked key or grant fails on the next call. Limits: 128 open sessions, closed after 30 minutes without a request.
+- Logs go to stderr and carry counts and status codes only (`session opened (sessions=N)`, `refused 401`); never a key, a value or an upstream error.
+
+Assistant tools (an assistant key from `registerAgent({ category: 'assistant' })`):
+
+| Tool | `AssistantClient` method | Notes |
+|---|---|---|
+| `request_link` | `requestLink()` | Show the returned `url` to the person; the owner approves it |
+| `get_link` | `link(id)` | `pending` / `approved` (with `sessionId`) / `declined` / `expired` |
+| `get_context` | `context()` | Values policy allows, `unknown`, `writable`; never `shipping_address` or `payment_method`; writes a receipt |
+| `remember` | `remember({ field, value, basis?, evidence? })` | `stated` needs `evidence: { conversationId, snippet }` with the person's own words |
+| `find` | `find({ text, query?, kind?, public? }, key)` | Idempotency key `mcp:find:<uuid>`, as `find_agents` |
+| `accept_quote` | `accept(quoteId, key)` | Only the quote the user explicitly chose; destructive/open-world |
+| `get_stats` | `stats()` | Counts only |
+
+The descriptions tell the model never to ask for an address or payment details, to quote the person's own words as evidence, and that accept requires the user's explicit choice. Errors use the same fixed public text as the personal tools. Through a hosted gateway a `LinkView` can carry `jar` (a URL and a key for the person's instance); the door strips it before the model sees the link, and the two-client hop of `AssistantClient.forJar` is not done here: point the door's `AGENT_COOKIE_URL` at the person's jar instead. History is not exposed (not merged).
+
+### Hosted deployment
+
+What a hosted deployment adds, and nothing else changes:
+
+- TLS in front: a reverse proxy terminates https and forwards `/mcp` to `127.0.0.1:4311` (keep the `Authorization` and `mcp-session-id` headers, do not buffer `text/event-stream`). The door itself never listens on another interface.
+- `AGENT_COOKIE_URL` is the person's https jar (e.g. `https://jar.example/u/usr_abc`), so the keys the door forwards go only there.
+
+The tools, the bearer mapping, the SDK and the workspace are the same code as on a laptop.
 
 ## Passive learning and Claude Code hooks (contract adapter, not enabled by default)
 
