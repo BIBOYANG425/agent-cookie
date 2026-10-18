@@ -397,6 +397,17 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A66 | A → 人（记录） | 网关 `GET /operator/funnel` 改为实测（`163e6d7`）：契约 `OperatorFunnel.coverage { live, snapshot, missing }` 新增；`byMerchant` 暂为空（owner 漏斗没有按商家的拆分，见 `apps/gateway/README.md`）。若要按商家汇总，需要在工作台契约里给 `FunnelRow` 增加按商家的计数，待人决定。托管实例用 fixture 回放报价，运营方的报价/接受计数在接入真实商家前属 Sample；`OperatorFunnel` 没有 sample 标记，是否加字段待人决定。 | 待人 |
 | A67 | A → 人 | `docs/plan.md`：§5 字段策略加「历史记录」一列（personal 可读、商家永不、assistant 默认关由 owner 开）与端点 `GET /assistant/history`；§2 若需要可加对应验收行。 | 待人 |
 
+2026-10-18（续），Phase 5（分支 `claude/phase-5-doors`，PR #34）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A70 | A → 人（记录） | Phase 5 已建成：契约 `POST/GET /owner/keys`、`POST /owner/keys/:agentId/revoke`（`126e0fe`）；工作台实现与 A29（`846d8c7`、`4c6a269`）；SDK `mintKey/listKeys/revokeKey/remember`，CLI `init`、`keys mint\|list\|revoke`（`b89b368`）；MCP Streamable HTTP 门 127.0.0.1:4311 与助理工具集（`a64baff`）；Python 客户端 `packages/sdk-python`（`eb28e9b`）。钥匙只在铸造响应里出现一次，只存哈希，不进日志、不写文件。 | 已完成 |
+| A71 | A → 人 | `docs/plan.md`：§2 把 A29 从“计划/未实现”改为已实现（空白工作台 → owner 铸 personal 钥匙 → 只用 SDK 写两条偏好并读回 → 撤销 → 下一次 401）；§5 契约加三条 `/owner/keys` 端点与 `MintKeyRequest/MintKeyResult/KeyView/KeysResponse/RevokeKeyResult`；§4 环境变量加 `AGENT_COOKIE_MCP_TRANSPORT`（stdio\|http）、`MCP_HTTP_PORT`（4311）、`AGENT_COOKIE_OWNER_KEY`（CLI `init`）、`AGENT_COOKIE_WORKSPACE_DIR`（CLI `init --start`）。 | 待人 |
+| A72 | B → B（记录） | `packages/mcp` 在运行时无法 import `@agent-cookie/contract`（其入口是 TS 源码），所以 `MCP_HTTP_PORT = 4311` 在 `packages/mcp/src/config.ts` 里复制了一份，测试断言两者相等。可选：SDK 再导出 `MCP_HTTP_PORT`，MCP 改从 SDK 取。 | 待评估 |
+| A73 | A → B | Phase 5 的第三扇门未做：Photon 把手机号映射到人与钥匙（现在仍是单一测试 sender）。需要先决定一个号码对应哪个 jar（本机工作台或网关下的 `/u/<userId>`）。 | 待做 |
+| A74 | A → 人 | Python 包 `agent-cookie`（`packages/sdk-python`，Python ≥ 3.11）未发布到 PyPI；发布由人执行（需要 PyPI 账号与 token，不进仓库）。`pnpm test` 会跑它的 pytest：有 python3 时自动建 `.venv` 并从 PyPI 装依赖，没有 python3 时打印 skipped 并退出 0。 | 待人 |
+| A75 | B → B | Phase 4 合入后，`GET /assistant/history` 已在 `openapi.json` 与生成的 Python 客户端里（`agent_cookie_client.api.assistant.get_assistant_history`），但 Python `AssistantClient.history` 与 MCP 助理工具 `history` 尚未包装：两者都要像 TS `AssistantClient.history` 那样丢掉 `text`/`query`，按 `history.assistant` 策略 403 如实转告，所以留作下一单元，不进 Phase 5。 | 待做 |
+
 2026-10-18，commerce rail 移交 D 线；以下只追加，等待 A 线审阅，不改 `docs/plan.md`。
 
 | ID | 请求 | 状态 |

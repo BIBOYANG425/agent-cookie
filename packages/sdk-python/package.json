@@ -1,0 +1,11 @@
+{
+  "name": "@agent-cookie/sdk-python",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Python client for the Agent Cookie workspace, generated from packages/contract/openapi.json plus thin AssistantClient, MerchantClient and WorkspaceClient wrappers.",
+  "scripts": {
+    "bootstrap": "bash scripts/setup.sh",
+    "generate": "bash scripts/generate.sh",
+    "test": "bash scripts/test.sh"
+  }
+}
