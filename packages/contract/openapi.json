@@ -1788,6 +1788,240 @@
         "x-agent-cookie-caller": "owner"
       }
     },
+    "/owner/keys": {
+      "get": {
+        "operationId": "getOwnerKeys",
+        "tags": [
+          "owner"
+        ],
+        "description": "→ KeysResponse { keys: KeyView[] } newest first: the keys the owner minted (agentId, role, label, createdAt, revokedAt?); never a key or a hash; the owner key, registered agents' keys and Sample keys are not listed\n\n**Key role:** `owner`.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: KeysResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeysResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error: AUTH_REQUIRED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "AUTH_REQUIRED"
+            ]
+          },
+          "403": {
+            "description": "Error: SCOPE_DENIED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "SCOPE_DENIED"
+            ]
+          },
+          "default": {
+            "description": "Any other failure, including 500 (code UPSTREAM_ERROR, message \"internal error\"). Every error is an ErrorBody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "x-agent-cookie-caller": "owner"
+      },
+      "post": {
+        "operationId": "postOwnerKeys",
+        "tags": [
+          "owner"
+        ],
+        "description": "MintKeyRequest { agentId, role: personal | merchant, label } → 201 MintKeyResult { key, agentId, role, label, createdAt }: the key is returned once and never logged or shown again (only its hash is stored); an unknown agentId is created (category personal for role personal, retail for merchant, name = label), an existing one must have that role (422 MISSING_FIELD); an agent may hold several keys\n\n**Key role:** `owner`.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created: MintKeyResult.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MintKeyResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error: AUTH_REQUIRED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "AUTH_REQUIRED"
+            ]
+          },
+          "403": {
+            "description": "Error: SCOPE_DENIED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "SCOPE_DENIED"
+            ]
+          },
+          "422": {
+            "description": "Error: MISSING_FIELD.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "MISSING_FIELD"
+            ]
+          },
+          "default": {
+            "description": "Any other failure, including 500 (code UPSTREAM_ERROR, message \"internal error\"). Every error is an ErrorBody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "x-agent-cookie-caller": "owner"
+      }
+    },
+    "/owner/keys/{agentId}/revoke": {
+      "post": {
+        "operationId": "postOwnerKeysRevoke",
+        "tags": [
+          "owner"
+        ],
+        "description": "→ RevokeKeyResult { ok, revokedAt, revoked }: revoke every live key of that agent; from then on they answer 401 AUTH_REQUIRED; the agent keeps its contributions, sessions and receipts; 404 when the owner never minted a key for that agentId\n\n**Key role:** `owner`.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "description": "The key id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: RevokeKeyResult.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeKeyResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error: AUTH_REQUIRED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "AUTH_REQUIRED"
+            ]
+          },
+          "403": {
+            "description": "Error: SCOPE_DENIED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "SCOPE_DENIED"
+            ]
+          },
+          "404": {
+            "description": "Error: NOT_FOUND.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "NOT_FOUND"
+            ]
+          },
+          "default": {
+            "description": "Any other failure, including 500 (code UPSTREAM_ERROR, message \"internal error\"). Every error is an ErrorBody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "x-agent-cookie-caller": "owner"
+      }
+    },
     "/owner/links": {
       "get": {
         "operationId": "getOwnerLinks",
@@ -5506,6 +5740,53 @@
         ],
         "description": "GET /.well-known/agent-cookie-jwks.json: one key for an existing session while the jar is wired and unlocked, else none."
       },
+      "KeyView": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "merchant"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "type": "string",
+            "description": "Set once POST /owner/keys/:agentId/revoke revoked it; a revoked key answers 401 AUTH_REQUIRED."
+          }
+        },
+        "required": [
+          "agentId",
+          "role",
+          "label",
+          "createdAt"
+        ],
+        "description": "One key the owner minted, as GET /owner/keys lists it: never the key or its hash. The owner key itself and keys made by POST /agents/register or the Sample seed are not listed (they carry no label)."
+      },
+      "KeysResponse": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyView"
+            }
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "description": "GET /owner/keys. Newest first."
+      },
       "LearnedEntry": {
         "type": "object",
         "properties": {
@@ -5802,6 +6083,63 @@
           "winRate"
         ],
         "description": "Response of GET /agent/stats: the calling merchant's own history in this workspace, over its own `agent_id` only. Counts only: no session id, no field name or value, nothing about any other merchant."
+      },
+      "MintKeyRequest": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "merchant"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "What this key is for, in the owner's words (1–200 UTF-8 bytes): \"laptop\", \"the kitchen speaker\". Never the key."
+          }
+        },
+        "required": [
+          "agentId",
+          "role",
+          "label"
+        ],
+        "description": "POST /owner/keys body (bring-your-own-agent plan §7, the person's own agent): mint a key for one of the person's own agents (`role: \"personal\"`, category personal: it reads the whole card) or for a store's agent the owner adds by hand (`role: \"merchant\"`, category retail). `agentId` is the owner's own name for the agent (`[a-z0-9][a-z0-9_.-]{0,63}`, e.g. \"laptop\"); an unknown one is created with `label` as its name, an existing one must already have that role (else 422 MISSING_FIELD). An agent may hold several keys; each has its own label and revocation."
+      },
+      "MintKeyResult": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "merchant"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "agentId",
+          "role",
+          "label",
+          "createdAt"
+        ],
+        "description": "POST /owner/keys → 201. The key is shown here once and never again (only its hash is stored); keep it in AGENT_COOKIE_KEY."
       },
       "NoteInfo": {
         "type": "object",
@@ -6935,6 +7273,27 @@
           "revokedAt"
         ],
         "description": "POST /personal/grants/:id/revoke."
+      },
+      "RevokeKeyResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "revokedAt": {
+            "type": "string"
+          },
+          "revoked": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "revokedAt",
+          "revoked"
+        ],
+        "description": "POST /owner/keys/:agentId/revoke: every live key of that agent is revoked at once; the agent, its contributions, sessions and receipts stay (revocation stops future reads, it does not recall what was already released). `revoked` counts the keys this call revoked (0 when none was live)."
       },
       "Role": {
         "type": "string",
