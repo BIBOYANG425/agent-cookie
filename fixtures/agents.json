@@ -20,5 +20,12 @@
     "capabilities": ["trail_shoes"],
     "chatEndpoint": "http://127.0.0.1:8000/api/chat",
     "createdAt": "2026-10-17T16:00:00.000Z"
+  },
+  {
+    "agentId": "sample-assistant",
+    "name": "Sample · Assistant",
+    "category": "assistant",
+    "capabilities": [],
+    "createdAt": "2026-10-17T16:00:00.000Z"
   }
 ]

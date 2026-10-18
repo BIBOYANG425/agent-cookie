@@ -40,13 +40,18 @@ describe("A24 漏斗报表（proposed）", { timeout: 45_000 }, () => {
     expect(checkoutReceipts.length).toBe(1);
     // Lane C's seed also carries Tier 0 merchants (ACME): each gets one introduction and one `tier0` receipt per intent.
     const tier0 = all.filter((r) => r.purpose === "tier0");
+    // The search's read of the card for each of the two UCP stores: one `handshake` receipt per store session (2026-10-18).
+    const handshake = all.filter((r) => r.purpose === "handshake" && r.intentId === intentId);
+    expect(handshake.length).toBe(2);
+    expect(new Set(handshake.map((r) => r.agentId))).toEqual(new Set(ucp.map((q) => q.agentId)));
 
     const r = await owner.get("/owner/funnel");
     expect(r.status).toBe(200);
     expect(r.body.sample).toBe(true);
     const row = (r.body.rows as Json[]).find((x) => x.intentId === intentId);
     expect(row).toMatchObject({ introduced: 2 + tier0.length, quoted: 2, accepted: true, outcome: "handoff", source: "fixture",
-      purposeReleases: 1 + tier0.length });
+      purposeReleases: 1 + tier0.length + 2,
+      questionsSkipped: all.filter((r) => r.intentId === intentId).reduce((n: number, r: Json) => n + r.fields.length, 0) });
     expect(row.firstQuoteMs).toBeGreaterThanOrEqual(0);
     expect(row.fieldsRead).toBeGreaterThanOrEqual(1);
     expect(row.fieldsGranted).toBeGreaterThanOrEqual(row.fieldsRead);

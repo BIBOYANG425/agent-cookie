@@ -43,6 +43,23 @@ auto:
     - "pref.recipient"
     - "pref.price_band"
     - "pref.size_system"
+  assistant:
+    - "lang"
+    - "tone"
+    - "length"
+    - "shoe_size"
+    - "budget"
+    - "deadline"
+    - "pref.brand"
+    - "pref.color"
+    - "pref.material"
+    - "pref.style"
+    - "pref.fit"
+    - "pref.avoid"
+    - "pref.occasion"
+    - "pref.recipient"
+    - "pref.price_band"
+    - "pref.size_system"
 purpose:
   personal: {}
   shoe:
@@ -55,6 +72,7 @@ purpose:
       - "checkout"
     payment_method:
       - "payment"
+  assistant: {}
 write:
   personal:
     - "lang"
@@ -79,3 +97,15 @@ write:
     - "shoe_size"
   retail:
     - "shoe_size"
+  assistant:
+    - "shoe_size"
+    - "pref.brand"
+    - "pref.color"
+    - "pref.material"
+    - "pref.style"
+    - "pref.fit"
+    - "pref.avoid"
+    - "pref.occasion"
+    - "pref.recipient"
+    - "pref.price_band"
+    - "pref.size_system"

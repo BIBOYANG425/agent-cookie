@@ -17,6 +17,15 @@ it('renders all contract fields as names, with reader, purpose and time', () => 
   expect(html).not.toContain('unexpected-field-value');
 });
 
+it('labels a handshake receipt 首次介绍 with the raw purpose beside it (a UCP store proxy\'s auto-field read, as the workspace writes it)', () => {
+  const html = render([{ id: 'r-ucp', sessionId: 'session-ucp', agentId: 'ucp:sample-store.example', intentId: 'i_sample01', fields: ['lang', 'shoe_size'],
+    purpose: 'handshake', createdAt: '2026-10-18T10:00:00Z', policyId: 'sample000000' }]);
+  expect(html).toContain('<dt>用途</dt><dd>首次介绍（handshake）</dd>');
+  for (const field of ['lang', 'shoe_size']) expect(html).toContain(`<code class="field-key">${field}</code>`);
+  expect(html).toContain('ucp:sample-store.example');
+  expect(html).toContain('i_sample01');
+});
+
 it('orders receipts newest first, escapes display text and tolerates no fields', () => {
   const html = render([receipt, { ...receipt, id: 'newer', agentId: '<script>reader</script>', purpose: '<img src=x>', fields: [], createdAt: '2026-10-17T11:00:00Z' }]);
   expect(html.indexOf('newer')).toBeLessThan(html.indexOf('r-1'));

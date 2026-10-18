@@ -15,6 +15,7 @@ import { GrantsPanel } from './GrantsPanel';
 import type { ConsoleAdapter, Contribution } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
+import { LinksPanel } from './LinksPanel';
 import { PolicyPanel } from './PolicyPanel';
 import './style.css';
 
@@ -62,7 +63,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#intent-conditions">本次请求</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#experiments">实验</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#intent-conditions">本次请求</a><a href="#links">连接请求</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#experiments">实验</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -98,6 +99,9 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
 
       <IntentConditionsPanel intents={data?.intents} />
+
+      <LinksPanel state={data?.links} sample={sample} blocked={blocked} handled={state.handledLinks}
+        decide={(id, decision) => void controller.decideLink(id, decision).then(() => document.getElementById('links-title')?.focus({ preventScroll: true }))} />
 
       <GrantsPanel data={data} sample={sample} now={now} blocked={blocked}
         currentPolicyId={data?.policy?.availability === 'ready' ? data.policy.data.policyId : undefined}

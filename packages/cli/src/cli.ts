@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { Command, CommanderError } from 'commander';
 import {
   WorkspaceClient, WorkspaceError, workspaceConfigFromEnv,
-  type FunnelReport, type PolicyDocument, type PolicyResult, type ShadowResult,
+  type FunnelReport, type LinkList, type LinkResult, type PolicyDocument, type PolicyResult, type ShadowResult,
 } from '@agent-cookie/sdk';
 
 interface CliIO {
@@ -64,6 +64,26 @@ export function formatShadow(report: ShadowResult): string {
     + `unchanged: ${report.unchanged}\n`;
 }
 
+/** Consent links, newest first as the workspace lists them, with the command that decides a pending one. */
+export function formatLinks(list: LinkList): string {
+  const head = `${sampleLabel(list.sample)}Links · ${list.links.length} link${list.links.length === 1 ? '' : 's'}\n`;
+  if (!list.links.length) return `${head}No links.\n`;
+  return head + table(['id', 'agent', 'agent id', 'status', 'created', 'expires', 'decided'],
+    list.links.map(l => [l.id, l.agentName, l.agentId, l.status, l.createdAt, l.expiresAt, l.decidedAt ?? '-']))
+    + (list.links.some(l => l.status === 'pending') ? 'Decide a pending link: agent-cookie links approve <id> | links decline <id>\n' : '');
+}
+
+export function formatDecision(link: LinkResult): string {
+  return `${sampleLabel(link.sample)}${link.status === 'approved' ? 'Approved' : 'Declined'} link ${clean(link.id)} · ${clean(link.agentName)} (${clean(link.agentId)})`
+    + (link.sessionId ? ` · session ${clean(link.sessionId)}` : '') + '\n';
+}
+
+/** A link id as typed: printable, bounded, never a dot segment. Refused locally without echoing it. */
+function linkId(id: string): string {
+  if (!/^[\x21-\x7e]{1,256}$/.test(id) || /^[.]{1,2}$/.test(id)) throw new CliError('The link id is invalid.');
+  return id;
+}
+
 /** A PolicyDocument, or the `policy show --json` output that wraps one. The workspace checks the floor. */
 async function readPolicyFile(path: string): Promise<PolicyDocument> {
   let text: string;
@@ -85,7 +105,7 @@ export async function runCli(args: string[], env: NodeJS.ProcessEnv, io: CliIO,
   let failure = 'Unable to read the card.';
   const program = new Command()
     .name('agent-cookie')
-    .description('Local Agent Cookie CLI: your card, the owner funnel and the field policy, through the workspace.')
+    .description('Local Agent Cookie CLI: your card, the owner funnel, the field policy and consent links, through the workspace.')
     .option('--pretty', 'Format JSON for humans')
     .exitOverride()
     .configureOutput({ writeOut: io.out, writeErr: () => {} });
@@ -133,6 +153,27 @@ export async function runCli(args: string[], env: NodeJS.ProcessEnv, io: CliIO,
       const doc = await readPolicyFile(file);
       const view = await createClient().setPolicy(doc);
       io.out(`${sampleLabel(view.sample)}Installed policy ${clean(view.policyId)} (source ${clean(view.source)})\n`);
+    });
+  const links = program.command('links').description('Consent links from company assistants: list, approve or decline; owner key');
+  links.action(() => { links.outputHelp(); });
+  links.command('list').description('Pending links to decide, and decided ones, newest first')
+    .option('--json', 'Print the links as JSON')
+    .action(async (opts: { json?: boolean }) => {
+      failure = 'Unable to read the links.';
+      const list = await createClient().listLinks();
+      if (opts.json) json(list); else io.out(formatLinks(list));
+    });
+  links.command('approve').description('Approve one pending link: the assistant gets its pairwise session and grant')
+    .argument('<id>', 'The link id, from links list')
+    .action(async (id: string) => {
+      failure = 'Unable to approve the link.';
+      io.out(formatDecision(await createClient().approveLink(linkId(id))));
+    });
+  links.command('decline').description('Decline one pending link; the assistant may ask again later')
+    .argument('<id>', 'The link id, from links list')
+    .action(async (id: string) => {
+      failure = 'Unable to decline the link.';
+      io.out(formatDecision(await createClient().declineLink(linkId(id))));
     });
   try {
     await program.parseAsync(args.length ? args : ['--help'], { from: 'user' });

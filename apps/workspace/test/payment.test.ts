@@ -563,11 +563,11 @@ describe("A21 · AGENT_COOKIE_PAY=visa (Visa Acceptance sandbox, fetch injected:
     const paid = (await receiptsOf(h)).filter((r) => r.purpose === "payment");
     expect(paid).toEqual([expect.objectContaining({ fields: ["payment_method"], amount: q.price, agentId: q.agentId, intentId: q.intentId })]);
     // The address went to the provider as billTo: recorded by field name in the event above, never as a receipt. This
-    // accept's receipts name the merchant they released to; every receipt names a registered agent; none names the
-    // provider or a billTo purpose.
+    // store's receipts name the merchant they released to (the search's handshake read of the card for it, then this
+    // accept's checkout and payment); every receipt names a registered agent; none names the provider or a billTo purpose.
     const all = await receiptsOf(h);
     const forAccept = all.filter((r) => r.sessionId === a.body.authorization!.sessionId);
-    expect(forAccept.map((r) => [r.agentId, r.purpose]).sort()).toEqual([[q.agentId, "checkout"], [q.agentId, "payment"]]);
+    expect(forAccept.map((r) => [r.agentId, r.purpose]).sort()).toEqual([[q.agentId, "checkout"], [q.agentId, "handshake"], [q.agentId, "payment"]]);
     for (const r of all) {
       expect(h.deps.store.agent(r.agentId), `receipt ${r.id} names an unknown recipient`).toBeDefined();
       expect(JSON.stringify(r)).not.toMatch(/visa|cybersource|apitest|billto|provider/i);

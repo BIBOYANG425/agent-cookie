@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY, policyId, type PolicyDocument } from '@agent-cookie/contract';
-import { renderInstalledPolicyYaml, renderPolicyYaml } from '@agent-cookie/rules';
+import { parsePolicyDocument, renderInstalledPolicyYaml, renderPolicyYaml } from '@agent-cookie/rules';
 import { openMemoryRepo } from '../src/index.js';
 import { AT, contribution, fixture, meta as writeMeta, repoGit } from './helpers.js';
 
@@ -19,11 +19,16 @@ const INSTALL_AT = '2026-10-17T12:05:00.000Z';
 const owner = () => ({ ...writeMeta('sample-owner'), at: INSTALL_AT });
 const count = async (path: string) => Number((await repoGit(path).raw(['rev-list', '--count', 'HEAD'])).trim());
 
-/** A floor-valid document that differs from the default: ranking on, deadline off for retail, lists reordered. */
+/**
+ * A floor-valid document that differs from the default: ranking on, deadline off for retail, lists reordered, and the
+ * company-assistant row narrowed (no pref.recipient on the handshake, shoe_size the only write).
+ */
 function installed(): PolicyDocument {
   const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
   doc.auto.retail = [...doc.auto.retail].filter((f) => f !== 'deadline').reverse();
   doc.write.personal = [...doc.write.personal].reverse();
+  doc.auto.assistant = [...doc.auto.assistant].filter((f) => f !== 'pref.recipient');
+  doc.write.assistant = ['shoe_size'];
   doc.ranking = { winRate: 40, failure: 60 };
   return doc;
 }
@@ -40,7 +45,11 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
   it('a seed repository has no installed policy: the Sample seed (generated header) and any other seed bytes', async () => {
     const f = await setup();
     const sample = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
-    expect(await readFile(join(f.path, 'POLICY.yaml'), 'utf8')).toBe(renderPolicyYaml());
+    const seeded = await readFile(join(f.path, 'POLICY.yaml'), 'utf8');
+    expect(seeded).toBe(renderPolicyYaml());
+    // The regenerated seed carries the assistant category, so it reads as the current DEFAULT_POLICY id.
+    expect(seeded.match(/^  assistant:/gmu)).toHaveLength(3);
+    expect(policyId(parsePolicyDocument(seeded))).toBe(policyId(DEFAULT_POLICY));
     expect(await sample.readPolicy()).toBeUndefined();
 
     const other = await setup();
@@ -65,10 +74,16 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
     expect(file).toBe(renderInstalledPolicyYaml(doc, INSTALL_AT));
     expect(file.split('\n', 1)[0]).toBe(`# Installed field policy · policyId ${policyId(doc)} · ${INSTALL_AT}`);
 
+    expect(file).toContain('\n  assistant: {}\nwrite:\n');
+    expect(file.endsWith('\n  assistant:\n    - "shoe_size"\nranking:\n  winRate: 40\n  failure: 60\n')).toBe(true);
+
     const read = await repo.readPolicy();
     expect(read).toEqual(doc);
     expect(JSON.stringify(read)).toBe(JSON.stringify(doc));
     expect(read!.ranking).toEqual({ winRate: 40, failure: 60 });
+    expect(read!.auto.assistant).toEqual(DEFAULT_POLICY.auto.assistant.filter((f) => f !== 'pref.recipient'));
+    expect(read!.purpose.assistant).toEqual({});
+    expect(read!.write.assistant).toEqual(['shoe_size']);
     // A restart opens a new handle on the same working tree.
     const reopened = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
     expect(await reopened.readPolicy()).toEqual(doc);
@@ -117,6 +132,27 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
     await commitByHand(f.path, 'POLICY.yaml', renderPolicyYaml(loose, '# my own policy'));
     expect(await repo.readPolicy()).toEqual(loose);
     await commitByHand(f.path, 'POLICY.yaml', renderPolicyYaml(DEFAULT_POLICY, '# copied from the docs'));
+    expect(await repo.readPolicy()).toBeUndefined();
+  });
+
+  it('refuses an assistant row below the floor, or a document without the assistant category, without committing', async () => {
+    const f = await setup();
+    const repo = await f.open();
+    const before = await count(f.path);
+    const address = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    address.auto.assistant = [...address.auto.assistant, 'shipping_address'];
+    await expect(repo.writePolicy(address, owner())).rejects.toMatchObject({ code: 'MISSING_FIELD',
+      message: 'auto.assistant: shipping_address may never be auto' });
+    const token = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    token.purpose.assistant = { payment_method: ['payment'] };
+    await expect(repo.writePolicy(token, owner())).rejects.toMatchObject({ code: 'MISSING_FIELD',
+      message: 'purpose.assistant.payment_method: an assistant never reads payment_method, whatever the purpose' });
+    const older = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    for (const section of ['auto', 'purpose', 'write'] as const) delete (older[section] as Partial<Record<string, unknown>>).assistant;
+    await expect(repo.writePolicy(older, owner())).rejects.toMatchObject({ code: 'MISSING_FIELD',
+      message: 'auto.assistant missing; purpose.assistant missing; write.assistant missing' });
+    expect(await count(f.path)).toBe(before);
+    expect(await readFile(join(f.path, 'POLICY.yaml'), 'utf8')).toBe('sample: true\n');
     expect(await repo.readPolicy()).toBeUndefined();
   });
 

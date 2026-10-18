@@ -11,3 +11,4 @@ export * from "./apis.js";
 export * from "./fixtures.js";
 export * from "./analytics.js";
 export * from "./events.js";
+export * from "./wire.js";

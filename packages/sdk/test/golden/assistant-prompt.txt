@@ -1,0 +1,9 @@
+Agent Cookie: what this person has shared with you, under their own policy.
+Known (use these; do not ask for them again):
+- lang: en
+- tone: brief
+- shoe_size: EU 42
+- pref.brand: Brooks, Hoka
+- pref.avoid: leather
+Unknown (ask only when the task needs it): budget, deadline, pref.color.
+Never ask for a shipping address or payment details: the workspace hands them to the store at checkout and payment.

@@ -3,7 +3,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
-  isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
+  isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, roleOf, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
@@ -14,9 +14,10 @@ import { hashKey, mintKey, newId } from "./ids.js";
 import { idempotency } from "./idempotency.js";
 import { isJarLocked } from "./laneD.js";
 import { requestSpan } from "./telemetry.js";
+import { assistantEvidence } from "./services/assistant.js";
 import { theUser } from "./services/context.js";
 
-const CATEGORIES: Category[] = ["personal", "shoe", "retail"];
+const CATEGORIES: Category[] = ["personal", "shoe", "retail", "assistant"];
 const MAX_CLOCK_OFFSET_MS = 10 * 365 * 86_400_000;
 
 /** "2026-10-21" or a full ISO timestamp whose calendar date really exists (no 2026-02-31). */
@@ -148,12 +149,25 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   const personalOrOwner = requireRole("personal", "owner");
   const merchant = requireRole("merchant");
   const owner = requireRole("owner");
+  const assistant = requireRole("assistant");
+  // The intent, quote, event, accept and observation routes also take a linked assistant's key (contract Endpoint.also).
+  const personalOrAssistant = requireRole("personal", "assistant");
+  const personalOwnerOrAssistant = requireRole("personal", "owner", "assistant");
   const idem = idempotency(store, clock);
   const user = () => theUser(store);
+  // An assistant on those routes needs its live consent grant (an owner-approved link): else 403 SCOPE_DENIED, or
+  // GRANT_EXPIRED / GRANT_REVOKED once it lapsed or the owner revoked it. Before idempotency, so a revoked assistant
+  // cannot replay a stored response either.
+  const linked: MiddlewareHandler<AppEnv> = async (c, next) => {
+    const agent = c.get("agent");
+    if (agent.role === "assistant") deps.sessions.assistAccess(agent, user());
+    await next();
+  };
 
   // ---- registration and identity
   // Merchants self-register (plan §5: anyone on loopback). A personal agent reads the whole card, so registering
-  // one needs the owner key: the user adds their own agents (lane B, B02).
+  // one needs the owner key: the user adds their own agents (lane B, B02). A company assistant registers like a
+  // merchant: its key opens nothing about the user until the owner approves its consent link.
   app.post("/agents/register", async (c, next) => {
     const body = await readJson(c);
     if (body.category === "personal") {
@@ -169,6 +183,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const category = body.category as Category;
     if (!CATEGORIES.includes(category)) fail("MISSING_FIELD", "invalid category");
     if (body.domain !== undefined) fail("MISSING_FIELD", "domain is reserved for UCP proxies");
+    // An assistant acts for the user; it is never introduced or called back as a merchant.
+    if (category === "assistant" && (body.callbackUrl !== undefined || body.chatEndpoint !== undefined)) {
+      fail("MISSING_FIELD", "an assistant takes no callbackUrl or chatEndpoint");
+    }
     const capabilities = body.capabilities ?? [];
     if (!Array.isArray(capabilities) || capabilities.length > 20 || !capabilities.every((x) => typeof x === "string" && x.length > 0 && x.length <= 64)) {
       fail("MISSING_FIELD", "invalid capabilities");
@@ -179,7 +197,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const agent = { agentId, name, category, capabilities: capabilities as string[], createdAt: now,
       ...(httpUrl(optStr(body, "callbackUrl", { max: 2000 }), "callbackUrl") ? { callbackUrl: httpUrl(optStr(body, "callbackUrl"), "callbackUrl")! } : {}),
       ...(httpUrl(optStr(body, "chatEndpoint", { max: 2000 }), "chatEndpoint") ? { chatEndpoint: httpUrl(optStr(body, "chatEndpoint"), "chatEndpoint")! } : {}) };
-    const role = category === "personal" ? "personal" : "merchant";
+    const role = roleOf(category);
     store.tx(() => {
       store.insertAgent(agent);
       store.insertKey({ keyHash: hashKey(key), agentId, role, createdAt: now });
@@ -212,7 +230,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
 
   // IntentRequest (contract): `text` = the user's words, required. Transition: a request with only the old `kind` is
   // still accepted (it searches for the kind's words) until lanes B's SDK/MCP/channel send `text` (docs/requests.md).
-  app.post("/personal/intents", auth, personal, idem, async (c) => {
+  app.post("/personal/intents", auth, personalOrAssistant, linked, idem, async (c) => {
     const body = await readJson(c);
     const text = optStr(body, "text", { max: 1000 })?.trim() || undefined;
     const query = optStr(body, "query", { max: 200 })?.trim() || undefined;
@@ -224,21 +242,21 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json(out, 201);
   });
 
-  app.get("/personal/intents/:id/quotes", auth, personal, async (c) => {
+  app.get("/personal/intents/:id/quotes", auth, personalOrAssistant, linked, async (c) => {
     const w = c.req.query("wait");
     const wait = w === undefined ? 20_000 : Number(w);
     if (!Number.isFinite(wait) || wait < 0) fail("MISSING_FIELD", "invalid wait");
-    return json(await deps.commerce.quotes(user(), c.req.param("id"), wait));
+    return json(await deps.commerce.quotes(user(), c.req.param("id"), wait, c.get("agent")));
   });
 
   // Push instead of poll (docs/commerce-analytics-plan.md §8; contract events.ts). Ownership is checked before the
   // stream opens: another user's intent gets the same 404 as every NOT_FOUND and no stream. The handler returns as
   // soon as the stream starts, so the activity middleware writes one row for the request and nothing per event; and
   // the stream does not hold the reset gate open: a reset ends it through the gate's onClosing (deps.ts).
-  app.get("/personal/intents/:id/events", auth, personalOrOwner, (c) => {
+  app.get("/personal/intents/:id/events", auth, personalOwnerOrAssistant, linked, (c) => {
     const after = lastEventId(c.req.header("last-event-id"));
     const abort = new AbortController();
-    const events = deps.commerce.events(user(), c.req.param("id"), after, { signal: abort.signal });
+    const events = deps.commerce.events(user(), c.req.param("id"), after, { signal: abort.signal, caller: c.get("agent") });
     return streamSSE(c, async (stream) => {
       stream.onAbort(() => abort.abort());
       try {
@@ -255,7 +273,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     });
   });
 
-  app.post("/personal/quotes/:id/accept", auth, personal, idem, async (c) => {
+  app.post("/personal/quotes/:id/accept", auth, personalOrAssistant, linked, idem, async (c) => {
     return json(await deps.commerce.accept(c.get("agent"), user(), c.req.param("id")));
   });
 
@@ -266,7 +284,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ intents: deps.learning.history(user(), q, intParam(c.req.query("limit"), 20, 100)) });
   });
   // Accepted and queued (or discarded while paused); learning happens later and never blocks this call.
-  app.post("/personal/observations", auth, personal, async (c) => {
+  app.post("/personal/observations", auth, personalOrAssistant, linked, async (c) => {
     const obs = observationBody(await readJson(c));
     return json(deps.learning.observe(c.get("agent"), user(), obs), 202);
   });
@@ -307,8 +325,8 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json(deps.policy.shadow(user(), (body as { policy?: unknown }).policy));
   });
 
-  app.post("/personal/grants/:id/revoke", auth, personalOrOwner, (c) => {
-    const { revokedAt } = deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
+  app.post("/personal/grants/:id/revoke", auth, personalOrOwner, async (c) => {
+    const { revokedAt } = await deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
     return json({ ok: true, revokedAt });
   });
 
@@ -385,6 +403,36 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   // Merchant stats (docs/commerce-analytics-plan.md Phase 5): the caller's own counts, keyed by the agent its key
   // names; no session id, no field, no value, nothing about any other merchant.
   app.get("/agent/stats", auth, merchant, (c) => json(deps.merchantStats.forAgent(c.get("agent").agentId)));
+
+  // ---- company assistants (bring-your-own-agent plan §3). Consent first: a link the OWNER approves opens the pairwise
+  // session and its assist grant; context, contributions and the intent routes need that grant to be live.
+  app.post("/assistant/link", auth, assistant, (c) => {
+    const { link, created } = deps.links.request(c.get("agent"));
+    return json(link, created ? 201 : 200);
+  });
+  app.get("/assistant/link/:id", auth, assistant, (c) => json(deps.links.view(c.get("agent"), c.req.param("id"))));
+  // Values by policy (auto.assistant), never provenance, never the address or the payment token; a receipt per read
+  // (deduplicated within the hour for an unchanged field set, services/assistant.ts).
+  app.get("/assistant/context", auth, assistant, async (c) => json(await deps.assistant.context(c.get("agent"), user())));
+  app.post("/assistant/contributions", auth, assistant, async (c) => {
+    const body = await readJson(c);
+    const field = str(body, "field", { max: 64 });
+    const value = str(body, "value", { max: 512 });
+    const basis = (body.basis ?? "observed") as Basis;
+    if (!BASES.includes(basis)) fail("MISSING_FIELD", "invalid basis");
+    const sessionId = optStr(body, "sessionId", { max: 64 });
+    const evidence = assistantEvidence(body.evidence);
+    const { stored, contribution } = await deps.assistant.contribute(c.get("agent"), user(), { field, value, basis, ...(evidence ? { evidence } : {}) }, sessionId);
+    // Like a merchant: only its own record, never the user's global id.
+    const { userId: _u, ...own } = contribution;
+    return json({ stored, contribution: own }, 201);
+  });
+  app.get("/assistant/stats", auth, assistant, (c) => json(deps.assistant.stats(c.get("agent").agentId, user())));
+
+  // The owner decides links; nothing else approves one.
+  app.get("/owner/links", auth, owner, (c) => json({ links: deps.links.list(intParam(c.req.query("limit"), 100, 500)) }));
+  app.post("/owner/links/:id/approve", auth, owner, async (c) => json(await deps.links.approve(c.get("agent").agentId, user(), c.req.param("id"))));
+  app.post("/owner/links/:id/decline", auth, owner, (c) => json(deps.links.decline(c.get("agent").agentId, c.req.param("id"))));
 
   // ---- owner, demo, test
   // Dreaming, now (demo and tests; the scheduler runs it every DREAMING_INTERVAL_MS). Counts and field names only.

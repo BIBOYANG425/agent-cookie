@@ -9,6 +9,9 @@ Stdio server using the shared SDK. Startup calls `/me` and requires `role=person
 | `accept_quote` | Accept the user's selected quote; preserve ordered/handoff/blocked/failed and Sample |
 | `list_receipts` | List who read which fields for which purpose, without values |
 
+Each tool is a thin wrapper over one `@agent-cookie/sdk` method (`getMyCard`, `find`, `accept`, `getReceipts`, `observe`); the SDK is the only HTTP client and the workspace decides every release.
+An assistant tool set would be the same door: one wrapper per `AssistantClient` method (`requestLink`, `waitForLink`, `context`, `find`, `accept`, `remember`, `stats`); it is not built.
+
 Read tools do not cache prior successful data. Errors use fixed public text, not raw SDK/HTTP details. stdout contains MCP frames only. Mutation tools have write annotations; accept is marked destructive/open-world because live workspaces may checkout. In demo mode (`AGENT_COOKIE_UCP=fixture`) the workspace replays recorded quotes and only returns a Sample handoff to the recorded merchant checkout.
 
 ## Build and run
