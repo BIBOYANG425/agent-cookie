@@ -1,0 +1,15 @@
+
+ RUN  v4.1.10 /Users/mac/LA Hacks 2026/tests/acceptance
+
+ ✓ memory-interop-safety.test.ts > A23 opt-in and stock-format safety · offline only > requires both explicit opt-ins and an absolute external-repository configuration 2ms
+ ✓ memory-interop-safety.test.ts > A23 opt-in and stock-format safety · offline only > refuses the existing user services and the separately run real-skill instance 0ms
+ ✓ memory-interop-safety.test.ts > A23 opt-in and stock-format safety · offline only > keeps malformed URL and credential values out of diagnostics 3ms
+ ✓ memory-interop-safety.test.ts > A23 opt-in and stock-format safety · offline only > resolves only Index wiki links from the root, retaining non-Markdown extensions 1ms
+ ✓ memory-interop-safety.test.ts > A23 opt-in and stock-format safety · offline only > rejects absent indexes and links that escape the memory boundary 1ms
+ ✓ memory-interop.test.ts > A23 · Synthetic ordinary-agent memory interoperability · git + HTTP > A23(c) Synthetic topic files coexist with HTTP contributions, CARD regeneration and purpose receipts 2689ms
+ ✓ memory-interop.test.ts > A23 · Synthetic ordinary-agent memory interoperability · git + HTTP > A23(d) reset preserves Synthetic topic files and MEMORY Index while managed paths return to fixtures-seed 489ms
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  17:14:24
+   Duration  3.54s (transform 63ms, setup 0ms, import 103ms, tests 3.40s, environment 0ms)

@@ -118,5 +118,6 @@ export function renderReceipt(receipt: Receipt): string {
     throw new WorkspaceError('MISSING_FIELD', 'Invalid receipt amount');
   }
   const amount = receipt.amount === undefined ? '' : `; amount: ${receipt.amount}`;
-  return `- receipt: ${escape(receipt.purpose)} [id: ${escape(receipt.id)}; sessionId: ${escape(receipt.sessionId)}; agentId: ${escape(receipt.agentId)}; fields: ${receipt.fields.join(',')}; at: ${escape(receipt.createdAt)}${amount}]`;
+  const added = new Date(receipt.createdAt).toISOString().slice(0, 10);
+  return `- receipt: ${escape(receipt.purpose)} [id: ${escape(receipt.id)}; sessionId: ${escape(receipt.sessionId)}; agentId: ${escape(receipt.agentId)}; fields: ${receipt.fields.join(',')}; at: ${escape(receipt.createdAt)}; added: ${added}; source: ${escape(`receipt/${receipt.id}`)}${amount}]`;
 }

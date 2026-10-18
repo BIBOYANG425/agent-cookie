@@ -1,3 +1,11 @@
+## 最高优先级 · C21 / A23（2026-10-17 人的要求）
+
+- [x] C21 C侧 Agent Memory Repo 互操作：短 MEMORY.md/Index、开放 metadata、限定四路径 reset、真正 YAML 与契约漂移检查；修复 Git 锁失败回滚和精确目标脏检查。最终 rules70 / memory48 / workspace234通过（原4todo保留），三包typecheck通过；见下方A23实际证据。
+- [x] A23（P1）：专用工作台种库、未修改stock skill在Claude Desktop Code保存/commit、全新会话读回、同库contribute/purpose receipt/限定reset全部通过；[真实证据](evidence/cognition-skill-interop.md)，Synthetic自动支撑单列。
+- [x] B49 C侧：pref证据来源与writer分离并返回evidenceSources；普通字段仍按writer；批量evidence撤销一个commit；Photon接力/作者不一致拒绝回归；原版B脚本完成隔离复跑。
+- [ ] B49 全链路出口仍待A：原版B六场景1/6，stated降级/跨会话去重/writer-count包装/原话SQLite/接力record.agentId五项未过，详见[报告](evidence/b49-c-alignment.md)；不改B断言或放宽C校验。
+- 第6项 `skills/agent-cookie/SKILL.md` 属于B线，更新要求与 CLAUDE.md 过期reset说明一并追加requests，由对应负责人修改。
+
 - [x] C01 fixtures 种子与 dev-keys 对齐 v0.3（Category 只有 personal|shoe） — ff01d0b
 - [x] C02 fixtures/ucp 录好 catalog search、两家 discover、cart create，并记两个在库变体 ID — 8606f9e（本轮重新运行 verify.mjs 通过）
 - [x] C03 tests/acceptance A01–A22 的 it.todo 空壳（A10、A17 指向 docs/evidence） — 8606f9e（22 todo；本轮收集与类型检查通过）

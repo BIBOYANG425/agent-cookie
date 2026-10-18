@@ -1,5 +1,8 @@
-# Sample memory
+Sample memory: synthetic demonstration account; CARD is generated from contributions.
 
-Synthetic demonstration account. No real personal information.
-
-CARD.md is generated; do not edit it.
+## Index
+- [[CARD]]
+- [[contributions/sample-personal-photon]]
+- [[receipts]]
+- [[POLICY.yaml]]
+- [[archive/README]]

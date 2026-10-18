@@ -1,0 +1,26 @@
+{
+  "base": "32490f19f4d22aea2f4e97e88fe8ad5975bbd39b",
+  "description": "C21+B49 source used for final required suites and final actual workspace probe; skill sessions preceded HTTP probe.",
+  "files": {
+    "fixtures/memory/CARD.md": "a413798d2889abbbfb4d709bd9ad70a81972d0400e01425250bc9ab3c2bd0126",
+    "fixtures/memory/MEMORY.md": "cfcfeb56d70ec8ed87a7dfd2e4fe0cbe0be44e726efcc62ff4443c1c4c62f333",
+    "fixtures/memory/POLICY.yaml": "4e28b545f0ed542b003dbccc2e07b48c06934a7f7a567f2e3e2a2f5648291bf4",
+    "fixtures/memory/archive/README.md": "dcce0bc81bfef46e5a7b404c248c92d0bdc8f6087b01014022b66c4b635d85e9",
+    "fixtures/memory/contributions/sample-personal-photon.md": "ad00fce3eb7224b4d07c0c5928b603f413681c0289eb57d34eda738f6581de5d",
+    "fixtures/memory/notes/.gitkeep": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fixtures/memory/receipts.md": "37620c4fda823e850e3f5f951ecab5c7ed39bc9c402116ec7168b9978ec5286a",
+    "packages/memory-repo/src/codec.ts": "d9b5a950f2de8dcb4a52db8148782de2284070ee39ebb37d70b1d731f36466d3",
+    "packages/memory-repo/src/index.ts": "8770a21f6c4ca4526804951b76783b29af06d0570f8533ffbadd3a1abf7bf603",
+    "packages/memory-repo/src/intent-history.ts": "369283af92001c473de73fa96a5fdb6203e7641d33bc049791a64fd209bee383",
+    "packages/memory-repo/src/learning-types.ts": "d89b976f836124b93e114bed2f2c3a8c551f760b243dd6c71a579c9ba497bf32",
+    "packages/memory-repo/src/storage.ts": "51a75cc3aa3cdebc17a82a506003abd1f23e3ef72e0749a7d08329bf6f7bd022",
+    "packages/rules/scripts/generate-seed.ts": "dce1652515af7f7a68000b225387227eca27df2bab9f566c3ef6e8844334e55b",
+    "packages/rules/src/index.ts": "c18c37cd8ef3e8d2b9c21b64a9d54be051cc940cd4d2010def2d1795c1b413c3",
+    "packages/rules/src/learning-types.ts": "3bbf802e49e16ccfea553d3c36fcb97c0b842431fea13fa543b0d2996f8c096f",
+    "packages/rules/src/learning.ts": "1411803415daa711bb28a0fab820988f139e12beda6d07becf52f47b3670693a",
+    "packages/rules/src/legacy-merge.ts": "c07fa30ba871cb694c1259dfef3aa4e32ac78e1c67431cee45b1cd5e8ddc172d",
+    "packages/rules/src/merge.ts": "ac104fc0fbcd3057383138e45457cac57c8dc582f01309b11f38dba0f75c78f9",
+    "packages/rules/src/render.ts": "9f9f6997425f4c189e8130c173d4a81f85e000470cadbdfd22f0f641ed7c0765",
+    "packages/rules/src/session.ts": "db3b97c4a893e6357c00f588c999abf44ec394d89dff7bfa0b5b0403c7a19dfb"
+  }
+}

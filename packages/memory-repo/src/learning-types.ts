@@ -1,8 +1,7 @@
 import type { CommitRef, Intent, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
 import type { LearningCard, LearningContribution, LearningMergeOptions, LearningRulesApi } from '@agent-cookie/rules';
 
-// Structural projection of lane A 0129f08 while main retains the previous contract.
-// TODO(contract): import IntentRecord after that contract lands on main.
+// Structural projection matching the shared IntentRecord; no extra flat history fields.
 export interface WorkspaceIntentRecord {
   id: string;
   userId: string;
@@ -33,7 +32,13 @@ export interface IntentHistoryApi {
   searchIntents(q: string): Promise<IntentSummary[]>;
 }
 
-export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent'> & IntentHistoryApi;
+/** TODO(contract): additive C selector; the shared API currently accepts only a record ID. */
+export type ContributionRevocationTarget = string | { evidence: { intentId?: string; conversationId?: string } };
+export interface ContributionRevocationApi {
+  revokeContribution(target: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+}
+
+export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent' | 'revokeContribution'> & IntentHistoryApi & ContributionRevocationApi;
 
 export type OpenLearningMemoryRepoOptions = Omit<OpenMemoryRepoOptions, 'rules'> & { rules: LearningRulesApi };
 export type LearningMemoryRepo = Omit<MemoryRepoWithIntents, 'appendContribution' | 'listContributions' | 'regenerateCard'> & {

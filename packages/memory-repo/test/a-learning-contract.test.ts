@@ -19,6 +19,7 @@ describe('A 0129f08 default memory-repo integration', () => {
     expect(await repo.listContributions()).toEqual(rows);
     expect((await repo.regenerateCard({ now: AT, personalAgentIds: ['sample-personal'] }, meta('workspace'))).card.card)
       .toEqual([{ field: 'pref.fit', value: '43', confidence: 'medium', sources: ['sample-personal'],
+        evidenceSources: ['conversation:conversation-1', 'conversation:conversation-2'],
         updatedAt: AT, lastSupportedAt: AT, changedRecently: false }]);
     await repo.revokeContribution('a-1', AT, meta());
     const reopened = await f.open();

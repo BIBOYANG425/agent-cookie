@@ -62,7 +62,7 @@ describe('C08 memory repository lifecycle and provenance', () => {
 
 
 
-  it('resets tracked changes and untracked files to the pinned seed without touching siblings', async () => {
+  it('restores managed paths to the pinned seed without deleting external working files', async () => {
     const f = await setup();
     const repo = await f.open();
     const seed = await repoGit(f.path).revparse(['HEAD']);
@@ -78,14 +78,15 @@ describe('C08 memory repository lifecycle and provenance', () => {
     await writeFile(join(f.path, 'ignored.txt'), 'ignored demo scratch');
     await writeFile(join(f.temp, 'outside.txt'), 'keep outside');
     await repo.resetToSeed();
-    expect(await repoGit(f.path).revparse(['HEAD'])).toBe(seed);
-    expect((await repoGit(f.path).status()).isClean()).toBe(true);
+    expect(await repoGit(f.path).revparse(['HEAD'])).not.toBe(seed);
+    expect((await repoGit(f.path).raw(['status', '--porcelain', '--', 'contributions', 'notes', 'CARD.md', 'receipts.md'])).trim()).toBe('');
     expect(await repo.listContributions()).toEqual([]);
     expect(await repo.readNote('sample-session', 'store-a', 'relationship', AT)).toBeUndefined();
     expect(await readFile(join(f.path, 'CARD.md'), 'utf8')).toBe(originalCard);
     expect(await readFile(join(f.path, 'receipts.md'), 'utf8')).toBe('');
-    await expect(readFile(join(f.path, 'scratch', 'untracked.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(f.path, 'ignored.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(f.path, 'MEMORY.md'), 'utf8')).toBe('uncommitted edit');
+    expect(await readFile(join(f.path, 'scratch', 'untracked.txt'), 'utf8')).toBe('demo scratch');
+    expect(await readFile(join(f.path, 'ignored.txt'), 'utf8')).toBe('ignored demo scratch');
     expect(await readFile(join(f.temp, 'outside.txt'), 'utf8')).toBe('keep outside');
     expect(await readFile(join(f.seedDir, 'MEMORY.md'), 'utf8')).toBe('# Sample memory\n');
   });
@@ -107,23 +108,26 @@ describe('C08 memory repository lifecycle and provenance', () => {
     const repo = await f.open();
     const outside = join(f.temp, 'outside.txt');
     await writeFile(outside, 'keep outside');
-    await symlink(outside, join(f.path, 'outside-link'));
+    await symlink(outside, join(f.path, 'notes', 'outside-link.md'));
     await expect(repo.resetToSeed()).rejects.toThrow('Unsafe memory repository tree');
     expect(await readFile(outside, 'utf8')).toBe('keep outside');
   });
 
-  it('loads and regenerates the actual three-record Sample seed, then restores its generated card', async () => {
+  it('loads the Sample seed with three explicit contributions and the workspace-derived address, then restores its card', async () => {
     const f = await setup();
     const seedDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../fixtures/memory');
     const seedCard = await readFile(join(seedDir, 'CARD.md'), 'utf8');
     const repo = await openMemoryRepo({ ...f.opts, seedDir });
     const records = await repo.listContributions();
-    expect(records).toHaveLength(3);
+    expect(records).toHaveLength(4);
+    expect(records.find(c => c.id === 'seed-shipping-address-01')).toMatchObject({
+      field: 'shipping_address', createdAt: '2026-10-17T16:00:03.000Z', basis: 'stated',
+    });
     expect(records.every((c) => c.agentId === 'sample-personal-photon' && c.userId === USER)).toBe(true);
     const merge = { now: '2026-10-17T18:00:00.000Z', personalAgentIds: ['sample-personal-photon'] };
     const rebuilt = await repo.regenerateCard(merge, { ...writeMeta('workspace'), at: merge.now });
     expect(rebuilt.card).toEqual(rules.mergeCard(records, merge));
-    expect(rebuilt.card.card.map((field) => field.field)).toEqual(['lang', 'tone', 'shoe_size']);
+    expect(rebuilt.card.card.map((field) => field.field)).toEqual(['lang', 'tone', 'shoe_size', 'shipping_address']);
     await repo.resetToSeed();
     expect(await readFile(join(f.path, 'CARD.md'), 'utf8')).toBe(seedCard);
     expect(await readFile(join(seedDir, 'CARD.md'), 'utf8')).toBe(seedCard);

@@ -7,6 +7,6 @@ import type { LearningRulesApi } from './learning-types.js';
 export * from './learning-types.js';
 
 export { deriveSessionId, mergeCard, mergeLearningCard, renderCard, renderContribution, parseContributions, parseLearningContributions };
-export const rules: RulesApi = { deriveSessionId, mergeCard, renderCard, renderContribution, parseContributions };
+export const rules = { deriveSessionId, mergeCard, renderCard, renderContribution, parseContributions } satisfies RulesApi;
 export const learningRules: LearningRulesApi = { deriveSessionId, mergeCard: mergeLearningCard, renderCard, renderContribution,
   parseContributions: parseLearningContributions };
