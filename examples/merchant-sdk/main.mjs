@@ -34,15 +34,16 @@ try {
   const store = new MerchantClient({ baseUrl: url, key, sample: true });
 
   // DEMO SHORTCUT: somebody has to want shoes. With AGENT_COOKIE_PERSONAL_KEY (demo: ck_personal_sample) this script
-  // also plays the person's own agent. The SDK's find() sends only the person's words, and a registered store is
-  // matched by the intent's `kind` hint, so this one raw request carries it.
+  // also plays the person's own agent: find() with the person's words and the `kind` hint that reaches registered
+  // stores. find() waits for the quotes, ours included, so it runs alongside the store's work and is awaited later.
   const personalKey = process.env.AGENT_COOKIE_PERSONAL_KEY;
+  const person = personalKey ? new WorkspaceClient({ baseUrl: url, key: personalKey }) : undefined;
   const introduced = arrival('introduce');
-  if (personalKey) {
+  let found;
+  if (person) {
     log(`[demo shortcut] the person's agent asks for ${kind}`);
-    const r = await fetch(`${url}/personal/intents`, { method: 'POST', body: JSON.stringify({ text: 'Sample · trail running shoes', kind }),
-      headers: { authorization: `Bearer ${personalKey}`, 'content-type': 'application/json', 'idempotency-key': `intent-${kind}` } });
-    if (r.status !== 201) throw new Error(`the demo intent was refused (${r.status})`);
+    found = person.find({ text: 'Sample · trail running shoes', kind }, `find-${kind}`);
+    found.catch(() => undefined); // awaited below; never an unhandled rejection meanwhile
   } else {
     log(`waiting for an intent with kind "${kind}" from the person's agent`);
   }
@@ -66,8 +67,11 @@ try {
 
   // The person (or their assistant) accepts. Then, on `accepted`, the address is released for checkout, with a receipt.
   const accepted = arrival('accepted');
-  if (personalKey) {
-    const result = await new WorkspaceClient({ baseUrl: url, key: personalKey }).accept(quote.id, `accept-${quote.id}`);
+  if (person) {
+    const offers = await found;
+    const ours = offers.quotes.some((q) => q.id === quote.id) ? 'ours included' : 'ours not among them';
+    log(`[demo shortcut] the person's agent got ${offers.quotes.length} quote(s) for intent ${offers.intentId} (${ours})`);
+    const result = await person.accept(quote.id, `accept-${quote.id}`);
     log(`[demo shortcut] the person accepted the quote: ${result.status}`);
   } else {
     log('waiting for the person to accept the quote');

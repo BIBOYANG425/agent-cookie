@@ -11,7 +11,7 @@ What it does, in order:
 3. On `accepted`: `fields(['shipping_address'], 'checkout')` is released, and the person gets a receipt. The value is not printed. `fields(['payment_method'], 'payment')` is refused with `isWorkspaceError(e, 'SCOPE_DENIED')`: a store never gets it.
 4. `setNote()` (the store's own note) and `stats()` (counts only).
 
-**Demo shortcut.** Somebody has to want shoes and accept the quote. With `AGENT_COOKIE_PERSONAL_KEY` set (demo: `ck_personal_sample`), the script also plays the person's own agent. It creates the intent with one raw `POST /personal/intents` carrying `{ text, kind }`, and accepts the quote with `WorkspaceClient.accept`. The raw request is needed because the SDK's `find()`/`createIntent()` send only the person's words, with no `kind`, and the workspace matches registered callback stores only through `kind`. As of 2026-10-18, no SDK caller can reach a store like this one. Without the key, the script prints its `kind` and waits up to ten minutes for an intent and an accept from someone else.
+**Demo shortcut.** Somebody has to want shoes and accept the quote. With `AGENT_COOKIE_PERSONAL_KEY` set (demo: `ck_personal_sample`), the script also plays the person's own agent through the SDK. It calls `WorkspaceClient.find({ text, kind }, key)`, where the optional `kind` hint is how the workspace reaches registered callback stores, then `WorkspaceClient.accept`. `find()` waits for the intent's quotes, this store's included, so the script starts it, does the store's work, and awaits it before accepting. Without the key, the script prints its `kind` and waits up to ten minutes for an intent and an accept from someone else, for example an assistant calling `find({ text, kind }, key)`.
 
 Logs print ids, counts and field names, never a value.
 
@@ -39,24 +39,25 @@ AGENT_COOKIE_URL=http://127.0.0.1:4310 AGENT_COOKIE_PERSONAL_KEY=ck_personal_sam
 
 ## Verified on 2026-10-18
 
-These are the exact commands, with the workspace on port 4341:
+These are the exact commands, after `pnpm --filter @agent-cookie/sdk build` with the SDK at commit `311db00` (optional `kind` on `find`/`createIntent`), with the workspace on port 4342:
 
 ```sh
 S=$(mktemp -d)
-(cd apps/workspace && AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture PORT=4341 AGENT_COOKIE_DATA_DIR=$S DREAMING_INTERVAL_MS=0 node_modules/.bin/tsx src/server.ts) &
-AGENT_COOKIE_URL=http://127.0.0.1:4341 AGENT_COOKIE_PERSONAL_KEY=ck_personal_sample node examples/merchant-sdk/main.mjs
+(cd apps/workspace && AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture PORT=4342 AGENT_COOKIE_DATA_DIR=$S DREAMING_INTERVAL_MS=0 node_modules/.bin/tsx src/server.ts) &
+AGENT_COOKIE_URL=http://127.0.0.1:4342 AGENT_COOKIE_PERSONAL_KEY=ck_personal_sample node examples/merchant-sdk/main.mjs
 ```
 
-Output (exit 0):
+Output (exit 0). The person's agent got three quotes: two from the UCP fixture replay, which searches from the text, and this store's own.
 
 ```text
-[Sample store] registered merchant ag_pxarrz15 (category shoe, sells sample_trail_2ebe06a1), callbacks at http://127.0.0.1:35927/agent-cookie
-[Sample store] [demo shortcut] the person's agent asks for sample_trail_2ebe06a1
-[Sample store] introduced: session e4jz4m6h, intent i_yk7dzntp
+[Sample store] registered merchant ag_06j5222g (category shoe, sells sample_trail_cf932a9a), callbacks at http://127.0.0.1:41231/agent-cookie
+[Sample store] [demo shortcut] the person's agent asks for sample_trail_cf932a9a
+[Sample store] introduced: session f16sj7dw, intent i_rn471fdw
 [Sample store] handshake: lang/tone/length to talk in; 5 readable field name(s): lang, tone, length, shoe_size, shipping_address
 [Sample store] auto fields received: shoe_size (absent = unknown, never a guess)
 [Sample store] shipping_address before the person accepted: 403 PURPOSE_MISMATCH, as designed
-[Sample store] quoted q_v8xab5yj
+[Sample store] quoted q_xm6x4jvy
+[Sample store] [demo shortcut] the person's agent got 3 quote(s) for intent i_rn471fdw (ours included)
 [Sample store] [demo shortcut] the person accepted the quote: handoff
 [Sample store] checkout: received shipping_address (value not printed; the person has a receipt for it)
 [Sample store] payment_method: 403 SCOPE_DENIED, refused as designed
