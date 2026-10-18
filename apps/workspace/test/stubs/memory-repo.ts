@@ -1,9 +1,9 @@
 // Unit-test stub of MemoryRepoApi (the workspace runs lane C's @agent-cookie/memory-repo). No git: it keeps the same records
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
-  NOTE_MAX_BYTES, WorkspaceError,
+  NOTE_MAX_BYTES, policyId, WorkspaceError,
   type Card, type CommitRef, type CompactOptions, type CompactResult, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
-  type OpenMemoryRepoOptions, type Receipt, type RulesApi, type WriteMeta,
+  type OpenMemoryRepoOptions, type PolicyDocument, type Receipt, type RulesApi, type WriteMeta,
 } from "@agent-cookie/contract";
 
 export interface StubCommit { sha: string; author: string; sig: string; at: string; message: string }
@@ -24,7 +24,7 @@ export class InMemoryRepo implements MemoryRepo {
     this.contributions = structuredClone(seed);
   }
 
-  private commit(message: string, meta: WriteMeta): CommitRef {
+  protected commit(message: string, meta: WriteMeta): CommitRef {
     const sha = `stub${(++this.n).toString(16).padStart(8, "0")}`;
     this.commits.push({ sha, author: meta.author, sig: meta.sig, at: meta.at, message });
     return { sha };
@@ -124,11 +124,37 @@ export class InMemoryRepo implements MemoryRepo {
   }
 }
 
+/**
+ * Phase 1: a repo that can hold POLICY.yaml (the contract's optional readPolicy/writePolicy; lane C's real repo may not
+ * have them yet). `policyDoc` undefined = the generated seed, which reads as "no installed document".
+ */
+export class InMemoryRepoWithPolicy extends InMemoryRepo {
+  policyDoc: PolicyDocument | undefined;
+  constructor(rules: RulesApi, seed: Contribution[], userId?: string, initial?: PolicyDocument) {
+    super(rules, seed, userId);
+    this.policyDoc = initial;
+  }
+  async readPolicy(): Promise<PolicyDocument | undefined> {
+    return this.policyDoc ? structuredClone(this.policyDoc) : undefined;
+  }
+  async writePolicy(doc: PolicyDocument, meta: WriteMeta): Promise<CommitRef> {
+    this.policyDoc = structuredClone(doc);
+    return this.commit(`policy ${policyId(doc)}`, meta);
+  }
+  override async resetToSeed(): Promise<void> {
+    await super.resetToSeed();
+    this.policyDoc = undefined;
+  }
+}
+
 /** The stub cannot read lane C's markdown seed, so the workspace hands it the seed contributions directly. */
-export function stubMemoryRepoApi(seedContributions: () => Contribution[]): MemoryRepoApi {
+export function stubMemoryRepoApi(seedContributions: () => Contribution[], opts: { policy?: PolicyDocument | "store" } = {}): MemoryRepoApi {
   return {
-    async openMemoryRepo(opts: OpenMemoryRepoOptions): Promise<MemoryRepo> {
-      return new InMemoryRepo(opts.rules, seedContributions(), opts.userId);
+    async openMemoryRepo(o: OpenMemoryRepoOptions): Promise<MemoryRepo> {
+      if (opts.policy !== undefined) {
+        return new InMemoryRepoWithPolicy(o.rules, seedContributions(), o.userId, typeof opts.policy === "object" ? opts.policy : undefined);
+      }
+      return new InMemoryRepo(o.rules, seedContributions(), o.userId);
     },
   };
 }

@@ -1,14 +1,20 @@
 // Intents → matching → introductions → quotes → accept. UCP stores are reached through UcpApi via per-domain
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
+import { EventEmitter } from "node:events";
 import {
-  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type Field, type Quote, type Receipt, type UcpCheckout, type UcpMessage, type UcpOffer,
+  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_STREAM_HEARTBEAT_MS, INTENT_STREAM_MAX_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS,
+  UpstreamError, WorkspaceError,
+  type AcceptResult, type Agent, type ErrorCode, type Field, type IntentEvent, type PaymentAuthorization, type PaymentBillTo, type Quote,
+  type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
-import type { IntentRow, QuoteRow } from "../db.js";
+import type { GrantRow, IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
-import { parseAddress, parseBudgetCents, parseCount, pickSellers, terms, type SearchConditions } from "../ucp-filter.js";
+import { paymentBudgetCents } from "../payments.js";
+import { parseAddress, parseBudgetCents, parseCount, pickSellers, rankStats, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
+import { armFor } from "./experiments.js";
+import { outcomeRank, SellerStatsService } from "./seller-stats.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
 import { persistStrict, writeMeta, type Ctx } from "./context.js";
@@ -18,6 +24,43 @@ import type { LearningService } from "./learning.js";
 import type { Introduction, SessionService } from "./sessions.js";
 
 const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
+
+/**
+ * Visa Trusted Agent Protocol on the accept path (lane D). With lane D's signTapRequest wired, the workspace's own POSTs
+ * to a merchant on accept carry the `agent-payer-auth` signature (Delivery.callback, the `accepted` callback). UCP steps
+ * are run by the `ucp` CLI (packages/ucp spawns it) and the adapter has no request-header hook, so a UCP checkout — the
+ * only path that authorizes a payment today — carries no payer signature. The `payment.authorize` event says so.
+ */
+const UCP_PAYER_TAP = "none";
+
+/**
+ * Whether a UCP complete hands the store the delegated payment. UcpApi.complete takes the authorization result, but lane
+ * D's CLI-backed adapter has no place for UCP `payment.instruments` (it sends `payment: {}`), so none is passed and the
+ * store cannot consume the authorization. After complete the workspace therefore reverses it, so no hold is left on the
+ * user's card for a payment nobody will take (`payment.reverse`).
+ */
+const UCP_STORE_TAKES_PAYMENT = false;
+
+/**
+ * The billing address a payment provider may check: the destination this checkout already released. Sending it is the
+ * workspace acting for the user toward its own payment provider, not a release to a merchant, so it writes no receipt;
+ * the `payment.authorize` event records it by field name only (`billto=shipping_address`, or `billto=none`).
+ */
+function billToOf(d: UcpDestination): PaymentBillTo {
+  return { ...(d.name ? { name: d.name } : {}), line1: d.line1, city: d.city, region: d.region, postalCode: d.postalCode, country: d.country };
+}
+
+/** Why the payment stage stopped an accept before anything more reached the store (AcceptResult.message, verbatim). */
+const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
+  OVER_BUDGET: "The price is over your budget, so no payment was authorized and nothing was ordered.",
+  AUTHORIZATION_USED: "This offer's payment authorization was already used; nothing more was sent.",
+};
+
+/**
+ * What CommerceService.events yields to the route: an IntentEvent (a quote event carries the quote's store `seq`, the
+ * SSE id), or a heartbeat tick, at which the route writes a ":" comment line.
+ */
+export type IntentStreamItem = { event: IntentEvent; seq?: number } | { heartbeat: true };
 
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
 export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
@@ -57,8 +100,38 @@ function messageText(messages: UcpMessage[]): string | undefined {
 }
 
 export class CommerceService {
+  /**
+   * In-process notifications, private to this service: "quote" (the QuoteRow, once its insert is committed) and "end"
+   * (demo reset or shutdown: every open events stream finishes). Nothing here leaves the process.
+   */
+  private readonly emitter = new EventEmitter().setMaxListeners(0);
+
+  /** Events-stream limits; the contract's values (events.ts). Tests shorten them. */
+  readonly streamLimits = { maxMs: INTENT_STREAM_MAX_MS, heartbeatMs: INTENT_STREAM_HEARTBEAT_MS };
+
   constructor(private ctx: Ctx, private card: CardService, private sessions: SessionService, private fields: FieldService, private notes: NoteService,
     private pinned: readonly string[] = [], private learning?: LearningService) {}
+
+  /** Calls `listener` with every quote row committed for `intentId` from now on. Returns the unsubscribe function. */
+  subscribe(intentId: string, listener: (q: QuoteRow) => void): () => void {
+    const own = (q: QuoteRow) => { if (q.intentId === intentId) listener(q); };
+    this.emitter.on("quote", own);
+    return () => { this.emitter.off("quote", own); };
+  }
+
+  /** Ends every open events stream now (the reset gate closing, shutdown). */
+  endStreams(): void {
+    this.emitter.emit("end");
+  }
+
+  /** After the row is committed. A listener can never fail the write that already happened. */
+  private quoted(q: QuoteRow): void {
+    try {
+      this.emitter.emit("quote", q);
+    } catch (err) {
+      console.error("[workspace] quote listener failed:", err);
+    }
+  }
 
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
@@ -80,13 +153,26 @@ export class CommerceService {
     if (statedBudget !== undefined && maxPriceCents === undefined) fail("MISSING_FIELD", "budget is not an amount");
     const { store, clock } = this.ctx;
     const intent: IntentRow = { id: newId("i"), userId, agentId: personal.agentId, public: input.public,
-      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS) };
+      createdAt: clock.nowIso(), expiresAt: clock.isoIn(INTENT_TTL_MS) };
     if (input.kind) intent.kind = input.kind;
     if (input.text) intent.text = input.text;
     if (input.query) intent.query = input.query;
 
     interface Plan extends Introduction { newAgent?: Agent; quote?: QuoteRow; receipt?: Receipt; values?: Partial<Record<Field, string>> }
     const plans: Plan[] = [];
+    // One policy document for this whole intent: the Tier 0 receipt and the prefix delivered after it must agree.
+    const policyDoc = this.ctx.policy.current();
+    const policyId = this.ctx.policy.id();
+    // Phase 3: outcome ranking is on when the installed document carries a non-zero weight.
+    const ranking = policyDoc.ranking;
+    const rankingOn = ranking !== undefined && (ranking.winRate > 0 || ranking.failure > 0);
+    // Phase 4 (E1): with AGENT_COOKIE_EXPERIMENT=ranking and ranking on, the intent gets its arm here, once, from the
+    // user's secret and its own id; it is stored with the intent and never recomputed (an idempotent replay returns
+    // the stored response). Only treatment is ranked. Experiment off or no weights → no arm, today's behaviour.
+    if (rankingOn && this.ctx.config.experiment === "ranking") {
+      const secret = store.user(userId)?.secret;
+      if (secret) intent.arm = armFor(secret, intent.id);
+    }
     for (const agent of store.agents()) {
       // Registered merchants come in through the optional kind hint; UCP stores through the search below.
       if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
@@ -96,14 +182,18 @@ export class CommerceService {
         const x = await this.sessions.prepare(userId, agent, intent, "tier0");
         const values = this.card.values(userId, intent);
         // Every Tier 0 delivery discloses auto values: the receipt is committed before the attempt.
-        const receipt: Receipt = { id: newId("r"), sessionId: x.session.sessionId, agentId: agent.agentId,
-          fields: this.ctx.delivery.tier0Fields(agent, x.handshake, values), purpose: "tier0", createdAt: clock.nowIso() };
+        const receipt: Receipt = { id: newId("r"), sessionId: x.session.sessionId, agentId: agent.agentId, intentId: intent.id,
+          fields: this.ctx.delivery.tier0Fields(agent, x.handshake, values, policyDoc), purpose: "tier0", createdAt: clock.nowIso(), policyId };
         plans.push({ ...x, receipt, values });
       }
     }
     // UCP: the user's words drive the search (query, else the sentence itself; a legacy kind-only request searches
     // for its kind). Only the budget stated in this request excludes; the card's budget and size only rank.
     let ucpNote: { result: string; reason: string } | undefined;
+    // Filter counts for the funnel (Phase 0): what the hard filters dropped before sellers were picked. Counts only.
+    let stats: SearchStats | undefined;
+    // Ranking buckets (Phase 3), only when the installed document turns outcome ranking on.
+    let rankNote: RankStats | undefined;
     const query = input.query ?? input.text ?? input.kind?.replace(/_/g, " ");
     if (query) {
       const card = this.card.values(userId);
@@ -129,8 +219,17 @@ export class CommerceService {
       if (offers) {
         // Pinned rehearsal variants are a fixture-mode aid only: live search never looks at them.
         const pinned = this.ctx.config.ucpMode === "fixture" ? this.pinned : [];
+        // Phase 3: with ranking weights in the installed document, each seller's outcome history becomes a sort
+        // bucket between size and preferences. Off (absent or both weights 0), or the E1 control arm → today's order,
+        // no rank event.
+        if (ranking && rankingOn && intent.arm !== "control") {
+          const history = new SellerStatsService(store).forSellers(offers.map((o) => o.sellerDomain));
+          conditions.outcome = Object.fromEntries([...history].map(([d, s]) => [d, outcomeRank(s, ranking)]));
+        }
         const picked = pickSellers(offers, conditions, count, pinned);
         ucpNote = { result: "ok", reason: `offers=${offers.length} picked=${picked.length}` };
+        stats = searchStats(offers, conditions, picked.length);
+        if (ranking && conditions.outcome) rankNote = rankStats(offers, conditions, ranking, new Set(picked.map((p) => p.offer.sellerDomain)));
         for (const { offer, sizeNote } of picked) {
           const existing = store.agentByDomain(offer.sellerDomain);
           const proxy: Agent = existing ?? { agentId: `ucp:${offer.sellerDomain}`, name: `${offer.sellerName} (UCP proxy)`, category: "retail",
@@ -153,7 +252,8 @@ export class CommerceService {
       store.insertIntent(intent);
       this.ctx.log({ event: "intent.create", actor: personal.agentId, object: intent.id, result: "ok",
         reason: input.text ? (input.kind ?? "text") : `${input.kind} (legacy: no text)` });
-      if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote });
+      if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote, ...(stats ? { kind: "search" as const, stats } : {}) });
+      if (rankNote) this.ctx.log({ event: "ucp.rank", actor: "workspace", object: intent.id, result: "ok", reason: `sellers=${rankNote.sellers.length}`, kind: "rank", stats: rankNote });
       for (const p of plans) {
         if (p.newAgent) {
           store.insertAgent(p.newAgent);
@@ -164,6 +264,8 @@ export class CommerceService {
         if (p.receipt) store.insertReceipt({ ...p.receipt, userId });
       }
     });
+    // Committed: tell open streams (none can be open yet for a new intent, but the order is the rule).
+    for (const p of plans) if (p.quote) this.quoted(p.quote);
 
     for (const p of plans) {
       if (p.channel === "callback") {
@@ -180,7 +282,7 @@ export class CommerceService {
           this.ctx.log({ event: "tier0.deliver", actor: "workspace", object: p.agent.agentId, result: "skipped", reason: "receipt not durable" });
           continue;
         }
-        void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text);
+        void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text, policyDoc);
       }
     }
     // Intent history + learning (fire and forget; a learning failure is only logged).
@@ -203,6 +305,84 @@ export class CommerceService {
     }
   }
 
+  /**
+   * GET /personal/intents/:id/events. Ownership is checked here, before anything is streamed (404 otherwise); the
+   * returned generator then yields every stored quote with a seq above `lastEventId` in seq order, then each quote
+   * committed while it runs, then `expired` once the intent's expiresAt passed on the workspace clock, else `complete`
+   * once every expected merchant (the rule of quotes(): every introduction but Tier 0) has a quote, and ends.
+   * Heartbeat ticks every streamLimits.heartbeatMs; expiry is re-checked at each, at the expiry instant, and when the
+   * clock is shifted. It also ends after streamLimits.maxMs, on `signal`, and as soon as a reset starts.
+   */
+  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal } = {}): AsyncGenerator<IntentStreamItem> {
+    const intent = this.ctx.store.intent(intentId);
+    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    return this.stream(intent, lastEventId ?? 0, opts.signal);
+  }
+
+  private async *stream(intent: IntentRow, after: number, signal?: AbortSignal): AsyncGenerator<IntentStreamItem> {
+    const { store, clock } = this.ctx;
+    const { maxMs, heartbeatMs } = this.streamLimits;
+    const expiresAt = Date.parse(intent.expiresAt);
+    const opened = Date.now();
+    let nextBeat = opened + heartbeatMs;
+    const live: QuoteRow[] = [];
+    let ended = false;
+    let wake: (() => void) | undefined;
+    const poke = () => { const w = wake; wake = undefined; w?.(); };
+    const end = () => { ended = true; poke(); };
+    // Subscribe before reading what is stored, so a quote committed in between is not lost; seq drops the duplicate.
+    const unsubscribe = this.subscribe(intent.id, (q) => { live.push(q); poke(); });
+    this.emitter.on("end", end);
+    const offClock = clock.onChange(poke);
+    signal?.addEventListener("abort", end, { once: true });
+    try {
+      const expected = new Set(store.intentSessions(intent.id).filter((x) => x.channel !== "tier0").map((x) => x.agentId));
+      const quotedBy = new Set<string>();
+      let last = after;
+      let pending = store.quotesForIntent(intent.id);
+      for (;;) {
+        if (ended || signal?.aborted || this.ctx.closing() || this.ctx.stale()) return;
+        for (const q of pending) {
+          // Quotes skipped by Last-Event-ID still count towards complete.
+          quotedBy.add(q.agentId);
+          if (q.seq !== undefined && q.seq > last) {
+            last = q.seq;
+            yield { event: { type: "quote", quote: toQuote(q) }, seq: q.seq };
+          }
+        }
+        pending = [];
+        if (expiresAt <= clock.now()) {
+          yield { event: { type: "expired", intentId: intent.id } };
+          return;
+        }
+        if ([...expected].every((a) => quotedBy.has(a))) {
+          yield { event: { type: "complete", intentId: intent.id } };
+          return;
+        }
+        const now = Date.now();
+        if (now - opened >= maxMs) return;
+        if (now >= nextBeat) {
+          nextBeat = now + heartbeatMs;
+          yield { heartbeat: true };
+          continue;
+        }
+        if (live.length === 0 && !ended) {
+          const waitMs = Math.max(0, Math.min(nextBeat - now, opened + maxMs - now, expiresAt - clock.now()));
+          let timer: NodeJS.Timeout | undefined;
+          await new Promise<void>((resolve) => { wake = resolve; timer = setTimeout(resolve, waitMs); });
+          clearTimeout(timer);
+          wake = undefined;
+        }
+        pending = live.splice(0);
+      }
+    } finally {
+      unsubscribe();
+      this.emitter.off("end", end);
+      offClock();
+      signal?.removeEventListener("abort", end);
+    }
+  }
+
   async submitQuote(agent: AuthedAgent, input: { intentId: string; text: string; price: number; etaDate: string | null; etaText?: string; title?: string; checkoutUrl?: string }): Promise<Quote> {
     const intent = this.ctx.store.intent(input.intentId);
     const session = intent && this.ctx.store.sessionFor(intent.userId, agent.agentId);
@@ -215,8 +395,12 @@ export class CommerceService {
     if (input.etaText) q.etaText = input.etaText;
     if (input.title) q.title = input.title;
     if (input.checkoutUrl) q.checkoutUrl = input.checkoutUrl;
+    const firstQuote = !this.ctx.store.quotesForIntent(intent.id).some((x) => x.agentId === agent.agentId);
     this.ctx.store.insertQuote(q);
     this.ctx.log({ event: "quote.submit", actor: agent.agentId, object: q.id, result: "ok", reason: intent.id });
+    this.quoted(q);
+    // Stage "quoted" (Phase 2), once per merchant per intent: opens the fields the installed document lists for it.
+    if (firstQuote) this.sessions.advance(session, intent.id, "quoted", agent.category);
     return toQuote(q);
   }
 
@@ -268,22 +452,27 @@ export class CommerceService {
       this.ctx.store.markQuoteAccepted(q.id, this.ctx.clock.nowIso());
       this.ctx.log({ event: "quote.accept", actor: personal.agentId, object: q.id, result: "ok", reason: agent.agentId });
       const session = this.ctx.store.session(q.sessionId)!;
+      // Stages (Phase 2): "accepted" opens whatever the installed document lists under that purpose (nothing by
+      // default); "checkout" opens what the checkout step needs (shipping_address by default). Both are withdrawn
+      // when the step fails before anything went upstream — the merchant then holds nothing it did not hold before.
+      const opened = [this.sessions.advance(session, intent.id, "accepted", agent.category),
+        this.sessions.advance(session, intent.id, "checkout", agent.category)];
+      const withdrawOpened = () => { for (const g of opened) if (g) this.sessions.withdraw(g.id); };
       if (agent.domain) {
-        const widened = this.sessions.widen(session, intent.id, ["shipping_address"], "checkout");
         result = await this.ucpCheckout(asMerchant, q);
-        if (result.status !== "ordered" && result.status !== "handoff") this.sessions.withdraw(widened.id);
+        if (result.status !== "ordered" && result.status !== "handoff") withdrawOpened();
       } else if (agent.callbackUrl) {
-        const widened = this.sessions.widen(session, intent.id, ["shipping_address"], "checkout");
         const r = await this.ctx.delivery.callback(agent, { type: "accepted", sessionId: q.sessionId, quoteId: q.id });
         if (r.ok) {
           result = { status: "handoff", quoteId: q.id, ...(q.checkoutUrl ? { continueUrl: q.checkoutUrl } : {}),
             message: q.checkoutUrl ? "Finish and pay on the merchant's page." : "The merchant was notified and continues the checkout." };
         } else {
-          this.sessions.withdraw(widened.id);
+          withdrawOpened();
           result = { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The merchant could not be reached; nothing was sent.",
             ...(q.checkoutUrl ? { continueUrl: q.checkoutUrl } : {}) };
         }
       } else {
+        withdrawOpened();
         result = { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "This merchant cannot be reached; nothing was sent." };
       }
     }
@@ -306,7 +495,23 @@ export class CommerceService {
     const withUrl = (r: AcceptResult): AcceptResult => (url() && r.continueUrl === undefined ? { ...r, continueUrl: url()! } : r);
     const stopped = (messages: UcpMessage[], status?: string) =>
       status === "canceled" || messages.some((m) => m.type === "error" && m.severity === "unrecoverable");
-    const done = (r: AcceptResult): AcceptResult => (receipts.length > 0 ? { ...r, receipts } : r);
+    // Lane D payment stage (A21): the authorization RESULT once the workspace made one; carried on every result after.
+    let authorization: PaymentAuthorization | undefined;
+    let paymentGrant: GrantRow | undefined;
+    const done = async (r: AcceptResult): Promise<AcceptResult> => {
+      let res = r;
+      // An authorization still holding funds here was not taken by the store (UCP_STORE_TAKES_PAYMENT): release it and
+      // say so. Only reached after complete, whatever its outcome (ordered, handoff, sold out, upstream failure).
+      if (authorization?.status === "authorized" && !UCP_STORE_TAKES_PAYMENT) {
+        const released = await this.releaseHold(q, authorization, res.status);
+        authorization = released.authorization;
+        res = { ...res, message: [res.message, released.note].filter(Boolean).join(" ") };
+      }
+      // Like the checkout grant (decide), the payment stage's grant is withdrawn when the user cannot finish this checkout.
+      if (paymentGrant && res.status !== "ordered" && res.status !== "handoff") this.sessions.withdraw(paymentGrant.id);
+      const out = receipts.length > 0 ? { ...res, receipts } : res;
+      return authorization ? { ...out, authorization } : out;
+    };
     // Warnings (low stock, sold-out notices) from any step reach the user verbatim, even when a later step does not
     // repeat them (plan T4: 售罄 warning 原样转给用户). Info messages are per-step state and are not carried.
     const warnings: UcpMessage[] = [];
@@ -328,11 +533,29 @@ export class CommerceService {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       // fixtures/README: a Sample address is never sent to a real store. In live mode, hand off before reading it.
-      const onCard = this.card.values(this.ctx.store.session(q.sessionId)!.userId).shipping_address;
+      const session = this.ctx.store.session(q.sessionId)!;
+      const card = this.card.values(session.userId);
+      const onCard = card.shipping_address;
       if (this.ctx.config.ucpMode === "live" && onCard && /\bsample\b/i.test(onCard)) {
         return done(url()
           ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "The card holds a Sample address, so none was sent. Enter a real address on the merchant's page." }
           : { status: "blocked", quoteId: q.id, code: "MISSING_FIELD", message: "The card holds a Sample address, so none was sent." });
+      }
+      // Lane D payment stage (A21): with payment on (AGENT_COOKIE_PAY) and a token reference on the card, the workspace
+      // will authorize the accepted price on the user's behalf. Without the hook or without a token this stage does not
+      // exist. The event names the outcome, the TAP signature, and whether the provider got the address as billTo — by
+      // field name only.
+      const pay = card.payment_method ? this.ctx.laneD.authorizePayment : undefined;
+      const logPayment = (result: string, billToSent: boolean) => this.ctx.log({ event: "payment.authorize", actor: "workspace", object: q.id, result,
+        reason: `tap=${UCP_PAYER_TAP} billto=${billToSent ? "shipping_address" : "none"}` });
+      // The budget first, before the address is read or leaves: a quote the budget already rules out never gets a
+      // destination. Same rule as the authorization itself (payments.ts paymentBudgetCents), which checks it again.
+      if (pay) {
+        const intent = this.ctx.store.intent(q.intentId);
+        if (intent && q.price > paymentBudgetCents(intent, card.budget, q.price)) {
+          logPayment("OVER_BUDGET", false);
+          return done({ status: "blocked", quoteId: q.id, code: "OVER_BUDGET", message: PAYMENT_BLOCKED.OVER_BUDGET });
+        }
       }
       const read = await this.fields.read(proxy, q.sessionId, ["shipping_address"], "checkout");
       if (read.receipt) receipts.push(read.receipt);
@@ -342,12 +565,45 @@ export class CommerceService {
           ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "Add the shipping address on the merchant's page to finish." }
           : { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "No shipping address and no merchant page to finish on." });
       }
-      co = await ucp.setDestination(co, parseAddress(address));
+      const destination = parseAddress(address);
+      co = await ucp.setDestination(co, destination);
       heard(co.messages);
       if (stopped(co.messages, co.status)) {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
+      // The authorization, after the destination (so the provider can check the billing address against it) and before
+      // complete (payments.ts: accepted quote, budget, single use). Already used or declined → nothing more goes to the store.
+      if (pay) {
+        try {
+          authorization = await pay({ sessionId: q.sessionId, quoteId: q.id, amount: q.price, currency: "USD", billTo: billToOf(destination) });
+        } catch (err) {
+          if (!(err instanceof WorkspaceError)) throw err;
+          // createPayments refuses (NOT_FOUND, SCOPE_DENIED, OVER_BUDGET, AUTHORIZATION_USED) before it calls the
+          // provider; UPSTREAM_ERROR means the provider was called with billTo, whether or not it answered.
+          logPayment(err.code, err.code === "UPSTREAM_ERROR");
+          if (err.code === "UPSTREAM_ERROR") {
+            return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: this.paymentFailure(q) }));
+          }
+          return done({ status: "blocked", quoteId: q.id, code: err.code, message: PAYMENT_BLOCKED[err.code] ?? "No payment was authorized; nothing was ordered." });
+        }
+        logPayment(authorization.status, true);
+        if (authorization.status !== "authorized") {
+          return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The payment was declined; nothing was ordered." }));
+        }
+        // Records the stage (payment_method under purpose "payment"); fields.ts still refuses the merchant the token.
+        paymentGrant = this.sessions.advance(session, q.intentId, "payment", proxy.category);
+        // The amount receipt the authorization wrote, told to the user with the others.
+        const paid = this.ctx.store.receiptsForIntent(q.intentId).filter((r) => r.purpose === "payment" && r.sessionId === q.sessionId).at(-1);
+        if (paid) {
+          const { userId: _u, ...receipt } = paid;
+          receipts.push(receipt);
+        }
+      }
       try {
+        // UcpApi.complete takes an optional authorization result, but lane D's adapter has no place for UCP
+        // `payment.instruments` (it sends `payment: {}`), so none is passed (UCP_STORE_TAKES_PAYMENT): an authorization
+        // is not an order, the store's own outcome below is reported as it is (fixture mode: requires_escalation →
+        // handoff), and done() then releases the hold.
         co = await ucp.complete(co);
       } catch (err) {
         // The checkout exists with the destination set; the store only refuses to finalize without the buyer.
@@ -368,6 +624,8 @@ export class CommerceService {
           message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" "), ...(u ? { continueUrl: u } : {}) });
       }
       if (err instanceof WorkspaceError) return done({ status: "blocked", quoteId: q.id, code: err.code, message: err.message });
+      // An unexpected error still propagates, but never leaves a hold behind.
+      if (authorization?.status === "authorized" && !UCP_STORE_TAKES_PAYMENT) await this.releaseHold(q, authorization, "failed");
       throw err;
     }
     const message = say(co.messages);
@@ -388,6 +646,51 @@ export class CommerceService {
     }
     if (result.status === "ordered" || result.status === "handoff") await this.lastOrder(proxy, q);
     return done(result);
+  }
+
+  /**
+   * What to tell the user when the payment stage failed upstream. No recorded authorization → the provider failed. A
+   * recorded one means the provider authorized but its receipt could not be written, so createPayments undid it:
+   * `reversed` when the provider confirmed, still `authorized` when it could not (the hold may remain). Logged as
+   * `payment.reverse` with the outcome only.
+   */
+  private paymentFailure(q: QuoteRow): string {
+    const recorded = this.ctx.store.paymentAuthorizationForQuote(q.id);
+    if (!recorded) return "The payment provider could not be reached; nothing was ordered.";
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: recorded.status === "reversed" ? "reversed" : "not_reversed" });
+    return recorded.status === "reversed"
+      ? "The payment could not be recorded, so its authorization was reversed; no hold remains on your card and nothing was ordered."
+      : "The payment could not be recorded and its hold could not be released; it may stay on your card until it expires. Nothing was ordered.";
+  }
+
+  /**
+   * Release the hold of an authorization the store did not take (reversePayment), log `payment.reverse` with the outcome
+   * only, and word the line the user is told. Never throws: a failed release is reported as a hold that may remain.
+   */
+  private async releaseHold(q: QuoteRow, authorization: PaymentAuthorization, status: AcceptResult["status"]):
+    Promise<{ authorization: PaymentAuthorization; note: string }> {
+    const reverse = this.ctx.laneD.reversePayment;
+    let current = authorization;
+    let outcome: string;
+    if (!reverse) {
+      outcome = "not_supported";
+    } else {
+      try {
+        const r = await reverse({ authorizationId: authorization.id });
+        current = r.authorization;
+        outcome = r.outcome;
+      } catch (err) {
+        outcome = err instanceof WorkspaceError ? err.code : "error";
+      }
+    }
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: outcome });
+    if (current.status !== "reversed") {
+      return { authorization: current, note: "The store did not take the payment authorization and its hold could not be released; it may stay on your card until it expires." };
+    }
+    const why = status === "handoff" ? "The store needs you to pay on its own page, so the payment authorization was reversed"
+      : status === "ordered" ? "The store did not use the payment authorization, so it was reversed"
+        : "The payment authorization was reversed";
+    return { authorization: current, note: `${why}; no hold remains on your card.` };
   }
 
   /** The proxy's own cookie note: what this returning customer ordered last (demo beat 2:05). */

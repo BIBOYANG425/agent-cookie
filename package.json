@@ -10,7 +10,6 @@
     "build:deps": "pnpm --filter @agent-cookie/sdk build && pnpm --filter @agent-cookie/learn build",
     "typecheck": "pnpm build:deps && pnpm -r --if-present typecheck",
     "test": "pnpm build:deps && pnpm -r --if-present test",
-    "fake": "pnpm --filter @agent-cookie/workspace-fake start",
     "workspace": "pnpm --filter @agent-cookie/workspace start",
     "demo:reset": "curl -s -X POST -H \"Authorization: Bearer $AGENT_COOKIE_KEY\" \"${AGENT_COOKIE_URL:-http://127.0.0.1:4310}/demo/reset\""
   }

@@ -25,6 +25,7 @@ export const ENDPOINTS: Endpoint[] = [
 
   { method: "POST", path: "/personal/intents", caller: "personal", idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
   { method: "GET", path: "/personal/intents/:id/quotes", caller: "personal", summary: "Long-poll quotes, up to 20s" },
+  { method: "GET", path: "/personal/intents/:id/events", caller: "personal", summary: "text/event-stream of IntentEvent (events.ts; owner key too): existing quotes first, then each new quote as it is inserted (SSE id = the quote's seq; Last-Event-ID resumes after it), `complete` when every introduced merchant that can quote has quoted, `expired` when the intent expires; closes after complete/expired or INTENT_STREAM_MAX_MS; ':' heartbeat comments every INTENT_STREAM_HEARTBEAT_MS; never a field value beyond what GET …/quotes returns; the long-poll stays as the fallback (docs/commerce-analytics-plan.md §8)" },
   { method: "POST", path: "/personal/quotes/:id/accept", caller: "personal", idempotent: true, summary: "Accept a quote; notifies the merchant (or runs UCP checkout)" },
   { method: "GET", path: "/personal/card", caller: "personal", summary: "Identity card + candidates" },
   { method: "GET", path: "/personal/receipts", caller: "personal", summary: "Recent sensitive-field read receipts (who, which fields, which purpose)" },
@@ -40,14 +41,21 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/personal/learned", caller: "personal", summary: "→ LearnedResponse: pref.* values on the card or waiting as candidates, with sources and evidence (owner key too)" },
   { method: "POST", path: "/personal/learned/forget", caller: "personal", summary: "ForgetRequest { conversationId | intentId } → ForgetResult: revoke everything learned from it in one transaction and one commit, drop its waiting turns (owner key too)" },
 
+  { method: "GET", path: "/personal/policy", caller: "personal", summary: "→ PolicyView: the installed field-policy document, its id and source (owner key too). Phase 1" },
+  { method: "PUT", path: "/personal/policy", caller: "owner", summary: "PolicyDocument → PolicyView; 422 MISSING_FIELD listing policyViolations (the floor) and nothing changes; repo first (writePolicy when present), then SQLite, then the live document. Phase 1" },
+  { method: "POST", path: "/personal/policy/shadow", caller: "owner", summary: "{ policy } → ShadowReport: every past receipt and logged field read re-evaluated under the candidate; ids, field names and codes only. Phase 1" },
+
   { method: "GET", path: "/agent/handshake", caller: "merchant", summary: "?sessionId= → Handshake (field names only)" },
   { method: "GET", path: "/agent/fields", caller: "merchant", summary: "?sessionId=&fields=a,b&purpose= → 200 values | 403 SCOPE_DENIED (incl. names outside the field table, A13) | 403 PURPOSE_MISMATCH; purpose releases write a receipt" },
   { method: "POST", path: "/agent/quotes", caller: "merchant", idempotent: true, summary: "Submit a quote for an intent; not introduced → 404, own grant expired/revoked → 403 GRANT_EXPIRED/GRANT_REVOKED (A13)" },
   { method: "POST", path: "/agent/contributions", caller: "merchant", summary: "Filtered by canWrite; recomputes card" },
   { method: "PUT", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → write own note (≤ 2 KB)" },
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },
+  { method: "GET", path: "/agent/stats", caller: "merchant", summary: "→ MerchantStats: counts over the caller's own sessions only (sessions, returning sessions, quotes, accepted, win rate, median ms to quote); never a session id, a field name or value, or anything about another merchant (docs/commerce-analytics-plan.md Phase 5)" },
 
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)" },
+  { method: "GET", path: "/owner/funnel", caller: "owner", summary: "?since=&limit= → FunnelReport: one row per intent, counts only (introduced, quoted, first-quote ms, accepted, outcome, fields granted/read, receipts, search filter stats); never field values (docs/commerce-analytics-plan.md Phase 0)" },
+  { method: "GET", path: "/owner/experiments", caller: "owner", summary: "→ ExperimentReport for E1 (outcome ranking on/off, AGENT_COOKIE_EXPERIMENT=ranking): per arm n, accepted, rate, Wilson 95 % interval, median ms to accept, from the arms stored on the intents; counts only, `sample` unless live (docs/commerce-analytics-plan.md Phase 4)" },
   { method: "POST", path: "/owner/dreaming/run", caller: "owner", summary: "Run Dreaming once now (learn → regenerate → compact → log) → DreamingRun; counts and field names only" },
   { method: "POST", path: "/demo/reset", caller: "owner", gate: "AGENT_COOKIE_DEMO", summary: "Owner key + AGENT_COOKIE_DEMO=1: wipe tables, reseed fixtures, hard-reset the memory repo" },
   { method: "POST", path: "/test/clock", caller: "test", gate: "AGENT_COOKIE_TEST", summary: "{ offsetMs } shifts the server clock; absent otherwise" },

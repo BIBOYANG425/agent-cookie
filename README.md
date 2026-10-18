@@ -114,11 +114,13 @@ Photon 需要已分配的 Beta iMessage 线路、项目凭据和双方 handle。
 | `PHOTON_TEST_SENDER` / `PHOTON_AGENT_HANDLE` | 明确允许的本人测试号码和 agent handle。 |
 | `OPENROUTER_API_KEY` | 工作台本地加载；不交给 Photon 或浏览器。 |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` / `SENTRY_TRACES_SAMPLE_RATE` | 可选 tracing/logs，未设置 DSN 时关闭；外部 Dashboard 证据待补。 |
-| `STRIPE_SECRET_KEY` | D 线测试支付库；不是当前工作台付款闭环。 |
+| `AGENT_COOKIE_PAY` | 工作台支付阶段：`off`（默认）/ `fake` / `visa`。`fake` 为 `@agent-cookie/pay` 的假 provider（演示用，如实标注）；`visa` 为 Visa Acceptance 沙盒 provider，只允许沙盒主机。Stripe 代码在 `packages/pay` 但未接线。 |
+| `VISA_ACCEPTANCE_MERCHANT_ID` / `VISA_ACCEPTANCE_KEY_ID` / `VISA_ACCEPTANCE_SHARED_SECRET` | `AGENT_COOKIE_PAY=visa` 必需；只从环境读取，不记录、不打印。截至 2026-10-18 Visa 未提供沙盒，provider 只对照官方 Node SDK 离线校验，仓库内没有任何真实调用结果。 |
+| `AGENT_COOKIE_EXPERIMENT` | `off`（默认）或 `ranking`：按 intent 分组的排序对照实验，报表见 `GET /owner/experiments`。 |
 
 高级工作台限时/重试配置见 [config.ts](apps/workspace/src/config.ts)。商家 MCP HTTP 4311 是计划项；unlock 4312 独立验证；blueprint 8000/3000 仅保留 A16 接入材料，不是当前主线服务。
 
-演示重置使用 owner 环境中的 `pnpm demo:reset`（`POST /demo/reset`），且工作台必须开启 demo。它清理 SQLite 演示状态，**只把 Git 的 `contributions/`、`notes/`、`CARD.md`、`receipts.md` 恢复到 seed**；skill 的其他文件及 `MEMORY.md` 改动保留。不要对正在聊天或录制的实例重置。稳定商家 session ID 不变。
+演示重置使用 owner 环境中的 `pnpm demo:reset`（`POST /demo/reset`），且工作台必须开启 demo。它清理 SQLite 演示状态，**只把 Git 的 `contributions/`、`notes/`、`CARD.md`、`receipts.md`、`POLICY.yaml` 恢复到 seed**；skill 的其他文件及 `MEMORY.md` 改动保留。不要对正在聊天或录制的实例重置。稳定商家 session ID 不变。
 
 ## 演示流程
 

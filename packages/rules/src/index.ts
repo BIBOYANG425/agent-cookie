@@ -5,6 +5,10 @@ import { renderCard, renderContribution, parseContributions, parseLearningContri
 import { mergeLearningCard } from './learning.js';
 import type { LearningRulesApi } from './learning-types.js';
 export * from './learning-types.js';
+export {
+  POLICY_INSTALLED_PREFIX, POLICY_SEED_HEADER, parsePolicyDocument, parsePolicyYaml, policyYamlOrigin, renderInstalledPolicyYaml,
+  renderPolicyYaml, type PolicyYamlMapping, type PolicyYamlNode,
+} from './policy-yaml.js';
 
 export { deriveSessionId, mergeCard, mergeLearningCard, renderCard, renderContribution, parseContributions, parseLearningContributions };
 export const rules = { deriveSessionId, mergeCard, renderCard, renderContribution, parseContributions } satisfies RulesApi;

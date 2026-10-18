@@ -10,7 +10,9 @@ import { parseIntentFilename } from './intent-history.js';
 
 const REQUIRED = ['MEMORY.md', 'CARD.md', 'POLICY.yaml', 'receipts.md'] as const;
 const DIRECTORIES = ['contributions', 'notes', 'archive', 'intents'] as const;
-const MANAGED = ['contributions', 'notes', 'CARD.md', 'receipts.md'] as const;
+// Paths the workspace owns: writes require them clean, reset restores them from the seed. POLICY.yaml joined when
+// writePolicy landed (an installed policy is workspace state, and POST /demo/reset must bring the seed back).
+const MANAGED = ['contributions', 'notes', 'CARD.md', 'receipts.md', 'POLICY.yaml'] as const;
 const MARKER = 'agent-cookie-memory.json';
 const queue = new Map<string, Promise<void>>();
 
@@ -114,7 +116,12 @@ async function seedExtensions(root: string, inside = ''): Promise<Map<string, Bu
   return files;
 }
 
-interface Marker { version: 1; userId: string; seedCommit: string }
+export interface Marker { version: 1; userId: string; seedCommit: string }
+
+/** Bytes of a file in the pinned seed commit (the caller has run assertRepository, which checks the tag and marker). */
+export async function seedFile(root: string, marker: Marker, path: string): Promise<Buffer> {
+  return Buffer.from(await gitAt(root).binaryCatFile(['blob', `${marker.seedCommit}:${path}`]));
+}
 
 export async function assertRepository(root: string, userId: string, clean = true): Promise<Marker> {
   const directory = await lstat(root);

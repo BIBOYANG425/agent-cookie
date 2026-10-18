@@ -49,12 +49,13 @@ or expose HTTP endpoints. Merchants never receive this repository handle.
 - Calls through multiple handles for the same canonical path share one queue
   within this Node process, including reads. External processes must not edit
   the repository concurrently. This is not a cross-process lock. Writes check
-  for clean `contributions/`, `notes/`, `CARD.md`, and `receipts.md` paths only.
+  for clean `contributions/`, `notes/`, `CARD.md`, `receipts.md` and `POLICY.yaml`
+  paths only.
   Other working files and staged skill edits are permitted. Each write uses a
   path-limited commit, so it never includes unrelated staged files. A failed
   commit restores its own files and staging; rollback failure is reported.
   The exact write targets must also be clean, including an `intents/` target
-  outside those four paths: staged, unstaged, untracked or ignored skill edits
+  outside those five paths: staged, unstaged, untracked or ignored skill edits
   at that target reject before any mutation. Other intent files remain independent.
 - Filenames preserve `[a-z0-9._-]`; other UTF-8 bytes, including uppercase letters
   and `%`, become uppercase `%HH`. Thus `a`, `A`, `a:b`, and `a_b` stay distinct
@@ -66,15 +67,15 @@ or expose HTTP endpoints. Merchants never receive this repository handle.
   UTF-8 bytes. Another owner's read and `expiresAt <= now` both yield undefined;
   another owner cannot overwrite a note file. Unknown revoke/delete calls do not
   create commits.
-- Ownership is limited to `contributions/`, `notes/`, `CARD.md`, and
-  `receipts.md`. Layout validation requires `MEMORY.md`, `CARD.md`, `POLICY.yaml`
+- Ownership is limited to `contributions/`, `notes/`, `CARD.md`, `receipts.md`
+  and `POLICY.yaml`. Layout validation requires `MEMORY.md`, `CARD.md`, `POLICY.yaml`
   and `receipts.md`, and checks canonical contribution/note filenames. Unknown
   top-level paths are neither traversed nor read. Required files and managed
   paths retain symlink/special-file protections.
 - Reset verifies repository identity and the pinned seed tag, restores only the
-  four owned paths from that seed, and removes untracked/ignored files only
+  five owned paths from that seed, and removes untracked/ignored files only
   beneath those paths. It never resets HEAD to an older commit or cleans the
-  whole repository. `MEMORY.md`, `POLICY.yaml`, `intents/`, scratch/projects and
+  whole repository. `MEMORY.md`, `intents/`, scratch/projects and
   other skill files, their pending edits, and unrelated staging survive.
 - If restoring the seed changes tracked content relative to HEAD, reset creates
   one path-limited workspace commit. Its parent is the previous HEAD, preserving
@@ -82,11 +83,40 @@ or expose HTTP endpoints. Merchants never receive this repository handle.
   commit and its timestamp is fixed at `2000-01-01T00:00:00.000Z`. No tracked
   change means no extra commit. The contract return stays `Promise<void>`. The
   owned paths are clean afterward, so normal writes can resume.
-- Reset snapshots only the four owned paths before changing them. If Git restore,
+- Reset snapshots only the five owned paths before changing them. If Git restore,
   clean or commit fails, rollback restores their staged blobs and working files,
   including ignored/untracked bytes, empty directories and file modes. It leaves
   unrelated index entries and files alone; an incomplete rollback is reported
   explicitly. The in-process queue still does not permit concurrent external writers.
+
+## Field policy (POLICY.yaml)
+
+`readPolicy()` / `writePolicy(doc, meta)` implement the contract's optional Phase 1
+methods. Both go through the same per-repository queue and checks as every
+other call. The file format is the restricted YAML subset of
+`@agent-cookie/rules` `renderPolicyYaml` / `parsePolicyYaml`. The seed
+generator uses the same writer, and this package imports it at runtime.
+`@agent-cookie/rules` is still listed under `devDependencies`; moving it to
+`dependencies` is a pending manifest change.
+
+- `writePolicy` refuses a document with any contract `policyViolations`
+  (`MISSING_FIELD`, no commit). Otherwise it writes
+  `# Installed field policy · policyId <id> · <meta.at>` followed by the
+  document, as one commit `Install policy <id>` authored by `meta.author`.
+- `readPolicy` returns `undefined` for the seed. That means a file headed by the
+  generated `# Generated from @agent-cookie/contract POLICY_TABLE…` line, or an
+  unmarked file that is byte-identical to the `fixtures-seed` copy or that
+  canonically equals `DEFAULT_POLICY`. A file with the installed header, even
+  one holding `DEFAULT_POLICY`, and any other unmarked file is parsed and
+  returned as written. It is not validated or repaired here; the workspace
+  checks it. A missing `v` reads as 1, because the seed format predates the
+  `v` line and is v1 by definition. Invalid UTF-8 and anything outside the
+  subset reject with an `Error` that names the line.
+- `POLICY.yaml` is a managed path. Reset restores the seed bytes, and an
+  uncommitted edit blocks workspace calls until it is committed or reset.
+
+`test/policy.test.ts` covers seed detection, the single owner commit, reopening,
+reset, malformed files, floor refusal and queue ordering.
 
 ## Verification
 
@@ -104,7 +134,7 @@ suite remains a separate HTTP-only integration task.
 
 ## Learning and intent history
 
-Local flat history types match the shared `IntentRecord`. Both `openMemoryRepo` with `rules` and the preview `openLearningMemoryRepo` with `learningRules` preserve the exact ten preference fields and nested `evidence: { intentId?, conversationId?, snippet? }`. Older C preview top-level source IDs and string evidence remain readable. Append, list, revoke, reopen and CARD regeneration use the injected rules. Runtime dependency on rules is still type-only. No route or SDK method is introduced here.
+Local flat history types match the shared `IntentRecord`. Both `openMemoryRepo` with `rules` and the preview `openLearningMemoryRepo` with `learningRules` preserve the exact ten preference fields and nested `evidence: { intentId?, conversationId?, snippet? }`. Older C preview top-level source IDs and string evidence remain readable. Append, list, revoke, reopen and CARD regeneration use the injected rules. Apart from the POLICY.yaml codec (see Field policy), the runtime dependency on rules is type-only. No route or SDK method is introduced here.
 
 `appendIntent` accepts A's flat `IntentRecord` and the earlier C wrapper. `searchIntents(q)` remains a C additive method; A's current contract does not expose it.
 
@@ -114,7 +144,7 @@ The preview wrapper retains intent `id`, `userId`, optional `kind` and `expiresA
 
 Each append creates one Git commit and one escaped Markdown record in `intents/<UTC YYYY-MM-DD>-<encoded intent ID>.md`. The filename date comes from `meta.at`; flat records additionally retain their original `createdAt`. A format marker distinguishes flat records from existing preview history. Nested evidence uses indexed attributes, not raw JSON. IDs are nonempty, whitespace-free, at most 128 code points, and subject to the canonical filename limit; optional `kind` is a structured token of at most 64 code points. The supplied signature trailer, queue and write rollback apply normally.
 
-Search matches every whitespace-split query term case-insensitively against generated summaries. Flat summaries contain only structured kind and numeric quote facts; preview summaries can also contain validated extracted values and short evidence. Results expose only `{ intentId, date, summary }`, in filename/append order. Whitespace/control characters are flattened, empty queries return no results, malformed history lines are ignored, and queries are never persisted. Existing repositories without `intents/` read as empty. Intent history is outside the four reset-owned paths and survives
+Search matches every whitespace-split query term case-insensitively against generated summaries. Flat summaries contain only structured kind and numeric quote facts; preview summaries can also contain validated extracted values and short evidence. Results expose only `{ intentId, date, summary }`, in filename/append order. Whitespace/control characters are flattened, empty queries return no results, malformed history lines are ignored, and queries are never persisted. Existing repositories without `intents/` read as empty. Intent history is outside the five reset-owned paths and survives
 seed reset. Direct append/search validate the `intents/` directory and target
 files against symlink/path escape at the point of access; unrelated operations
 do not traverse it.

@@ -3,6 +3,8 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
+import type { ExperimentArm, FunnelStage, RankStats, SearchStats } from "./analytics.js";
+
 export type Basis = "observed" | "stated" | "inferred";
 
 /**
@@ -160,6 +162,14 @@ export interface Grant {
   purpose: string;
   expiresAt: string;
   revokedAt?: string;
+  /** Additive (Phase 1): id of the policy document the grant was issued under (policy-document.ts policyId). */
+  policyId?: string;
+  /**
+   * Additive (Phase 2): the funnel stage that issued the grant — "introduced" for the handshake grant; "quoted",
+   * "accepted", "checkout", "payment" for grants the workspace opens when the merchant reaches that stage for the
+   * intent. A stage grant's purpose is the stage name; the installed document decides which fields it opens.
+   */
+  stage?: FunnelStage;
 }
 
 /**
@@ -339,6 +349,12 @@ export interface Intent {
   kind: string;
   public: Record<string, string>;
   expiresAt: string;
+  /**
+   * Additive (Phase 4 holdout, analytics.ts ExperimentArm): the arm the intent was assigned at creation, owner-side
+   * only. Never part of what a merchant is sent: the introduce callback builds its intent from id, kind, public and
+   * expiresAt alone.
+   */
+  arm?: ExperimentArm;
 }
 
 /**
@@ -400,6 +416,12 @@ export interface AcceptResult {
   code?: ErrorCode;
   /** Receipts written during this accept (who read which field for which purpose) — for telling the user. */
   receipts?: Receipt[];
+  /**
+   * Additive (lane D, A21): the payment authorization the workspace made for this accept, when payment is on and the
+   * card holds a payment_method token. The RESULT only (id, amount, status) — never the token or a provider reference.
+   * An authorization is not an order: `status` above still says what the store did.
+   */
+  authorization?: PaymentAuthorization;
 }
 
 export interface Receipt {
@@ -411,6 +433,10 @@ export interface Receipt {
   /** Filled by lane D's payment authorization. */
   amount?: number;
   createdAt: string;
+  /** Additive (Phase 0): the intent whose grant authorized the release; absent on legacy rows. Funnel attribution only. */
+  intentId?: string;
+  /** Additive (Phase 1): id of the policy document that allowed this release (policy-document.ts policyId). */
+  policyId?: string;
 }
 
 // ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
@@ -421,11 +447,38 @@ export interface PaymentAuthorization {
   quoteId: string;
   amount: number;
   currency: "USD";
-  status: "authorized" | "declined" | "used";
+  /**
+   * `reversed` (additive): the hold was released at the provider because the store did not take the delegated payment
+   * (today's UCP adapter passes none to complete), so nothing remains held on the user's card.
+   */
+  status: "authorized" | "declined" | "used" | "reversed";
   createdAt: string;
 }
+
+/**
+ * Additive (lane D): the billing address a payment provider may check the authorization against, given by the workspace
+ * from the address it already released for this checkout. Never sent to a merchant; never carries card data.
+ */
+export interface PaymentBillTo {
+  name?: string;
+  line1: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+  email?: string;
+}
+
 export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
-export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
+/** `billTo` is optional and additive: only a provider that checks the address (Visa Acceptance) reads it. */
+export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD"; billTo?: PaymentBillTo }) => Promise<PaymentAuthorization>;
+/**
+ * Additive (lane D): release an authorization's hold the store did not take. `outcome` says what happened: `reversed`
+ * (the provider confirmed; the authorization's status is `reversed`) or `not_supported` (the provider has no reversal;
+ * the authorization is still `authorized` and its hold may remain until it expires). A provider failure throws
+ * UPSTREAM_ERROR and leaves the authorization `authorized`.
+ */
+export type ReversePayment = (a: { authorizationId: string }) => Promise<{ authorization: PaymentAuthorization; outcome: "reversed" | "not_supported" }>;
 
 // ---- Error codes (plan §5 错误契约) ----
 
@@ -505,10 +558,13 @@ export interface ActivityEvent {
   object: string;
   result: string;
   reason: string;
-  /** Additive (2026-10-18): set on events the periodic Dreaming job writes; absent on request events. */
-  kind?: "dreaming";
-  /** Dreaming events only: counts, never field values. */
-  stats?: DreamingStats;
+  /**
+   * Additive (2026-10-18): "dreaming" on events the periodic Dreaming job writes; "search" on the `ucp.search` event
+   * of an intent (docs/commerce-analytics-plan.md Phase 0); absent on request events.
+   */
+  kind?: "dreaming" | "search" | "rank";
+  /** Dreaming, search and rank events only: counts, never field values. */
+  stats?: DreamingStats | SearchStats | RankStats;
 }
 
 // ---- Dreaming (2026-10-18, human direction; plan §规模与时间规则) ----
@@ -569,6 +625,13 @@ export interface Me {
 }
 
 export const GRANT_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long an intent (and the quotes made for it) stays acceptable. Named separately from GRANT_TTL_MS (Phase 2) but
+ * kept equal to it on purpose: accepting an offer after its merchant's grant expired is blocked before anything goes
+ * upstream (a 10-minute-old quote may no longer be the store's price). Lengthening it needs a quote-validity rule and
+ * a human decision — docs/commerce-analytics-plan.md Phase 2.
+ */
+export const INTENT_TTL_MS = GRANT_TTL_MS;
 export const NOTE_MAX_BYTES = 2048;
 export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;

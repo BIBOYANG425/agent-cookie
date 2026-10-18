@@ -1,34 +1,56 @@
 import Stripe from "stripe";
+import type { PaymentBillTo } from "./contract.js";
+
+export interface PaymentAuthorizeInput {
+  /** Integer cents. */
+  amount: number;
+  currency: "USD";
+  /** The card's payment_method token reference; it goes to the provider and nowhere else. */
+  paymentMethodRef: string;
+  idempotencyKey: string;
+  /** Optional billing address for providers that check it (Visa Acceptance billTo). Never card data. */
+  billTo?: PaymentBillTo;
+}
 
 export interface PaymentProvider {
-  authorize(input: {
-    amount: number;
-    currency: "USD";
-    paymentMethodRef: string;
-    idempotencyKey: string;
-  }): Promise<{ providerRef: string; status: "authorized" | "declined" }>;
-  capture(providerRef: string): Promise<void>;
+  authorize(input: PaymentAuthorizeInput): Promise<{
+    providerRef: string;
+    status: "authorized" | "declined";
+    /** A provider's decline reason CODE only (never its message text); internal, never shown to a merchant. */
+    reason?: string;
+    /**
+     * Integer cents the provider's RESPONSE says it authorized, when it says (Visa Acceptance
+     * orderInformation.amountDetails.authorizedAmount). A reversal must name this amount, not the requested one.
+     */
+    authorizedAmount?: number;
+  }>;
+  /** `amount`/`currency` (additive): the authorized amount, for providers whose capture names it (Visa Acceptance). */
+  capture(providerRef: string, amount?: number, currency?: "USD"): Promise<void>;
+  /**
+   * Optional (additive): release an unused authorization's hold. `amount` is the amount the authorization response
+   * authorized (createPayments passes the recorded `authorizedAmount`). A provider without it cannot release holds.
+   */
+  reverse?(providerRef: string, amount: number, currency: "USD"): Promise<void>;
 }
 
 export interface FakePaymentProvider extends PaymentProvider {
-  authorizeCalls: Array<{
-    amount: number;
-    currency: "USD";
-    paymentMethodRef: string;
-    idempotencyKey: string;
-  }>;
+  authorizeCalls: PaymentAuthorizeInput[];
   captureCalls: string[];
+  reverseCalls: Array<{ providerRef: string; amount: number; currency: "USD" }>;
 }
 
 export function fakeProvider({
   decline = false,
   captureError = false,
+  reverseError = false,
 }: {
   decline?: boolean;
   captureError?: boolean;
+  reverseError?: boolean;
 } = {}): FakePaymentProvider {
   const authorizeCalls: FakePaymentProvider["authorizeCalls"] = [];
   const captureCalls: string[] = [];
+  const reverseCalls: FakePaymentProvider["reverseCalls"] = [];
   return {
     authorize: async (input) => {
       authorizeCalls.push({ ...input });
@@ -41,8 +63,14 @@ export function fakeProvider({
       captureCalls.push(providerRef);
       if (captureError) throw new Error("fake capture failure");
     },
+    // A recorded call, so the workspace's reversal path runs the same way with the fake provider as with Visa.
+    reverse: async (providerRef, amount, currency) => {
+      reverseCalls.push({ providerRef, amount, currency });
+      if (reverseError) throw new Error("fake reverse failure");
+    },
     authorizeCalls,
     captureCalls,
+    reverseCalls,
   };
 }
 

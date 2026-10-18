@@ -78,7 +78,34 @@
           "shipping_address"
         ],
         "purpose": "checkout",
-        "createdAt": "2026-10-17T19:00:00.000Z"
+        "createdAt": "2026-10-17T19:00:00.000Z",
+        "intentId": "sample-intent-2",
+        "policyId": "sample-policy"
+      },
+      {
+        "id": "sample-receipt-checkout-3",
+        "sessionId": "sample-session-b",
+        "agentId": "sample-store-b",
+        "fields": [
+          "shipping_address"
+        ],
+        "purpose": "checkout",
+        "createdAt": "2026-10-17T19:05:00.000Z",
+        "intentId": "sample-intent-3",
+        "policyId": "sample-policy"
+      },
+      {
+        "id": "sample-receipt-payment-3",
+        "sessionId": "sample-session-b",
+        "agentId": "sample-store-b",
+        "fields": [
+          "payment_method"
+        ],
+        "purpose": "payment",
+        "amount": 7900,
+        "createdAt": "2026-10-17T19:05:30.000Z",
+        "intentId": "sample-intent-3",
+        "policyId": "sample-policy"
       }
     ],
     "intents": [

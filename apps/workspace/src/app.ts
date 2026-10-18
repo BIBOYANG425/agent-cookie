@@ -1,6 +1,7 @@
 // HTTP surface — packages/contract ENDPOINTS, shapes per docs/plan.md v0.3 §5. Every decision is made in the
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
+import { streamSSE } from "hono/streaming";
 import {
   isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
@@ -55,6 +56,17 @@ function httpsLink(v: string | undefined, name: string): string | undefined {
   const parsed = new URL(u);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) fail("MISSING_FIELD", `${name} must be an https link`);
   return u;
+}
+
+/**
+ * Last-Event-ID (SSE resume, contract events.ts): the decimal quote seq the workspace sent as an event id. Absent or
+ * empty → from the first quote. Anything else is not an id this workspace sent → 422.
+ */
+function lastEventId(v: string | undefined): number | undefined {
+  const t = v?.trim();
+  if (!t) return undefined;
+  if (!/^\d{1,15}$/.test(t)) fail("MISSING_FIELD", "invalid Last-Event-ID");
+  return Number(t);
 }
 
 const ROLES: ReadonlySet<string> = new Set(["user", "agent", "other"]);
@@ -219,6 +231,30 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json(await deps.commerce.quotes(user(), c.req.param("id"), wait));
   });
 
+  // Push instead of poll (docs/commerce-analytics-plan.md §8; contract events.ts). Ownership is checked before the
+  // stream opens: another user's intent gets the same 404 as every NOT_FOUND and no stream. The handler returns as
+  // soon as the stream starts, so the activity middleware writes one row for the request and nothing per event; and
+  // the stream does not hold the reset gate open: a reset ends it through the gate's onClosing (deps.ts).
+  app.get("/personal/intents/:id/events", auth, personalOrOwner, (c) => {
+    const after = lastEventId(c.req.header("last-event-id"));
+    const abort = new AbortController();
+    const events = deps.commerce.events(user(), c.req.param("id"), after, { signal: abort.signal });
+    return streamSSE(c, async (stream) => {
+      stream.onAbort(() => abort.abort());
+      try {
+        for await (const item of events) {
+          if (stream.aborted) break;
+          if ("heartbeat" in item) await stream.write(": heartbeat\n\n");
+          else await stream.writeSSE({ event: item.event.type, data: JSON.stringify(item.event), ...(item.seq !== undefined ? { id: String(item.seq) } : {}) });
+        }
+      } catch (err) {
+        console.error("[workspace] events stream failed:", err);
+      } finally {
+        abort.abort();
+      }
+    });
+  });
+
   app.post("/personal/quotes/:id/accept", auth, personal, idem, async (c) => {
     return json(await deps.commerce.accept(c.get("agent"), user(), c.req.param("id")));
   });
@@ -261,6 +297,15 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   });
 
   app.get("/personal/grants", auth, personalOrOwner, (c) => json({ grants: deps.sessions.list(user()) }));
+
+  // Phase 1 (docs/commerce-analytics-plan.md): the installed field-policy document. The user's agents read it; only the
+  // owner installs or shadows one. A document that fails the floor → 422 naming every violation, nothing changes.
+  app.get("/personal/policy", auth, personalOrOwner, () => json(deps.policy.view()));
+  app.put("/personal/policy", auth, owner, async (c) => json(await deps.policy.install(c.get("agent").agentId, user(), await readJson(c))));
+  app.post("/personal/policy/shadow", auth, owner, async (c) => {
+    const body = await readJson(c);
+    return json(deps.policy.shadow(user(), (body as { policy?: unknown }).policy));
+  });
 
   app.post("/personal/grants/:id/revoke", auth, personalOrOwner, (c) => {
     const { revokedAt } = deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
@@ -337,6 +382,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ key: note.key, value: note.value, updatedAt: note.updatedAt, expiresAt: note.expiresAt });
   });
 
+  // Merchant stats (docs/commerce-analytics-plan.md Phase 5): the caller's own counts, keyed by the agent its key
+  // names; no session id, no field, no value, nothing about any other merchant.
+  app.get("/agent/stats", auth, merchant, (c) => json(deps.merchantStats.forAgent(c.get("agent").agentId)));
+
   // ---- owner, demo, test
   // Dreaming, now (demo and tests; the scheduler runs it every DREAMING_INTERVAL_MS). Counts and field names only.
   app.post("/owner/dreaming/run", auth, owner, async () => json(await deps.dreaming.run()));
@@ -345,6 +394,17 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const limit = intParam(c.req.query("limit"), 200, 1000);
     return json({ events: store.activity(limit) });
   });
+
+  // Funnel (docs/commerce-analytics-plan.md Phase 0): one row per intent, counts and ids only, never a field value.
+  app.get("/owner/funnel", auth, owner, (c) => {
+    const limit = intParam(c.req.query("limit"), 200, 1000);
+    const since = c.req.query("since");
+    if (since !== undefined && Number.isNaN(Date.parse(since))) fail("MISSING_FIELD", "since must be an ISO-8601 timestamp");
+    return json(deps.funnel.report(user(), { limit, ...(since !== undefined ? { since: new Date(since).toISOString() } : {}) }));
+  });
+
+  // Holdout E1 (Phase 4): per arm n, accepted, rate, Wilson 95 % interval, median ms to accept; from the stored arms.
+  app.get("/owner/experiments", auth, owner, () => json(deps.experiments.report(user())));
 
   if (config.demo) {
     app.post("/demo/reset", auth, owner, async () => json({ ok: true, seededAt: await deps.reset() }));

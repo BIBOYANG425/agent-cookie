@@ -170,7 +170,7 @@ describe("Lane D workspace wiring", () => {
         chatEndpoint: sink.url,
         createdAt: "2026-10-17T00:00:00.000Z",
       };
-      await h.deps.delivery.tier0(tier0Agent, callback.handshake, {}, "hello");
+      await h.deps.delivery.tier0(tier0Agent, callback.handshake, {}, "hello", h.deps.policy.current());
       await h.deps.delivery.settle();
       const tier0 = sink.requests.find((request) => (request.body as any)?.session_id === callback.sessionId)!;
       expect(verifyRequest(tier0, jwk, "agent-browser-auth").ok).toBe(true);

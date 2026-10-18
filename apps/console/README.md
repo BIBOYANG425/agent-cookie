@@ -74,6 +74,21 @@ Sample uses `fixtures/learning/console.json` through the adapter's optional thir
 
 Learning checks cover A grouped payloads, source alias deduplication, allowlisted pref fields, exact empty copy, safe evidence rendering, optional-endpoint isolation, contribution IDs, pause acknowledgement and failure, Sample revocation downgrade, SDK-first routing and validated HTTP fallback. Browser verification used only Sample data: stage replay, pause, and revocation downgrade. Pause failure was verified by a controller test, not browser fault injection.
 
+## Commerce and policy panels (2026-10-18)
+
+Added with the commerce-analytics plan (`docs/commerce-analytics-plan.md`). Every panel shows counts, ids and field names only; Sample mode labels its data Sample and disables the write actions.
+
+| Panel | Reads | What it shows |
+| --- | --- | --- |
+| 策略 | `GET /personal/policy`, `POST /personal/policy/shadow`, `PUT /personal/policy` (owner) | The installed field-policy document (id, source: 默认 / 记忆库 / 已安装), per-category auto, purpose and write fields, ranking weights; a candidate textarea with 影子评估 (what past releases would change) and 安装 (a 422 lists every floor violation) |
+| 漏斗 | `GET /owner/funnel?limit=50` | One row per intent: 分组 (holdout arm), introduced, quoted, first-quote ms, accepted, outcome, fields read/granted, receipts, and a collapsible search-filter line; totals labelled as computed from the rows shown |
+| 实验 | `GET /owner/experiments` | Control and treatment arms with n, accepted, rate and the Wilson 95 % interval; 样本不足 below 40 per arm and no comparison; above that, the difference with a Newcombe interval |
+| 回执 | `GET /personal/receipts` | One panel (`ReceiptPanel`, also described under C23 below): per receipt the reader, field names, purpose label (首次介绍, 结账地址, 支付授权, 零接入前缀, 阶段 · …, raw purpose kept beside it), the payment amount in dollars from integer cents when present, the shortened intent id, session and receipt id; newest first, with a note when the 50-row default page is full. Rows carry only the contract's receipt keys; a failed or malformed read shows 暂时无法读取 without blocking other panels. Sample receipts come from the console fixture's presentation seed |
+| 授权 | `GET /personal/grants` | Each grant's stage (介绍 / 报价 / 接受 / 结账 / 支付) and shortened policy id, beside the C22 declared-needs line |
+| 活动 | `GET /owner/activity` | `payment.authorize` and `payment.reverse` labelled with their outcome; the `tap=… billto=…` reason shown as logged |
+
+The bridge (`server/workspace.ts`) allows the new routes at exact paths with strict query validation and a 16 KiB body cap, and passes an upstream message to the page only for the two policy write routes' 422 floor violations. The contract's policy module imports `node:crypto`, so the console mirrors `PolicyDocument`, `PolicyView`, `ShadowReport` and `ExperimentReport` locally (`src/policy.ts`, `src/experiments.ts`) with compile-time equality tests against the contract. Receipts need no mirror: `ReceiptPanel` and the live adapter import the contract's `Receipt` type from `packages/contract/src/types.ts`; `src/receipts.ts` holds only the receipt display helpers and the payment activity labels.
+
 ## Verification and remaining checks
 
 - Adapter/controller tests cover Sample isolation from network, seed-derived grant fields, multiple card/candidate/history fields, source/grant revoke and reset, same-origin envelopes and paths without browser credentials, error handling, two-second polling, request cancellation, stale-response races, server-based countdowns, and newest-first activity including tied timestamps. Field rendering tests keep friendly labels and exact keys visible, including keys without a label.

@@ -13,6 +13,12 @@ AGENT_COOKIE_DEMO=1 AGENT_COOKIE_TEST=1 pnpm --filter @agent-cookie/workspace st
 pnpm --filter @agent-cookie/workspace test
 ```
 
+Visa Acceptance sandbox smoke (opt-in, needs the three `VISA_ACCEPTANCE_*` variables, `VISA_ACCEPTANCE_TEST_INSTRUMENT` (a TMS
+test payment-instrument id) and network access to `apitest.cybersource.com`): `pnpm --filter @agent-cookie/workspace smoke:visa`
+authorizes $1.00 and reverses it, printing statuses and ids only. Exit 0 pass, 1 a check failed, 2 could not run (variable or
+network missing). The request shapes were written offline and have not been run against the sandbox yet; see
+`packages/pay/README.md`.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `4310` | always binds 127.0.0.1 |
@@ -29,6 +35,9 @@ pnpm --filter @agent-cookie/workspace test
 | `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only`: lane B's fallback, first-person statements only |
 | `DREAMING_INTERVAL_MS` | `300000` | how often Dreaming runs (demo: `30000`); `0` = never scheduled, `POST /owner/dreaming/run` still works |
 | `LEARN_TIMEOUT_MS` | `30000` | a learner call that takes longer is abandoned and logged |
+| `AGENT_COOKIE_PAY` | `off` | lane D's payment stage (A21): an accepted UCP quote's price is authorized once, within budget (checked before the address is read), from the card's `payment_method` token reference; merchants see the result only. The UCP adapter passes the store no payment, so after complete the authorization is reversed and the result says no hold remains (`payment.reverse`). `fake`: `@agent-cookie/pay`'s fake provider. `visa`: its Visa Acceptance provider, sandbox only; the card's `payment_method` is `tms_<TMS payment-instrument id>`. The provider receives the shipping address as the billing address for the authorization; this is the workspace acting for the user toward its own payment provider, logged by field name (`payment.authorize` reason `tap=none billto=shipping_address`, or `billto=none` when nothing was sent), never a merchant release, so no receipt is written for it. Stripe is not wired. Independent of the jar. |
+| `VISA_ACCEPTANCE_MERCHANT_ID`, `VISA_ACCEPTANCE_KEY_ID`, `VISA_ACCEPTANCE_SHARED_SECRET` | unset | required with `AGENT_COOKIE_PAY=visa` (startup fails naming the missing ones; values are never printed). The shared secret is the base64 REST shared-secret key. |
+| `VISA_ACCEPTANCE_HOST` | `apitest.cybersource.com` | anything else is refused: the Visa Acceptance sandbox only, production is out of scope |
 
 ## Keys
 
@@ -57,6 +66,9 @@ pnpm --filter @agent-cookie/workspace test
   a quote. Intent `public` values (budget, deadline, shoe_size…) override the card for that intent. Registered merchants with that capability are introduced too
   (`callbackUrl` → `{type:"introduce", sessionId, handshake, intent}`; `chatEndpoint` → Tier 0 text `{session_id, message}` + receipt).
 - `GET /personal/intents/:id/quotes?wait=ms` long-polls up to 20 s. Prices are integer cents; `etaDate` is `null` when unknown.
+- `GET /personal/intents/:id/events` pushes the same quotes as server-sent events (contract `events.ts`): stored quotes
+  first, each new one the moment it is committed (SSE `id` = the quote's seq, `Last-Event-ID` resumes), then `complete`
+  or `expired`; heartbeat comments every 15 s; closed after 60 s and at once on demo reset. The long-poll stays as the fallback.
 - `POST /personal/quotes/:id/accept` → `AcceptResult`. UCP: cart → checkout → read `shipping_address` with purpose `checkout`
   (receipt) → destination → complete. `handoff` with `continueUrl` when the store needs the buyer (requires_escalation, or a
   sign-in-required refusal at complete — the recorded stores answer that way); `ordered` when completed; `failed` (sold out,

@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { learningHttpConfig } from './learning-config.js';
 
 const execute = promisify(execFile);
-export const managedPaths = ['contributions', 'notes', 'CARD.md', 'receipts.md'] as const;
+// Mirrors MANAGED in packages/memory-repo/src/storage.ts: POLICY.yaml joined when the installed field policy moved into
+// the repo (2026-10-18), so a reset check also proves an installed policy went back to the seed.
+export const managedPaths = ['contributions', 'notes', 'CARD.md', 'receipts.md', 'POLICY.yaml'] as const;
 export interface InteropConfig { base: URL; ownerKey: string; personalKey: string; repo: string }
 
 export function interopConfig(env: NodeJS.ProcessEnv): InteropConfig {
