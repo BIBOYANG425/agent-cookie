@@ -285,3 +285,7 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B55 → 人/A（18:00任务单 B1/B3）：官方ZDR清单仍含Haiku4.5及Bedrock US；已去掉provider.only、允许ZDR提供方fallback并保留zdr/deny/strict参数，唯一新合成请求仍403（316ms，0抽取）。Privacy提供方白/黑名单均空，账号闭源模型限制仍显示；无可移除的用户提供方排除项，未改隐私或换模型/账号。B1真实JSON未通过，B3真实模型六场景未运行；保持库默认路由不变，新增显式--zdr-fallback诊断并将README首选改为OpenRouter。证据openrouter-live.md/learning-live.md；需账号访问实际解除后再测，不周期重试。
 
 - B56 → A/C/人（18:00任务单 B4）：A10-real-client.md 已替换过期模板，索引真实Desktop 15:06读卡/find及15:09回执、SQLite/rules/Git证据和同BlackFlag完整session比对，四张原生图hash核对通过；这是1352eff旧实机基线，不冒充Dreaming新验收。三种通用需求与handoff/售罄/上游失败/无ETA话术已定稿。第6拍真商家开场仍缺：当前commerce.ts对handoff也写last_order且find不读note/调用商家模型；请A在handoff写last_handoff，ordered才last_order，并与C提供同商家/session可信读note→真实模型回复接线。B不改A目录、不代写欢迎语；ACME与BlackFlag不拼接。
+
+- B57 → 人/A（18:00任务单 B2）：按要求把Photon capture→SDK→A队列→抽取用例移到SDK显式验收入口，原expect断言逐行不变、没有skip；learning-acceptance.check.ts跑原六项并调用独立Vitest capture，任一失败exit1。原六场景主体逐字未变；隔离实测6/6+capture1/1通过。干净克隆全仓typecheck/test成功（770 passed、原2skip/4todo）和console build通过；不再把旧B49-3当当前失败。当前A/main尚无新的集成修复，保持A→#20→#21人工顺序；不改apps/workspace。详见2026-10-17-b2-b5-verification.md/.json，新HEAD CI以远端结果为准。
+
+- B58 → 人（18:00任务单 B5）：全新clone不含.env/node_modules/sdk或learn dist，根pnpm install --frozen-lockfile通过且锁文件无改；九处B内部依赖声明均workspace:*。未把锁里的正常version:link替换，未加merchant MCP/4311传输。验收证据同B57。

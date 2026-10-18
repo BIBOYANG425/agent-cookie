@@ -1,8 +1,10 @@
+// Explicit cross-lane acceptance: invoked by learning-acceptance.check.ts.
+// Moved by the human B2 task; assertions and synthetic model are unchanged.
 import {it,expect,vi} from 'vitest';
-import {harness,KEYS} from '../../workspace/test/harness.js';
+import {harness,KEYS} from '../../../apps/workspace/test/harness.js';
 import {WorkspaceClient} from '@agent-cookie/sdk';
-import {createWorkspaceLearner} from '@agent-cookie/learn';
-import {createLearningAdapter,createObservationSink,observeSpectrumMessages,type SpectrumMessage} from '../src/learning-capture.js';
+import {createWorkspaceLearner} from '../../learn/src/index.js';
+import {createLearningAdapter,createObservationSink,observeSpectrumMessages,type SpectrumMessage} from '../../../apps/channel-photon/src/learning-capture.js';
 
 it('carries only owner non-sensitive DM speech through capture, SDK, A queue and B extraction',async()=>{
   // Real SDK + A HTTP/volatile queue + B parser; synthetic no-preference model,
