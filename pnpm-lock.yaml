@@ -106,6 +106,9 @@ importers:
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@agent-cookie/learn':
+        specifier: workspace:*
+        version: link:../../packages/learn
       '@agent-cookie/memory-repo':
         specifier: workspace:*
         version: link:../../packages/memory-repo

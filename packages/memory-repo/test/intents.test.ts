@@ -108,7 +108,7 @@ describe('C18 sanitized intent history', () => {
     expect(await repoGit(f.path).raw(['rev-list', '--count', 'HEAD'])).toBe('3\n');
   });
 
-  it('uses canonical safe dated filenames, validates pref names, and removes intent history on reset', async () => {
+  it('uses canonical safe dated filenames, validates pref names, and preserves intent history on reset', async () => {
     const f = await setup();
     const repo = await f.open();
     const a = { ...input(), intent: { ...input().intent, id: '../A' }, extracted: [] };
@@ -119,7 +119,7 @@ describe('C18 sanitized intent history', () => {
     await expect(repo.appendIntent({ ...input(), extracted: [{ ...extracted(), field: 'pref.BAD' as LearningContribution['field'] }] }, meta('personal')))
       .rejects.toMatchObject({ code: 'MISSING_FIELD' });
     await repo.resetToSeed();
-    expect(await repo.searchIntents('shopping')).toEqual([]);
+    expect(await repo.searchIntents('shopping')).toHaveLength(2);
     expect((await repoGit(f.path).status()).isClean()).toBe(true);
     expect(await readFile(join(f.seedDir, 'MEMORY.md'), 'utf8')).toBe('# Sample memory\n');
   });

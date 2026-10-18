@@ -1,5 +1,5 @@
-import { OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, EVIDENCE_SNIPPET_MAX, isPrefField, type Observation, type LearningState, type LearnedResponse } from '@agent-cookie/contract';
-export type {Observation,ObservationTurn,LearningState,LearnedResponse,LearnedEntry} from '@agent-cookie/contract';
+import { OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, EVIDENCE_SNIPPET_MAX, isPrefField, type ForgetLearningInput, type ForgetLearningResult, type Observation, type LearningState, type LearnedResponse } from '@agent-cookie/contract';
+export type {ForgetLearningInput,ForgetLearningResult,Observation,ObservationTurn,LearningState,LearnedResponse,LearnedEntry} from '@agent-cookie/contract';
 export type ObservationInput=Observation;
 export interface ObserveResult {queued:boolean;paused?:true}
 /** UI convenience; wire is PUT {paused: !enabled}, per A 0129f08. */
@@ -33,4 +33,15 @@ export function learnedResponse(v:unknown):LearnedResponse {
 }
 export function controlBody(v:LearningControl):LearningState {
   if(!v||typeof v.enabled!=='boolean'||Object.keys(v).some(k=>k!=='enabled'))throw invalid();return {paused:!v.enabled};
+}
+
+export function forgetBody(input:ForgetLearningInput):ForgetLearningInput {
+  if(!obj(input)||Object.keys(input).length!==1||!isPrefField(input.field))throw invalid();
+  return {field:input.field};
+}
+export function forgetResult(value:unknown):ForgetLearningResult {
+  if(!obj(value)||!isPrefField(value.field)||value.paused!==true||value.historyErased!==false
+    ||typeof value.removed!=='number'||!Number.isSafeInteger(value.removed)||value.removed<0
+    ||!['complete','pending'].includes(String(value.projection)))throw invalid();
+  return {field:value.field,paused:true,removed:value.removed,projection:value.projection as 'complete'|'pending',historyErased:false};
 }

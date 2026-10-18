@@ -1,5 +1,5 @@
 import type { AcceptResult, ActivityEvent, Card, Grant, IntentRequest, Quote, Receipt } from '@agent-cookie/contract';
-import { observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
+import { forgetBody, forgetResult, type ForgetLearningInput, observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
 export * from './learning.js';
 export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
 export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
@@ -165,6 +165,10 @@ export class WorkspaceClient {
   }
   async setLearning(input:LearningControl,options?:RequestOptions) {
     return learningState(await this.#request('/personal/learning',controlBody(input),undefined,options,'PUT'));
+  }
+
+  async forgetLearning(input:ForgetLearningInput,options?:RequestOptions) {
+    return forgetResult(await this.#request('/personal/learning/forget',forgetBody(input),undefined,options));
   }
 
   async getMyCard(options?: RequestOptions): Promise<unknown> {

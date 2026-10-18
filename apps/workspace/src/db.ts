@@ -139,6 +139,8 @@ function toNote(r: Row): NoteRow {
 export class Store {
   readonly db: Database.Database;
   private seq = 0;
+  /** Process-local only: no raw observation text ever enters SQLite or a durable outbox. */
+  private observations = new Map<string, { batch: ObservationBatchRow; turns: ObservationTurnRow[] }>();
 
   /** Set by the workspace: throws when the calling request started before the last reset (gate.ts). */
   private guard: () => void = () => undefined;
@@ -154,6 +156,12 @@ export class Store {
     if (path !== ":memory:") this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
     this.migrate();
+    // Discard any legacy queue on upgrade; never replay conversations retained by an older version.
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM observation_turns").run();
+      this.db.prepare("DELETE FROM observation_batches").run();
+    })();
+    this.checkpoint();
     for (const t of ["grants", "quotes", "contributions", "receipts", "observation_turns"]) {
       const m = this.db.prepare(`SELECT COALESCE(MAX(seq), 0) AS m FROM ${t}`).get() as { m: number };
       this.seq = Math.max(this.seq, m.m);
@@ -199,10 +207,12 @@ export class Store {
   }
 
   clearAll(): void {
+    this.observations.clear();
     this.tx(() => { for (const t of TABLES) this.exec(`DELETE FROM ${t}`); });
   }
 
   close(): void {
+    this.observations.clear();
     this.db.close();
   }
 
@@ -215,56 +225,64 @@ export class Store {
     this.exec("INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value", userId, key, value);
   }
 
-  // ---- observation queue (learning.ts). Only the user's own turns are stored, and only until processed.
-  /** Add `seen` turns to the conversation's batch (creating it), storing the given user texts. Returns the batch. */
+  pendingForgets(userId: string): Array<{ field: string; ids: string[] }> {
+    return (this.db.prepare("SELECT key, value FROM settings WHERE user_id = ? AND key LIKE 'learning.forget.%'").all(userId) as Row[])
+      .map(row => ({ field: String(row.key).slice('learning.forget.'.length), ids: JSON.parse(String(row.value)) as string[] }));
+  }
+  completeForget(userId: string, field: string): void {
+    this.exec("DELETE FROM settings WHERE user_id = ? AND key = ?", userId, `learning.forget.${field}`);
+  }
+  deletePreference(userId: string, field: string): void {
+    this.exec("DELETE FROM contributions WHERE user_id = ? AND field = ?", userId, field);
+    this.exec("DELETE FROM cards WHERE user_id = ?", userId);
+  }
+
+  // ---- bounded volatile observation queue. Restart deliberately forgets pending text.
   enqueueObservation(b: { agentId: string; conversationId: string; userId: string; channel: string }, seen: number,
     userTurns: ObservationTurnRow[], now: string): ObservationBatchRow {
-    this.tx(() => {
-      this.exec(`INSERT INTO observation_batches (agent_id, conversation_id, user_id, channel, turns_seen, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (agent_id, conversation_id) DO UPDATE SET turns_seen = turns_seen + excluded.turns_seen, last_at = excluded.last_at, channel = excluded.channel`,
-        b.agentId, b.conversationId, b.userId, b.channel, seen, now, now);
-      for (const t of userTurns) {
-        this.exec("INSERT INTO observation_turns (agent_id, conversation_id, seq, text, at) VALUES (?, ?, ?, ?, ?)",
-          b.agentId, b.conversationId, this.next(), t.text, t.at);
-      }
-    });
-    return this.observationBatch(b.agentId, b.conversationId)!;
+    this.guard();
+    for (const [key, value] of this.observations) {
+      if (Date.parse(now) - Date.parse(value.batch.firstAt) > 30 * 60_000) this.observations.delete(key);
+    }
+    const key = JSON.stringify([b.userId, b.agentId, b.conversationId]);
+    let value = this.observations.get(key);
+    if (!value) {
+      if (this.observations.size >= 100) this.observations.delete(this.observations.keys().next().value!);
+      value = { batch: { ...b, turnsSeen: 0, firstAt: now, lastAt: now }, turns: [] };
+      this.observations.set(key, value);
+    }
+    value.batch.turnsSeen = Math.min(50, value.batch.turnsSeen + seen);
+    value.batch.lastAt = now;
+    // Arrival validation caps each turn at 2,000 characters. Keep at most 50 per conversation.
+    value.turns.push(...userTurns.slice(0, Math.max(0, 50 - value.turns.length)).map(t => ({ ...t })));
+    return { ...value.batch };
   }
   observationBatch(agentId: string, conversationId: string): ObservationBatchRow | undefined {
-    const r = this.db.prepare("SELECT * FROM observation_batches WHERE agent_id = ? AND conversation_id = ?").get(agentId, conversationId) as Row | undefined;
-    return r && toBatch(r);
+    const row = [...this.observations.values()].find(v => v.batch.agentId === agentId && v.batch.conversationId === conversationId);
+    return row && { ...row.batch };
   }
-  /** Batches idle since `idleBefore` or holding at least `minTurns` turns. */
   dueObservationBatches(idleBefore: string, minTurns: number): ObservationBatchRow[] {
-    return (this.db.prepare("SELECT * FROM observation_batches WHERE last_at <= ? OR turns_seen >= ? ORDER BY first_at")
-      .all(idleBefore, minTurns) as Row[]).map(toBatch);
+    return [...this.observations.values()].filter(v => v.batch.lastAt <= idleBefore || v.batch.turnsSeen >= minTurns)
+      .map(v => ({ ...v.batch })).sort((a, b) => a.firstAt.localeCompare(b.firstAt));
   }
-  /** Read a batch's user turns and delete the batch and its text in one transaction (the text lives on only in memory). */
   takeObservationBatch(agentId: string, conversationId: string): { batch: ObservationBatchRow; turns: ObservationTurnRow[] } | undefined {
-    return this.tx(() => {
-      const batch = this.observationBatch(agentId, conversationId);
-      if (!batch) return undefined;
-      const turns = (this.db.prepare("SELECT text, at FROM observation_turns WHERE agent_id = ? AND conversation_id = ? ORDER BY seq")
-        .all(agentId, conversationId) as Row[]).map((r) => ({ text: String(r.text), at: String(r.at) }));
-      this.exec("DELETE FROM observation_turns WHERE agent_id = ? AND conversation_id = ?", agentId, conversationId);
-      this.exec("DELETE FROM observation_batches WHERE agent_id = ? AND conversation_id = ?", agentId, conversationId);
-      return { batch, turns };
-    });
+    this.guard();
+    const entry = [...this.observations.entries()].find(([, v]) => v.batch.agentId === agentId && v.batch.conversationId === conversationId);
+    if (!entry) return;
+    this.observations.delete(entry[0]);
+    return entry[1];
   }
-  /** Drop every waiting conversation of the user (learning paused). Returns how many. */
   dropObservations(userId: string): number {
-    return this.tx(() => {
-      const batches = (this.db.prepare("SELECT agent_id, conversation_id FROM observation_batches WHERE user_id = ?").all(userId) as Row[]);
-      for (const b of batches) {
-        this.exec("DELETE FROM observation_turns WHERE agent_id = ? AND conversation_id = ?", String(b.agent_id), String(b.conversation_id));
-      }
-      this.exec("DELETE FROM observation_batches WHERE user_id = ?", userId);
-      return batches.length;
-    });
+    this.guard();
+    let count = 0;
+    for (const [key, value] of this.observations) if (value.batch.userId === userId) {
+      this.observations.delete(key); count++;
+    }
+    return count;
   }
   /**
-   * After deleting observed text: move the overwritten pages out of the WAL and truncate it, so no copy of the text
-   * stays on disk. Never waits for another connection (busy_timeout 0 for this call): if one holds the database, it
+   * Best-effort WAL checkpoint after current-state deletion or legacy queue cleanup. This does not certify
+   * historical/back-up erasure. Never waits for another connection (busy_timeout 0 for this call): if one holds it, it
    * returns false and the caller retries on its next tick.
    */
   checkpoint(): boolean {
@@ -279,14 +297,12 @@ export class Store {
       this.db.pragma(`busy_timeout = ${busyMs}`);
     }
   }
-  /** How many conversations of this user are waiting (queue bound). */
   observationBatchCount(userId: string): number {
-    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM observation_batches WHERE user_id = ?").get(userId) as Row).n);
+    return [...this.observations.values()].filter(v => v.batch.userId === userId).length;
   }
-  /** The user's oldest waiting conversation. */
   oldestObservationBatch(userId: string): ObservationBatchRow | undefined {
-    const r = this.db.prepare("SELECT * FROM observation_batches WHERE user_id = ? ORDER BY first_at, rowid LIMIT 1").get(userId) as Row | undefined;
-    return r && toBatch(r);
+    return [...this.observations.values()].filter(v => v.batch.userId === userId)
+      .map(v => ({ ...v.batch })).sort((a, b) => a.firstAt.localeCompare(b.firstAt))[0];
   }
 
   /** The user's intents, newest first. */

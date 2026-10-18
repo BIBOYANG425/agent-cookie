@@ -113,6 +113,8 @@ export interface CardField {
   value: string;
   confidence: "high" | "medium";
   sources: string[];
+  /** Independent conversation/intent evidence units; sources remains writer agent IDs. */
+  evidenceSources?: string[];
   updatedAt: string;
   lastSupportedAt: string;
   changedRecently: boolean;
@@ -122,6 +124,8 @@ export interface Candidate {
   field: Field;
   value: string;
   sources: string[];
+  /** Independent conversation/intent evidence units; sources remains writer agent IDs. */
+  evidenceSources?: string[];
   reason: "single_source" | "inferred";
 }
 
@@ -192,7 +196,7 @@ export const DEFAULT_SELLER_COUNT = 2;
  * POST /personal/observations body: turns of a conversation the personal agent took part in or overheard. Only the
  * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival and never stored. Turns
  * are batched per (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once
- * OBSERVATION_BATCH_TURNS turns have arrived; the stored text is deleted once processed. While learning is paused
+ * OBSERVATION_BATCH_TURNS turns have arrived; raw text lives only in a bounded memory queue. While learning is paused
  * the observation is discarded.
  */
 export interface ObservationTurn {
@@ -217,6 +221,18 @@ export const OBSERVATION_TURN_MAX_CHARS = 2000;
 export interface LearningState {
   paused: boolean;
 }
+
+/** One atomic workspace forget operation. Historical Git commits are not rewritten. */
+export interface ForgetLearningInput { field: PrefField }
+export interface ForgetLearningResult {
+  field: PrefField;
+  paused: true;
+  removed: number;
+  projection: "complete" | "pending";
+  historyErased: false;
+}
+/** Internal memory projection selector. HTTP authorization remains the workspace's responsibility. */
+export type ContributionRevocationTarget = string | { evidence: { intentId?: string; conversationId?: string } };
 
 /** One piece of evidence behind a learned value, as GET /personal/learned shows it. */
 export interface LearnedEvidence extends ContributionEvidence {
@@ -258,7 +274,9 @@ export interface IntentHistoryEntry {
 
 /** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */
 export interface IntentRecord {
+  /** Original intent ID, retained across a handoff. */
   id: string;
+  evidence?: Pick<ContributionEvidence, "intentId">;
   userId: string;
   agentId: string;
   text?: string;

@@ -134,11 +134,11 @@ Photon `SEND_OUTCOME_UNKNOWN` 属于通道发件状态，不是订单状态。�
 
 B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm install --frozen-lockfile`。根 `pnpm-lock.yaml` 的 `version: link:../sdk` / `link:../../packages/sdk` 是 pnpm 正常生成的本地解析值，不应手动改成 `workspace:*`，也不建立 B 包独立锁文件。
 
-## 对话旁听学习（B 已实现，真实启用仍受 B44 阻塞）
+## 对话旁听学习（本地集成已修复，真实通道待验收）
 
 新入口 `node --env-file=.env dist/main.js serve-spectrum` 使用官方 `spectrum-ts` 12.11.0 云 provider 的 `app.messages`，不安装或使用 `@spectrum-ts/imessage-local`。当前线上演示仍是旧 Socket.IO 入口，尚未迁移；两种入口共用同一个运行锁和状态文件，不能同时回复，不能通过换状态文件绕过锁。Spectrum Cloud 的 projectId/projectSecret 与现有 Photon Beta API key 不视为同一种凭据。
 
-仅在 A 修复 B44 后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。C 688754d 的类型/作者身份修复和控制台学习读取、暂停/恢复已通过 B 隔离联调，不等同真实学习通过。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
+在修复版后台完成兼容检查后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。C 688754d 的类型/作者身份修复和控制台学习读取、暂停/恢复已通过 B 隔离联调，不等同真实学习通过。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
 
 采集：受信 provider inbound + configured owner + dm + text → adapter.toEvent → 机主/敏感过滤 → 有界内存队列 → SDK Observation。全部群聊保守忽略；DM conversationId稳定，不靠时间切片/进程重启造两份来源。队列最多32个等待项、并发1、TTL30秒、10秒总超时；采集失败不影响回复、不落原文、不重试未知请求。正常已发送消息的持久去重仍保留。A目前没有messageId/幂等契约，跨入口去重待A补齐。
 
@@ -146,7 +146,7 @@ B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm 
 
 - `暂停学习`：立即停本机队列/中止在途观察，再PUT后台 paused=true；失败明确说“后台尚未确认”。
 - `恢复学习`：只在后台明确 paused=false 后恢复本机采集；A的持久代际竞态修复前不做真实启用。
-- `忘掉 颜色` / `忘掉 黑色`：只匹配后台真实条目，先暂停，按实际贡献ID逐项撤销再回读。当前只确认从卡/候选撤销，并明确“后台尚未提供历史证据彻底删除的接口”，保持暂停；歧义则请用户在控制台选择。不能把revoke说成完全删除。
+- `忘掉 颜色` / `忘掉 黑色`：只匹配后台真实条目，冻结本地采集后，单次调用 `forgetLearning({field})` 再回读；后台事务暂停并删除该字段的当前贡献，Git 投影失败返回 pending 并禁止恢复。成功只确认当前偏好及证据已移除，明确“旧 Git 历史仍保留”，保持暂停；歧义则请用户在控制台选择。不能把revoke说成完全删除。
 - 每日摘要：用户下一次正常交互时，最多附加一次当前有效card状态的结论；不发主动定时短信，不调模型，不含证据原文。暂停时不摘要；读取失败保留正常回复。
 
 可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Spectrum自身telemetry关闭、SDK日志silent，不采集第三方自动正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿Haiku/Jev密钥。

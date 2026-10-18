@@ -7,7 +7,7 @@
 // (apps/workspace/src/stubs). Implementations must be deterministic where marked and never read the
 // system clock: every time-aware call receives `now` / `at` explicitly.
 import type {
-  Agent, Basis, Card, Contribution, ContributionEvidence, IntentRecord, Note, ObservationTurn, Quote, Receipt,
+  Agent, Basis, Card, Contribution, ContributionEvidence, ContributionRevocationTarget, IntentRecord, Note, ObservationTurn, Quote, Receipt,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------------------------------------
@@ -24,9 +24,10 @@ export interface MergeOptions {
 export interface RulesApi {
   /**
    * docs/plan.md v0.3 §4 T0 merge bullet and §5 "规模与时间规则". Revoked contributions are ignored.
-   *  - same field+value from ≥2 distinct agentIds with basis≠inferred → card, confidence high
+   *  - ordinary fields: same field+value from ≥2 distinct agentIds with basis≠inferred → card, confidence high
+   *  - pref.*: two distinct conversation/intent evidence sources → card, confidence medium; writer IDs are not quorum
    *  - personal "stated", single source → card, confidence medium
-   *  - inferred → never on the card (candidate, reason "inferred"); single non-personal source → candidate "single_source"
+   *  - ordinary inferred → candidate; pref.* observed/inferred need the independent-evidence quorum
    *  - several qualifying values → the newest wins; older qualified values go to `superseded`
    *  - newest value with one source → medium + changedRecently
    *  - lastSupportedAt > 180 days → medium; > 365 days → off the card
@@ -106,7 +107,9 @@ export interface MemoryRepo {
   /** Append one line to contributions/<c.agentId>.md. */
   appendContribution(c: Contribution, meta: WriteMeta): Promise<CommitRef>;
   /** Mark a contribution revoked (the user's own action) in its writer's file. Unknown id → resolves without a commit (`sha: ""`). */
-  revokeContribution(id: string, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+  revokeContribution(id: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+  /** Remove selected current contribution lines and rebuild CARD.md in one Git commit. History is retained. */
+  forgetContributions?(ids: string[], merge: MergeOptions, meta: WriteMeta): Promise<CommitRef>;
   /** Re-run rules.mergeCard over contributions/*.md and write CARD.md. Returns the card it wrote. */
   regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }>;
   /** Upsert one key in notes/<sessionId>.md (owned by note.agentId). Rejects with WorkspaceError MISSING_FIELD if the file would exceed NOTE_MAX_BYTES. */

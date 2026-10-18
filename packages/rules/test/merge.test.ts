@@ -31,10 +31,10 @@ describe('mergeCard qualification and evidence', () => {
       contribution('guess2', 'shop-b', '100', 0, { field: 'budget', basis: 'inferred' }),
     ];
     expect(mergeCard(records, options)).toEqual({
-      card: [{ field: 'shoe_size', value: '42', confidence: 'high', sources: ['shop-a', 'shop-b'], updatedAt: ago(2), lastSupportedAt: ago(2), changedRecently: false }],
+      card: [{ field: 'shoe_size', value: '42', confidence: 'high', sources: ['shop-a', 'shop-b'], evidenceSources: [], updatedAt: ago(2), lastSupportedAt: ago(2), changedRecently: false }],
       candidates: [
-        { field: 'tone', value: 'brief', sources: ['shop-a'], reason: 'single_source' },
-        { field: 'budget', value: '100', sources: ['shop-a', 'shop-b'], reason: 'inferred' },
+        { field: 'tone', value: 'brief', sources: ['shop-a'], evidenceSources: [], reason: 'single_source' },
+        { field: 'budget', value: '100', sources: ['shop-a', 'shop-b'], evidenceSources: [], reason: 'inferred' },
       ],
       superseded: [],
     });
@@ -46,17 +46,17 @@ describe('mergeCard qualification and evidence', () => {
       contribution('po', 'personal', 'zh', 0, { field: 'lang' }),
       contribution('m', 'shop', 'brief', 0, { field: 'tone', basis: 'stated' }),
     ], options)).toEqual({
-      card: [{ field: 'shoe_size', value: '42', confidence: 'medium', sources: ['personal'], updatedAt: now, lastSupportedAt: now, changedRecently: false }],
+      card: [{ field: 'shoe_size', value: '42', confidence: 'medium', sources: ['personal'], evidenceSources: [], updatedAt: now, lastSupportedAt: now, changedRecently: false }],
       candidates: [
-        { field: 'lang', value: 'zh', sources: ['personal'], reason: 'single_source' },
-        { field: 'tone', value: 'brief', sources: ['shop'], reason: 'single_source' },
+        { field: 'lang', value: 'zh', sources: ['personal'], evidenceSources: [], reason: 'single_source' },
+        { field: 'tone', value: 'brief', sources: ['shop'], evidenceSources: [], reason: 'single_source' },
       ], superseded: [],
     });
   });
 
   it('revocation removes a source from quorum and restores the remaining valid evidence', () => {
     const records = [contribution('a', 'a', '42', 2), contribution('b', 'b', '42', 1, { revokedAt: now })];
-    expect(mergeCard(records, options)).toEqual({ card: [], candidates: [{ field: 'shoe_size', value: '42', sources: ['a'], reason: 'single_source' }], superseded: [] });
+    expect(mergeCard(records, options)).toEqual({ card: [], candidates: [{ field: 'shoe_size', value: '42', sources: ['a'], evidenceSources: [], reason: 'single_source' }], superseded: [] });
   });
 });
 
@@ -65,11 +65,11 @@ describe('mergeCard replacement and a non-cyclic personal barrier', () => {
     const old = [contribution('old-a', 'a', '42', 90), contribution('old-b', 'b', '42', 89)];
     const fresh = contribution('new-c', 'c', '43', 1);
     const result = mergeCard([...old, fresh], options);
-    expect(result.card).toEqual([{ field: 'shoe_size', value: '43', confidence: 'medium', sources: ['c'], updatedAt: ago(1), lastSupportedAt: ago(1), changedRecently: true }]);
+    expect(result.card).toEqual([{ field: 'shoe_size', value: '43', confidence: 'medium', sources: ['c'], evidenceSources: [], updatedAt: ago(1), lastSupportedAt: ago(1), changedRecently: true }]);
     expect(result.superseded).toEqual([{ field: 'shoe_size', value: '42', sources: ['a', 'b'], lastSupportedAt: ago(89), supersededBy: '43' }]);
     expect(result.candidates).toEqual([]);
     expect(mergeCard([...old, fresh, contribution('new-d', 'd', '43', 0)], options).card).toEqual([
-      { field: 'shoe_size', value: '43', confidence: 'high', sources: ['c', 'd'], updatedAt: now, lastSupportedAt: now, changedRecently: false },
+      { field: 'shoe_size', value: '43', confidence: 'high', sources: ['c', 'd'], evidenceSources: [], updatedAt: now, lastSupportedAt: now, changedRecently: false },
     ]);
   });
 
@@ -80,7 +80,7 @@ describe('mergeCard replacement and a non-cyclic personal barrier', () => {
       contribution('c', 'c', '44', 0),
     ], options);
     expect(result.card[0]).toMatchObject({ value: '43', confidence: 'medium', changedRecently: true });
-    expect(result.candidates).toEqual([{ field: 'shoe_size', value: '44', sources: ['c'], reason: 'single_source' }]);
+    expect(result.candidates).toEqual([{ field: 'shoe_size', value: '44', sources: ['c'], evidenceSources: [], reason: 'single_source' }]);
     expect(result.superseded.map(value => [value.value, value.supersededBy])).toEqual([['42', '43']]);
   });
 
@@ -93,8 +93,8 @@ describe('mergeCard replacement and a non-cyclic personal barrier', () => {
       contribution('c', 'c', '44', 1),
     ];
     const expected = {
-      card: [{ field: 'shoe_size', value: '43', confidence: 'high', sources: ['a', 'b'], updatedAt: ago(2), lastSupportedAt: ago(2), changedRecently: false }],
-      candidates: [{ field: 'shoe_size', value: '44', sources: ['c'], reason: 'single_source' }],
+      card: [{ field: 'shoe_size', value: '43', confidence: 'high', sources: ['a', 'b'], evidenceSources: [], updatedAt: ago(2), lastSupportedAt: ago(2), changedRecently: false }],
+      candidates: [{ field: 'shoe_size', value: '44', sources: ['c'], evidenceSources: [], reason: 'single_source' }],
       superseded: [{ field: 'shoe_size', value: '42', sources: ['personal'], lastSupportedAt: ago(4), supersededBy: '43' }],
     };
     for (const order of permutations(records)) expect(mergeCard(order, options)).toEqual(expected);
@@ -141,7 +141,7 @@ describe('mergeCard explicit time and immutable inputs', () => {
     const expiredConsensus = [contribution('a', 'a', '42', 366), contribution('b', 'b', '42', 366)];
     const result = mergeCard([...expiredConsensus, contribution('c', 'c', '43', 0)], options);
     expect(result.card).toEqual([]);
-    expect(result.candidates).toEqual([{ field: 'shoe_size', value: '43', sources: ['c'], reason: 'single_source' }]);
+    expect(result.candidates).toEqual([{ field: 'shoe_size', value: '43', sources: ['c'], evidenceSources: [], reason: 'single_source' }]);
     expect(result.superseded[0]?.supersededBy).toBe('');
     expect(mergeCard([
       contribution('p', 'personal', '41', 366, { basis: 'stated' }),

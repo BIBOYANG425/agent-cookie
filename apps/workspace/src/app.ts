@@ -2,7 +2,7 @@
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
 import {
-  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
+  isField, isPrefField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
@@ -64,7 +64,8 @@ function observationBody(body: Record<string, unknown>): Observation {
   const channel = str(body, "channel", { max: 64 });
   const conversationId = str(body, "conversationId", { max: 128 });
   // Kept as evidence and shown back to the user: an opaque id, never a chat handle (phone number, email).
-  if (containsContactOrPayment(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
+  const digestId = /^[a-f0-9]{64}$/i.test(conversationId) && /[a-f]/i.test(conversationId);
+  if (!digestId && containsContactOrPayment(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
   const turns = body.turns;
   if (!Array.isArray(turns) || turns.length === 0 || turns.length > OBSERVATION_MAX_TURNS) {
     fail("MISSING_FIELD", `turns must be 1–${OBSERVATION_MAX_TURNS} items`);
@@ -235,7 +236,13 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.put("/personal/learning", auth, personalOrOwner, async (c) => {
     const body = await readJson(c);
     if (typeof body.paused !== "boolean") fail("MISSING_FIELD", "paused must be true or false");
-    return json(deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
+    return json(await deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
+  });
+  app.post("/personal/learning/forget", auth, personalOrOwner, async (c) => {
+    const body = await readJson(c);
+    if (Object.keys(body).length !== 1 || !isPrefField(body.field)) fail("MISSING_FIELD", "Expected a preference field");
+    const result = await deps.learning.forget(c.get("agent").agentId, user(), body.field);
+    return json(result, result.projection === "complete" ? 200 : 202);
   });
   app.get("/personal/learned", auth, personalOrOwner, (c) => json(deps.learning.learned(user())));
 

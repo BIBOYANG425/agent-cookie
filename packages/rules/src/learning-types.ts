@@ -1,5 +1,5 @@
-// Structural projection of lane A 0129f08 while main still has the previous contract.
-// TODO(contract): import these additive types once that contract lands on main.
+// Learning metadata matches main; preview aliases remain readable for existing memory files.
+// TODO(contract): add B49 evidenceSources to CardField/Candidate; keep the extension local until agreed.
 import { isField, type Card, type CardField, type Candidate, type Contribution, type Field, type MergeOptions, type RulesApi } from '@agent-cookie/contract';
 
 export const LEARNING_PREF_KEYS = ['brand', 'color', 'material', 'style', 'fit', 'avoid', 'occasion', 'recipient', 'price_band', 'size_system'] as const;
@@ -10,8 +10,12 @@ export interface LearningEvidence { intentId?: string; conversationId?: string; 
 /** Top-level IDs and string evidence remain readable for already-written C preview records. */
 export interface LearningMetadata { intentId?: string; conversationId?: string; evidence?: string | LearningEvidence }
 export type LearningContribution = Omit<Contribution, 'field' | 'evidence'> & LearningMetadata & { field: LearningField };
-export type LearningCardField = Omit<CardField, 'field'> & { field: LearningField };
-export type LearningCandidate = Omit<Candidate, 'field'> & { field: LearningField };
+export type EvidenceCard = Omit<Card, 'card' | 'candidates'> & {
+  card: Array<CardField & { evidenceSources: string[] }>;
+  candidates: Array<Candidate & { evidenceSources: string[] }>;
+};
+export type LearningCardField = Omit<CardField, 'field'> & { field: LearningField; evidenceSources: string[] };
+export type LearningCandidate = Omit<Candidate, 'field'> & { field: LearningField; evidenceSources: string[] };
 export type LearningSuperseded = Omit<Card['superseded'][number], 'field'> & { field: LearningField };
 export type LearningCard = Omit<Card, 'card' | 'candidates' | 'superseded'> & {
   card: LearningCardField[]; candidates: LearningCandidate[]; superseded: LearningSuperseded[];

@@ -36,6 +36,7 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 { queued }: user turns are queued per conversation and learned from later; never blocks; discarded while learning is paused" },
   { method: "GET", path: "/personal/learning", caller: "personal", summary: "→ LearningState { paused } (owner key too)" },
   { method: "PUT", path: "/personal/learning", caller: "personal", summary: "{ paused } → LearningState; pausing also discards conversations waiting in the queue (owner key too)" },
+  { method: "POST", path: "/personal/learning/forget", caller: "personal", summary: "{ field: PrefField } → ForgetLearningResult; atomically pauses, removes current preference/evidence, records suppression and a recoverable Git projection; owner key too. 202 if projection pending; historical Git commits retained" },
   { method: "GET", path: "/personal/learned", caller: "personal", summary: "→ LearnedResponse: pref.* values on the card or waiting as candidates, with sources and evidence (owner key too)" },
 
   { method: "GET", path: "/agent/handshake", caller: "merchant", summary: "?sessionId= → Handshake (field names only)" },

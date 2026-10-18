@@ -76,12 +76,13 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);
-  const learning = new LearningService(ctx, card, overrides.learn ?? loadLearn());
+  const learner = overrides.learn ? { api: overrides.learn, shutdown: async () => {} } : loadLearn(config);
+  const learning = new LearningService(ctx, card, learner.api);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
-  await reconcileRepo(ctx);
+  if (await learning.recoverForgets()) await reconcileRepo(ctx);
   // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
   if (!config.demo && !config.test) {
     for (const key of Object.keys(fixtures.devKeys)) store.deleteKey(hashKey(key));
@@ -111,6 +112,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     async close() {
       clearInterval(learnTimer);
       await learning.settle();
+      await learner.shutdown();
       await delivery.settle();
       store.close();
       laneD.lock?.();

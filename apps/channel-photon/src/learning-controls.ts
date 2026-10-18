@@ -3,7 +3,7 @@ import type {WorkspaceClient,LearnedResponse} from '@agent-cookie/sdk';
 import type {ObservationSink} from './learning-capture.js';
 import {respond,type AgentWorkspace,type Conversation} from './agent.js';
 export interface LearningLocalState {paused:boolean;lastSummaryDay?:string}
-export type LearningWorkspace=Pick<WorkspaceClient,'getLearning'|'getLearned'|'setLearning'|'revokeContribution'>;
+export type LearningWorkspace=Pick<WorkspaceClient,'getLearning'|'getLearned'|'setLearning'|'forgetLearning'>;
 const labels:Record<string,string>={'pref.color':'颜色','pref.material':'材质','pref.fit':'版型','pref.brand':'品牌','pref.style':'风格','pref.avoid':'避开','pref.occasion':'场合','pref.size_system':'尺码体系'};
 export function createLearningControls(options:{workspace:LearningWorkspace;sink:ObservationSink;state:LearningLocalState;save:()=>Promise<void>;day?:()=>string}) {
   const call=<T>(f:(signal:AbortSignal)=>Promise<T>,ms=1500)=>bounded(f,ms);
@@ -27,19 +27,16 @@ export function createLearningControls(options:{workspace:LearningWorkspace;sink
 
       try{
         await freeze();
-        const paused=await call(signal=>options.workspace.setLearning({enabled:false},{signal}));
-        if(!paused.paused)throw Error();
         const before=await call(signal=>options.workspace.getLearned({signal}));
         const target=forget[1].trim();
         const keys=[...new Set(before.learned.filter(p=>p.field===target||labels[p.field]===target||p.value===target).map(p=>p.field))];
-        if(keys.length!==1)return keys.length?'对应多个偏好。请到控制台选择要撤销的项；学习已暂停。':'没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；学习已暂停。';
-        const ids=[...new Set(before.learned.filter(p=>keys.includes(p.field)).flatMap(p=>p.evidence.map(e=>e.contributionId)))];
-        if(!ids.length)throw Error();
-        for(const id of ids)await call(signal=>options.workspace.revokeContribution(id,{signal}));
+        if(keys.length!==1)return keys.length?'对应多个偏好。请到控制台选择要撤销的项；本机采集已暂停。':'没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；本机采集已暂停。';
+        const field=before.learned.find(p=>p.field===keys[0])!.field;
+        const result=await call(signal=>options.workspace.forgetLearning({field},{signal}),5000);
+        if(result.projection!=='complete')return '后台已暂停学习并移除当前偏好；记忆文件清理仍在等待完成，暂不能确认删除完成。';
         const after=await call(signal=>options.workspace.getLearned({signal}));
-        if(after.learned.some(p=>keys.includes(p.field)))throw Error();
-        // A exposes revoke, not a history purge or generation acknowledgement. Never claim deletion.
-        return '已从当前身份卡和候选中撤销这项偏好，学习保持暂停。后台尚未提供历史证据彻底删除的接口，因此还不能确认完全删除。';
+        if(!after.paused||after.learned.some(p=>keys.includes(p.field)))throw Error();
+        return '已删除当前偏好及其证据，学习保持暂停。旧 Git 历史仍保留，本次没有擦除历史版本。';
       }catch{return '本机学习已暂停，但后台未确认删除。请到控制台核对；我不会把它说成已删除。';}
     },
     async decorate(reply:string):Promise<string>{

@@ -1,5 +1,5 @@
-import { type Contribution, type RulesApi } from "@agent-cookie/contract";
-import { isLearningField, isLearningContributionMetadata, type LearningCard, type LearningContribution, type LearningEvidence, type LearningMetadata } from './learning-types.js';
+import { type Card, type Contribution, type RulesApi } from "@agent-cookie/contract";
+import { isLearningField, isLearningContributionMetadata, learningEvidence, type LearningCard, type LearningContribution, type LearningEvidence, type LearningMetadata } from './learning-types.js';
 
 // One physical line per record. Percent escapes protect grammar delimiters and CR/LF;
 // Unicode, backslashes, empty strings and leading/trailing whitespace remain data.
@@ -18,6 +18,13 @@ function unescapeText(value: string): string {
 }
 
 type Attribute = readonly [key: string, value: string | readonly string[] | undefined];
+// Open Markdown metadata is formatting/provenance data, never domain authority.
+// A non-enumerable property keeps it out of JSON/API projections and object spreads.
+// Writers that clone a parsed record for revocation must retain its property descriptors.
+const markdownMetadata = Symbol('agent-cookie:contribution-markdown-metadata');
+type MarkdownContribution = LearningContribution & { [markdownMetadata]?: readonly (readonly [string, string])[] };
+const domainAttributes = new Set(['id', 'basis', 'at', 'revoked', 'intentId', 'conversationId', 'evidence',
+  'evidenceFormat', 'evidenceIntentId', 'evidenceConversationId', 'evidenceSnippet']);
 
 function record(field: string, value: string, attributes: readonly Attribute[]): string {
   const parts: string[] = [];
@@ -26,7 +33,7 @@ function record(field: string, value: string, attributes: readonly Attribute[]):
     // Escape each source before joining, so commas within an ID cannot add sources.
     const encoded = typeof item === "string" ? escapeText(item)
       : item.map((source) => escapeText(source).replace(/,/gu, percent)).join(", ");
-    parts.push(`${key}: ${encoded}`);
+    parts.push(`${escapeText(key)}: ${encoded}`);
   }
   return `- ${field}: ${escapeText(value)} [${parts.join("; ")}]`;
 }
@@ -35,7 +42,7 @@ function headerText(value: string): string {
   return escapeText(value).replace(/[<>]/gu, percent);
 }
 
-export const renderCard = (card: LearningCard, meta: Parameters<RulesApi['renderCard']>[1]): string => {
+export const renderCard = (card: Card | LearningCard, meta: Parameters<RulesApi['renderCard']>[1]): string => {
   const section = (name: string, lines: string[]): string =>
     `## ${name}\n${lines.length === 0 ? "_none_" : lines.join("\n")}`;
   return [
@@ -44,11 +51,13 @@ export const renderCard = (card: LearningCard, meta: Parameters<RulesApi['render
     `<!-- generatedAt: ${headerText(meta.generatedAt)} -->`, "",
     section("Card", card.card.map((field) => record(field.field, field.value, [
       ["confidence", field.confidence], ["sources", field.sources],
+      ["evidenceSources", 'evidenceSources' in field ? field.evidenceSources : undefined],
       ["updatedAt", field.updatedAt], ["lastSupportedAt", field.lastSupportedAt],
       ["changedRecently", String(field.changedRecently)],
     ]))), "",
     section("Candidates", card.candidates.map((candidate) => record(candidate.field, candidate.value, [
       ["reason", candidate.reason], ["sources", candidate.sources],
+      ["evidenceSources", 'evidenceSources' in candidate ? candidate.evidenceSources : undefined],
     ]))), "",
     section("Superseded", card.superseded.map((field) => record(field.field, field.value, [
       ["sources", field.sources], ["lastSupportedAt", field.lastSupportedAt],
@@ -61,24 +70,34 @@ export const renderContribution = (contribution: LearningContribution): string =
   if (!isLearningField(contribution.field) || !isLearningContributionMetadata(contribution)) {
     throw new TypeError('Invalid learning field or provenance; evidence must be at most 200 characters');
   }
+  const metadata = new Map((contribution as MarkdownContribution)[markdownMetadata] ?? []);
+  const evidence = learningEvidence(contribution);
+  // Conversation wins when both IDs identify the same source, matching learningSourceId.
+  // Keep both original ID attributes; this readable source is not a new learning input.
+  const source = evidence.conversationId !== undefined ? `conversation/${evidence.conversationId}`
+    : evidence.intentId !== undefined ? `intent/${evidence.intentId}` : undefined;
   return record(contribution.field, contribution.value, [
     ["id", contribution.id], ["basis", contribution.basis],
-    ["at", contribution.createdAt], ["revoked", contribution.revokedAt],
+    ["at", contribution.createdAt], ['added', metadata.get('added') ?? new Date(contribution.createdAt).toISOString().slice(0, 10)],
+    ['source', metadata.get('source') ?? source], ["revoked", contribution.revokedAt],
     ['intentId', contribution.intentId], ['conversationId', contribution.conversationId],
     ['evidence', typeof contribution.evidence === 'string' ? contribution.evidence : undefined],
     ['evidenceFormat', typeof contribution.evidence === 'object' ? 'nested' : undefined],
     ['evidenceIntentId', typeof contribution.evidence === 'object' ? contribution.evidence.intentId : undefined],
     ['evidenceConversationId', typeof contribution.evidence === 'object' ? contribution.evidence.conversationId : undefined],
     ['evidenceSnippet', typeof contribution.evidence === 'object' ? contribution.evidence.snippet : undefined],
+    ...[...metadata].filter(([key]) => key !== 'added' && key !== 'source'),
   ]);
 };
 
 function parseAttributes(block: string): Map<string, string> | undefined {
   const attributes = new Map<string, string>();
   for (const part of block.split("; ")) {
-    const match = /^([A-Za-z][A-Za-z0-9]*): (.*)$/su.exec(part);
-    if (!match || attributes.has(match[1]!)) return undefined;
-    attributes.set(match[1]!, unescapeText(match[2]!));
+    const match = /^([^;\[\]\r\n]+?): (.*)$/su.exec(part);
+    if (!match || !match[1]!.trim()) return undefined;
+    const key = unescapeText(match[1]!);
+    if (attributes.has(key)) return undefined;
+    attributes.set(key, unescapeText(match[2]!));
   }
   return attributes;
 }
@@ -126,6 +145,10 @@ export function parseContributions(markdown: string, owner: Owner, options?: { l
       contribution.evidence = evidence;
     } else if (['evidenceIntentId', 'evidenceConversationId', 'evidenceSnippet'].some(key => attributes.has(key))) continue;
     if (!isLearningContributionMetadata(contribution)) continue;
+    const openMetadata = [...attributes].filter(([key]) => !domainAttributes.has(key));
+    if (openMetadata.length > 0) Object.defineProperty(contribution, markdownMetadata, {
+      value: Object.freeze(openMetadata.map((item) => Object.freeze(item))), enumerable: false,
+    });
     contributions.push(contribution);
   }
   return contributions;

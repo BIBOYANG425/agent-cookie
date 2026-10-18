@@ -17,7 +17,15 @@ export function overridable(field: string): field is Field {
 }
 
 export class CardService {
+  private mutation: Promise<unknown> = Promise.resolve();
   constructor(private ctx: Ctx) {}
+
+  /** Serializes contribution writes and forget projection, including awaits in the Git write. */
+  mutate<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.mutation.then(fn);
+    this.mutation = run.catch(() => undefined);
+    return run;
+  }
 
   get(userId: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
@@ -44,9 +52,9 @@ export class CardService {
     let merged = this.ctx.rules.mergeCard(input, opts);
     const held: Candidate[] = [];
     for (let round = 0; round <= PREF_FIELDS.length; round++) {
-      const weak = merged.card.filter((f) => isPrefField(f.field) && f.sources.length < 2 && !statedByUser(f.field, f.value));
+      const weak = merged.card.filter((f) => isPrefField(f.field) && (f.evidenceSources?.length ?? 0) < 2 && !statedByUser(f.field, f.value));
       if (weak.length === 0) break;
-      for (const w of weak) held.push({ field: w.field, value: w.value, sources: w.sources, reason: "single_source" });
+      for (const w of weak) held.push({ field: w.field, value: w.value, sources: w.sources, evidenceSources: w.evidenceSources ?? [], reason: "single_source" });
       const drop = new Set(weak.map((w) => `${w.field}\u0000${w.value}`));
       input = input.filter((c) => !drop.has(`${c.field}\u0000${c.value}`));
       merged = this.ctx.rules.mergeCard(input, opts);
@@ -77,8 +85,13 @@ export class CardService {
    * an unknown field, or a basis it may not use, is stored as its own "inferred" record: never on the card,
    * never visible to anyone else (A11). Model-supplied basis/field are parameters, not authority.
    */
-  async record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: ContributionEvidence },
-    opts: { regenerate?: boolean } = {}): Promise<{ stored: Basis; contribution: StoredContribution }> {
+  record(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: ContributionEvidence },
+    opts: { regenerate?: boolean; canWrite?: () => boolean } = {}): Promise<{ stored: Basis; contribution: StoredContribution }> {
+    return this.mutate(() => this.recordNow(agent, userId, input, opts));
+  }
+  private async recordNow(agent: AuthedAgent, userId: string, input: { field: string; value: string; basis: Basis; evidence?: ContributionEvidence },
+    opts: { regenerate?: boolean; canWrite?: () => boolean } = {}): Promise<{ stored: Basis; contribution: StoredContribution }> {
+    if (opts.canWrite && !opts.canWrite()) fail("SCOPE_DENIED", "Learning operation superseded");
     if (containsCardNumber(input.value)) fail("MISSING_FIELD", "card numbers are never stored");
     if (input.field === "payment_method" && !isTokenReference(input.value)) fail("MISSING_FIELD", "payment_method must be a provider token reference");
     if (isPrefField(input.field)) {
@@ -103,7 +116,10 @@ export class CardService {
     return { stored: basis, contribution: c };
   }
 
-  async revoke(actor: string, userId: string, id: string): Promise<Card> {
+  revoke(actor: string, userId: string, id: string): Promise<Card> {
+    return this.mutate(() => this.revokeNow(actor, userId, id));
+  }
+  private async revokeNow(actor: string, userId: string, id: string): Promise<Card> {
     const c = this.ctx.store.contribution(id);
     if (!c || c.userId !== userId) fail("NOT_FOUND");
     const at = this.ctx.clock.nowIso();

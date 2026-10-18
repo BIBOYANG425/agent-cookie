@@ -47,7 +47,7 @@ function sourceComponents(rows: readonly LearningContribution[]) {
  * TODO(contract): latest qualified value wins; a personal statement is a time barrier,
  * so replacing it requires two independent learned sources strictly after it.
  * Learned agreement is medium even when several independent conversations agree.
- * Card.sources remains writer agentIds; source units live in the contribution metadata.
+ * Card.sources remains writer agentIds; evidenceSources exposes the canonical evidence units.
  */
 export function mergeLearningCard(input: readonly LearningContribution[], options: LearningMergeOptions): LearningCard {
   const now = Date.parse(options.now);
@@ -56,6 +56,8 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
     .filter(row => at(row) <= now);
   // Identity links outlive their support: removing a bridge must never split one source into two.
   const sourceOf = sourceComponents(identified);
+  const evidenceSources = (support: readonly LearningContribution[]) =>
+    [...new Set(support.map(sourceOf).filter((source): source is string => source !== undefined))].sort(compare);
   const rows = identified.filter(row => row.revokedAt === undefined);
   const personalIds = new Set(options.personalAgentIds);
   const result: LearningCard = { card: [], candidates: [], superseded: [] };
@@ -63,14 +65,27 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
     const entries = rows.filter(row => row.field === field);
     const barrier = entries.filter(row => row.basis === 'stated' && personalIds.has(row.agentId) && now - at(row) <= YEAR)
       .sort((a, b) => at(a) - at(b) || compare(a.value, b.value) || compare(a.agentId, b.agentId) || compare(a.id, b.id)).at(-1);
-    // Reuse all existing observed/stated conflict and time rules, including for pref.*.
+    if (!field.startsWith('pref.')) {
+      // Ordinary fields keep writer-based qualification, even when they carry provenance.
+      const ordinary = mergeLegacyCard(entries as readonly Contribution[], options);
+      const support = (value: string, inferred: boolean, afterBarrier = false) => entries.filter(row => row.value === value
+        && (row.basis === 'inferred') === inferred && now - at(row) <= YEAR
+        && (!afterBarrier || !barrier || at(row) > at(barrier)));
+      result.card.push(...ordinary.card.map(row => ({ ...row,
+        evidenceSources: evidenceSources(support(row.value, false, barrier !== undefined && row.value !== barrier.value)) })));
+      result.candidates.push(...ordinary.candidates.map(row => ({ ...row,
+        evidenceSources: evidenceSources(support(row.value, row.reason === 'inferred')) })));
+      result.superseded.push(...ordinary.superseded);
+      continue;
+    }
+    // Only a personal statement bypasses the preference evidence quorum.
     // The temporary field is confined to this call; ownership and provenance never change.
-    const learned = entries.filter(row => row.basis === 'inferred' || (row.basis === 'observed' && sourceOf(row) !== undefined));
+    const learned = entries.filter(row => row.basis !== 'stated' || !personalIds.has(row.agentId));
     const learnedSet = new Set(learned);
     const trusted = mergeLegacyCard(entries.filter(row => !learnedSet.has(row)).map(row => ({ ...row, field: 'tone' } as Contribution)), options);
-    const base = trusted.card[0];
-    result.card.push(...trusted.card.map(row => ({ ...row, field })));
-    result.candidates.push(...trusted.candidates.filter(row => row.reason !== 'inferred').map(row => ({ ...row, field })));
+    const base = trusted.card[0] && { ...trusted.card[0], confidence: 'medium' as const,
+      evidenceSources: evidenceSources(entries.filter(row => row.value === trusted.card[0]!.value && now - at(row) <= YEAR)) };
+    if (base) result.card.push({ ...base, field });
     result.superseded.push(...trusted.superseded.map(row => ({ ...row, field })));
 
     const grouped = new Map<string, LearningContribution[]>();
@@ -81,8 +96,8 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
       const live = all.filter(row => now - at(row) <= YEAR);
       const known = live.filter(row => sourceOf(row) !== undefined
         && (!barrier || value === barrier.value || at(row) > at(barrier)));
-      const sources = new Set(known.map(sourceOf));
-      return { value, live, known, qualified: sources.size >= 2,
+      const sources = evidenceSources(known);
+      return { value, live, known, evidenceSources: sources, qualified: sources.length >= 2,
         latest: known.length ? Math.max(...known.map(at)) : Number.NEGATIVE_INFINITY };
     }).sort((a, b) => a.latest - b.latest || compare(a.value, b.value));
     const newest = groups.filter(group => group.qualified).at(-1);
@@ -96,9 +111,10 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
         lastSupportedAt: base.lastSupportedAt, supersededBy: winner.value });
       const last = new Date(winner.latest).toISOString();
       const sameValue = base?.value === winner.value;
-      // Confirmation refreshes support without erasing writers or downgrading still-live observed consensus.
+      // Confirmation refreshes support and preserves the writers of the same personal-stated value.
       const sources = [...new Set([...(sameValue ? base.sources : []), ...writers(winner.known)])].sort(compare);
       result.card.push({ field, value: winner.value, confidence: sameValue ? base.confidence : 'medium', sources,
+        evidenceSources: [...new Set([...(sameValue ? base.evidenceSources : []), ...winner.evidenceSources])].sort(compare),
         updatedAt: last, lastSupportedAt: last, changedRecently: false });
       result.candidates = result.candidates.filter(row => row.field !== field || row.value !== winner.value);
     }
@@ -113,7 +129,8 @@ export function mergeLearningCard(input: readonly LearningContribution[], option
         result.candidates = result.candidates.filter(row => row.field !== field || row.value !== group.value);
       } else if (group.live.length && !result.candidates.some(row => row.field === field && row.value === group.value)) {
         result.candidates.push({ field, value: group.value, sources: writers(group.live),
-          reason: group.live.some(row => row.basis === 'observed') ? 'single_source' : 'inferred' });
+          evidenceSources: group.evidenceSources,
+          reason: group.live.some(row => row.basis !== 'inferred') ? 'single_source' : 'inferred' });
       }
     }
   }

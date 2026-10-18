@@ -26,3 +26,12 @@ it('honors cancellation and backend denial',async()=>{
  await expect(c.observe(input)).rejects.toBeInstanceOf(WorkspaceError);
  const signal=AbortSignal.abort();await expect(c.setLearning({enabled:false},{signal})).rejects.toMatchObject({name:'AbortError'});expect(f).toHaveBeenCalledTimes(1);
 });
+
+it('forgets via one authenticated endpoint and preserves pending/history semantics',async()=>{
+ const result={field:'pref.color',paused:true,removed:2,projection:'pending',historyErased:false};
+ const f=vi.fn(async()=>Response.json(result,{status:202}));const c=new WorkspaceClient({...config,fetch:f});
+ expect(await c.forgetLearning({field:'pref.color'})).toEqual(result);
+ const args=f.mock.calls[0] as unknown as [URL,RequestInit];
+ expect(args[0].pathname).toBe('/personal/learning/forget');expect(JSON.parse(String(args[1].body))).toEqual({field:'pref.color'});
+ await expect(c.forgetLearning({field:'shipping_address'} as any)).rejects.toThrow();expect(f).toHaveBeenCalledTimes(1);
+});

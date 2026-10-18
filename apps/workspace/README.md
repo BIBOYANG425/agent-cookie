@@ -1,7 +1,7 @@
 # apps/workspace — Agent Cookie workspace (lane A)
 
-Hono on `127.0.0.1:4310`, all served state in SQLite. Contract: `@agent-cookie/contract` (`packages/contract`).
-`src/adapters.ts` wires the real packages: `@agent-cookie/rules` and `@agent-cookie/memory-repo` (lane C, git repo at
+Hono on `127.0.0.1:4310`, served state in SQLite and raw learning observations only in bounded memory. Contract: `@agent-cookie/contract` (`packages/contract`).
+`src/adapters.ts` wires the real packages (including opt-in `@agent-cookie/learn`): `@agent-cookie/rules` and `@agent-cookie/memory-repo` (lane C, git repo at
 `MEMORY_REPO_PATH`, seeded from `fixtures/memory`) and `@agent-cookie/ucp` (lane D: `AGENT_COOKIE_UCP=fixture` replays
 `fixtures/ucp`, `live` runs the ucp CLI). The in-memory stubs live in `test/stubs` and are used only by unit tests.
 
@@ -64,3 +64,18 @@ pnpm --filter @agent-cookie/workspace test
 - `POST /test/clock {offsetMs}` (`AGENT_COOKIE_TEST=1`): shifts the workspace clock.
 
 Full request/response shapes: `packages/contract/src/types.ts` and `endpoints.ts`.
+
+
+## Conversation learning and current-state forget
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AGENT_COOKIE_LEARN_PROVIDER` | `off` | explicitly opt in to `openrouter` or `anthropic`; a key alone does not enable calls |
+| `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | unset | selected provider only, from a local ignored env file |
+| `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only` keeps only explicit personal statements |
+| `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` | unset | isolated metadata-only learning trace/log endpoint; no conversation bodies |
+| `LEARN_TICK_MS` / `LEARN_TIMEOUT_MS` | `30000` / `30000` | queue tick / service timeout; extractor has its own shorter bound |
+
+`POST /personal/observations` queues only owner turns in memory (100 conversations total, at most 50 × 2000 characters each; oldest batches are dropped on overflow). Pending raw text is deliberately lost on restart. The model only classifies/extracts; the workspace and rules independently enforce fields and promotion. Personal `stated` is immediate; weaker evidence needs distinct conversation/intent IDs, not distinct agents. Receipt of `{queued:true}` is not proof of learning.
+
+`POST /personal/learning/forget {field:"pref.color"}` accepts personal/owner credentials. One SQLite transaction pauses learning, advances the epoch, removes current field contributions and cached card, and saves opaque projection IDs plus keyed value-suppression digests. The current Git files are cleaned in one commit. `200` reports `projection:"complete"`; `202` reports `"pending"`, retains the durable retry job and prevents resume. Startup retries pending projections before reconciliation. Responses always include `historyErased:false`: old Git commits/backups are not physically erased and there is no cross-store ACID promise. Users must explicitly resume after completion. The original B49 six-scenario test remains unchanged; repair evidence is in `docs/evidence/2026-10-17-b49-repair.md`.

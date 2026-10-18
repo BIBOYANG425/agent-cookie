@@ -7,6 +7,7 @@ interface StoredIntent {
   intent: { id: string; userId: string; kind?: string; expiresAt?: string };
   extracted: LearningContribution[];
   recordedAt: string;
+  evidence?: { intentId: string };
   agentId?: string;
   createdAt?: string;
   chosenQuote?: { id: string; agentId?: string; price: number; currency: 'USD' };
@@ -85,6 +86,11 @@ export function projectIntent(input: unknown, userId: string, at: string): Store
   const result: StoredIntent = { intent: { id, userId }, extracted: [], recordedAt: isoTimestamp(at) };
   if (kind !== undefined) result.intent.kind = kind;
   if (flat) {
+    if (raw.evidence !== undefined) {
+      const evidence = object(raw.evidence);
+      if (Object.keys(evidence).length !== 1 || evidence.intentId !== id) invalid('Original intent evidence mismatch');
+      result.evidence = { intentId: id };
+    }
     result.agentId = identifier(raw.agentId);
     result.createdAt = isoTimestamp(raw.createdAt);
     object(raw.public);
@@ -137,6 +143,7 @@ export function renderIntent(record: StoredIntent): string {
   const attributes: [string, string][] = [['userId', record.intent.userId], ['recordedAt', record.recordedAt]];
   if (record.agentId !== undefined) attributes.push(['format', 'workspace-v1'], ['agentId', record.agentId], ['createdAt', record.createdAt!]);
   else attributes.push(['expiresAt', record.intent.expiresAt!], ['extractedCount', String(record.extracted.length)]);
+  if (record.evidence) attributes.push(['sourceIntentId', record.evidence.intentId]);
   if (record.intent.kind !== undefined) attributes.push(['kind', record.intent.kind]);
   record.extracted.forEach((c, index) => {
     const prefix = `extracted.${index}.`;
@@ -193,6 +200,7 @@ export function parseIntent(line: string, userId: string, name: string): StoredI
       });
       input = { intent: { id: unescape(match[1]!), userId: attributes.get('userId'), kind: attributes.get('kind'), expiresAt: attributes.get('expiresAt') }, extracted };
     }
+    if (attributes.has('sourceIntentId')) input.evidence = { intentId: attributes.get('sourceIntentId') };
     if (attributes.has('chosenQuote.id')) input.chosenQuote = {
       id: attributes.get('chosenQuote.id'), agentId: attributes.get('chosenQuote.agentId'),
       price: Number(attributes.get('chosenQuote.price')), currency: attributes.get('chosenQuote.currency'),

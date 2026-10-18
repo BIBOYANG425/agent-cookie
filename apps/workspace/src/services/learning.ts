@@ -1,33 +1,31 @@
+import { createHmac } from "node:crypto";
 // Dynamic memory (2026-10-17, human direction; lane B's LearnApi does the classifying). Three ways in:
 //   - POST /personal/observations: turns of a conversation. Only the user's own turns are kept, per (personal agent,
 //     conversation), until the conversation has been quiet for OBSERVATION_IDLE_MS or OBSERVATION_BATCH_TURNS turns
-//     have arrived; then the text is taken out of SQLite (deleted in the same transaction), handed to
+//     have arrived; then text is removed from the bounded volatile queue, handed to
 //     LearnApi.extractFromConversation, and dropped. Agent/other turns are never stored or passed on.
 //   - every intent, and every accept (with the chosen quote): LearnApi.extract.
 // What comes back is a list of CANDIDATES. Each one is checked here, deterministically: pref.* fields only (the
-// contract's whitelist), no contact/payment data, a snippet only if it is the user's own words, never "stated",
-// never a value the user revoked, never a duplicate of the same agent's live record. Survivors are written as the
+// contract's whitelist), no contact/payment data, a snippet only if it is the user's own words, stated preserved,
+// never a value the user revoked, never duplicate support from the same evidence source. Survivors are written as the
 // personal agent through the normal contribution path (git first, then SQLite), and RulesApi.mergeCard decides what
-// reaches the card: two distinct sources. Paused → nothing is queued or learned. Learning failures are logged and
+// reaches the card: a personal statement or two distinct conversation/intent sources. Paused → nothing is queued or learned. Learning failures are logged and
 // never affect the request that triggered them.
 import {
   EVIDENCE_SNIPPET_MAX, isField, isPrefField, OBSERVATION_BATCH_TURNS, OBSERVATION_IDLE_MS,
-  type Basis, type ContributionCandidate, type ContributionEvidence, type IntentHistoryEntry, type IntentRecord, type LearnApi,
+  type ForgetLearningResult, type PrefField, type Basis, type ContributionCandidate, type ContributionEvidence, type IntentHistoryEntry, type IntentRecord, type LearnApi,
   type LearnedEntry, type LearnedResponse, type LearningState, type Observation, type Quote,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow, StoredContribution } from "../db.js";
 import { containsContactOrPayment, prefValueProblem } from "../guards.js";
-import type { AuthedAgent } from "../http.js";
+import { fail, type AuthedAgent } from "../http.js";
 import type { CardService } from "./card.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
 
 const PAUSED_KEY = "learning.paused";
 /** Bumped on every pause: a learner answer that started before a pause is dropped even if learning was resumed since. */
 const EPOCH_KEY = "learning.epoch";
-/** Conversations one user may have waiting; past it the oldest is processed at once (bounded queue). */
-const MAX_WAITING_CONVERSATIONS = 100;
-/** A same-agent record younger than this already supports the value; an older one is refreshed (365-day expiry). */
-const REFRESH_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+/** Same-source stronger statements may supersede weaker evidence. */
 const BASIS_RANK: Record<Basis, number> = { inferred: 0, observed: 1, stated: 2 };
 
 /** Collapse width, whitespace and case: "Brooks", " brooks ", "ＢＲＯＯＫＳ" are one value. */
@@ -60,15 +58,74 @@ export class LearningService {
   }
 
   /** Pausing also drops every conversation still waiting: nothing observed before the pause is learned after it. */
-  setPaused(actor: string, userId: string, paused: boolean): LearningState {
-    this.ctx.store.tx(() => {
-      this.ctx.store.setSetting(userId, PAUSED_KEY, paused ? "1" : "0");
-      if (paused) this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
-      const dropped = paused ? this.ctx.store.dropObservations(userId) : 0;
-      this.ctx.log({ event: "learning.set", actor, result: paused ? "paused" : "on", reason: dropped ? `dropped=${dropped}` : "" });
+  setPaused(actor: string, userId: string, paused: boolean): Promise<LearningState> {
+    return this.card.mutate(async () => {
+      if (!paused && this.ctx.store.pendingForgets(userId).length) fail("UPSTREAM_ERROR", "Forget projection is pending");
+      this.ctx.store.tx(() => {
+        this.ctx.store.setSetting(userId, PAUSED_KEY, paused ? "1" : "0");
+        if (paused) this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
+        this.ctx.log({ event: "learning.set", actor, result: paused ? "paused" : "on" });
+      });
+      if (paused) this.ctx.store.dropObservations(userId);
+      return this.state(userId);
     });
-    if (paused) this.checkpoint();
-    return this.state(userId);
+  }
+
+  private suppressedKey(userId: string, field: string, value: string): string {
+    const secret = this.ctx.store.user(userId)!.secret;
+    return 'learning.block.' + createHmac('sha256', secret).update(JSON.stringify([field, norm(value)])).digest('hex');
+  }
+
+  /** One serving-store transaction, followed by a recoverable current-files projection. */
+  forget(actor: string, userId: string, field: PrefField): Promise<ForgetLearningResult> {
+    const run = this.applying.then(() => this.card.mutate(async () => {
+      const removed = this.ctx.store.tx(() => {
+        const rows = this.ctx.store.contributionsForUser(userId).filter(c => c.field === field);
+        this.ctx.store.setSetting(userId, PAUSED_KEY, '1');
+        this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
+        const oldIds = this.ctx.store.pendingForgets(userId).find(job => job.field === field)?.ids ?? [];
+        const ids = [...new Set([...oldIds, ...rows.map(c => c.id)])];
+        for (const row of rows) this.ctx.store.setSetting(userId, this.suppressedKey(userId, field, row.value), '1');
+        this.ctx.store.deletePreference(userId, field);
+        this.ctx.store.setSetting(userId, `learning.forget.${field}`, JSON.stringify(ids));
+        this.ctx.log({ event: 'learning.forget', actor, object: field, result: 'removed', reason: `count=${rows.length}` });
+        return rows.length;
+      });
+      this.ctx.store.dropObservations(userId);
+      this.card.get(userId);
+      const complete = await this.projectForget(actor, userId, field);
+      this.checkpoint();
+      return { field, paused: true as const, removed, projection: complete ? 'complete' as const : 'pending' as const, historyErased: false as const };
+    }));
+    this.applying = run.catch(() => undefined);
+    return run;
+  }
+
+  private async projectForget(actor: string, userId: string, field: string): Promise<boolean> {
+    const job = this.ctx.store.pendingForgets(userId).find(row => row.field === field);
+    if (!job) return true;
+    try {
+      const repo = this.ctx.repo();
+      if (!repo.forgetContributions) throw new Error('Projection unavailable');
+      await repo.forgetContributions(job.ids, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() },
+        writeMeta(this.ctx, actor, { field, ids: job.ids }));
+      this.ctx.store.completeForget(userId, field);
+      return true;
+    } catch {
+      this.ctx.log({ event: 'learning.forget', actor, object: field, result: 'pending', reason: 'projection unavailable' });
+      return false;
+    }
+  }
+
+  /** Replay only opaque IDs after a crash; never enqueue original conversation text. */
+  async recoverForgets(): Promise<boolean> {
+    const user = this.ctx.store.firstUser();
+    if (!user) return true;
+    let complete = true;
+    for (const job of this.ctx.store.pendingForgets(user.userId)) {
+      if (!await this.projectForget('workspace', user.userId, job.field)) complete = false;
+    }
+    return complete;
   }
 
   /** Queue the user's turns of an observation (already validated by app.ts). Never blocks on learning. */
@@ -84,11 +141,7 @@ export class LearningService {
       obs.turns.length, kept.map((t) => ({ text: t.text, at: t.at })), this.ctx.clock.nowIso());
     this.ctx.log({ event: "observation.queue", actor: personal.agentId, result: "ok",
       reason: `turns=${obs.turns.length} user=${kept.length}${kept.length < user.length ? ` dropped=${user.length - kept.length}` : ""}` });
-    if (batch.turnsSeen >= OBSERVATION_BATCH_TURNS) this.track(this.ctx.hold(() => this.process(batch.agentId, batch.conversationId)));
-    if (this.ctx.store.observationBatchCount(userId) > MAX_WAITING_CONVERSATIONS) {
-      const oldest = this.ctx.store.oldestObservationBatch(userId);
-      if (oldest) this.track(this.ctx.hold(() => this.process(oldest.agentId, oldest.conversationId)));
-    }
+    if (batch.turnsSeen >= OBSERVATION_BATCH_TURNS && this.pending.size < 4) this.track(this.ctx.hold(() => this.process(batch.agentId, batch.conversationId)));
     return { queued: true };
   }
 
@@ -123,7 +176,7 @@ export class LearningService {
     this.track(this.ctx.hold(async () => {
       const epoch = this.epoch(userId);
       try {
-        const record: IntentRecord = { id: intent.id, userId, agentId: intent.agentId, public: intent.public, createdAt: intent.createdAt };
+        const record: IntentRecord = { id: intent.id, userId, agentId: actor.agentId, evidence: { intentId: intent.id }, public: intent.public, createdAt: intent.createdAt };
         if (intent.text) record.text = intent.text;
         if (intent.query) record.query = intent.query;
         if (intent.kind) record.kind = intent.kind;
@@ -216,6 +269,7 @@ export class LearningService {
     const key = `${agentId}\u0000${conversationId}`;
     const running = this.inflight.get(key);
     if (running) return running;
+    if (this.inflight.size >= 4) return Promise.resolve(); // leave the bounded batch for the next tick
     const run = this.processNow(agentId, conversationId).finally(() => this.inflight.delete(key));
     this.inflight.set(key, run);
     return run;
@@ -274,7 +328,6 @@ export class LearningService {
     }
     if (candidates.length === 0) return 0;
     const heard = norm(said.join(" \n "));
-    const now = this.ctx.clock.now();
     const existing: StoredContribution[] = this.ctx.store.contributionsForUser(userId);
     const written: string[] = [];
     const skipped: Record<string, number> = {};
@@ -289,10 +342,17 @@ export class LearningService {
       const same = (x: StoredContribution) => x.field === field && norm(x.value) === norm(value);
       // One spelling per value: a later "brooks" joins the existing "Brooks", so sources add up.
       value = existing.find((x) => same(x) && !x.revokedAt)?.value ?? value;
-      const basis: Basis = c.basis === "inferred" ? "inferred" : "observed";
+      const basis: Basis = c.basis === "stated" ? "stated" : c.basis === "inferred" ? "inferred" : "observed";
+      if (this.ctx.store.setting(userId, this.suppressedKey(userId, field, value)) === "1") { skip("forgotten"); continue; }
       if (existing.some((x) => same(x) && x.revokedAt)) { skip("revoked"); continue; }
-      if (existing.some((x) => same(x) && !x.revokedAt && x.agentId === personal.agentId && BASIS_RANK[x.basis] >= BASIS_RANK[basis]
-        && now - Date.parse(x.createdAt) < REFRESH_AFTER_MS)) { skip("duplicate"); continue; }
+      // Retry of the same evidence is not another source. A different conversation is,
+      // even if the same personal agent heard both. Intent handoffs retain the original source.
+      const sameSource = (x: StoredContribution) =>
+        (source.conversationId !== undefined && x.evidence?.conversationId === source.conversationId) ||
+        (source.intentId !== undefined && x.evidence?.intentId === source.intentId);
+      if (existing.some((x) => same(x) && !x.revokedAt && sameSource(x) && BASIS_RANK[x.basis] >= BASIS_RANK[basis])) {
+        skip("duplicate"); continue;
+      }
       const evidence: ContributionEvidence = { ...source };
       const snippet = typeof c.evidence?.snippet === "string" ? [...c.evidence.snippet.trim()].slice(0, EVIDENCE_SNIPPET_MAX).join("") : "";
       // A snippet is kept only if the user said it, it names the value, and it carries no contact or payment data.
@@ -300,7 +360,7 @@ export class LearningService {
         evidence.snippet = snippet;
       }
       if (!this.stillOn(userId, epoch)) break;
-      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false });
+      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false, canWrite: () => this.stillOn(userId, epoch) });
       existing.push(contribution);
       written.push(field);
     }

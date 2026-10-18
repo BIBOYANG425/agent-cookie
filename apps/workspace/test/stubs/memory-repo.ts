@@ -2,7 +2,7 @@
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
   NOTE_MAX_BYTES, WorkspaceError,
-  type Card, type CommitRef, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
+  type Card, type CommitRef, type ContributionRevocationTarget, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
   type OpenMemoryRepoOptions, type Receipt, type RulesApi, type WriteMeta,
 } from "@agent-cookie/contract";
 
@@ -32,11 +32,16 @@ export class InMemoryRepo implements MemoryRepo {
     this.contributions.push(structuredClone(c));
     return this.commit(`contribute ${c.field} by ${c.agentId}`, meta);
   }
-  async revokeContribution(id: string, revokedAt: string, meta: WriteMeta): Promise<CommitRef> {
-    const c = this.contributions.find((x) => x.id === id);
+  async revokeContribution(id: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef> {
+    const c = this.contributions.find((x) => typeof id === "string" ? x.id === id : Object.entries(id.evidence).every(([k,v]) => x.evidence?.[k as "intentId" | "conversationId"] === v));
     if (!c || c.revokedAt) return { sha: "" };
     c.revokedAt = revokedAt;
     return this.commit(`revoke ${id}`, meta);
+  }
+  async forgetContributions(ids: string[], merge: MergeOptions, meta: WriteMeta): Promise<CommitRef> {
+    this.contributions = this.contributions.filter(c => !ids.includes(c.id));
+    this.card = this.rules.mergeCard(this.contributions, merge);
+    return this.commit('forget current preference', meta);
   }
   async regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
     this.card = this.rules.mergeCard(this.contributions, merge);

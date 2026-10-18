@@ -91,7 +91,7 @@ describe("observations: only the user's own words are learned from", () => {
     const h = await harness({ learn });
     await observe(h, "pay", [turn("user", "my card is 4111 1111 1111 1111"), turn("user", "mail me at a@b.co"), turn("user", "I like wool")]);
     const stored = h.deps.store.db.prepare("SELECT text FROM observation_turns").all() as Array<{ text: string }>;
-    expect(stored.map((x) => x.text)).toEqual(["I like wool"]);
+    expect(stored).toEqual([]); // raw observations are never persisted
     await quiet(h);
     expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["I like wool"]);
   });
@@ -128,7 +128,8 @@ describe("observed text is gone once processed", () => {
     const dump = () => JSON.stringify(["observation_turns", "observation_batches", "contributions", "activity", "intents", "idempotency", "settings"]
       .map((t) => h.deps.store.db.prepare(`SELECT * FROM ${t}`).all()));
     // queued: the user's turn is held until processing; the others never were
-    expect(dump()).toContain(USER);
+    expect(dump()).not.toContain(USER);
+    for (const f of files()) expect(f.includes(Buffer.from(USER))).toBe(false);
     for (const m of [AGENT, OTHER]) {
       expect(dump()).not.toContain(m);
       for (const f of files()) expect(f.includes(Buffer.from(m))).toBe(false);
@@ -173,18 +174,22 @@ describe("pause", () => {
 });
 
 describe("a learned preference reaches the card only with two distinct sources", () => {
-  it("one source → candidate (twice from the same agent still one); a second agent agreeing → card, with both pieces of evidence", async () => {
+  it("one source → candidate; independent conversations from the same agent → card, with evidence preserved", async () => {
     const learn = new FakeLearn();
     learn.onConversation = () => [{ field: "pref.brand", value: "Brooks", evidence: { snippet: "Brooks only" } }];
     learn.onExtract = () => [{ field: "pref.brand", value: "Brooks", evidence: { snippet: "Brooks again" } }];
     const h = await harness({ learn });
     await observe(h, "c1", [turn("user", "Brooks only, please")]);
     await quiet(h);
-    await observe(h, "c2", [turn("user", "Brooks only, please")]); // same agent, second conversation
+    expect((await learned(h)).learned[0].status).toBe("candidate");
+    await observe(h, "c1", [turn("user", "Brooks only, please")]); // replay is the same evidence source
+    await quiet(h);
+    expect((await learned(h)).learned[0].evidence).toHaveLength(1);
+    await observe(h, "c2", [turn("user", "Brooks only, please")]); // same agent, independent second conversation
     await quiet(h);
     let l = await learned(h);
-    expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "candidate", sources: ["personal-photon"] })]);
-    expect(await cardValue(h, "pref.brand")).toBeUndefined();
+    expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "card", sources: ["personal-photon"] })]);
+    expect(await cardValue(h, "pref.brand")).toBe("Brooks");
 
     // the other personal agent learns the same from an intent
     await h.post("/personal/intents", KEYS.desktop, { text: "Brooks again, trail shoes" });
@@ -193,7 +198,7 @@ describe("a learned preference reaches the card only with two distinct sources",
     expect(l.learned).toEqual([expect.objectContaining({ field: "pref.brand", value: "Brooks", status: "card",
       sources: ["personal-desktop", "personal-photon"] })]);
     const ev = l.learned[0].evidence as Array<Record<string, string>>;
-    expect(ev).toHaveLength(2);
+    expect(ev).toHaveLength(3);
     expect(ev.find((e) => e.agentId === "personal-photon")).toMatchObject({ conversationId: "c1", snippet: "Brooks only", basis: "observed" });
     expect(ev.find((e) => e.agentId === "personal-desktop")).toMatchObject({ intentId: expect.stringMatching(/^i_/), snippet: "Brooks again" });
     expect(await cardValue(h, "pref.brand")).toBe("Brooks");
@@ -229,7 +234,7 @@ describe("a learned preference reaches the card only with two distinct sources",
 });
 
 describe("what the learner proposes is a parameter, not authority", () => {
-  it("drops non-whitelisted or non-pref fields, contact data, unsaid snippets; never 'stated'; truncates snippets to 200", async () => {
+  it("drops non-whitelisted or non-pref fields, contact data, unsaid snippets; retains authorized personal stated; bounds snippets to 200", async () => {
     const learn = new FakeLearn();
     const long = "I really like merino wool socks ".repeat(10).trim();
     learn.onConversation = () => [
@@ -248,7 +253,7 @@ describe("what the learner proposes is a parameter, not authority", () => {
     const rows = h.deps.store.contributionsForUser("u_sample").filter((c) => c.agentId === "personal-photon" && c.createdAt > "2026-10-02");
     const byField = Object.fromEntries(rows.map((c) => [c.field, c]));
     expect(Object.keys(byField).sort()).toEqual(["pref.avoid", "pref.color", "pref.material", "pref.style"]);
-    expect(byField["pref.avoid"]!.basis).toBe("observed");
+    expect(byField["pref.avoid"]!.basis).toBe("stated");
     expect(byField["pref.style"]!.basis).toBe("inferred");
     expect(byField["pref.color"]!.evidence).toEqual({ conversationId: "c" }); // unsaid snippet dropped
     expect([...byField["pref.material"]!.evidence!.snippet!].length).toBe(200);
@@ -498,7 +503,7 @@ describe("review fixes", () => {
     await h.deps.close();
   });
 
-  it("SEMA2: an inferred guess does not block a later observation, and an old record is refreshed (the 365-day expiry)", async () => {
+  it("SEMA2: basis upgrades and independent conversations are retained without the old 30-day dedupe", async () => {
     const learn = new FakeLearn();
     const h = await harness({ learn });
     learn.onConversation = () => [{ field: "pref.fit", value: "wide", basis: "inferred" }];
@@ -510,11 +515,11 @@ describe("review fixes", () => {
     expect(rows(h, "pref.fit").map((c) => c.basis)).toEqual(["inferred", "observed"]);
     await observe(h, "c", [turn("user", "wide")]);
     await quiet(h);
-    expect(rows(h, "pref.fit")).toHaveLength(2); // fresh duplicate skipped
+    expect(rows(h, "pref.fit")).toHaveLength(3); // another conversation is independent evidence
     offset += 31 * 86_400_000;
     await observe(h, "d", [turn("user", "wide")]);
     await quiet(h);
-    expect(rows(h, "pref.fit")).toHaveLength(3); // a month later it is refreshed
+    expect(rows(h, "pref.fit")).toHaveLength(4); // later independent evidence also survives
   });
 
   it("SEMA7: a blocked accept is not a choice", async () => {
@@ -564,7 +569,7 @@ describe("review fixes", () => {
     await h.deps.close();
   });
 
-  it("CROS2: queued turns keep their order across a restart", async () => {
+  it("CROS2: a restart discards pending original conversation text", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ws-restart-"));
     const env = { SQLITE_PATH: join(dir, "ws.sqlite"), AGENT_COOKIE_DATA_DIR: dir };
     const first = await harness({ env });
@@ -574,7 +579,7 @@ describe("review fixes", () => {
     const second = await harness({ learn, env });
     await observe(second, "c", [turn("user", "three")]);
     await quiet(second);
-    expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["one", "two", "three"]);
+    expect(learn.conversationCalls[0]!.turns.map((t) => t.text)).toEqual(["three"]);
     await second.deps.close();
   });
 
@@ -590,7 +595,8 @@ describe("review fixes", () => {
   it("ABUS1: a full-width or dotted card number typed into a chat is not stored", async () => {
     const h = await harness();
     await observe(h, "c", [turn("user", "４１１１ １１１１ １１１１ １１１１"), turn("user", "4111.1111.1111.1111"), turn("user", "ok")]);
-    expect((h.deps.store.db.prepare("SELECT text FROM observation_turns").all() as Array<{ text: string }>).map((x) => x.text)).toEqual(["ok"]);
+    expect(h.deps.store.db.prepare("SELECT text FROM observation_turns").all()).toEqual([]);
+    expect(h.deps.store.takeObservationBatch("personal-photon", "c")?.turns.map(t => t.text)).toEqual(["ok"]);
   });
 
   it("ABUS6: a candidate whose field changes between reads cannot slip past the whitelist", async () => {
@@ -613,7 +619,7 @@ describe("review fixes", () => {
     expect((await learned(h)).learned).toEqual([]);
   });
 
-  it("CONC4: the same agent learning the same value from an intent and a conversation at once writes it once", async () => {
+  it("CONC4: concurrent independent intent and conversation sources are both retained", async () => {
     const learn = new FakeLearn();
     learn.onExtract = () => [{ field: "pref.color", value: "blue" }];
     learn.onConversation = () => [{ field: "pref.color", value: "blue" }];
@@ -632,7 +638,8 @@ describe("review fixes", () => {
     d.open();
     await flushing;
     await h.deps.learning.settle();
-    expect(rows(h, "pref.color")).toHaveLength(1);
+    expect(rows(h, "pref.color")).toHaveLength(2);
+    expect(await cardValue(h, "pref.color")).toBe("blue");
   });
 });
 

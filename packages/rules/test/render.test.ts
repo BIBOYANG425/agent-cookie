@@ -63,7 +63,7 @@ describe("renderCard", () => {
 describe("renderContribution", () => {
   it("writes a readable record with the required provenance attributes", () => {
     expect(renderContribution(contribution)).toBe(
-      "- tone: 简短 [id: c-1; basis: stated; at: 2026-10-17T12:00:00.000Z]",
+      "- tone: 简短 [id: c-1; basis: stated; at: 2026-10-17T12:00:00.000Z; added: 2026-10-17]",
     );
   });
 
@@ -76,14 +76,14 @@ describe("renderContribution", () => {
       expect(parseContributions(line, owner)).toEqual([record]);
     }
     expect(renderContribution({ ...contribution, value: "\r\n%0A[x]" })).toBe(
-      "- tone: %0D%0A%250A%5Bx%5D [id: c-1; basis: stated; at: 2026-10-17T12:00:00.000Z]",
+      "- tone: %0D%0A%250A%5Bx%5D [id: c-1; basis: stated; at: 2026-10-17T12:00:00.000Z; added: 2026-10-17]",
     );
   });
 
   it("preserves revoked provenance and escaped identifiers without leaking owner fields into the line", () => {
     const record = { ...contribution, id: " c; [id]%\\\r\n ", revokedAt: "2026-10-18T00:00:00.000Z" };
     const line = renderContribution(record);
-    expect(line).toBe("- tone: 简短 [id:  c%3B %5Bid%5D%25\\%0D%0A ; basis: stated; at: 2026-10-17T12:00:00.000Z; revoked: 2026-10-18T00:00:00.000Z]");
+    expect(line).toBe("- tone: 简短 [id:  c%3B %5Bid%5D%25\\%0D%0A ; basis: stated; at: 2026-10-17T12:00:00.000Z; added: 2026-10-17; revoked: 2026-10-18T00:00:00.000Z]");
     expect(parseContributions(line, owner)).toEqual([record]);
     expect(line).not.toContain(owner.userId);
     expect(line).not.toContain(owner.agentId);
