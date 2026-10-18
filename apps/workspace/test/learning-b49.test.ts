@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   OBSERVATION_MAX_CONVERSATIONS, OBSERVATION_MAX_QUEUED_TURNS, OBSERVATION_MESSAGE_TTL_MS,
   type ContributionCandidate, type LearnApi, type ObservationTurn,
@@ -257,6 +257,26 @@ describe("B49 ③: forget", () => {
     expect((await h.post("/personal/learned/forget", KEYS.personal, { conversationId: "a", intentId: "b" })).status).toBe(422);
     expect((await h.post("/personal/learned/forget", KEYS.acme, { conversationId: "a" })).status).toBe(403);
     expect((await h.post("/personal/learned/forget", KEYS.personal, { conversationId: "never" })).body).toEqual({ revoked: 0, contributionIds: [] });
+  });
+});
+
+describe("B49 forget: a failed transaction releases every lock", () => {
+  it("after a forget whose SQLite transaction fails (500), the next forget, a resume, learning and a Dreaming run all complete", async () => {
+    const learn = new Learner();
+    learn.onConversation = () => black("stated");
+    const h = await harness({ learn });
+    await h.post("/personal/contributions", KEYS.personal, { field: "pref.color", value: "black" });
+    vi.spyOn(h.deps.store, "deletePreference").mockImplementationOnce(() => { throw new Error("synthetic transaction failure"); });
+    expect((await h.post("/personal/learning/forget", KEYS.personal, { field: "pref.color" })).status).toBe(500);
+    // each of these would hang if the card lock, the apply chain or the request gate were still held
+    const within = <T>(p: Promise<T>) => Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("hung")), 2000))]);
+    expect((await within(h.post("/personal/learning/forget", KEYS.personal, { field: "pref.fit" }))).status).toBe(200);
+    expect((await within(h.put("/personal/learning", KEYS.personal, { paused: false }))).status).toBe(200);
+    await observe(h, "after-failure", [turn("I always prefer black.")]);
+    await within(learnAt(h, 301_000));
+    expect((await within(h.post("/owner/dreaming/run", KEYS.owner))).status).toBe(200);
+    expect(await entry(h, "pref.color")).toMatchObject({ status: "card" }); // the failed forget rolled back; learning goes on
+    await h.deps.close();
   });
 });
 

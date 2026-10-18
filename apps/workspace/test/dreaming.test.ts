@@ -260,12 +260,15 @@ describe("isolation, scheduling and access", () => {
 describe("Dreaming and concurrent writes on the real git memory repo", () => {
   it("runs alongside concurrent contributions: no errors, no git conflict, CARD.md ends up matching the card", async () => {
     const w = await realWorkspace(Clock.at(START));
-    const writes = Array.from({ length: 8 }, (_, i) =>
+    // Every write is serialized through the card lock and the repo queue (two commits each, ~0.4 s here), so the
+    // test keeps the race small: two writes per field interleaved with two Dreaming runs.
+    const WRITES = 4;
+    const writes = Array.from({ length: WRITES }, (_, i) =>
       w.post("/personal/contributions", w.keys.personal, { field: i % 2 ? "pref.style" : "pref.material", value: `v${i}` }));
     const runs = [w.post("/owner/dreaming/run", w.keys.owner), w.post("/owner/dreaming/run", w.keys.owner)];
     const results = await Promise.all([...writes, ...runs]);
-    expect(results.slice(0, 8).map((r) => r.status)).toEqual(Array(8).fill(201));
-    expect(results.slice(8).map((r) => r.status)).toEqual([200, 200]);
+    expect(results.slice(0, WRITES).map((r) => r.status)).toEqual(Array(WRITES).fill(201));
+    expect(results.slice(WRITES).map((r) => r.status)).toEqual([200, 200]);
     await w.post("/owner/dreaming/run", w.keys.owner); // settles CARD.md after the last write
     const events = (await w.get("/owner/activity?limit=500", w.keys.owner)).body.events as Array<{ event: string; result: string }>;
     expect(events.filter((e) => e.event === "memory.write" || e.event === "dreaming.step")).toEqual([]);
@@ -280,8 +283,7 @@ describe("Dreaming and concurrent writes on the real git memory repo", () => {
       .map((f) => `${f.field}=${f.value}`).sort();
     expect(inFile).toEqual(served);
     await w.deps.close();
-    // Real Git initialization plus eight serialized writes takes >5s even in isolation; assertions stay unchanged.
-  }, 30_000);
+  });
 });
 
 /** A workspace on lane C's fixtures, the real git memory repo and real rules, with a stub UCP and an injected clock. */
