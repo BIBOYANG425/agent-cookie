@@ -349,3 +349,51 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 - B77 → A/C/人（HANA 深版第0步）：已完成源码追踪和独立PostgreSQL实测，REPLY_GENERATE实际expire=1800秒/retryLimit=1；两个Photon Beta只读订阅者同cursor均收到received/delivered，原线路未切换。HANA原插件不兼容Beta，将做独立适配。请A提供HANA专用personal身份/key（仅本地配置）并落IntentRequest.conversationId与find/observe同源去重；当前SDK会按人要求先透传，不改契约。请确认handoff记last_handoff及同店可信读note→模型开场；不将handoff称已购买。完整排练自然五分钟另计、演示剪辑4:30已获人确认。C/Devin后续需在干净机器按docs/hana-demo.md独立复现，不由B代造记录。
 - B78 → A/C/人（HANA01:25准备交付）：六工具+Beta专属传输/PG原子入站去重+listen-only已在本地实现，原手机未切。真实HANA模型两轮完成Sample两报价/选择第二件，4次200合计$0.001895755；真实隔离PG强制重试后1作业/1intent/1accepted quote/1checkout回执。HANA本地14392bb，补丁与证据见docs/evidence/hana-demo/02-plugin-verification.md，复现说明docs/hana-demo.md。B77同源缺口现有可执行证据：packages/sdk/test/hana-source.acceptance.ts不改断言，当前A产出2来源（intent+conversation）并提前上卡，预期1来源candidate；请A把conversationId贯穿IntentRequest、持久化和学习来源后复验。HANA专用key仍待本地路径，不能用Photon/Desktop旧身份替代。按指定SHA256(chatId)规则，同一手机线程隔五分钟仍是同一来源；请确认第二来源使用Xia/另一个真实conversation，不能换假ID凑晋升。尚需真实商家/同店note开场及C/Devin独立复现；已实现Jev不可用explicit-only回退，正向敏感判断不兜底。Step4手机故障截图和Step5三次排练未完成；06:00截止保留原个人agent。
+2026-10-18（续三），A 线：商业分析与动态策略（`docs/commerce-analytics-plan.md`，分支 `claude/amazing-allen-cnv3s6`，Phase 0–3 已实现并有测试）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A43 | A → B/C | **契约新增（已落在 lane A 分支，待两线确认后合 main）**：`FunnelStage`、`SearchStats`、`FunnelRow`、`FunnelReport`、`SellerStats`、`RankingWeights`、`RankStats`（analytics.ts）；`PolicyDocument`(v1，含可选 `ranking`)、`DEFAULT_POLICY`、`policyId`、`evaluateRead/evaluateWrite/policyViolations`、`PolicyView`、`ShadowReport`（policy-document.ts）；`Grant.policyId/stage`、`Receipt.intentId/policyId`、`INTENT_TTL_MS`（= GRANT_TTL_MS，见计划 §4 待人决定）、`ActivityEvent.kind` 增 `"search"`/`"rank"`；端点 `GET /owner/funnel`、`GET/PUT /personal/policy`、`POST /personal/policy/shadow`。`readDecision` 等旧签名不变（golden 测试锁定 270 个决策）；`buildTier0Prefix`/`renderHandshakePrefix` 多一个可选 `doc` 参数。SDK 若严格校验 Receipt/Grant 形状，请接受新增可选键。 | 待 B、C 确认 |
+| A44 | A → C | `MemoryRepo.readPolicy?()` / `writePolicy?(doc, meta)` 读写 `POLICY.yaml`（一次 commit，author=owner；种子文件读为 undefined）；`generate-seed.ts` 继续从 `DEFAULT_POLICY`（即 `POLICY_TABLE`）生成。未实现前工作台回退到 SQLite `settings` 再到编译内默认，并记 `policy.load`。 | 待 C |
+| A45 | A → C | 控制台新增：Policy 面板（`GET /personal/policy` 文档与 id、`POST /personal/policy/shadow` 差异，只读；安装用 owner 钥匙 `PUT`）、Funnel 面板（`GET /owner/funnel`，`sample:true` 时标 Sample）、grants 显示 `stage`/`policyId`。后续商业面板见计划 §7。 | 待 C |
+| A46 | A → 人 | `docs/plan.md`：§2 新增 A24 漏斗、A25 策略文档、A26 影子、A27 阶段（测试已在 `apps/workspace/test/acceptance` 与 `apps/workspace/test`）；§5 字段策略表改为"由安装的 `PolicyDocument` 决定，`DEFAULT_POLICY` 为种子"；§4 决定 intent 生命周期是否与 grant 解耦（需要报价有效期规则，见计划 §4）。 | 待人 |
+| A47 | A → B | 计划 §8：quotes 的 SSE 端点与 `_meta["agent-cookie"]` 绑定契约草案待 A 起草，B 评估 Photon/MCP 切换成本；CLI 新增 `funnel`、`policy show|shadow|set` 子命令（走现有 SDK/HTTP）。 | 待 B |
+| A48 | A → D | accept 路径已有 `advance(session, intentId, "payment", category)` 钩子位（sessions.ts）：D 的 `authorizePayment` 成功后由 A 调用，打开 `payment_method`（purpose=payment）并写带 `amount` 的回执；A21 作为验收。 | 待 D |
+
+2026-10-18（续四），A 线状态更新：从本条起由同一会话驾驭四条线（Opus 按线写代码，Fable 审阅并逐单元提交，分支 `claude/amazing-allen-cnv3s6`）。只追加，不改上文。
+
+| ID | 状态更新 |
+| --- | --- |
+| A43 | 契约新增已全部落地并有 golden 测试锁定旧决策；另增 `MerchantStats`、`ExperimentArm/ExperimentArmStats/ExperimentReport`、`Intent.arm`、`FunnelRow.arm`，端点 `GET /agent/stats`、`GET /owner/experiments`，环境变量 `AGENT_COOKIE_EXPERIMENT=off|ranking`。SDK/CLI/控制台/假工作台均已按新形状接好。待合 main 时两线确认即可。 |
+| A44 | 已完成（lane C）：`readPolicy/writePolicy` 落在 `packages/memory-repo`，codec 在 `packages/rules/src/policy-yaml.ts`，POLICY.yaml 进 MANAGED，reset 恢复种子；memory-repo 58、rules 108 测试通过。遗留：memory-repo 的 `@agent-cookie/rules` 仍在 devDependencies，应移到 dependencies（改锁文件，待单独处理）。 |
+| A45 | 已完成（lane C）：控制台策略 / 漏斗 / 授权阶段面板，bridge 白名单与 16 KiB 体积上限；控制台 57 测试通过。bridge 对新路由直连 HTTP（TODO(sdk)），SDK 方法已有，可择机切换。 |
+| A46 | 仍待人：`docs/plan.md` §2 加 A24–A27，§4 加 `AGENT_COOKIE_EXPERIMENT`，§5 改为"由安装的 PolicyDocument 决定"，§4 决定 intent 生命周期是否解耦。 |
+| A47 | 部分完成（lane B）：CLI `funnel`、`policy show|shadow|set` 已有；SSE 报价流与 `_meta["agent-cookie"]` 绑定仍待。 |
+| A48 | 进行中（lane D + A）：accept 路径接 `authorizePayment`、`payment` 阶段、带 `amount` 的回执、`AGENT_COOKIE_PAY=off|fake|stripe`、A21 验收。 |
+
+2026-10-18（续五），状态更新。只追加。
+
+| ID | 状态更新 |
+| --- | --- |
+| A48 | 已完成第一步（lanes D + A，commit 80df355）：`AGENT_COOKIE_PAY=off|fake`，accept 路径在地址之后、complete 之前替用户授权报价金额（预算 = 本次 intent 声明的预算，否则卡上的预算，否则报价本身）；`payment_authorizations` 表按 quote 唯一，单次使用跨重启；回执带 `amount`；商家读 `payment_method` 一律 SCOPE_DENIED；A21 黑盒通过。Visa：accepted 回调已带 TAP `agent-payer-auth`；UCP 步骤走 `ucp` CLI 无法带头，`payment.authorize` 事件如实记 `tap=none`。Stripe 未接线。进行中：Visa Acceptance 沙盒 provider（`AGENT_COOKIE_PAY=visa`，HTTP Signature，授权后若商家无法接受委托支付则立即撤销，预算检查前移到地址放行之前）；本环境网络策略拒绝 Visa 主机，真实沙盒调用需在允许这些域名并配置凭据的环境里跑 `smoke:visa`。 |
+| A49 | A → 人（记录）：`apps/workspace-fake` 已于 2026-10-18 退役（commit 5e406da）。唯一工作台是 `apps/workspace` 的 demo 模式；B 的 Photon 测试通过 `apps/channel-photon/test/real-workspace.ts` 启动真实工作台；CLAUDE.md / AGENTS.md 的分线目录表已更新。 |
+| A50 | A → D（请求）：`packages/ucp` 需要一个请求头钩子以携带 TAP `agent-payer-auth` 签名，以及 `complete` 对 UCP `payment.instruments` 的支持；没有这两项，UCP 结账无法消费工作台的支付授权，真实 provider 的授权只能授权后立即撤销。 |
+
+| A51 | A → 人（Visa 接入前置）：Visa Acceptance 沙盒 provider 已实现但未真实调用。要跑 `smoke:visa` 和下一单元 Visa Intelligent Commerce，需要：① 云环境 Allowed domains 加 `apitest.cybersource.com`、`developer.cybersource.com`、`developer.visa.com`、`sandbox.api.visa.com`；② Visa Acceptance 沙盒凭据（`VISA_ACCEPTANCE_MERCHANT_ID/KEY_ID/SHARED_SECRET`，以及一个 TMS 测试 instrument）作为环境 secret；③ Visa Developer Platform 项目（Intelligent Commerce 沙盒：mTLS 证书或 X-Pay-Token，MLE 证书对）。文档已确认：HTTP Signature 被 Cybersource 标记弃用，production 前必须改 JWT。 |
+
+| A47 | 状态更新：SSE 报价流已实现（`GET /personal/intents/:id/events`，契约 `events.ts`；SDK `streamQuotes`，`find()` 先走流再回退长轮询；Photon/MCP 无需改码即受益）；`_meta["agent-cookie"]` 绑定与 `accepted`/`result` 事件仍待。 |
+| A52 | A → B（请求）：SDK `FindInput` 不传 `kind`，而回调商家只按 `kind` 匹配，所以 `find()` 的推送收益目前只有 UCP 报价（创建时即存在）能体现；请 B 评估在 `FindInput` 加可选 `kind`（契约 `IntentRequest.kind` 已有）。 |
+| A53 | A → 人（记录，2026-10-18）：Visa 未能为本项目提供沙盒，A51 的 ①②③ 暂不可得。Visa Acceptance provider 改为对照官方 Node SDK `cybersource-rest-client@0.0.84` 离线校验（SDK 装在仓库外，同一输入、假凭据）：Digest 与签名值逐字节一致；签名标签改用 SDK 的 `request-target`（指南也印 `(request-target)`）；补 `Accept: application/hal+json`；撤销请求的 currency 移到 `reversalInformation.amountDetails`（SDK 模型里撤销的 `orderInformation.amountDetails` 只有 `serviceFeeAmount`）；SDK 产出的 Signature/Digest 作为 golden 入 `packages/pay/test/fixtures/visa-acceptance/` 并有测试复现。仍未验证（只有 Visa 服务端能答）：TMS instrument 单独授权、部分 `billTo`、HTTP 状态码、`id` 格式、`clientReferenceInformation.code` 的重试语义。演示走 `AGENT_COOKIE_PAY=fake` 并如实标注；`smoke:visa` 留作拿到任何 Visa Acceptance 测试凭据（开发者沙盒或收单行提供）后的第一步；Intelligent Commerce 单元搁置。 |
+| A54 | A → 人（记录，2026-10-18）：起草 `docs/bring-your-own-agent-plan.md`，目标是「自带 agent 即可用、跳过 onboarding」：SDK 为唯一集成面（新增 `MerchantClient`、`remember/forget`、`context()`、owner 的 `mintKey/listKeys/revokeKey`），MCP 只留门（每个 SDK 方法可一行包成工具；远程传输为后续单元），每人一个工作台实例而非多租户改造；度量为 `questionsSkipped`（只计数）。空白种子 `AGENT_COOKIE_SEED=blank`、`POST/GET /owner/keys` 等契约新增与 A29/A30 验收见该计划 §3–§5、§8（A55–A59 待契约冻结后追加）。 |
+| A55 | A → B（请求，2026-10-18）：契约已落（commit `300c810`、`feac451`）：Category/Role `assistant`、consent link（`Link`/`LinkView`/`LINK_TTL_MS`/`ASSISTANT_GRANT_TTL_MS`/`LINK_NOT_PENDING`）、`AssistantContext`、`/assistant/*` 与 `/owner/links*` 端点、`FunnelRow.createdBy/questionsSkipped`、`AssistantStats`。请 SDK 增 `AssistantClient`、`MerchantClient`、`registerAgent`、`assistantPrompt`、owner 的 `listLinks/approveLink/declineLink`；CLI `links list|approve|decline`；包可在仓库外 `npm install`（contract 打进 dist，`pack:smoke`）。见 `docs/bring-your-own-agent-plan.md` v0.2 §3。 |
+| A56 | A → 人（2026-10-18）：`docs/plan.md` §2 新增 A31（助理 link → context → intent → accept → 回执）、A32（两助理两商家 churn）；§5 契约新增 Category/Role `assistant`、link 端点、`AssistantContext`、`FunnelRow.createdBy/questionsSkipped`、`AssistantStats`；§5 字段策略表加 assistant 列（floor：永不 shipping_address / payment_method）。 |
+| A57 | A → C（请求，2026-10-18）：POLICY.yaml 支持 assistant 类别并重生成种子（policyId 变）；fixtures 加 Sample 助理 `sample-assistant` 与 key `ck_assistant_sample`；控制台「连接请求」面板（`GET /owner/links`、approve/decline）；之后 `examples/assistant-sdk`、`examples/merchant-sdk` 与 `tests/acceptance` A32。 |
+| A58 | A → D（预约）：网关登录复用 `apps/unlock` 的 WebAuthn 注册/认证；网关持 owner key 在用户一键后代为批准 link；operator 角色只在网关，不进工作台。 |
+| A59 | B → A（预约）：从 `packages/contract/src/endpoints.ts` 生成 OpenAPI 文档，作为非 TypeScript agent 的入口（计划 §7 的门）。 |
+| A60 | A → 人（待确认，2026-10-18）：`docs/bring-your-own-agent-plan.md` v0.2 改向——受众是会在公司 agent 之间流失的普通用户：助理公司（Manus/Dots/Muse）接 SDK + 一键 link，商务平台（Shopify）走协议（UCP、Visa 轨道），托管 jar 在结账时一键创建，历史记录成为独立策略类别，个人自建 agent 路径最后做。 |
+| A55 | 状态更新（2026-10-18）：已完成（lane B，commits `1d803ac`、`bfef364`、`a7a84ce`）：`AssistantClient`、`MerchantClient`、`registerAgent`、`assistantPrompt`、owner 的 `listLinks/approveLink/declineLink`、`isWorkspaceError`；包自含（contract 打进 dist，`pack:smoke` 离线安装并类型检查通过）；https 任意主机、http 仅回环；`remember` 用契约 `AssistantContributionInput`（stated 需 evidence）。SDK 168 → 324。 |
+| A57 | 状态更新（2026-10-18）：已完成（lane C，commits `b21549c`、`ea0eeab`）：POLICY.yaml 与种子含 assistant 类别（policyId `3526a909e404`）；Sample 助理与 key；控制台「连接请求」面板；`examples/assistant-sdk`、`examples/merchant-sdk`；`tests/acceptance` A32 通过（两助理两商家 churn）。发现：SDK 不传 `kind` 时无法引荐回调商家（见 A52，lane B 处理中）；商家握手 auto 字段不写回执，故 `questionsSkipped` 只计 purpose 放行与 Tier 0 投递。 |
+| A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
+| A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
+
+- B79 → A/C/人（人取消06:00截止并授权B补身份/同源）：已合main b1e049a到B隔离分支，IntentRequest.conversationId与SQLite v14、学习来源去重已补；原单源candidate断言保留，重放/accept不新增来源，另一个真实conversation才晋升，原六场景+capture合成回归通过。HANA专用personal身份已通过owner注册到独立4314，key仅本机.env.demo；两家UCP实时搜索返回live $113/$112，尚未手机切换/accept/付款。main移除fake后HANA测试迁移正式隔离A；详见hana-demo/03-source-and-identity.md。现有商家note开场、三次手机排练与独立复现仍待，不将此准备标为实机通过。

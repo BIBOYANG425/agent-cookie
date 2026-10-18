@@ -1,4 +1,4 @@
-import type { CommitRef, ContributionEvidence, Intent, IntentRecord, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
+import type { CommitRef, ContributionEvidence, Intent, IntentRecord, MemoryRepo, OpenMemoryRepoOptions, PolicyDocument, Quote, WriteMeta } from '@agent-cookie/contract';
 import type { LearningCard, LearningContribution, LearningMergeOptions, LearningRulesApi } from '@agent-cookie/rules';
 
 /** Existing C export name; the flat record is the formal shared type. */
@@ -28,7 +28,14 @@ export interface ContributionRevocationApi {
   revokeContribution(target: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
 }
 
-export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent' | 'revokeContribution'> & IntentHistoryApi & ContributionRevocationApi;
+/** POLICY.yaml: the contract's optional readPolicy / writePolicy, always present on this implementation. */
+export interface PolicyFileApi {
+  readPolicy(): Promise<PolicyDocument | undefined>;
+  writePolicy(doc: PolicyDocument, meta: WriteMeta): Promise<CommitRef>;
+}
+
+export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent' | 'revokeContribution' | 'readPolicy' | 'writePolicy'>
+  & IntentHistoryApi & ContributionRevocationApi & PolicyFileApi;
 
 export type OpenLearningMemoryRepoOptions = Omit<OpenMemoryRepoOptions, 'rules'> & { rules: LearningRulesApi };
 export type LearningMemoryRepo = Omit<MemoryRepoWithIntents, 'appendContribution' | 'listContributions' | 'regenerateCard'> & {

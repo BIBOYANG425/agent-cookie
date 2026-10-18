@@ -9,6 +9,7 @@ import type { Store } from "../db.js";
 import { canonicalJson, sha256Hex } from "../ids.js";
 import type { LaneDHooks } from "../laneD.js";
 import type { Delivery } from "./delivery.js";
+import type { PolicyService } from "./policy.js";
 
 export interface Ctx {
   /** True when the calling request started before the last reset (gate.ts); such a request must not write. */
@@ -26,14 +27,19 @@ export interface Ctx {
   log: Log;
   delivery: Delivery;
   laneD: LaneDHooks;
+  /** The user's installed field-policy document (Phase 1): every read, grant and Tier 0 prefix is evaluated against it. */
+  policy: PolicyService;
 }
 
-export function writeMeta(ctx: Ctx, author: string, payload: unknown): WriteMeta {
+/** What the write helpers below and the PolicyService need from the context (the policy service is built before the rest). */
+export type WriteCtx = Pick<Ctx, "stale" | "repo" | "log" | "clock">;
+
+export function writeMeta(ctx: WriteCtx, author: string, payload: unknown): WriteMeta {
   return { author, sig: sha256Hex(canonicalJson(payload)), at: ctx.clock.nowIso() };
 }
 
 /** Refuse any write from a request that a reset has overtaken (same answer as "does not exist"). */
-export function assertFresh(ctx: Ctx): void {
+export function assertFresh(ctx: WriteCtx): void {
   if (ctx.stale()) fail("NOT_FOUND");
 }
 
@@ -43,7 +49,7 @@ export function assertFresh(ctx: Ctx): void {
  * succeeded, so an HTTP success always means the record is in git. The repo's own rules (e.g. the 2 KB note file)
  * are the authority; its WorkspaceErrors (MISSING_FIELD, SCOPE_DENIED) pass through unchanged.
  */
-export async function persistStrict<T>(ctx: Ctx, what: string, actor: string, fn: (repo: MemoryRepo) => Promise<T>): Promise<T> {
+export async function persistStrict<T>(ctx: WriteCtx, what: string, actor: string, fn: (repo: MemoryRepo) => Promise<T>): Promise<T> {
   assertFresh(ctx);
   try {
     return await fn(ctx.repo());

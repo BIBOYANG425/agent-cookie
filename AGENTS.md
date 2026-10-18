@@ -17,7 +17,7 @@
 | 线 | 拥有的目录（只改这些） |
 |---|---|
 | A · 核心与工作台（Claude Code，Bo 的会话） | `packages/contract` `apps/workspace` |
-| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `apps/workspace-fake` `skills/agent-cookie` |
+| B · 通道与个人 agent（Codex A，Cyrus 的） | `packages/sdk` `packages/cli` `packages/mcp` `apps/channel-photon` `skills/agent-cookie` |
 | C · 演示面与验收（Codex B，Bo 的） | `apps/console` `examples/blueprint` `skills/add-agent-cookie` `packages/rules` `packages/memory-repo` `fixtures` `tests/acceptance` `docs` |
 | D · 登录与支付（Devin，Bo 的，P1） | `packages/auth` `packages/pay` `packages/ucp` `apps/unlock` |
 
@@ -26,7 +26,7 @@
 - 所有线只通过 `packages/sdk` 调工作台；不直接碰 SQLite，不直接碰 git 记忆库。`tests/acceptance` 只打 HTTP。
 - D 线对工作台的接口：`signHandshake`、`signTapRequest`、`authorizePayment` 三个函数，`POST /personal/unlock`、`GET /.well-known/agent-cookie-jwks.json` 两个端点，由 A 线在契约和 `apps/workspace/src/laneD.ts` 里预留（每个工作台实例一份 hooks，`AGENT_COOKIE_JAR_KEK` 与 `AGENT_COOKIE_UNLOCK_SECRET` 同时设置才启用）；`packages/ucp` 通过契约的 `UcpApi` 接入。D 线分支在 P0 验收（A01–A12、A17、A18、A22）全绿前不合并进 main。
 - 每条线一个分支（`lane-a` / `lane-b` / `lane-c` / `lane-d`），只往自己的目录提交。合并到 `main` 由人做。
-- H0–1 只有 A 线写业务代码。B、C 先用 `fixtures/` 和 A 线提供的假工作台开工。
+- H0–1 只有 A 线写业务代码。B、C 先用 `fixtures/` 和 A 线提供的假工作台开工。（`apps/workspace-fake` 已于 2026-10-18 退役：唯一的工作台是 `apps/workspace`，演示和 B/C 的测试都用它的 demo 模式：`AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture`，钥匙在 `fixtures/dev-keys.json`。）
 
 ## 硬规则（来自设计，不要绕）
 

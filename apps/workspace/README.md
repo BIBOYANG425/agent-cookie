@@ -13,6 +13,12 @@ AGENT_COOKIE_DEMO=1 AGENT_COOKIE_TEST=1 pnpm --filter @agent-cookie/workspace st
 pnpm --filter @agent-cookie/workspace test
 ```
 
+Visa Acceptance sandbox smoke (opt-in, needs the three `VISA_ACCEPTANCE_*` variables, `VISA_ACCEPTANCE_TEST_INSTRUMENT` (a TMS
+test payment-instrument id) and network access to `apitest.cybersource.com`): `pnpm --filter @agent-cookie/workspace smoke:visa`
+authorizes $1.00 and reverses it, printing statuses and ids only. Exit 0 pass, 1 a check failed, 2 could not run (variable or
+network missing). The request shapes were written offline and have not been run against the sandbox yet; see
+`packages/pay/README.md`.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `4310` | always binds 127.0.0.1 |
@@ -29,6 +35,9 @@ pnpm --filter @agent-cookie/workspace test
 | `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only`: lane B's fallback, first-person statements only |
 | `DREAMING_INTERVAL_MS` | `300000` | how often Dreaming runs (demo: `30000`); `0` = never scheduled, `POST /owner/dreaming/run` still works |
 | `LEARN_TIMEOUT_MS` | `30000` | a learner call that takes longer is abandoned and logged |
+| `AGENT_COOKIE_PAY` | `off` | lane D's payment stage (A21): an accepted UCP quote's price is authorized once, within budget (checked before the address is read), from the card's `payment_method` token reference; merchants see the result only. The UCP adapter passes the store no payment, so after complete the authorization is reversed and the result says no hold remains (`payment.reverse`). `fake`: `@agent-cookie/pay`'s fake provider. `visa`: its Visa Acceptance provider, sandbox only; the card's `payment_method` is `tms_<TMS payment-instrument id>`. The provider receives the shipping address as the billing address for the authorization; this is the workspace acting for the user toward its own payment provider, logged by field name (`payment.authorize` reason `tap=none billto=shipping_address`, or `billto=none` when nothing was sent), never a merchant release, so no receipt is written for it. Stripe is not wired. Independent of the jar. |
+| `VISA_ACCEPTANCE_MERCHANT_ID`, `VISA_ACCEPTANCE_KEY_ID`, `VISA_ACCEPTANCE_SHARED_SECRET` | unset | required with `AGENT_COOKIE_PAY=visa` (startup fails naming the missing ones; values are never printed). The shared secret is the base64 REST shared-secret key. |
+| `VISA_ACCEPTANCE_HOST` | `apitest.cybersource.com` | anything else is refused: the Visa Acceptance sandbox only, production is out of scope |
 
 ## Keys
 
@@ -36,6 +45,7 @@ pnpm --filter @agent-cookie/workspace test
   merchant. Callers read the key from `AGENT_COOKIE_KEY`.
 - Without demo/test mode the workspace mints an owner key once and writes it to `data/owner.key` (mode 0600). It never prints keys.
 - Merchants self-register: `POST /agents/register {name, category:"shoe", capabilities, callbackUrl?|chatEndpoint?}` → the key is shown once.
+- Company assistants register the same way with `category:"assistant"` (no `callbackUrl`/`chatEndpoint`); the key opens nothing about the user until the owner approves a consent link.
 - Registering a personal agent needs the owner key, because a personal agent reads the whole card.
 
 ## Seed and data sources
@@ -49,7 +59,7 @@ pnpm --filter @agent-cookie/workspace test
 
 ## Behaviour in one screen
 
-- `GET /me` → `{agentId, category, role}`. Roles: personal, merchant, owner.
+- `GET /me` → `{agentId, category, role}`. Roles: personal, merchant, owner, assistant.
 - `POST /personal/intents {kind:"trail_shoes", public:{budget:"120"}, text}` → UCP catalog through `UcpApi`, filtered to USD, ships to US,
   available, within budget, and a size option matching the effective shoe_size under a strict men's EU↔US table (EU 42 = US 8.5;
   a US 9 is never quoted as EU 42). Pinned rehearsal variants (`fixtures/ucp/pinned.json`) come first when they pass every filter;
@@ -57,15 +67,50 @@ pnpm --filter @agent-cookie/workspace test
   a quote. Intent `public` values (budget, deadline, shoe_size…) override the card for that intent. Registered merchants with that capability are introduced too
   (`callbackUrl` → `{type:"introduce", sessionId, handshake, intent}`; `chatEndpoint` → Tier 0 text `{session_id, message}` + receipt).
 - `GET /personal/intents/:id/quotes?wait=ms` long-polls up to 20 s. Prices are integer cents; `etaDate` is `null` when unknown.
+- `GET /personal/intents/:id/events` pushes the same quotes as server-sent events (contract `events.ts`): stored quotes
+  first, each new one the moment it is committed (SSE `id` = the quote's seq, `Last-Event-ID` resumes), then `complete`
+  or `expired`; heartbeat comments every 15 s; closed after 60 s and at once on demo reset. The long-poll stays as the fallback.
 - `POST /personal/quotes/:id/accept` → `AcceptResult`. UCP: cart → checkout → read `shipping_address` with purpose `checkout`
   (receipt) → destination → complete. `handoff` with `continueUrl` when the store needs the buyer (requires_escalation, or a
   sign-in-required refusal at complete — the recorded stores answer that way); `ordered` when completed; `failed` (sold out,
   upstream) and `blocked` (policy, expired, revoked) as they are. Upstream text is shown without local paths.
 - `GET /agent/fields?sessionId=&fields=&purpose=`: auto fields with a live grant; purpose fields only after the user accepted this
   merchant's quote; names outside the table → `SCOPE_DENIED`; denials never name fields; every purpose release writes a receipt.
+  Auto fields are receipted too, under purpose `handshake` (field names, session, intent, policy id; git before the values, whatever
+  purpose the merchant declared), and so is the workspace's own read of the card when it searches for a UCP store (one `handshake`
+  receipt per store session and intent, naming the card fields the search used), which is what the funnel's `questionsSkipped` sums.
+  A repeat is not receipted again when the session's newest `handshake` receipt named the same field set, for the same intent and
+  policy, less than an hour ago on the workspace clock (`services/receipts.ts`, the rule assistant context reads follow); every read is still logged, counts and names only.
 - Notes are per (merchant, user, key), ≤ 2 KB; another merchant and a missing key get the same 404.
 - `POST /demo/reset` (owner key + `AGENT_COOKIE_DEMO=1`): wipes SQLite, reseeds, resets the memory repo; session IDs stay the same.
 - `POST /test/clock {offsetMs}` (`AGENT_COOKIE_TEST=1`): shifts the workspace clock.
+
+## Company assistants (bring-your-own-agent)
+
+An assistant (Manus, Dots, Muse) asks `POST /assistant/link` (201 pending, or 200 with its pending link; `url` =
+`<AGENT_COOKIE_URL>/owner/links/<id>`) and polls `GET /assistant/link/:id` (own link only, else 404). Only the owner decides:
+`GET /owner/links`, `POST /owner/links/:id/approve|decline` (no body needed); a link is single use and lives 10 minutes (then
+`expired`; deciding it again → 409 `LINK_NOT_PENDING`). Approval derives the assistant's pairwise session like a merchant's and
+issues one grant: purpose `assist`, stage `introduced`, 30 days, its `fields` the `auto.assistant` list at approval (for display);
+`POST /personal/grants/:id/revoke` ends it. Without a live grant every assistant call below is 403 `SCOPE_DENIED` (never
+linked), `GRANT_REVOKED` or `GRANT_EXPIRED`. `GET /assistant/context` is decided at read time by the installed document: the
+card's values for `auto.assistant` (a field the owner adds is served on the next read, a removed one stops at once), the rest as
+`unknown`, `write.assistant` as `writable`; no provenance, no candidates, and never `shipping_address` or `payment_method`
+(refused in code whatever the document says). A read that serves values writes an `assist` receipt (field names), except when
+the session's last `assist` receipt named the same fields under the same policy less than an hour ago.
+
+`POST /assistant/contributions {field, value, basis?, evidence?: {conversationId, snippet}}` is the merchant write path under
+`write.assistant`. `stated` requires evidence (an opaque conversation id and the user's own words, 1–200 characters, no contact
+or payment data; else 422) and is stored as stated: while the assistant holds a live grant the merge trusts it like the user's
+own agents (`Store.trustedStatedAgentIds` = personal agents + assistants with a live assist grant, passed as
+`MergeOptions.personalAgentIds` to `mergeCard`, `regenerateCard`, `forgetContributions` and Dreaming), so a second assistant
+reads it on its first context call; revoking the grant regenerates the card and CARD.md at once and the values fall back to
+candidates, a new approved link restores them. `observed` stays a candidate until a second independent source; `inferred` and
+fields outside `write.assistant` are the assistant's own record; the address and token → 403. With its key an assistant also
+uses `POST /personal/intents` (its agentId = `createdBy`), quotes, events and accept for **its own intents only** (anything else
+is the same 404), and `POST /personal/observations` (Dreaming learns from them as the assistant, `stated` written as `observed`,
+only while linked). The store gets the address at checkout and payment at the payment stage as for the user's own agents.
+`GET /assistant/stats` counts its own intents; funnel rows carry `createdBy` and `questionsSkipped`.
 
 ## Learning (B49)
 

@@ -137,3 +137,30 @@ AGENT_COOKIE_A23_TEST=1 AGENT_COOKIE_ISOLATED_PROBE=1 \
 **只运行上面指定的文件**，不要带着该 URL 运行整个历史套件。测试结束保留独立记忆库和提交供检查，afterAll 只关闭测试 callback，不另做 reset。重跑会新增新的 Synthetic 文件与提交，建议每次新建专用数据目录和记忆库。
 
 `memory-interop-safety.test.ts` 的 5 项离线测试覆盖显式 opt-in、保护端口、配置错误不回显凭据、根 wiki 解析和路径逃逸拒绝，无后台访问。2026-10-17 在专用 `127.0.0.1:4332` 实测两文件共 **7 passed**（5 safety + A23(c,d)，2.97 秒），类型检查通过。运行使用隔离 runtime `/private/tmp/agent-cookie-c21-runtime-o056ei5h` 与记忆库 `/private/tmp/agent-cookie-a23-auto-memory-vuee0ba0`；该 runtime 包含本轮未提交的 C memory 修复及同步地址后的 seed，不能归因于未修改的 main。无钥匙日志保存在 `/private/tmp/agent-cookie-a23-results-Yz0j2c/stdout.log`（临时本机证据）。这证明 Synthetic 普通文件与工作台读写／重置互操作，**不证明真实 Claude stock skill 的安装、写入或跨会话回读**。
+
+## A32 助理之间的流失（churn）· 自启专用工作台
+
+`a32-churn.test.ts` 是 `docs/bring-your-own-agent-plan.md` §3 提议的 A32（尚待人加入 `docs/plan.md` §2）。它是本目录“不启动工作台”规则的唯一例外：`a32-workspace.ts` 以子进程启动真实的 `apps/workspace`（其自带 tsx 运行 `src/server.ts`），监听随机空闲的 `127.0.0.1` 端口，使用全新临时数据目录（SQLite 与 git 记忆库）、仓库 `fixtures/` 的 Sample 种子和 `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture` 录制回放，结束时停止进程并删除目录。测试只通过 HTTP 与它交互，不导入工作台代码，不读 SQLite 或 git，也不重置任何其他实例。它**不需要** `AGENT_COOKIE_URL` 或 `AGENT_COOKIE_KEY`：owner 钥匙按 agentId 与角色从 `fixtures/dev-keys.json` 读取，新注册的钥匙只留在内存中。前提是已在仓库根目录执行 `pnpm install`，`apps/workspace/node_modules/.bin/tsx` 已存在。
+
+```sh
+cd tests/acceptance
+node node_modules/vitest/vitest.mjs run --config vitest.config.mjs a32-churn.test.ts
+```
+
+只运行这个文件。不设 `AGENT_COOKIE_URL` 时，其他历史文件在导入时就会失败。
+
+步骤与断言：
+
+1. 助理 A 注册；owner 批准前读 context 得 403 SCOPE_DENIED。A 请求 link，owner 批准。A 的首次 context 含种子值 `lang`、`tone`、`shoe_size`，不含地址或支付令牌（字段名和值都没有），也不含 `sources`。
+2. A 以 `stated` 加 evidence 写入 `shoe_size`（与种子不同的值）和 `pref.brand`，然后建 intent，接受一条 UCP fixture 回放报价（商店 B）。回执里有 A 会话的 `assist`；该 intent 恰好有两条 `handshake` 回执，每个报价的 UCP 商店会话一条（其一是 B），各自列出搜索用到的卡片字段 `lang`、`shoe_size`、`pref.brand`（预算由请求自己给出，不算读卡）；以及 B 会话对该 intent 的唯一一条 `checkout`（`shipping_address`）。
+3. 助理 C 注册、link、owner 批准。**C 的首次 context 带有 A 写入的两个值**，且不含 A 的 evidence 原话或 conversationId。
+4. 商店 D 不走协议：注册为 `shoe`，带唯一 capability 和本测试的 loopback `callbackUrl`。C 的 intent 带 `kind` 提示（HTTP 路由接受已 link 助理传 `kind`；SDK 的 `find()` 自 `311db00` 起也能传，但本目录只打 HTTP）。D 收到 `introduce` 后读 handshake 与 auto 字段，读到的 `shoe_size` 是 A 写入的值；accept 前按 `checkout` 读地址得 403 PURPOSE_MISMATCH，此时 D 的会话没有任何回执列出 `shipping_address`，只有 auto 读取留下的一条 `handshake` 回执（`shoe_size`、`lang`）。D 报价，C 接受（`handoff`），D 收到 `accepted` 后按 `checkout` 读到 Sample 地址，读 `payment_method` 得 403 SCOPE_DENIED。
+5. 回执恰好涉及五个会话：A、C（`assist`）；两次搜索都报价的两个 UCP 商店（`handshake`，按商家成对的会话，两个 intent 共用；其中 B 还有 `checkout`）；D（`handshake` 与唯一一条 `checkout`）。带地址的回执只有 `checkout`，且只发给 B 或 D；没有任何回执包含 `payment_method`。
+6. Funnel 的两行 `createdBy` 分别为 A 和 C；`questionsSkipped` 恰为 A 的 7（2 × [`lang`, `shoe_size`, `pref.brand`] + `shipping_address`）和 C 的 9（同样的 2 × 3 + D 的 `shoe_size`、`lang` + `shipping_address`），且等于该 intent 回执字段数之和。各自的 `/assistant/stats` 与之一致。
+7. C 读 A 的 intent 报价、接受 A 的另一条报价，均得 404 NOT_FOUND。
+8. owner 撤销 A 的 assist grant 后，A 的 context 得 403 GRANT_REVOKED。C 的下一次 context 不再有 `pref.brand`（回到 `unknown`），`shoe_size` 回到种子值。
+9. 所有发给助理和商家的响应（含 D 收到的 callback）都不出现 `payment_method` 这个字段名；地址片段只出现在 D 的 checkout 读取里。
+
+计划 §3 写的是“`questionsSkipped` ≥ 每个 intent 的 auto 字段数”。本测试按任务要求断言 ≥ 1，因为商家读 auto 字段（callback 商家和 UCP 代理都一样）不写回执，这两个 intent 的 `questionsSkipped` 只算 checkout 地址这 1 项。
+
+2026-10-18 在本机连续运行 3 次，均为 **1 passed**（每次约 4 秒）。运行基于当时的工作树，包含 A 线尚未提交的改动：带 evidence 的 stated 写入上卡、撤销后重新生成卡片（`apps/workspace/src/services/assistant.ts`、`card.ts`、`sessions.ts`）。另做了一次变异检查：把 A 的写入改成 `observed` 后，第 3 步按预期失败（`C's first context read carries A's stated values`）。

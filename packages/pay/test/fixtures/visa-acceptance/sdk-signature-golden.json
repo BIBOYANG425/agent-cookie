@@ -1,0 +1,46 @@
+{
+  "_provenance": "Computed offline by Visa's official Node SDK, cybersource-rest-client 0.0.84 (npm), installed in a temporary directory outside this repository (npm i cybersource-rest-client@0.0.84) and never added to it. Outputs are the SDK's own: Signature = src/authentication/http/HTTPSigToken.js getToken(merchantConfig, logger, date) (which calls SignatureParameterGenerator.getSignatureParameter), Digest = Constants.SIGNATURE_ALGORITHAM (\"SHA-256=\") + src/authentication/payloadDigest/DigestGenerator.js generateDigest(merchantConfig, logger), exactly as src/ApiClient.js builds its digest header, with a MerchantConfig (authenticationType http_signature) given the inputs below. No network, not a sandbox call: the Visa Acceptance sandbox is not available to this project.",
+  "_dummyCredentials": "DUMMY credentials, not real and not secret: merchantId and keyId are placeholders, and sharedSecret is the base64 of the 32 ASCII bytes 0123456789abcdef0123456789abcdef. The bodies hold Sample values only (no card data).",
+  "sdk": {
+    "package": "cybersource-rest-client",
+    "version": "0.0.84"
+  },
+  "credentials": {
+    "host": "apitest.cybersource.com",
+    "merchantId": "testrest",
+    "keyId": "08c94330-f618-42a3-b09d-e1e43be5efda",
+    "sharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    "sharedSecretAscii": "0123456789abcdef0123456789abcdef"
+  },
+  "date": "Sun, 18 Oct 2026 12:00:00 GMT",
+  "cases": [
+    {
+      "name": "authorization",
+      "method": "POST",
+      "path": "/pts/v2/payments",
+      "body": "{\"clientReferenceInformation\":{\"code\":\"pa_golden_0001\"},\"processingInformation\":{\"capture\":false},\"paymentInformation\":{\"paymentInstrument\":{\"id\":\"AB6A54B982A6FCB6E05341588E0A0D5C\"}},\"orderInformation\":{\"amountDetails\":{\"totalAmount\":\"124.50\",\"currency\":\"USD\"},\"billTo\":{\"firstName\":\"Sample\",\"lastName\":\"User Example\",\"address1\":\"1 Market St\",\"locality\":\"San Francisco\",\"administrativeArea\":\"CA\",\"postalCode\":\"94105\",\"country\":\"US\",\"email\":\"sample.user@example.com\"}}}",
+      "sdkOutput": {
+        "Signature": "keyid=\"08c94330-f618-42a3-b09d-e1e43be5efda\", algorithm=\"HmacSHA256\", headers=\"host date request-target digest v-c-merchant-id\", signature=\"MbceH59w3TF5OCBrA/iru8JDkpwX1lFu9SNNejq4XTU=\"",
+        "Digest": "SHA-256=5XLSXuqF/D9D2/HR6qQjNPM5ATE98Wx+LxHnK4LwNf4="
+      }
+    },
+    {
+      "name": "reversal",
+      "method": "POST",
+      "path": "/pts/v2/payments/7605731245236543104953/reversals",
+      "body": "{\"reversalInformation\":{\"amountDetails\":{\"totalAmount\":\"124.50\",\"currency\":\"USD\"}}}",
+      "sdkOutput": {
+        "Signature": "keyid=\"08c94330-f618-42a3-b09d-e1e43be5efda\", algorithm=\"HmacSHA256\", headers=\"host date request-target digest v-c-merchant-id\", signature=\"hL1e3fdLlWDtb6H9LWRF+UersHQesLWpSK2LgcQ5W/g=\"",
+        "Digest": "SHA-256=z3TH+oLVZPZ+PulFVCeFUG2AIyP+0awsEg9296bBe3I="
+      }
+    },
+    {
+      "name": "get (no body, no Digest)",
+      "method": "GET",
+      "path": "/pts/v2/payments/7605731245236543104953",
+      "sdkOutput": {
+        "Signature": "keyid=\"08c94330-f618-42a3-b09d-e1e43be5efda\", algorithm=\"HmacSHA256\", headers=\"host date request-target v-c-merchant-id\", signature=\"WC8gAUrIMYHD39Z+q8HAD5n4y9k9oLii1Y6Q/y8nvLs=\""
+      }
+    }
+  ]
+}

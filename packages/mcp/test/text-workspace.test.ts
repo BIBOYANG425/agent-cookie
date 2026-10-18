@@ -75,7 +75,12 @@ it('carries shoe, coat and gift requests through MCP and Photon into the text wo
     await mcp.callTool({name:'find_agents',arguments:{request:'a gift'}});
     const unqualified:UcpSearchQuery=searchOffers.mock.calls.at(-1)![0];
     expect(unqualified).not.toHaveProperty('maxPriceCents');expect(bodies.at(-1)).toEqual({text:'a gift'});
-    expect((await phone.getReceipts()).receipts).toEqual([]);expect(noCheckout).not.toHaveBeenCalled();
+    // No checkout happened, so no purpose release: every receipt is a UCP store's handshake read (auto fields only).
+    const receipts=(await phone.getReceipts()).receipts;
+    expect(receipts.length).toBeGreaterThan(0);
+    expect(receipts.filter(r=>r.purpose!=='handshake')).toEqual([]);
+    expect(receipts.filter(r=>r.fields.includes('shipping_address')||r.fields.includes('payment_method'))).toEqual([]);
+    expect(noCheckout).not.toHaveBeenCalled();
   } finally {
     await mcp?.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));
     await deps.close();await rm(temp,{recursive:true,force:true});

@@ -77,9 +77,27 @@ describe('local configuration', () => {
       expect(() => workspaceConfigFromEnv({ AGENT_COOKIE_KEY: key })).toThrow('AGENT_COOKIE_KEY');
     }
   });
-  it.each(['https://127.0.0.1:4310', 'http://remote.test:4310', 'http://user:password@localhost:4310',
-    'http://localhost:4310/?key=secret', 'http://localhost:4310/api', 'not-a-url'])('rejects unsupported origin %s', baseUrl => {
+  // http only on loopback (the key would otherwise cross a network in clear text); https on any host (a hosted jar).
+  it.each(['http://remote.test:4310', 'http://192.168.1.20:4310', 'http://user:password@localhost:4310',
+    'http://localhost:4310/?key=secret', 'http://localhost:4310/api', 'not-a-url',
+    'https://user:password@jar.example.com', 'https://jar.example.com/u/42', 'https://jar.example.com/?key=secret',
+    'https://jar.example.com/#key', 'ftp://jar.example.com', 'ws://localhost:4310', 'file:///tmp/workspace'])('rejects unsupported origin %s', baseUrl => {
     expect(() => new WorkspaceClient({ ...config, baseUrl })).toThrow('AGENT_COOKIE_URL');
+    expect(() => workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'sample', AGENT_COOKIE_URL: baseUrl }))
+      .toThrow('AGENT_COOKIE_URL must be an https:// origin, or http:// on loopback (127.0.0.1, localhost, [::1]), with no path, query or credentials.');
+  });
+  it.each([
+    ['http://localhost:4310', 'http://localhost:4310'], ['http://[::1]:4310/', 'http://[::1]:4310'],
+    ['https://127.0.0.1:4310', 'https://127.0.0.1:4310'], ['https://jar.example.com', 'https://jar.example.com'],
+    ['https://jar.example.com:443/', 'https://jar.example.com'], ['https://bo.jars.example:8443', 'https://bo.jars.example:8443'],
+  ])('accepts %s as the origin %s', (url, origin) => {
+    expect(workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'sample', AGENT_COOKIE_URL: url }).baseUrl).toBe(origin);
+  });
+  it('sends requests to a hosted https origin and nowhere else', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ agentId: 'a', category: 'assistant', role: 'assistant' }));
+    await new WorkspaceClient({ baseUrl: 'https://jar.example.com', key: config.key, fetch: fetcher }).getMe();
+    expect(String(fetcher.mock.calls[0][0])).toBe('https://jar.example.com/me');
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ redirect: 'manual', credentials: 'omit' });
   });
 });
 
@@ -139,7 +157,8 @@ it('labels demo data explicitly even when the SQLite backend has no sample prope
   const fetcher=vi.fn<typeof fetch>()
     .mockResolvedValueOnce(Response.json({card:[],candidates:[]}))
     .mockResolvedValueOnce(Response.json({intentId:'i'}))
-    .mockResolvedValueOnce(Response.json({quotes:[]}))
+    // find() reads the events stream first (the long-poll is its fallback): no quotes, then complete.
+    .mockResolvedValueOnce(new Response('event: complete\ndata: {"type":"complete","intentId":"i"}\n\n',{headers:{'content-type':'text/event-stream'}}))
     .mockResolvedValueOnce(Response.json({status:'handoff',quoteId:'q',message:'Merchant notified; no link available.'}))
     .mockResolvedValueOnce(Response.json({receipts:[]}));
   const client=new WorkspaceClient({...configFromEnv,fetch:fetcher});

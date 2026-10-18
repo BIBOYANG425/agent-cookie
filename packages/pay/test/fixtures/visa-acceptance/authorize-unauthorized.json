@@ -1,0 +1,11 @@
+{
+  "_provenance": "Written offline from the public Visa Acceptance (Cybersource) REST reference as known; NOT captured from the sandbox (the sandbox is not available to this project: this environment's network policy denies the Visa hosts and no credentials exist). Ids and codes are Sample values. Unverified items: packages/pay/src/visa.ts U4, U5, U7 (the HTTP status codes only), U8, U9. Settled against Visa's official Node SDK, cybersource-rest-client 0.0.84, offline (not a live call): U1 (the signature label is \"request-target\", without parentheses, as the SDK writes it), U2 (request targets without a trailing slash), U3 (Content-Type application/json, Accept application/hal+json) and U6 (a reversal names the RESPONSE's authorizedAmount, with the currency beside it under reversalInformation.amountDetails and no orderInformation).",
+  "response": {
+    "status": 401,
+    "body": {
+      "response": {
+        "rmsg": "Authentication Failed"
+      }
+    }
+  }
+}

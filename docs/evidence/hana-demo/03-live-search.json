@@ -1,0 +1,29 @@
+{
+  "at": "2026-10-18T17:18:39.172Z",
+  "scope": "HANA dedicated key; isolated live UCP search; synthetic request; no phone or accept",
+  "elapsedMs": 1582,
+  "intentId": "i_pcmh6ds4",
+  "sample": false,
+  "quotes": [
+    {
+      "id": "q_w5pgqsas",
+      "agentId": "ucp:brooks-trove.myshopify.com",
+      "seller": "brooks-trove.myshopify.com",
+      "title": "Cascadia 19 · Cascadia 19",
+      "price": 11300,
+      "variantId": "gid://shopify/ProductVariant/50508057870622",
+      "source": "live",
+      "etaDate": null
+    },
+    {
+      "id": "q_crj9d4bf",
+      "agentId": "ucp:black-flag-outfitters-clothing.myshopify.com",
+      "seller": "black-flag-outfitters-clothing.myshopify.com",
+      "title": "Keen Men's Wander Trail Running Shoe · Keen Men's Wander Trail Running Shoe",
+      "price": 11200,
+      "variantId": "gid://shopify/ProductVariant/49155489988835",
+      "source": "live",
+      "etaDate": null
+    }
+  ]
+}

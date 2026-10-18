@@ -4,20 +4,25 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type {
-  ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
-  Role, Session, AcceptResult,
+  ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, PaymentAuthorization,
+  Quote, Receipt, Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
+import { isExperimentArm, isFunnelStage, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
 /** Grant plus the intent it was issued under (purpose grounding needs it). */
 export interface GrantRow extends Grant { intentId?: string; createdAt: string }
 /** `kind` is the optional hint; `text` is absent only on legacy kind-only requests (see app.ts). */
-export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId: string; text?: string; query?: string; createdAt: string }
+export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId: string; conversationId?: string; text?: string; query?: string; createdAt: string }
 export type Channel = "ucp" | "callback" | "tier0";
 export interface IntentSessionRow { intentId: string; sessionId: string; agentId: string; channel: Channel }
 export type QuoteStatus = "open" | "accepted" | AcceptResult["status"];
-export interface QuoteRow extends Quote { sessionId: string; status: QuoteStatus; createdAt: string; acceptedAt?: string; result?: AcceptResult }
+/**
+ * `seq`: the store's monotonic insertion sequence (shared with grants, contributions and receipts), set on every row
+ * read back and by insertQuote. Internal: the events stream sends it as the SSE id; it is never part of a Quote body.
+ */
+export interface QuoteRow extends Quote { sessionId: string; status: QuoteStatus; createdAt: string; acceptedAt?: string; result?: AcceptResult; seq?: number }
 export interface NoteRow extends Note { sessionId: string }
 export interface ReceiptRow extends Receipt { userId: string }
 /** Contributions may carry an unknown field name when a merchant tried to write one (A11: stored inferred, never on the card). */
@@ -27,6 +32,24 @@ export type StoredContribution = Omit<Contribution, "field"> & { field: Field | 
  * it waits in process memory (services/observations.ts).
  */
 export interface ObservationBatchRow { agentId: string; conversationId: string; userId: string; channel: string; turnsSeen: number; firstAt: string; lastAt: string }
+/** Phase 5 merchant stats: counts over one agent_id, plus the (intent created, quote created) pairs for the median. */
+export interface MerchantCounts { sessions: number; returningSessions: number; quotes: number; accepted: number; quoteTimes: Array<{ intentAt: string; quoteAt: string }> }
+/** Phase 4 experiment: one intent that carries an arm, with its first accept time if it has one. */
+export interface ArmRow { intentId: string; arm: ExperimentArm; createdAt: string; acceptedAt?: string }
+/**
+ * A consent link (bring-your-own-agent): an assistant asked the owner for a pairwise session. `status` is what was
+ * decided; "expired" is never stored, it is computed against the clock (LinkService). `sessionId` is set on approval.
+ */
+export interface LinkRow { id: string; agentId: string; status: "pending" | "approved" | "declined"; createdAt: string; expiresAt: string; decidedAt?: string; sessionId?: string }
+/**
+ * Lane D payment (A21): an authorization with the two references that never leave the workspace — the provider's
+ * (capture) and the card's payment_method token reference. Same shape as @agent-cookie/pay's InternalAuthorization.
+ */
+export interface PaymentAuthorizationRow extends PaymentAuthorization {
+  providerRef: string; paymentMethodRef: string; agentId: string;
+  /** v12: integer cents the provider's response authorized (what a reversal releases); absent on older rows. */
+  authorizedAmount?: number;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -36,10 +59,10 @@ CREATE TABLE IF NOT EXISTS keys (key_hash TEXT PRIMARY KEY, agent_id TEXT NOT NU
 CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE (user_id, agent_id));
 CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, intent_id TEXT, fields TEXT NOT NULL, purpose TEXT NOT NULL,
-  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL);
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT, stage TEXT);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
-  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT);
+  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT, arm TEXT, conversation_id TEXT);
 CREATE TABLE IF NOT EXISTS intent_sessions (intent_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, channel TEXT NOT NULL,
   PRIMARY KEY (intent_id, session_id));
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL,
@@ -57,11 +80,16 @@ CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
   updated_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY (agent_id, user_id, key));
 CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, fields TEXT NOT NULL,
-  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL);
+  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL, intent_id TEXT, policy_id TEXT);
 CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, event TEXT NOT NULL, actor TEXT NOT NULL,
   object TEXT NOT NULL, result TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, status INTEGER NOT NULL,
   body TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scope, key));
+CREATE TABLE IF NOT EXISTS payment_authorizations (id TEXT PRIMARY KEY, quote_id TEXT NOT NULL UNIQUE, session_id TEXT, amount INTEGER,
+  currency TEXT, status TEXT NOT NULL, provider_ref TEXT, payment_method_ref TEXT, agent_id TEXT, created_at TEXT, reserved_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+  decided_at TEXT, session_id TEXT);
+CREATE INDEX IF NOT EXISTS links_agent ON links (agent_id, created_at);
 `;
 
 /** Columns added after the first schema, applied to existing databases (CREATE TABLE IF NOT EXISTS never alters). */
@@ -74,11 +102,23 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 6, table: "contributions", column: "archived_at", ddl: "ALTER TABLE contributions ADD COLUMN archived_at TEXT" },
   { version: 6, table: "activity", column: "kind", ddl: "ALTER TABLE activity ADD COLUMN kind TEXT" },
   { version: 6, table: "activity", column: "stats", ddl: "ALTER TABLE activity ADD COLUMN stats TEXT" },
+  { version: 7, table: "receipts", column: "intent_id", ddl: "ALTER TABLE receipts ADD COLUMN intent_id TEXT" },
+  { version: 8, table: "grants", column: "policy_id", ddl: "ALTER TABLE grants ADD COLUMN policy_id TEXT" },
+  { version: 8, table: "receipts", column: "policy_id", ddl: "ALTER TABLE receipts ADD COLUMN policy_id TEXT" },
+  { version: 9, table: "grants", column: "stage", ddl: "ALTER TABLE grants ADD COLUMN stage TEXT" },
+  { version: 10, table: "intents", column: "arm", ddl: "ALTER TABLE intents ADD COLUMN arm TEXT" },
+  // v11 (lane D, A21): payment_authorizations is a new TABLE, not a column: SCHEMA's CREATE TABLE IF NOT EXISTS adds it
+  // to an older database on open, so there is no ALTER here; the version bump records that the database has it.
+  // v12 (lane D): the amount the provider's response authorized — a reversal must name it, not the requested amount.
+  { version: 12, table: "payment_authorizations", column: "authorized_amount", ddl: "ALTER TABLE payment_authorizations ADD COLUMN authorized_amount INTEGER" },
+  // v13 (bring-your-own-agent): `links` (consent links of company assistants) is a new TABLE, added by SCHEMA's
+  // CREATE TABLE IF NOT EXISTS like v11; the bump records that the database has it.
+  { version: 14, table: "intents", column: "conversation_id", ddl: "ALTER TABLE intents ADD COLUMN conversation_id TEXT" },
 ];
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 14;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
-  "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
+  "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations", "links"] as const;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : String(v));
@@ -96,6 +136,8 @@ function toGrant(r: Row): GrantRow {
     purpose: String(r.purpose), expiresAt: String(r.expires_at), createdAt: String(r.created_at) };
   if (r.revoked_at) g.revokedAt = String(r.revoked_at);
   if (r.intent_id) g.intentId = String(r.intent_id);
+  if (r.policy_id) g.policyId = String(r.policy_id);
+  if (isFunnelStage(r.stage)) g.stage = r.stage;
   return g;
 }
 function toIntent(r: Row): IntentRow {
@@ -104,12 +146,14 @@ function toIntent(r: Row): IntentRow {
   if (r.kind) i.kind = String(r.kind);
   if (r.text) i.text = String(r.text);
   if (r.query) i.query = String(r.query);
+  if (r.conversation_id) i.conversationId = String(r.conversation_id);
+  if (isExperimentArm(r.arm)) i.arm = r.arm;
   return i;
 }
 function toQuote(r: Row): QuoteRow {
   const q: QuoteRow = { id: String(r.id), intentId: String(r.intent_id), agentId: String(r.agent_id), sessionId: String(r.session_id),
     text: String(r.text), price: Number(r.price), currency: "USD", etaDate: s(r.eta_date) ?? null, status: r.status as QuoteStatus,
-    createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource };
+    createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource, seq: Number(r.seq) };
   for (const [k, col] of [["etaText", "eta_text"], ["title", "title"], ["seller", "seller"], ["variantId", "variant_id"],
     ["checkoutUrl", "checkout_url"], ["acceptedAt", "accepted_at"], ["sizeNote", "size_note"]] as const) {
     const v = s(r[col]);
@@ -129,11 +173,37 @@ function toContribution(r: Row): StoredContribution {
   if (r.evidence) c.evidence = JSON.parse(String(r.evidence)) as ContributionEvidence;
   return c;
 }
+function toActivity(r: Row): ActivityEvent {
+  const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
+    result: String(r.result), reason: String(r.reason) };
+  if (r.kind === "dreaming" || r.kind === "search" || r.kind === "rank") e.kind = r.kind;
+  if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
+  return e;
+}
 function toReceipt(r: Row): ReceiptRow {
   const x: ReceiptRow = { id: String(r.id), userId: String(r.user_id), sessionId: String(r.session_id), agentId: String(r.agent_id),
     fields: JSON.parse(String(r.fields)) as Field[], purpose: String(r.purpose), createdAt: String(r.created_at) };
   if (r.amount !== null && r.amount !== undefined) x.amount = Number(r.amount);
+  if (r.intent_id) x.intentId = String(r.intent_id);
+  if (r.policy_id) x.policyId = String(r.policy_id);
   return x;
+}
+const PAYMENT_STATUSES: ReadonlyArray<PaymentAuthorization["status"]> = ["authorized", "declined", "used", "reversed"];
+function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
+  const status = PAYMENT_STATUSES.find((x) => x === r.status);
+  if (!status) return undefined;
+  const row: PaymentAuthorizationRow = { id: String(r.id), sessionId: String(r.session_id), quoteId: String(r.quote_id), amount: Number(r.amount), currency: "USD",
+    status, createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
+  if (r.authorized_amount !== null && r.authorized_amount !== undefined) row.authorizedAmount = Number(r.authorized_amount);
+  return row;
+}
+const LINK_STATUSES: ReadonlyArray<LinkRow["status"]> = ["pending", "approved", "declined"];
+function toLink(r: Row): LinkRow {
+  const l: LinkRow = { id: String(r.id), agentId: String(r.agent_id), status: LINK_STATUSES.find((x) => x === r.status) ?? "declined",
+    createdAt: String(r.created_at), expiresAt: String(r.expires_at) };
+  if (r.decided_at) l.decidedAt = String(r.decided_at);
+  if (r.session_id) l.sessionId = String(r.session_id);
+  return l;
 }
 function toNote(r: Row): NoteRow {
   return { agentId: String(r.agent_id), userId: String(r.user_id), key: String(r.key), sessionId: String(r.session_id), value: String(r.value),
@@ -315,6 +385,20 @@ export class Store {
   personalAgentIds(): string[] {
     return (this.db.prepare("SELECT agent_id FROM agents WHERE category = 'personal' ORDER BY agent_id").all() as Row[]).map((r) => String(r.agent_id));
   }
+  /**
+   * agentIds whose "stated" contributions the merge trusts on a single source (MergeOptions.personalAgentIds): the user's
+   * own agents, then every company assistant holding a live assist grant at `now` — purpose "assist" (services/assistant.ts
+   * ASSIST_PURPOSE), no intent, not revoked, expiring after `now`. An assistant whose grant was revoked or expired drops
+   * out, and its stated values count like learned ones until a new approved link puts it back.
+   */
+  trustedStatedAgentIds(now: string): string[] {
+    const nowMs = Date.parse(now);
+    const rows = this.db.prepare(`SELECT s.agent_id AS agent_id, g.expires_at AS expires_at FROM grants g
+      JOIN sessions s ON s.session_id = g.session_id JOIN agents a ON a.agent_id = s.agent_id
+      WHERE a.category = 'assistant' AND g.purpose = 'assist' AND g.intent_id IS NULL AND g.revoked_at IS NULL`).all() as Row[];
+    const linked = new Set(rows.filter((r) => Date.parse(String(r.expires_at)) > nowMs).map((r) => String(r.agent_id)));
+    return [...this.personalAgentIds(), ...[...linked].sort()];
+  }
 
   // ---- keys
   insertKey(k: KeyRow): void {
@@ -348,9 +432,9 @@ export class Store {
 
   // ---- grants
   insertGrant(g: GrantRow): void {
-    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
-      g.expiresAt, g.revokedAt ?? null, this.next());
+    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq, policy_id, stage)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
+      g.expiresAt, g.revokedAt ?? null, this.next(), g.policyId ?? null, g.stage ?? null);
   }
   grant(id: string): GrantRow | undefined {
     const r = this.db.prepare("SELECT * FROM grants WHERE id = ?").get(id) as Row | undefined;
@@ -379,8 +463,27 @@ export class Store {
 
   // ---- intents
   insertIntent(i: IntentRow): void {
-    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt);
+    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at, arm, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt, i.arm ?? null, i.conversationId ?? null);
+  }
+  /** The user's intents created by one agent (a personal agent or an assistant), newest first. Assistant stats only. */
+  intentsCreatedBy(userId: string, agentId: string): IntentRow[] {
+    return (this.db.prepare("SELECT * FROM intents WHERE user_id = ? AND agent_id = ? ORDER BY created_at DESC, rowid DESC").all(userId, agentId) as Row[])
+      .map(toIntent);
+  }
+  /** Phase 4: the user's intents that carry an arm, oldest first, each with its FIRST accept time (an intent may see two accepts). */
+  armRows(userId: string): ArmRow[] {
+    const rows = this.db.prepare(`SELECT i.id, i.arm, i.created_at, MIN(q.accepted_at) AS accepted_at FROM intents i
+      LEFT JOIN quotes q ON q.intent_id = i.id AND q.accepted_at IS NOT NULL
+      WHERE i.user_id = ? AND i.arm IS NOT NULL GROUP BY i.id ORDER BY i.created_at, i.rowid`).all(userId) as Row[];
+    const out: ArmRow[] = [];
+    for (const r of rows) {
+      if (!isExperimentArm(r.arm)) continue;
+      const x: ArmRow = { intentId: String(r.id), arm: r.arm, createdAt: String(r.created_at) };
+      if (r.accepted_at) x.acceptedAt = String(r.accepted_at);
+      out.push(x);
+    }
+    return out;
   }
   intent(id: string): IntentRow | undefined {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Row | undefined;
@@ -398,11 +501,15 @@ export class Store {
   }
 
   // ---- quotes
-  insertQuote(q: QuoteRow): void {
+  /** Inserts the row and sets `q.seq` to the sequence it was stored under. */
+  insertQuote(q: QuoteRow): number {
+    const seq = this.next();
     this.exec(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
       checkout_url, status, created_at, accepted_at, result, seq, source, size_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
         q.seller ?? null, q.variantId ?? null, q.checkoutUrl ?? null, q.status, q.createdAt, q.acceptedAt ?? null,
-        q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live", q.sizeNote ?? null);
+        q.result ? JSON.stringify(q.result) : null, seq, q.source ?? "live", q.sizeNote ?? null);
+    q.seq = seq;
+    return seq;
   }
   quote(id: string): QuoteRow | undefined {
     const r = this.db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as Row | undefined;
@@ -416,6 +523,35 @@ export class Store {
   }
   setQuoteResult(id: string, result: AcceptResult): void {
     this.exec("UPDATE quotes SET status = ?, result = ? WHERE id = ?", result.status, JSON.stringify(result), id);
+  }
+  /** Phase 3: one seller's history over this user's intents (counts only; "blocked" accepts are the user's doing and not failures). */
+  sellerStats(agentId: string, sellerDomain: string): SellerStats {
+    const r = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM intent_sessions WHERE agent_id = ?) AS intents,
+        COUNT(*) AS quotes,
+        COALESCE(SUM(CASE WHEN accepted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS accepted,
+        COALESCE(SUM(CASE WHEN status = 'ordered' THEN 1 ELSE 0 END), 0) AS ordered,
+        COALESCE(SUM(CASE WHEN status = 'handoff' THEN 1 ELSE 0 END), 0) AS handoff,
+        COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed
+      FROM quotes WHERE agent_id = ?`).get(agentId, agentId) as Row;
+    return { sellerDomain, intents: Number(r.intents), quotes: Number(r.quotes), accepted: Number(r.accepted), ordered: Number(r.ordered),
+      handoff: Number(r.handoff), failed: Number(r.failed) };
+  }
+  /**
+   * Phase 5: one merchant's own counts — its sessions, those introduced to more than one intent, its quotes and the
+   * accepted ones, and when each quote came relative to its intent. Every clause is keyed by this agent_id alone.
+   */
+  merchantCounts(agentId: string): MerchantCounts {
+    const r = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM sessions WHERE agent_id = ?) AS sessions,
+        (SELECT COUNT(*) FROM (SELECT x.session_id FROM intent_sessions x JOIN sessions s ON s.session_id = x.session_id
+          WHERE s.agent_id = ? GROUP BY x.session_id HAVING COUNT(*) > 1)) AS returning_sessions,
+        (SELECT COUNT(*) FROM quotes WHERE agent_id = ?) AS quotes,
+        (SELECT COUNT(*) FROM quotes WHERE agent_id = ? AND accepted_at IS NOT NULL) AS accepted`).get(agentId, agentId, agentId, agentId) as Row;
+    const times = this.db.prepare(`SELECT i.created_at AS intent_at, q.created_at AS quote_at FROM quotes q JOIN intents i ON i.id = q.intent_id
+      WHERE q.agent_id = ? ORDER BY q.seq`).all(agentId) as Row[];
+    return { sessions: Number(r.sessions), returningSessions: Number(r.returning_sessions), quotes: Number(r.quotes), accepted: Number(r.accepted),
+      quoteTimes: times.map((t) => ({ intentAt: String(t.intent_at), quoteAt: String(t.quote_at) })) };
   }
   /** Purpose grounding: has the user accepted a quote by this agent, on this session, under this intent? */
   hasAcceptedQuote(intentId: string, sessionId: string, agentId: string): boolean {
@@ -483,14 +619,97 @@ export class Store {
 
   // ---- receipts
   insertReceipt(r: ReceiptRow): void {
-    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next());
+    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null);
+  }
+  /** The newest receipt of one session for one purpose (receipt de-duplication, services/receipts.ts). */
+  lastReceipt(sessionId: string, purpose: string): ReceiptRow | undefined {
+    const r = this.db.prepare("SELECT * FROM receipts WHERE session_id = ? AND purpose = ? ORDER BY seq DESC LIMIT 1").get(sessionId, purpose) as Row | undefined;
+    return r && toReceipt(r);
+  }
+  /** Every `fields.read` allow (field names, purpose and intent in `reason`), newest first. Policy shadow only. */
+  fieldReadEvents(limit: number): ActivityEvent[] {
+    const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' ORDER BY id DESC LIMIT ?").all(limit) as Row[];
+    return rows.map(toActivity);
   }
   receiptsForUser(userId: string, limit: number): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE user_id = ? ORDER BY seq DESC LIMIT ?").all(userId, limit) as Row[]).map(toReceipt);
   }
+  /** Receipts attributed to one intent (handshake reads, purpose releases and Tier 0 deliveries), oldest first. Funnel only. */
+  receiptsForIntent(intentId: string): ReceiptRow[] {
+    return (this.db.prepare("SELECT * FROM receipts WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toReceipt);
+  }
+  /** Every grant issued for one intent (introduction and widenings), oldest first. Funnel only. */
+  grantsForIntent(intentId: string): GrantRow[] {
+    return (this.db.prepare("SELECT * FROM grants WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toGrant);
+  }
+  /** `fields.read` allows whose reason carries `intent=<id>` (services/fields.ts), oldest first. Funnel only. */
+  fieldReadsForIntent(intentId: string): ActivityEvent[] {
+    const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' AND instr(reason, ?) > 0 ORDER BY id ASC")
+      .all(` intent=${intentId}`) as Row[];
+    return rows.map(toActivity);
+  }
+  /** The filter counts the intent's `ucp.search` event carried, if the search ran. Funnel only. */
+  searchStatsForIntent(intentId: string): SearchStats | undefined {
+    const r = this.db.prepare("SELECT stats FROM activity WHERE event = 'ucp.search' AND kind = 'search' AND object = ? ORDER BY id DESC LIMIT 1")
+      .get(intentId) as Row | undefined;
+    return r?.stats ? (JSON.parse(String(r.stats)) as SearchStats) : undefined;
+  }
   releasedPurposeFields(sessionId: string): Field[] {
-    const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0')").all(sessionId) as Row[];
+    const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0', 'handshake')").all(sessionId) as Row[];
     return [...new Set(rows.flatMap((r) => JSON.parse(String(r.fields)) as Field[]))];
+  }
+
+  // ---- payment authorizations (lane D, A21). One row per quote, ever (quote_id UNIQUE): the row is RESERVED before the
+  // provider is called and filled with its result after, so "one authorization per quote" survives a restart. A row
+  // still "reserved" after a crash keeps the quote refused (AUTHORIZATION_USED) rather than risk a second hold.
+  /** Claim the quote for authorization `id`; false when the quote already has a reservation or an authorization. */
+  reservePaymentQuote(quoteId: string, id: string, at: string): boolean {
+    return this.exec("INSERT OR IGNORE INTO payment_authorizations (id, quote_id, status, reserved_at) VALUES (?, ?, 'reserved', ?)", id, quoteId, at).changes === 1;
+  }
+  /** The provider call failed before any result: the quote may be tried again. Never removes a recorded authorization. */
+  releasePaymentQuote(quoteId: string): void {
+    this.exec("DELETE FROM payment_authorizations WHERE quote_id = ? AND status = 'reserved'", quoteId);
+  }
+  putPaymentAuthorization(a: PaymentAuthorizationRow): void {
+    this.exec(`INSERT INTO payment_authorizations (id, quote_id, session_id, amount, currency, status, provider_ref, payment_method_ref, agent_id,
+      created_at, reserved_at, authorized_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET session_id = excluded.session_id, amount = excluded.amount, currency = excluded.currency,
+        status = excluded.status, provider_ref = excluded.provider_ref, payment_method_ref = excluded.payment_method_ref,
+        agent_id = excluded.agent_id, created_at = excluded.created_at, authorized_amount = excluded.authorized_amount`,
+      a.id, a.quoteId, a.sessionId, a.amount, a.currency, a.status, a.providerRef, a.paymentMethodRef, a.agentId, a.createdAt, a.createdAt,
+      a.authorizedAmount ?? null);
+  }
+  /** A recorded authorization (a bare reservation is not one). */
+  paymentAuthorization(id: string): PaymentAuthorizationRow | undefined {
+    const r = this.db.prepare("SELECT * FROM payment_authorizations WHERE id = ? AND status <> 'reserved'").get(id) as Row | undefined;
+    return r && toPaymentAuthorization(r);
+  }
+  paymentAuthorizationForQuote(quoteId: string): PaymentAuthorizationRow | undefined {
+    const r = this.db.prepare("SELECT * FROM payment_authorizations WHERE quote_id = ? AND status <> 'reserved'").get(quoteId) as Row | undefined;
+    return r && toPaymentAuthorization(r);
+  }
+
+  // ---- consent links (bring-your-own-agent)
+  insertLink(l: LinkRow): void {
+    this.exec("INSERT INTO links (id, agent_id, status, created_at, expires_at, decided_at, session_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      l.id, l.agentId, l.status, l.createdAt, l.expiresAt, l.decidedAt ?? null, l.sessionId ?? null);
+  }
+  link(id: string): LinkRow | undefined {
+    const r = this.db.prepare("SELECT * FROM links WHERE id = ?").get(id) as Row | undefined;
+    return r && toLink(r);
+  }
+  /** Newest first. */
+  linksForAgent(agentId: string): LinkRow[] {
+    return (this.db.prepare("SELECT * FROM links WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC").all(agentId) as Row[]).map(toLink);
+  }
+  /** Newest first. */
+  links(limit: number): LinkRow[] {
+    return (this.db.prepare("SELECT * FROM links ORDER BY created_at DESC, rowid DESC LIMIT ?").all(limit) as Row[]).map(toLink);
+  }
+  /** Decide a link that is still pending; false when it was already decided (the caller answers LINK_NOT_PENDING). */
+  decideLink(id: string, status: "approved" | "declined", at: string, sessionId?: string): boolean {
+    return this.exec("UPDATE links SET status = ?, decided_at = ?, session_id = ? WHERE id = ? AND status = 'pending'",
+      status, at, sessionId ?? null, id).changes === 1;
   }
 
   // ---- activity
@@ -499,13 +718,7 @@ export class Store {
       e.object, e.result, e.reason, e.kind ?? null, e.stats ? JSON.stringify(e.stats) : null);
   }
   activity(limit: number): ActivityEvent[] {
-    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((r) => {
-      const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
-        result: String(r.result), reason: String(r.reason) };
-      if (r.kind === "dreaming") e.kind = "dreaming";
-      if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
-      return e;
-    });
+    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map(toActivity);
   }
 
   // ---- idempotency

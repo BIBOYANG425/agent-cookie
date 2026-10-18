@@ -163,6 +163,192 @@ describe('server SDK bridge', () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
+  it('reads policy and funnel over HTTP with the server key, forwarding only a normalized funnel query', async () => {
+    const upstream: string[] = [];
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      upstream.push(`${init?.method} ${String(input)}`);
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      expect(init?.body).toBeUndefined();
+      return String(input).includes('/owner/funnel') ? json({ rows: [], sample: false, generatedAt: '2026-10-17T20:00:00.000Z' })
+        : json({ policy: {}, policyId: 'a1b2c3d4e5f6', source: 'default' });
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http, sample: true });
+    expect(JSON.parse((await send('/personal/policy')).text)).toEqual({ policy: {}, policyId: 'a1b2c3d4e5f6', source: 'default', sample: true });
+    for (const path of ['/owner/funnel?limit=50', '/owner/funnel', '/owner/funnel?since=2026-10-17T00:00:00.000Z&limit=1000']) {
+      expect((await send(path)).status).toBe(200);
+    }
+    expect(upstream).toEqual(['GET http://127.0.0.1:4310/personal/policy', 'GET http://127.0.0.1:4310/owner/funnel?limit=50',
+      'GET http://127.0.0.1:4310/owner/funnel', 'GET http://127.0.0.1:4310/owner/funnel?limit=1000&since=2026-10-17T00%3A00%3A00.000Z']);
+    for (const path of ['/owner/funnel?limit=0', '/owner/funnel?limit=1001', '/owner/funnel?limit=5e1', '/owner/funnel?limit=50&limit=50',
+      '/owner/funnel?since=yesterday', '/owner/funnel?key=x', '/owner/funnel?limit=50?x=1', '/owner/funnel/x', '/personal/policy?x=1']) {
+      expect((await send(path)).status).toBe(404);
+    }
+    for (const [path, method] of [['/owner/funnel', 'POST'], ['/personal/policy', 'POST'], ['/personal/policy/shadow', 'GET'],
+      ['/personal/policy/shadow', 'PUT'], ['/personal/policy', 'DELETE']]) {
+      expect((await send(path, method, {}, method === 'GET' ? undefined : {})).status).toBe(404);
+    }
+    expect(http).toHaveBeenCalledTimes(4);
+  });
+
+  it('reads /owner/experiments over HTTP with the server key at its exact path only, refusing any query', async () => {
+    const upstream: string[] = [];
+    const report = { experiment: 'ranking', arms: { control: { n: 0, accepted: 0, rate: 0, wilson95: [0, 1] },
+      treatment: { n: 0, accepted: 0, rate: 0, wilson95: [0, 1] } }, sample: false, generatedAt: '2026-10-17T20:00:00.000Z' };
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      upstream.push(`${init?.method} ${String(input)}`);
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe('manual');
+      return json(report);
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http, sample: true });
+    const ok = await send('/owner/experiments');
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.text)).toEqual({ ...report, sample: true });
+    expect(ok.text).not.toContain(key);
+    for (const path of ['/owner/experiments?', '/owner/experiments?x=1', '/owner/experiments?limit=50', '/owner/experiments?since=2026-10-17',
+      '/owner/experiments/', '/owner/experiments/ranking', '/owner/experiments%3Fx=1', '/owner/Experiments']) {
+      expect((await send(path)).status).toBe(404);
+    }
+    for (const method of ['POST', 'PUT', 'DELETE']) expect((await send('/owner/experiments', method, {}, {})).status).toBe(404);
+    expect(upstream).toEqual(['GET http://127.0.0.1:4310/owner/experiments']);
+    const missingKey = await start({ key: () => undefined, sdk: Promise.resolve(undefined), fetcher: http });
+    expect(await missingKey('/owner/experiments')).toEqual({ status: 503, text: '{"error":{"code":"CONSOLE_KEY_MISSING"}}' });
+    const personal = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => ({ ...owner, role: 'personal' }) })), fetcher: http });
+    expect((await personal('/owner/experiments')).status).toBe(403);
+    expect(http).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards policy installs and shadow runs as JSON, passing 422 floor violations but no other server message', async () => {
+    const document = { v: 1, auto: { shoe: ['lang'] } };
+    const violations = 'auto.personal missing; auto.retail missing';
+    const bodies: unknown[] = [];
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+      if (String(input).endsWith('/personal/policy/shadow')) return json({ candidateId: 'c', currentId: 'd', changed: [], unchanged: 0 });
+      if (bodies.length === 1) return json({ error: { code: 'MISSING_FIELD', message: `${violations}\u0000` } }, 422);
+      return json({ error: { code: 'SCOPE_DENIED', message: key } }, 403);
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http });
+    expect(await send('/personal/policy', 'PUT', {}, document)).toEqual({ status: 422,
+      text: JSON.stringify({ error: { code: 'MISSING_FIELD', message: `${violations} ` } }) });
+    expect(await send('/personal/policy', 'PUT', {}, document)).toEqual({ status: 403, text: '{"error":{"code":"SCOPE_DENIED"}}' });
+    expect((await send('/personal/policy/shadow', 'POST', {}, { policy: document })).status).toBe(200);
+    expect(bodies).toEqual([document, document, { policy: document }]);
+    expect(http.mock.calls.map(([input, init]) => `${init?.method} ${String(input)}`)).toEqual(['PUT http://127.0.0.1:4310/personal/policy',
+      'PUT http://127.0.0.1:4310/personal/policy', 'POST http://127.0.0.1:4310/personal/policy/shadow']);
+    for (const body of [[document], 'text', null]) expect((await send('/personal/policy', 'PUT', {}, body)).status).toBe(400);
+    for (const body of [document, { policy: document, extra: true }, { policy: [document] }, {}]) {
+      expect((await send('/personal/policy/shadow', 'POST', {}, body)).status).toBe(400);
+    }
+    expect((await send('/personal/policy', 'PUT', { 'Content-Type': 'text/plain' }, document)).status).toBe(400);
+    expect((await send('/personal/policy', 'PUT', {}, { ...document, pad: 'x'.repeat(16384) })).status).toBe(413);
+    expect(http).toHaveBeenCalledTimes(3);
+  });
+
+  it('passes no 422 message through on routes other than the policy writes', async () => {
+    const http = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/me') ? json(owner)
+      : json({ error: { code: 'MISSING_FIELD', message: 'value-like text' } }, 422));
+    const send = await start({ key: () => key, sdk: Promise.resolve(undefined), fetcher: http });
+    expect(await send('/owner/funnel?limit=50')).toEqual({ status: 422, text: '{"error":{"code":"MISSING_FIELD"}}' });
+    expect(await send('/personal/policy')).toEqual({ status: 422, text: '{"error":{"code":"MISSING_FIELD"}}' });
+  });
+
+  it('lists consent links at the exact path only: SDK first (a bare array wrapped as { links }), HTTP when the method is missing', async () => {
+    const link = { id: 'l_1', agentId: 'a_1', agentName: 'Sample · Assistant', status: 'pending',
+      createdAt: '2026-10-18T09:00:00.000Z', expiresAt: '2026-10-18T09:10:00.000Z' };
+    const listLinks = vi.fn(async () => [link]);
+    const sdkHttp = vi.fn<typeof fetch>();
+    const viaSdk = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner, listLinks })), fetcher: sdkHttp, sample: true });
+    expect(JSON.parse((await viaSdk('/owner/links')).text)).toEqual({ links: [link], sample: true });
+    expect(listLinks).toHaveBeenCalledOnce();
+    expect(sdkHttp).not.toHaveBeenCalled();
+
+    const upstream: string[] = [];
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      upstream.push(`${init?.method} ${String(input)}`);
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe('manual');
+      return json({ links: [link] });
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http });
+    const ok = await send('/owner/links');
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.text)).toEqual({ links: [link] });
+    expect(ok.text).not.toContain(key);
+    for (const path of ['/owner/links?', '/owner/links?status=pending', '/owner/links/', '/owner/Links', '/owner/links/l_1', '/owner/link']) {
+      expect((await send(path)).status).toBe(404);
+    }
+    for (const method of ['POST', 'PUT', 'DELETE']) expect((await send('/owner/links', method, {}, {})).status).toBe(404);
+    expect(upstream).toEqual(['GET http://127.0.0.1:4310/owner/links']);
+    const personal = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => ({ ...owner, role: 'personal' }), listLinks })), fetcher: http });
+    expect((await personal('/owner/links')).status).toBe(403);
+    expect(listLinks).toHaveBeenCalledOnce();
+  });
+
+  it('approves and declines a link over its exact path with no body, after the owner check, passing a 409 as its code only', async () => {
+    const decided = (id: string, status: string) => ({ id, agentId: 'a_1', agentName: 'Sample · Assistant', status,
+      createdAt: '2026-10-18T09:00:00.000Z', expiresAt: '2026-10-18T09:10:00.000Z', decidedAt: '2026-10-18T09:01:00.000Z' });
+    const upstream: string[] = [];
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/me')) return json(owner);
+      upstream.push(`${init?.method} ${url}`);
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe(`Bearer ${key}`);
+      expect(headers.get('Content-Type')).toBeNull();
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe('manual');
+      if (url.includes('/taken/')) return json({ error: { code: 'LINK_NOT_PENDING', message: `already decided ${key}` } }, 409);
+      return json(decided(decodeURIComponent(url.split('/')[5]!), url.endsWith('/approve') ? 'approved' : 'declined'));
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(undefined), fetcher: http });
+    expect(JSON.parse((await send('/owner/links/l%2F1/approve', 'POST')).text)).toEqual(decided('l/1', 'approved'));
+    expect(JSON.parse((await send('/owner/links/l_2/decline', 'POST')).text)).toEqual(decided('l_2', 'declined'));
+    expect(await send('/owner/links/taken/approve', 'POST')).toEqual({ status: 409, text: '{"error":{"code":"LINK_NOT_PENDING"}}' });
+    expect(upstream).toEqual(['POST http://127.0.0.1:4310/owner/links/l%2F1/approve', 'POST http://127.0.0.1:4310/owner/links/l_2/decline',
+      'POST http://127.0.0.1:4310/owner/links/taken/approve']);
+
+    // A body is refused before anything goes upstream; so is every near-miss path or method.
+    expect((await send('/owner/links/l_3/approve', 'POST', {}, {})).status).toBe(400);
+    expect((await send('/owner/links/l_3/decline', 'POST', { 'Content-Type': 'text/plain' }, 'x')).status).toBe(400);
+    for (const path of ['/owner/links//approve', '/owner/links/l_3/approve/', '/owner/links/l_3/approve?next=1', '/owner/links/l_3/revoke',
+      '/owner/links/l_3/Approve', '/owner/links/%00/approve', '/owner/links/%E0%A4%A/approve', `/owner/links/${'x'.repeat(257)}/approve`,
+      '/owner/links/a/b/approve', '/owner/links/approve']) {
+      expect((await send(path, 'POST')).status).toBe(404);
+    }
+    for (const method of ['GET', 'PUT', 'DELETE']) expect((await send('/owner/links/l_3/approve', method)).status).toBe(404);
+    expect(upstream).toHaveLength(3);
+
+    const missing = await start({ key: () => undefined, sdk: Promise.resolve(undefined), fetcher: http });
+    expect(await missing('/owner/links/l_3/approve', 'POST')).toEqual({ status: 503, text: '{"error":{"code":"CONSOLE_KEY_MISSING"}}' });
+    const personal = await start({ key: () => key, sdk: Promise.resolve(undefined),
+      fetcher: vi.fn<typeof fetch>(async (input) => String(input).endsWith('/me') ? json({ ...owner, role: 'personal' }) : http(input)) });
+    expect(await personal('/owner/links/l_3/approve', 'POST')).toEqual({ status: 403, text: '{"error":{"code":"CONSOLE_OWNER_REQUIRED"}}' });
+    expect(upstream).toHaveLength(3);
+  });
+
+  it('uses the SDK link decisions when installed, with the decoded id, and never retries a rejection through HTTP', async () => {
+    const calls: string[] = [];
+    const approveLink = vi.fn(async (id: string) => { calls.push(`approve:${id}`); return { id, status: 'approved' }; });
+    const declineLink = vi.fn(async (id: string) => {
+      calls.push(`decline:${id}`);
+      throw Object.assign(new Error(key), { status: 409, code: 'LINK_NOT_PENDING' });
+    });
+    const http = vi.fn<typeof fetch>();
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner, approveLink, declineLink })), fetcher: http });
+    expect(JSON.parse((await send('/owner/links/l%201/approve', 'POST')).text)).toEqual({ id: 'l 1', status: 'approved' });
+    expect(await send('/owner/links/l_2/decline', 'POST')).toEqual({ status: 409, text: '{"error":{"code":"LINK_NOT_PENDING"}}' });
+    expect((await send('/owner/links/l_3/approve', 'POST', {}, { force: true })).status).toBe(400);
+    expect(calls).toEqual(['approve:l 1', 'decline:l_2']);
+    expect(http).not.toHaveBeenCalled();
+    const personal = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => ({ ...owner, role: 'personal' }), approveLink })) });
+    expect((await personal('/owner/links/l_4/approve', 'POST')).status).toBe(403);
+    expect(approveLink).toHaveBeenCalledOnce();
+  });
+
   it('rejects cross-site access, rebinding hosts, missing marker and non-allowlisted paths before SDK calls', async () => {
     const factory = vi.fn(() => ({ getMe: async () => owner }));
     const send = await start({ key: () => key, sdk: Promise.resolve(factory) });
@@ -174,6 +360,7 @@ describe('server SDK bridge', () => {
     for (const path of ['/personal/intents', '/demo/reset?next=https://untrusted.example', '/personal/grants/%00/revoke']) {
       expect((await send(path, 'POST')).status).toBe(404);
     }
+    expect((await send('/owner/links/l_1/approve', 'POST', { Origin: 'https://untrusted.example' })).status).toBe(403);
     expect(factory).not.toHaveBeenCalled();
   });
 });

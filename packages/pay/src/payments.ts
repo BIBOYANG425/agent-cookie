@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AuthorizePayment, PaymentAuthorization } from "./contract.js";
+import type { AuthorizePayment, PaymentAuthorization, ReversePayment } from "./contract.js";
 import { LaneError } from "./contract.js";
 import type { PaymentProvider } from "./providers.js";
 
@@ -13,6 +13,8 @@ export interface PaymentContext {
 
 export interface PaymentReceipt {
   sessionId: string;
+  /** The accepted quote the authorization is for (the workspace attributes the receipt to its intent). */
+  quoteId: string;
   agentId: string;
   fields: ["payment_method"];
   purpose: "payment";
@@ -23,6 +25,11 @@ export interface InternalAuthorization extends PaymentAuthorization {
   providerRef: string;
   paymentMethodRef: string;
   agentId: string;
+  /**
+   * Integer cents the provider's response authorized (the requested amount when the response does not say). What a
+   * reversal releases. Internal like providerRef: never in the public result. Absent on rows written before it existed.
+   */
+  authorizedAmount?: number;
 }
 
 export interface PaymentStore {
@@ -60,9 +67,10 @@ export function createPayments({
 }): {
   authorizePayment: AuthorizePayment;
   usePayment: (input: { authorizationId: string; agentId: string }) => Promise<PaymentAuthorization>;
+  reverseAuthorization: ReversePayment;
   get: (id: string) => PaymentAuthorization | undefined;
 } {
-  const authorizePayment: AuthorizePayment = async ({ sessionId, quoteId, amount, currency }) => {
+  const authorizePayment: AuthorizePayment = async ({ sessionId, quoteId, amount, currency, billTo }) => {
     const context = await getContext({ sessionId, quoteId });
     if (!context) throw new LaneError("NOT_FOUND");
     if (context.quoteStatus !== "accepted" || context.quoteAgentId !== context.sessionAgentId) {
@@ -74,13 +82,14 @@ export function createPayments({
     if (store.findByQuote(quoteId)) throw new LaneError("AUTHORIZATION_USED");
     const id = newId();
     if (!store.reserveQuote(quoteId, id)) throw new LaneError("AUTHORIZATION_USED");
-    let authorization: { providerRef: string; status: "authorized" | "declined" };
+    let authorization: { providerRef: string; status: "authorized" | "declined"; authorizedAmount?: number };
     try {
       authorization = await provider.authorize({
         amount,
         currency,
         paymentMethodRef: context.paymentMethodRef,
         idempotencyKey: id,
+        ...(billTo ? { billTo } : {}),
       });
     } catch {
       store.releaseQuote(quoteId);
@@ -97,20 +106,42 @@ export function createPayments({
       providerRef: authorization.providerRef,
       paymentMethodRef: context.paymentMethodRef,
       agentId: context.quoteAgentId,
+      ...(authorization.status === "authorized" ? { authorizedAmount: authorization.authorizedAmount ?? amount } : {}),
     };
     store.put(record);
 
     if (record.status === "authorized") {
-      await onReceipt?.({
-        sessionId,
-        agentId: context.quoteAgentId,
-        fields: ["payment_method"],
-        purpose: "payment",
-        amount,
-      });
+      try {
+        await onReceipt?.({
+          sessionId,
+          quoteId,
+          agentId: context.quoteAgentId,
+          fields: ["payment_method"],
+          purpose: "payment",
+          amount,
+        });
+      } catch {
+        // No authorization stands without its receipt: undo the hold (best effort), mark the record reversed when the
+        // provider confirmed, and fail the call. A failed or missing reversal leaves the record authorized, so the
+        // caller can see that a hold may remain. The receipt hook's own error is dropped (it may carry paths).
+        if (provider.reverse) {
+          try {
+            await provider.reverse(record.providerRef, record.authorizedAmount ?? record.amount, record.currency);
+            record.status = "reversed";
+            store.put(record);
+          } catch {
+            // best effort
+          }
+        }
+        throw new LaneError("UPSTREAM_ERROR", "the payment receipt could not be written; the authorization was not kept");
+      }
     }
     return publicAuthorization(record);
   };
+
+  // Reversals in flight, by authorization id: concurrent calls share one provider call, and a capture cannot start
+  // while one runs. The record turns `reversed` only once the provider confirmed.
+  const reversing = new Map<string, ReturnType<ReversePayment>>();
 
   const usePayment = async ({
     authorizationId,
@@ -123,12 +154,14 @@ export function createPayments({
     if (!record) throw new LaneError("NOT_FOUND");
     if (record.agentId !== agentId) throw new LaneError("SCOPE_DENIED");
     if (record.status === "declined") throw new LaneError("UPSTREAM_ERROR");
-    if (record.status === "used") throw new LaneError("AUTHORIZATION_USED");
+    // A reversed authorization holds nothing any more: it is spent like a used one.
+    if (record.status === "used" || record.status === "reversed") throw new LaneError("AUTHORIZATION_USED");
+    if (reversing.has(record.id)) throw new LaneError("AUTHORIZATION_USED");
 
     record.status = "used";
     store.put(record);
     try {
-      await provider.capture(record.providerRef);
+      await provider.capture(record.providerRef, record.amount, record.currency);
     } catch {
       record.status = "authorized";
       store.put(record);
@@ -137,9 +170,41 @@ export function createPayments({
     return publicAuthorization(record);
   };
 
+  /**
+   * Release the hold of an authorization nobody took (the store did not consume the delegated payment). Calls
+   * `provider.reverse` once when the provider has it and marks the record `reversed`; a provider without it leaves the
+   * record `authorized` and says so (`not_supported`). A provider failure leaves the record `authorized` and throws
+   * UPSTREAM_ERROR with no provider text. Reversing a reversed authorization returns it without a provider call.
+   */
+  const reverseAuthorization: ReversePayment = ({ authorizationId }) => {
+    const running = reversing.get(authorizationId);
+    if (running) return running;
+    const run = (async () => {
+      const record = store.get(authorizationId);
+      if (!record) throw new LaneError("NOT_FOUND");
+      if (record.status === "reversed") return { authorization: publicAuthorization(record), outcome: "reversed" as const };
+      // Captured: a refund, not a reversal. Declined: nothing is held.
+      if (record.status === "used") throw new LaneError("AUTHORIZATION_USED");
+      if (record.status !== "authorized") throw new LaneError("SCOPE_DENIED");
+      if (!provider.reverse) return { authorization: publicAuthorization(record), outcome: "not_supported" as const };
+      try {
+        // The amount the authorization response authorized (less than requested on a partial approval).
+        await provider.reverse(record.providerRef, record.authorizedAmount ?? record.amount, record.currency);
+      } catch {
+        throw new LaneError("UPSTREAM_ERROR");
+      }
+      record.status = "reversed";
+      store.put(record);
+      return { authorization: publicAuthorization(record), outcome: "reversed" as const };
+    })().finally(() => reversing.delete(authorizationId));
+    reversing.set(authorizationId, run);
+    return run;
+  };
+
   return {
     authorizePayment,
     usePayment,
+    reverseAuthorization,
     get: (id) => {
       const record = store.get(id);
       return record ? publicAuthorization(record) : undefined;

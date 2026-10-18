@@ -7,7 +7,7 @@
 使用 Node 22.12 以上的 22.x，在仓库根运行：
 
 ```sh
-pnpm install --ignore-scripts
+pnpm install
 pnpm --filter @agent-cookie/sdk build
 pnpm --dir apps/channel-photon typecheck
 pnpm --dir apps/channel-photon test
@@ -16,7 +16,7 @@ pnpm --dir apps/channel-photon check
 pnpm --dir apps/channel-photon demo
 ```
 
-`check` 只输出是否有效和缺失变量名，永不打印值，也不访问网络。`demo` 使用内存中的 Sample 消息，应显示 `externalCalls:0`、`outboundMessages:0`、`deliveryConfirmed:false`。它只证明消息筛选逻辑可跑，不证明 Photon 或手机已接通。
+`test` 中的 HTTP 用例（`test/runtime.test.ts`）用 `test/real-workspace.ts` 把真实工作台作为子进程启动：演示模式、`AGENT_COOKIE_UCP=fixture`、临时 SQLite 与记忆库、C 的 Sample seed，用例之间调 `POST /demo/reset`。因此安装时不要加 `--ignore-scripts`，工作台的 SQLite 原生模块需要构建；用例不访问外网、不连 4310。`check` 只输出是否有效和缺失变量名，永不打印值，也不访问网络。`demo` 使用内存中的 Sample 消息，应显示 `externalCalls:0`、`outboundMessages:0`、`deliveryConfirmed:false`。它只证明消息筛选逻辑可跑，不证明 Photon 或手机已接通。
 
 ## 真实通道验证入口
 
@@ -73,7 +73,7 @@ Socket.IO 自动重连最多 5 次，每次用持久 cursor 重新订阅；串�
 
 `SEND_OUTCOME_UNKNOWN`：先通过 Photon 按原幂等 key/消息核查外发记录。确认已发出后才可把对应 outbox 标为 sent（保留 outgoingId），明确拒绝且未发出才可恢复 ready；不确定时保持停止。异常退出留下 `.lock` 时，先确认该 PID 已不存在，再移走旧锁，保留状态文件。不要删状态文件来“修复”去重。
 
-当前联调使用 `apps/workspace` 的 SQLite 后台，监听 4310，已接真实 rules、Git memory-repo 和 D 的 UCP 录制适配器。Photon 的本地 `AGENT_COOKIE_KEY` 取自 `fixtures/dev-keys.json` 的 `sample-personal-photon` 条目，Desktop 使用不同的 `sample-personal-desktop` 条目。当前 `AGENT_COOKIE_UCP=fixture` 回放商家录制，设置 `AGENT_COOKIE_SAMPLE=1` 保留演示标识；不代表实时库存。`apps/workspace-fake` 仅作为可选内存 fallback；切换后台或重置数据后应重新搜索商品，不能复用旧报价。
+当前联调使用 `apps/workspace` 的 SQLite 后台，监听 4310，已接真实 rules、Git memory-repo 和 D 的 UCP 录制适配器。Photon 的本地 `AGENT_COOKIE_KEY` 取自 `fixtures/dev-keys.json` 的 `sample-personal-photon` 条目，Desktop 使用不同的 `sample-personal-desktop` 条目。当前 `AGENT_COOKIE_UCP=fixture` 回放商家录制，设置 `AGENT_COOKIE_SAMPLE=1` 保留演示标识；不代表实时库存。离线假工作台已于 2026-10-18 退役，不再有内存 fallback：本机后台统一是演示模式的真实工作台（`AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture pnpm workspace`，Sample key 在 `fixtures/dev-keys.json`，用 owner key 执行 `pnpm demo:reset` 重置）。重置数据后应重新搜索商品，不能复用旧报价。
 
 Demo 同时只做一个购物任务，避免另一个 MCP find 替换当前授权。Sample、未知 ETA、handoff、失败和商家警告都会出现在回复中；handoff 没有链接时明确说明，failed/blocked 带 continueUrl 时保留它。没有实际付款或真实订单。2026-10-17 切换 SQLite 后的两条回复均由 Photon 读回 delivered，测试者确认收到报价与交接链接，见 `docs/evidence/2026-10-17-imessage-sqlite.json`。这不代表真实 UCP 商家已接入。
 

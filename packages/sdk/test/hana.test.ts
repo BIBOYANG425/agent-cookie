@@ -3,6 +3,17 @@ import {createHash} from 'node:crypto';
 import {WorkspaceClient,resolveForgetPreference,type LearnedResponse} from '../src/index.js';
 import {conversationIdForChat,operationIdForMessage} from '../src/hana-identifiers.js';
 describe('HANA transport identity',()=>{
+  it('registers a dedicated personal agent using the configured owner transport',async()=>{
+    const seen:any[]=[];
+    const client=new WorkspaceClient({baseUrl:'http://127.0.0.1:4314',key:'test-owner',fetch:async(url,init)=>{
+      seen.push({url:String(url),auth:new Headers(init?.headers).get('authorization'),body:JSON.parse(String(init?.body))});
+      return Response.json({agentId:'ag_hana_test',key:'test-minted-key',category:'personal',role:'personal'}, {status:201});
+    }});
+    expect(await client.registerPersonalAgent('HANA / Marin')).toMatchObject({agentId:'ag_hana_test',role:'personal'});
+    expect(seen).toEqual([{url:'http://127.0.0.1:4314/agents/register',auth:'Bearer test-owner',body:{name:'HANA / Marin',category:'personal',capabilities:[]}}]);
+    await expect(client.registerPersonalAgent('')).rejects.toThrow();
+    expect(seen).toHaveLength(1);
+  });
   it('hashes exact trusted identifiers consistently',()=>{
     expect(conversationIdForChat('chat')).toBe(createHash('sha256').update('chat').digest('hex').slice(0,16));
     expect(operationIdForMessage('guid','find')).toBe(createHash('sha256').update('guidfind').digest('hex'));

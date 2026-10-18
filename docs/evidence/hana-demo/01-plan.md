@@ -1,6 +1,6 @@
 # HANA demo implementation plan
 
-Owner: B / Cyrus. Deadline: 2026-10-18 06:00 PDT. If step 5 is incomplete, retain/revert channel-photon and stop HANA work. Full wall-clock rehearsal and edited 4:30 film are measured separately (human confirmed).
+Owner: B / Cyrus. The human cancelled the original 2026-10-18 06:00 PDT cutoff at 10:13 PDT and explicitly authorized B to complete HANA identity and same-source integration, including the required workspace/contract changes. Keep the original channel as rollback until acceptance. Full wall-clock rehearsal and edited 4:30 film are measured separately (human confirmed).
 
 - [x] 0: Source + isolated PostgreSQL/DefaultExporter tracing, two read-only Photon subscribers; see 00-tracing.md. Search tool was called but Gemini returned 404; not a successful search/reply.
 - [x] 1a: SDK trusted SHA256 conversation/operation helpers, optional conversationId forwarding, shared unambiguous preference-field resolver; focused wire tests.
@@ -26,3 +26,5 @@ A: IntentRequest.conversationId and same-source dedup across find + observe; ded
 ## Verification and rollback
 
 Run focused SDK/Photon Vitest, HANA plugin HTTP tests, native PostgreSQL idempotency/job-count test, then package typechecks. Test failure attribution must distinguish fixture, real model, real transport, real merchant. Snapshot the isolated PostgreSQL before resets. Never reset the original workspace or original phone state. Revert cutover by stopping HANA listener and resuming the original listener at its saved cursor with original pause state. Record every stage's Git commit and env names only.
+
+Post-deadline integration: main b1e049a is being merged in isolation. Its fake workspace is removed; HANA tests will use the real isolated backend. Preserve the original one-source assertion; add persistence/invalid-id/second-conversation regressions. Provision a dedicated personal identity through owner-authorized registration, save credentials only in local env, then verify through /me before phone cutover. No fixture identity substitution.

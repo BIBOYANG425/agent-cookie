@@ -1,7 +1,14 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController, remainingSeconds } from '../src/controller';
-import type { ConsoleAdapter, ConsoleSnapshot, Contribution } from '../src/model';
+import { ActivityPanel } from '../src/ActivityPanel';
+import { GrantsPanel } from '../src/GrantsPanel';
+import type { Receipt } from '../../../packages/contract/src/types';
+import type { ActivityEvent, ConsoleAdapter, ConsoleSnapshot, Contribution } from '../src/model';
+import { ReceiptPanel } from '../src/ReceiptPanel';
+import { activityLabel, formatCents, purposeLabel, shortId } from '../src/receipts';
 
 const at = Date.parse('2026-10-17T20:00:00.000Z');
 const empty: ConsoleSnapshot = { card: { card: [], candidates: [], superseded: [] }, contributions: null,
@@ -16,7 +23,7 @@ describe('Sample adapter', () => {
     for (let i = 0; i < 4; i++) await controller.reset();
     await controller.revokeGrant('sample-grant-a');
     expect(controller.getState().data?.events.map((event) => event.event))
-      .toEqual(['撤销授权', '重置 Sample', 'Sample 已载入']);
+      .toEqual(['撤销授权', '重置 Sample', 'Sample 已载入', 'payment.reverse', 'payment.authorize']);
   });
 
   it('revokes one source locally and reset restores the current seed records', async () => {
@@ -64,6 +71,202 @@ describe('Sample adapter', () => {
     expect(after[0].status).toBe('revoked');
     expect(after[0].remainingMs).toBe(0);
     expect(after[1].status).toBe('live');
+  });
+});
+
+describe('grant stage and policy id', () => {
+  it('shows each Sample grant\'s stage and shortened policy id, marking the current document', async () => {
+    const snapshot = await createSampleAdapter(() => at).load();
+    expect(snapshot.grants.every((grant) => grant.stage === 'introduced' && grant.policyId === 'sample-policy')).toBe(true);
+    const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: true, now: at, blocked: false,
+      currentPolicyId: 'sample-policy', revoke: () => {} }));
+    expect(html).toContain('<dt>阶段</dt><dd>介绍（introduced）</dd>');
+    expect(html).toContain('<code title="sample-policy">sample-p…</code> · 当前策略');
+    expect(html.match(/<dt>阶段<\/dt>/gu)).toHaveLength(2);
+  });
+
+  it('shows the latest declared needs under the matching merchant, beside its stage and policy id', async () => {
+    const snapshot = await createSampleAdapter(() => at, undefined, undefined, undefined, { receipts: [], intents: [],
+      needs: [{ agentId: 'sample-store-a', object: '3 requested / 2 grantable / 1 denied', unavailable: ['payment_method'] }] }).load();
+    const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: true, now: at, blocked: false,
+      currentPolicyId: 'sample-policy', revoke: () => {} }));
+    expect(html.match(/最近一次申请/gu)).toHaveLength(1);
+    expect(html).toContain('3 requested / 2 grantable / 1 denied');
+    expect(html).toContain('<li class="unavailable-field">');
+    expect(html.indexOf('Sample · Storefront A')).toBeLessThan(html.indexOf('最近一次申请'));
+    expect(html.indexOf('最近一次申请')).toBeLessThan(html.indexOf('Sample · Storefront B'));
+    expect(html.match(/<dt>阶段<\/dt>/gu)).toHaveLength(2);
+    expect(html.match(/ · 当前策略/gu)).toHaveLength(2);
+  });
+
+  it('renders live grants with any stage, a 12-character id, and old grants without either', async () => {
+    const base = (await createSampleAdapter(() => at).load()).grants[0];
+    const { stage: _s, policyId: _p, ...old } = base;
+    const grants = [{ ...base, id: 'g-pay', stage: 'payment' as const, purpose: 'payment', policyId: '0123456789ab' }, { ...old, id: 'g-old' }];
+    const live = createLiveAdapter(async (path) => path.endsWith('/me') ? json({ role: 'owner' })
+      : path.endsWith('/personal/card') ? json(empty.card) : path.endsWith('/personal/grants') ? json({ grants })
+      : path.endsWith('/owner/activity') ? json({ events: [] }) : json({ error: { code: 'NOT_FOUND' } }, 404), () => at);
+    const snapshot = await live.load();
+    expect(snapshot.grants).toEqual(grants);
+    const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: false, now: at, blocked: false,
+      currentPolicyId: 'ffffffffffff', revoke: () => {} }));
+    expect(html).toContain('<dd>支付（payment）</dd>');
+    expect(html).toContain('<code title="0123456789ab">01234567…</code></dd>');
+    expect(html).not.toContain('当前策略');
+    expect(html.match(/<dd>未记录<\/dd>/gu)).toHaveLength(2);
+    const unknownStage = createLiveAdapter(async (path) => path.endsWith('/me') ? json({ role: 'owner' })
+      : path.endsWith('/personal/grants') ? json({ grants: [{ ...base, stage: 'shipped' }] })
+      : path.endsWith('/personal/card') ? json(empty.card) : json({ events: [] }), () => at);
+    await expect(unknownStage.load()).rejects.toThrow('响应格式');
+  });
+});
+
+const receipt = (over: Partial<Receipt> = {}): Receipt => ({ id: 'r_1', sessionId: 's_1', agentId: 'ucp:store.example',
+  fields: ['shipping_address'], purpose: 'checkout', createdAt: new Date(at).toISOString(), intentId: 'i_abcdefgh', policyId: 'a1b2c3d4e5f6', ...over });
+const receiptsHtml = (receipts: readonly Receipt[] | null | undefined, sample = false) => renderToStaticMarkup(createElement(ReceiptPanel, { receipts, sample }));
+const coreFetch = (extra: (path: string) => Response | undefined) => async (path: string) => path.endsWith('/me') ? json({ role: 'owner' })
+  : path.endsWith('/personal/card') ? json(empty.card) : path.endsWith('/personal/grants') ? json({ grants: [] })
+  : path.endsWith('/owner/activity') ? json({ events: [] }) : extra(path) ?? json({ error: { code: 'NOT_FOUND' } }, 404);
+/** Authored commerce receipts, labelled Sample: field names, purposes and an amount only, never a value. */
+const commerceReceipts = (now: number): Receipt[] => {
+  const secondsAgo = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+  return [
+    { id: 'sample-receipt-1', sessionId: 'sample-session-b', agentId: 'sample-store-b', fields: ['lang', 'shoe_size'], purpose: 'tier0',
+      createdAt: secondsAgo(2400), intentId: 'sample-intent-2', policyId: 'sample-policy' },
+    { id: 'sample-receipt-3', sessionId: 'sample-session-a', agentId: 'sample-store-a', fields: ['payment_method'], purpose: 'payment',
+      amount: 8999, createdAt: secondsAgo(240), intentId: 'sample-intent-3', policyId: 'sample-policy' },
+    { id: 'sample-receipt-2', sessionId: 'sample-session-a', agentId: 'sample-store-a', fields: ['shipping_address'], purpose: 'checkout',
+      createdAt: secondsAgo(250), intentId: 'sample-intent-3', policyId: 'sample-policy' },
+  ];
+};
+
+describe('receipts panel', () => {
+  it('lists the Sample presentation receipts newest first with purpose labels, a payment amount in dollars and shortened intent ids', async () => {
+    const network = vi.spyOn(globalThis, 'fetch');
+    expect((await createSampleAdapter(() => at).load()).receipts).toEqual([]);
+    const controller = new ConsoleController(createSampleAdapter(() => at, undefined, undefined, undefined,
+      { receipts: commerceReceipts(at), intents: [] }));
+    await controller.refresh();
+    const receipts = controller.getState().data!.receipts!;
+    expect(receipts.map((row) => row.purpose).sort()).toEqual(['checkout', 'payment', 'tier0']);
+    expect(receipts.filter((row) => row.amount !== undefined)).toEqual([expect.objectContaining({ purpose: 'payment', amount: 8999 })]);
+    const html = receiptsHtml(receipts, true);
+    for (const text of ['Sample · 谁因为什么用途读取了哪些字段', '<dt>用途</dt><dd>支付授权（payment）</dd>',
+      '<dt>用途</dt><dd>结账地址（checkout）</dd>', '<dt>用途</dt><dd>零接入前缀（tier0）</dd>', '<dt>授权金额</dt><dd>$89.99</dd>',
+      '<code title="sample-intent-3">…intent-3</code>', '<code title="sample-intent-2">…intent-2</code>', '<code class="field-key">payment_method</code>',
+      '<code class="field-key">shipping_address</code>', '<h3>sample-store-a</h3>', 'Sample 数据，不代表真实商家或用户。',
+      '支付授权的金额按美元显示（工作台以美分记录）。']) expect(html).toContain(text);
+    expect(html.indexOf('支付授权（payment）')).toBeLessThan(html.indexOf('结账地址（checkout）'));
+    expect(html.indexOf('结账地址（checkout）')).toBeLessThan(html.indexOf('零接入前缀（tier0）'));
+    expect(html.match(/<li class="receipt-record">/gu)).toHaveLength(3);
+    expect(html.match(/<dt>授权金额<\/dt>/gu)).toHaveLength(1);
+    // Field names only: no Sample card value appears in the receipts.
+    for (const value of ['简短', '>42<', '>zh<']) expect(html).not.toContain(value);
+    expect(network).not.toHaveBeenCalled();
+    network.mockRestore();
+  });
+
+  it('labels purposes, formats integer cents as dollars and shortens ids', () => {
+    expect(purposeLabel('handshake')).toBe('首次介绍（handshake）');
+    expect(purposeLabel('checkout')).toBe('结账地址（checkout）');
+    expect(purposeLabel('payment')).toBe('支付授权（payment）');
+    expect(purposeLabel('tier0')).toBe('零接入前缀（tier0）');
+    expect(purposeLabel('quoted')).toBe('阶段 · 报价（quoted）');
+    expect(purposeLabel('accepted')).toBe('阶段 · 接受（accepted）');
+    expect(purposeLabel('warranty')).toBe('warranty');
+    expect(purposeLabel('toString')).toBe('toString');
+    expect(formatCents(8999)).toBe('$89.99');
+    expect(formatCents(0)).toBe('$0.00');
+    expect(formatCents(5)).toBe('$0.05');
+    expect(formatCents(100)).toBe('$1.00');
+    expect(formatCents(123456789)).toBe('$1,234,567.89');
+    expect(shortId('i_abcdefgh')).toBe('i_abcdefgh');
+    expect(shortId('intent-0123456789abcdef')).toBe('…89abcdef');
+    expect(shortId('i_abc')).toBe('i_abc');
+  });
+
+  it('reads /personal/receipts live, keeping only contract keys and rejecting non-integer amounts', async () => {
+    const paths: string[] = [];
+    const rows = [receipt(), receipt({ id: 'r_2', purpose: 'payment', fields: ['payment_method'], amount: 125000,
+      createdAt: new Date(at + 1000).toISOString() }), { ...receipt({ id: 'r_3', purpose: 'accepted' }), value: 'secret-address' }];
+    const live = createLiveAdapter(async (path) => { paths.push(path); return coreFetch((p) => p.endsWith('/personal/receipts')
+      ? json({ receipts: rows, sample: false, extra: 'secret-extra' }) : undefined)(path); }, () => at);
+    const controller = new ConsoleController(live);
+    await controller.refresh();
+    const receipts = controller.getState().data!.receipts!;
+    expect(paths).toContain('/workspace-api/personal/receipts');
+    expect(JSON.stringify(receipts)).not.toContain('secret');
+    expect(receipts[0]).toEqual(receipt());
+    const html = receiptsHtml(receipts);
+    expect(html).not.toContain('Sample');
+    expect(html).toContain('<dt>授权金额</dt><dd>$1,250.00</dd>');
+    expect(html).toContain('<dt>用途</dt><dd>阶段 · 接受（accepted）</dd>');
+    expect(html).toContain('<code title="i_abcdefgh">i_abcdefgh</code>');
+    expect(html).toContain('回执只记商家、字段名、用途和金额，不含字段值。');
+    expect(html.indexOf('$1,250.00')).toBeLessThan(html.indexOf('结账地址'));
+    const load = async (body: unknown[]) => (await createLiveAdapter(coreFetch((p) => p.endsWith('/personal/receipts')
+      ? json({ receipts: body }) : undefined), () => at).load()).receipts;
+    for (const amount of [12.5, -1, '10', Number.MAX_SAFE_INTEGER + 2]) expect(await load([receipt({ amount: amount as number })])).toBeNull();
+    expect(await load([{ ...receipt(), fields: [''] }])).toBeNull();
+    expect(await load([receipt({ intentId: undefined, policyId: undefined })])).toEqual([{ id: 'r_1', sessionId: 's_1',
+      agentId: 'ucp:store.example', fields: ['shipping_address'], purpose: 'checkout', createdAt: new Date(at).toISOString() }]);
+    expect(receiptsHtml([receipt({ intentId: undefined })])).toContain('<dt>意图</dt><dd>未记录</dd>');
+    expect(receiptsHtml([receipt()])).not.toContain('授权金额');
+  });
+
+  it('degrades only this panel, labels workspace Sample data, and states the 50-row page', async () => {
+    const missing = await createLiveAdapter(coreFetch(() => undefined), () => at).load();
+    expect(missing.receipts).toBeNull();
+    expect(receiptsHtml(missing.receipts)).toContain('暂时无法读取，其他视图可继续使用。');
+    const bad = await createLiveAdapter(coreFetch((p) => p.endsWith('/personal/receipts') ? json({ receipts: [{ id: 'x' }] }) : undefined), () => at).load();
+    expect(bad.receipts).toBeNull();
+    expect(bad.grants).toEqual([]);
+    // The page labels the panel Sample when the workspace card says so (main.tsx: sample || data.sample).
+    const labelled = await createLiveAdapter(async (path) => path.endsWith('/personal/card') ? json({ ...empty.card, sample: true })
+      : coreFetch((p) => p.endsWith('/personal/receipts') ? json({ receipts: [] }) : undefined)(path), () => at).load();
+    expect(labelled).toMatchObject({ sample: true, receipts: [] });
+    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('Sample · 谁因为什么用途读取了哪些字段');
+    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('还没有读取回执');
+    expect(receiptsHtml(undefined)).toContain('读取后显示回执');
+    const full = receiptsHtml(Array.from({ length: 50 }, (_, i) => receipt({ id: `r-${i}` })));
+    expect(full).toContain('只读取最近 50 条回执');
+    expect(receiptsHtml([receipt()])).not.toContain('只读取最近');
+  });
+});
+
+describe('payment activity labels', () => {
+  const event = (over: Partial<ActivityEvent>): ActivityEvent => ({ id: 'e1', at: new Date(at).toISOString(), event: 'payment.authorize',
+    actor: 'workspace', object: 'q_1', result: 'authorized', reason: 'tap=none billto=shipping_address', ...over });
+
+  it('labels payment.authorize and payment.reverse results in Chinese and keeps the raw result beside them', () => {
+    const authorize: Record<string, string> = { authorized: '授权（authorized）', reversed: '已撤销（reversed）', OVER_BUDGET: '超预算（OVER_BUDGET）',
+      used: '已使用（used）', AUTHORIZATION_USED: '已使用（AUTHORIZATION_USED）', declined: '拒绝（declined）', SCOPE_DENIED: '拒绝（SCOPE_DENIED）',
+      UPSTREAM_ERROR: '支付提供方出错（UPSTREAM_ERROR）', SOMETHING_NEW: 'SOMETHING_NEW' };
+    for (const [result, label] of Object.entries(authorize)) {
+      expect(activityLabel(event({ result }))).toMatchObject({ title: '支付授权（payment.authorize）', result: label });
+    }
+    const reverse: Record<string, string> = { reversed: '已撤销（reversed）', not_reversed: '未撤销（not_reversed）',
+      not_supported: '不支持撤销（not_supported）', UPSTREAM_ERROR: '撤销失败（UPSTREAM_ERROR）', error: '撤销失败（error）' };
+    for (const [result, label] of Object.entries(reverse)) {
+      expect(activityLabel(event({ event: 'payment.reverse', result, reason: '' }))).toMatchObject({ title: '撤销支付授权（payment.reverse）', result: label });
+    }
+    expect(activityLabel(event({ event: 'fields.read', result: 'allow' }))).toEqual({ title: 'fields.read', result: 'allow' });
+    expect(activityLabel(event({ result: 'constructor' })).result).toBe('constructor');
+  });
+
+  it('renders the Sample authorize and reverse rows, with the tap= / billto= reason exactly as logged', async () => {
+    const snapshot = await createSampleAdapter(() => at).load();
+    const payments = snapshot.events.filter((row) => row.event.startsWith('payment.'));
+    expect(payments.map((row) => [row.event, row.result])).toEqual([['payment.reverse', 'reversed'], ['payment.authorize', 'authorized']]);
+    expect(payments.every((row) => row.actor.startsWith('Sample') && row.object.startsWith('sample-'))).toBe(true);
+    const html = renderToStaticMarkup(createElement(ActivityPanel, { data: snapshot }));
+    for (const text of ['<h3>支付授权（payment.authorize）</h3>', '<span class="activity-result">授权（authorized）</span>',
+      '<h3>撤销支付授权（payment.reverse）</h3>', '<span class="activity-result">已撤销（reversed）</span>',
+      '<dt>原因</dt><dd>tap=none billto=shipping_address</dd>', '<dt>说明</dt>', '<h3>Sample 已载入</h3>', 'Sample · workspace']) {
+      expect(html).toContain(text);
+    }
+    expect(html.match(/<dt>说明<\/dt>/gu)).toHaveLength(2);
+    expect(renderToStaticMarkup(createElement(ActivityPanel, { data: null }))).toContain('连接后显示活动');
   });
 });
 
@@ -132,8 +335,9 @@ describe('live HTTP boundary', () => {
     const live = createLiveAdapter(fetcher, () => at);
     expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
-      '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
-      '/workspace-api/personal/intents', '/workspace-api/personal/learned', '/workspace-api/personal/receipts',
+      '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/owner/experiments', '/workspace-api/owner/funnel?limit=50',
+      '/workspace-api/owner/links', '/workspace-api/personal/card', '/workspace-api/personal/grants', '/workspace-api/personal/intents', '/workspace-api/personal/learned',
+      '/workspace-api/personal/policy', '/workspace-api/personal/receipts',
     ]);
     for (const call of calls) {
       expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });

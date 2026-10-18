@@ -8,12 +8,14 @@
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "smoke:live": "tsx scripts/live-smoke.ts"
+    "smoke:live": "tsx scripts/live-smoke.ts",
+    "smoke:visa": "tsx scripts/visa-smoke.ts"
   },
   "dependencies": {
     "@agent-cookie/auth": "workspace:*",
     "@agent-cookie/contract": "workspace:*",
     "@agent-cookie/memory-repo": "workspace:*",
+    "@agent-cookie/pay": "workspace:*",
     "@agent-cookie/rules": "workspace:*",
     "@agent-cookie/ucp": "workspace:*",
     "@hono/node-server": "^1.13.7",

@@ -82,6 +82,19 @@ Photon 需要已分配的 Beta iMessage 线路、项目凭据和双方 handle。
 
 启用学习要在**工作台**本机环境显式设置 `AGENT_COOKIE_LEARN_PROVIDER=openrouter` 与 `OPENROUTER_API_KEY`，在 **Photon** 设置 `AGENT_COOKIE_LEARNING_BINDING=workspace-v1`。仅有 key 不会自动启用。流程为本地过滤 → `typesafe/jev-1.14` gate → `openai/gpt-oss-120b` 提取 → 确定性校验和合并。安静五分钟后待下一次 Dreaming 调度；演示可显式设 `DREAMING_INTERVAL_MS=30000`，不是精确五分钟响应承诺。[真实模型验证](docs/evidence/2026-10-17-gate-redesign.md)
 
+### 用 SDK 接入：助理公司、商家、自己的 agent
+
+`@agent-cookie/sdk` 是唯一的集成面（`packages/sdk/README.md` 有三段各不超过 25 行的快速开始）：助理公司用 `AssistantClient`（注册 → 申请 link → 用户在控制台/CLI 一键批准 → `context()` 得到策略允许的值 → `find`/`accept` → `remember` 带用户原话的证据）；商家用 `MerchantClient`（握手只有字段名，结账时按用途读地址，`payment_method` 永远被拒）；用户自己的 agent 用 `WorkspaceClient`。包可在仓库外安装（`pnpm --filter @agent-cookie/sdk pack:smoke` 离线验证），https 任意主机、http 仅回环，工作台而非 SDK 决定每一次放行。
+
+```sh
+pnpm --filter @agent-cookie/sdk build
+AGENT_COOKIE_URL=http://127.0.0.1:4310 AGENT_COOKIE_OWNER_KEY=ck_owner_sample node examples/assistant-sdk/main.mjs
+AGENT_COOKIE_URL=http://127.0.0.1:4310 AGENT_COOKIE_PERSONAL_KEY=ck_personal_sample node examples/merchant-sdk/main.mjs
+cd tests/acceptance && node node_modules/vitest/vitest.mjs run --config vitest.config.mjs a32-churn.test.ts
+```
+
+两个示例和 A32（两家助理公司之间的 churn：第二家助理第一次读 context 就知道第一家学到的）都对演示模式的真实工作台跑，输出只有计数、id 和字段名；数据为 Sample，UCP 报价为录制回放。设计见 `docs/bring-your-own-agent-plan.md`。
+
 ### 环境变量与端口
 
 | 变量 | 默认 / 使用者 |
@@ -114,11 +127,13 @@ Photon 需要已分配的 Beta iMessage 线路、项目凭据和双方 handle。
 | `PHOTON_TEST_SENDER` / `PHOTON_AGENT_HANDLE` | 明确允许的本人测试号码和 agent handle。 |
 | `OPENROUTER_API_KEY` | 工作台本地加载；不交给 Photon 或浏览器。 |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` / `SENTRY_TRACES_SAMPLE_RATE` | 可选 tracing/logs，未设置 DSN 时关闭；外部 Dashboard 证据待补。 |
-| `STRIPE_SECRET_KEY` | D 线测试支付库；不是当前工作台付款闭环。 |
+| `AGENT_COOKIE_PAY` | 工作台支付阶段：`off`（默认）/ `fake` / `visa`。`fake` 为 `@agent-cookie/pay` 的假 provider（演示用，如实标注）；`visa` 为 Visa Acceptance 沙盒 provider，只允许沙盒主机。Stripe 代码在 `packages/pay` 但未接线。 |
+| `VISA_ACCEPTANCE_MERCHANT_ID` / `VISA_ACCEPTANCE_KEY_ID` / `VISA_ACCEPTANCE_SHARED_SECRET` | `AGENT_COOKIE_PAY=visa` 必需；只从环境读取，不记录、不打印。截至 2026-10-18 Visa 未提供沙盒，provider 只对照官方 Node SDK 离线校验，仓库内没有任何真实调用结果。 |
+| `AGENT_COOKIE_EXPERIMENT` | `off`（默认）或 `ranking`：按 intent 分组的排序对照实验，报表见 `GET /owner/experiments`。 |
 
 高级工作台限时/重试配置见 [config.ts](apps/workspace/src/config.ts)。商家 MCP HTTP 4311 是计划项；unlock 4312 独立验证；blueprint 8000/3000 仅保留 A16 接入材料，不是当前主线服务。
 
-演示重置使用 owner 环境中的 `pnpm demo:reset`（`POST /demo/reset`），且工作台必须开启 demo。它清理 SQLite 演示状态，**只把 Git 的 `contributions/`、`notes/`、`CARD.md`、`receipts.md` 恢复到 seed**；skill 的其他文件及 `MEMORY.md` 改动保留。不要对正在聊天或录制的实例重置。稳定商家 session ID 不变。
+演示重置使用 owner 环境中的 `pnpm demo:reset`（`POST /demo/reset`），且工作台必须开启 demo。它清理 SQLite 演示状态，**只把 Git 的 `contributions/`、`notes/`、`CARD.md`、`receipts.md`、`POLICY.yaml` 恢复到 seed**；skill 的其他文件及 `MEMORY.md` 改动保留。不要对正在聊天或录制的实例重置。稳定商家 session ID 不变。
 
 ## 演示流程
 

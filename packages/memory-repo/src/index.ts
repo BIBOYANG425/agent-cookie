@@ -1,10 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  NOTE_MAX_BYTES, WorkspaceError,
+  DEFAULT_POLICY, NOTE_MAX_BYTES, WorkspaceError, canonicalPolicy, policyId, policyViolations,
   type Card, type CommitRef, type Contribution, type MemoryRepo, type MemoryRepoApi,
   type MergeOptions, type OpenMemoryRepoOptions, type RulesApi, type WriteMeta,
 } from '@agent-cookie/contract';
+// The POLICY.yaml codec is the one runtime import from rules: the seed generator and writePolicy share its writer.
+import { parsePolicyDocument, policyYamlOrigin, renderInstalledPolicyYaml } from '@agent-cookie/rules';
 import type { LearningCard, LearningContribution, LearningMergeOptions } from '@agent-cookie/rules';
 import {
   filename, metadata, ownerFromFilename, parseNotes, renderNotes, renderReceipt,
@@ -12,13 +14,13 @@ import {
 } from './codec.js';
 import {
   assertFileBoundary, assertRepository, canonicalRoot, commitFiles, exclusive, initialize,
-  optionalFile, recordFiles, restoreSeed,
+  optionalFile, recordFiles, restoreSeed, seedFile, type Marker,
 } from './storage.js';
-import type { ContributionRevocationApi, ContributionRevocationTarget, IntentHistoryApi, LearningMemoryRepo, MemoryRepoWithIntents, OpenLearningMemoryRepoOptions } from './learning-types.js';
+import type { ContributionRevocationApi, ContributionRevocationTarget, IntentHistoryApi, LearningMemoryRepo, MemoryRepoWithIntents, OpenLearningMemoryRepoOptions, PolicyFileApi } from './learning-types.js';
 import { intentFilename, parseIntent, projectIntent, renderIntent, summarizeIntent, validateLearningContribution } from './intent-history.js';
 export type { AppendIntentInput, WorkspaceIntentRecord, IntentSummary, IntentHistoryApi, MemoryRepoWithIntents } from './learning-types.js';
 export type { ContributionRevocationApi, ContributionRevocationTarget } from './learning-types.js';
-export type { LearningMemoryRepo, OpenLearningMemoryRepoOptions } from './learning-types.js';
+export type { LearningMemoryRepo, OpenLearningMemoryRepoOptions, PolicyFileApi } from './learning-types.js';
 
 export const openLearningMemoryRepo = (opts: OpenLearningMemoryRepoOptions): Promise<LearningMemoryRepo> =>
   openRepository<LearningContribution, LearningCard, LearningMergeOptions>(opts, validateLearningContribution);
@@ -27,13 +29,14 @@ export const openMemoryRepo = (opts: OpenMemoryRepoOptions): Promise<MemoryRepoW
   openRepository<Contribution, Card, MergeOptions>(opts, validateLearningContribution);
 
 type MergeInput = { readonly now: string; readonly personalAgentIds: readonly string[] };
+const POLICY_FILE = 'POLICY.yaml';
 interface StorageRules<C, K, M> {
   renderContribution(c: C): string;
   parseContributions(markdown: string, owner: Parameters<RulesApi['parseContributions']>[1]): C[];
   mergeCard(contributions: readonly C[], merge: M): K;
   renderCard(card: K, meta: Parameters<RulesApi['renderCard']>[1]): string;
 }
-type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard' | 'revokeContribution' | 'forgetContributions' | 'revokeContributions'> & IntentHistoryApi & ContributionRevocationApi & {
+type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard' | 'revokeContribution' | 'forgetContributions' | 'revokeContributions' | 'readPolicy' | 'writePolicy'> & IntentHistoryApi & ContributionRevocationApi & PolicyFileApi & {
   forgetContributions(ids: string[], merge: M, meta: WriteMeta): Promise<CommitRef>;
   revokeContributions(ids: readonly string[], revokedAt: string, merge: M, meta: WriteMeta): Promise<{card: K; commit: CommitRef}>;
   appendContribution(c: C, meta: WriteMeta): Promise<CommitRef>;
@@ -74,10 +77,7 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
   const userId = opts.userId;
   const rules = opts.rules;
   await exclusive(root, () => initialize(root, opts.seedDir, userId));
-  const perform = <T>(action: () => Promise<T>) => exclusive(root, async () => {
-    await assertRepository(root, userId);
-    return action();
-  });
+  const perform = <T>(action: (marker: Marker) => Promise<T>) => exclusive(root, async () => action(await assertRepository(root, userId)));
   const list = async (): Promise<C[]> => {
     const contributions: C[] = [];
     for (const name of await recordFiles(root, 'contributions')) {
@@ -269,6 +269,37 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
         const previous = await readFile(join(root, 'receipts.md'), 'utf8');
         const content = `${previous}${previous && !previous.endsWith('\n') ? '\n' : ''}${record}\n`;
         return commitFiles(root, new Map([['receipts.md', content]]), meta, 'Append receipt');
+      });
+    },
+    readPolicy() {
+      return perform(async (marker) => {
+        // Layout validation requires POLICY.yaml, so "absent" only guards a repo that changed under us.
+        const bytes = await optionalFile(join(root, POLICY_FILE));
+        if (bytes === undefined) return undefined;
+        const content = bytes.toString('utf8');
+        if (!Buffer.from(content, 'utf8').equals(bytes)) throw new Error('POLICY.yaml is not valid UTF-8');
+        // Seed or installed, decided by deterministic checks only:
+        //  - installed header (`# Installed field policy · …`, written by writePolicy) → installed, whatever it says;
+        //  - generated seed header (`# Generated from @agent-cookie/contract POLICY_TABLE…`) → seed;
+        //  - unmarked: byte-identical to this repo's fixtures-seed POLICY.yaml, or canonically DEFAULT_POLICY → seed;
+        //    anything else unmarked is a hand-written policy and is returned like an installed one.
+        // A returned document is exactly what the file says; the workspace validates it (policyViolations).
+        const origin = policyYamlOrigin(content);
+        if (origin === 'seed') return undefined;
+        if (origin === 'unmarked' && bytes.equals(await seedFile(root, marker, POLICY_FILE))) return undefined;
+        const doc = parsePolicyDocument(content);
+        if (origin === 'unmarked' && canonicalPolicy(doc) === canonicalPolicy(DEFAULT_POLICY)) return undefined;
+        return doc;
+      });
+    },
+    writePolicy(doc, meta) {
+      return perform(async () => {
+        metadata(meta);
+        // The workspace validates first; this keeps the repo from ever holding a document it would refuse on load.
+        const violations = policyViolations(doc);
+        if (violations.length) throw new WorkspaceError('MISSING_FIELD', violations.join('; '));
+        const content = renderInstalledPolicyYaml(doc, meta.at);
+        return commitFiles(root, new Map([[POLICY_FILE, content]]), meta, `Install policy ${policyId(doc)}`);
       });
     },
     resetToSeed() { return exclusive(root, () => restoreSeed(root, userId)); },

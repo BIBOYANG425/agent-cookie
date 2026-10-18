@@ -1,6 +1,6 @@
 # HANA demo reproduction and cutover
 
-Status: preparation, **not a live HANA phone acceptance**. Original channel-photon is the fallback. Hard cutoff is 2026-10-18 06:00 PDT: without three completed rehearsals, stop HANA work and retain the original agent. Full elapsed rehearsal time includes the real five-minute idle wait; the edited film budget is 4:30.
+Status: preparation, **not a live HANA phone acceptance**. Original channel-photon is the fallback. The human cancelled the original 06:00 PDT cutoff on 2026-10-18 at 10:13 PDT; continue HANA acceptance with the original agent retained as rollback. Full elapsed rehearsal time includes the real five-minute idle wait; the edited film budget is 4:30.
 
 ## Inputs an independent operator needs
 
@@ -96,4 +96,4 @@ For each actual run save redacted Photon delivery records, OpenRouter request ID
 
 ## Rollback
 
-Stop HANA and its observer gracefully. Keep their cursor/outbox/database for diagnosis. Confirm both stopped before restoring the original personal agent with its original env/state and pause state. At06:00, if Step5 is incomplete, retain this fallback and stop further HANA work. Do not replay old messages or reset the original working demo.
+Stop HANA and its observer gracefully. Keep their cursor/outbox/database for diagnosis. Confirm both stopped before restoring the original personal agent with its original env/state and pause state. The original deadline was cancelled by the human; keep this fallback until the complete HANA acceptance succeeds. Do not replay old messages or reset the original working demo.

@@ -1,27 +1,13 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
-import { POLICY_TABLE, isField, type Agent, type Contribution, type SeedAddress, type SeedUser } from '@agent-cookie/contract';
-import { rules } from '../src/index.js';
+import { isField, type Agent, type Contribution, type SeedAddress, type SeedUser } from '@agent-cookie/contract';
+import { renderPolicyYaml, rules } from '../src/index.js';
 
-// POLICY_TABLE contains nested maps and string lists. Emit YAML block collections;
-// JSON string quoting is also valid YAML and keeps special scalar values literal.
-export function renderPolicyYaml(table: Readonly<Record<string, unknown>> = POLICY_TABLE): string {
-  const mapping = (value: Readonly<Record<string, unknown>>, indent: number): string[] => Object.entries(value).flatMap(([key, item]) => {
-    const label = /^[A-Za-z_][A-Za-z0-9_.-]*$/u.test(key) ? key : JSON.stringify(key);
-    const prefix = `${' '.repeat(indent)}${label}:`;
-    if (Array.isArray(item)) {
-      if (!item.every((entry) => typeof entry === 'string')) throw new TypeError('Policy lists must contain strings');
-      return item.length === 0 ? [`${prefix} []`] : [prefix, ...item.map((entry) => `${' '.repeat(indent + 2)}- ${JSON.stringify(entry)}`)];
-    }
-    if (item !== null && typeof item === 'object') {
-      const entries = Object.keys(item);
-      return entries.length === 0 ? [`${prefix} {}`] : [prefix, ...mapping(item as Record<string, unknown>, indent + 2)];
-    }
-    throw new TypeError('Policy values must be maps or string lists');
-  });
-  return '# Generated from @agent-cookie/contract POLICY_TABLE. Sample seed.\n' + mapping(table, 0).join('\n') + '\n';
-}
+// The seed and memory-repo's writePolicy share one POLICY.yaml writer (src/policy-yaml.ts). The seed renders
+// POLICY_TABLE, which has no `v`: parsePolicyDocument reads a missing `v` as 1 (see its comment), so the committed
+// fixtures/memory/POLICY.yaml stays byte-identical and keeps passing the drift test in test/seed.test.ts.
+export { renderPolicyYaml };
 
 export async function generateSeed(options: { fixturesDir?: string; seedDir?: string } = {}): Promise<void> {
   // Sample data only. The date is injected into the rules, never taken from the clock.

@@ -1,34 +1,65 @@
 {
-  "private": true,
-  "version": "0.0.0",
+  "name": "@agent-cookie/sdk",
+  "version": "0.1.0",
+  "description": "Agent Cookie clients: a company assistant, a store's agent or the person's own agent knows the person on its first message, within their policy, with a receipt.",
+  "keywords": [
+    "agent",
+    "identity",
+    "consent",
+    "commerce",
+    "mcp",
+    "ucp",
+    "assistant"
+  ],
+  "homepage": "https://github.com/BIBOYANG425/agent-cookie/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/BIBOYANG425/agent-cookie/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BIBOYANG425/agent-cookie.git",
+    "directory": "packages/sdk"
+  },
   "type": "module",
   "engines": {
-    "node": ">=22.12 <23"
+    "node": ">=22"
   },
-  "devDependencies": {
-    "@types/node": "22.20.5",
-    "esbuild": "0.25.12",
-    "tsx": "4.23.15",
-    "typescript": "7.0.2",
-    "vitest": "2.1.9"
-  },
-  "name": "@agent-cookie/sdk",
-  "dependencies": {
-    "@agent-cookie/contract": "workspace:*"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json && node build.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./package.json": "./package.json",
     "./hana-identifiers": {
       "types": "./dist/hana-identifiers.d.ts",
       "import": "./dist/hana-identifiers.js"
     }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "pack:smoke": "node scripts/pack-smoke.mjs",
+    "publish:check": "pnpm run build && pnpm run pack:smoke && pnpm publish --dry-run --no-git-checks"
+  },
+  "devDependencies": {
+    "@agent-cookie/contract": "workspace:*",
+    "@types/node": "22.20.5",
+    "esbuild": "0.25.12",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "2.1.9"
   }
 }

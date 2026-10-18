@@ -1,7 +1,7 @@
 // Identity card: contributions → RulesApi.mergeCard. Recomputed on every read so time rules (180/365 days)
 // follow the workspace clock; cached in SQLite and written through to CARD.md.
 import {
-  allowedBases, canWrite, isField, isPrefField, purposeFields,
+  allowedBases, isField, isPrefField, purposeFields,
   type Basis, type Card, type Contribution, type ContributionEvidence, type Field, type MergeOptions,
 } from "@agent-cookie/contract";
 import type { IntentRow, StoredContribution } from "../db.js";
@@ -15,6 +15,15 @@ import { forRepo, withoutModels } from "./provenance.js";
 const PURPOSE_ANYWHERE = new Set<Field>([...purposeFields("shoe"), "shipping_address", "payment_method"]);
 export function overridable(field: string): field is Field {
   return isField(field) && !PURPOSE_ANYWHERE.has(field);
+}
+
+/**
+ * Which bases a non-personal writer may keep. A company assistant may state a fact only with the user's own words as
+ * evidence (conversationId and snippet; POST /assistant/contributions checks them); otherwise the category's bases.
+ */
+function basesFor(agent: AuthedAgent, evidence?: ContributionEvidence): readonly Basis[] {
+  if (agent.role === "assistant" && agent.category === "assistant" && evidence?.conversationId && evidence.snippet) return ["observed", "stated"];
+  return allowedBases(agent.category);
 }
 
 export class CardService {
@@ -41,7 +50,8 @@ export class CardService {
    */
   compute(userId: string, now: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field)).map(withoutModels);
-    const merged = this.ctx.rules.mergeCard(all, { now, personalAgentIds: this.ctx.store.personalAgentIds() });
+    // Stated values are trusted from the user's own agents and from assistants linked right now (db.ts trustedStatedAgentIds).
+    const merged = this.ctx.rules.mergeCard(all, { now, personalAgentIds: this.ctx.store.trustedStatedAgentIds(now) });
     // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
     const seed = this.ctx.store.seedContributions(userId);
     const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
@@ -87,7 +97,7 @@ export class CardService {
     let basis: Basis = input.basis;
     if (agent.role === "personal") {
       if (!isField(input.field)) fail("MISSING_FIELD", "unknown field");
-    } else if (!isField(input.field) || !canWrite(agent.category, input.field) || !(allowedBases(agent.category) as readonly Basis[]).includes(basis)) {
+    } else if (!isField(input.field) || !this.ctx.policy.canWrite(agent.category, input.field) || !basesFor(agent, input.evidence).includes(basis)) {
       basis = "inferred";
     }
     const c: StoredContribution = { id: newId("c"), userId, agentId: agent.agentId, field: input.field, value: input.value, basis, createdAt: this.ctx.clock.nowIso() };
@@ -148,6 +158,17 @@ export class CardService {
     if (!regenerated) await this.regenerate(actor);
   }
 
+  /**
+   * The set of trusted writers changed (an assistant's grant was revoked, or a new link approved): regenerate CARD.md
+   * and the cached card, in line with every other write, so its single-source stated values leave or return at once.
+   */
+  refresh(actor: string, userId: string): Promise<Card> {
+    return this.mutate(async () => {
+      await this.regenerate(actor);
+      return this.get(userId);
+    });
+  }
+
   /** Regenerate CARD.md once after a batch of records written with `regenerate: false`. */
   regenerateNow(actor: string): Promise<void> {
     return this.regenerate(actor);
@@ -159,6 +180,7 @@ export class CardService {
   }
 
   private mergeOptions(): MergeOptions {
-    return { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() };
+    const now = this.ctx.clock.nowIso();
+    return { now, personalAgentIds: this.ctx.store.trustedStatedAgentIds(now) };
   }
 }

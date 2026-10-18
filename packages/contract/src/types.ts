@@ -3,6 +3,8 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
+import type { ExperimentArm, FunnelStage, RankStats, SearchStats } from "./analytics.js";
+
 export type Basis = "observed" | "stated" | "inferred";
 
 /**
@@ -11,7 +13,13 @@ export type Basis = "observed" | "stated" | "inferred";
  * proxies (`ucp:<domain>`), whatever they sell. Same policy as "shoe" (policy.ts). "shoe" stays for registered
  * merchants that declared it.
  */
-export type Category = "personal" | "shoe" | "retail";
+export type Category = "personal" | "shoe" | "retail" | "assistant";
+/**
+ * "assistant" (bring-your-own-agent plan): a company-built personal assistant (Manus, Dots, Muse). It acts for the
+ * user (intents, accept, observe) through a pairwise session the OWNER approved via a consent link; it reads values
+ * by policy (auto.assistant), never provenance, never shipping_address or payment_method (the workspace hands those
+ * to the merchant at the stage that needs them). It is not the user's own agent ("personal" reads everything).
+ */
 
 /**
  * category === "personal" ? "personal" : "merchant" for registered agents.
@@ -19,7 +27,7 @@ export type Category = "personal" | "shoe" | "retail";
  * (/demo/reset additionally requires AGENT_COOKIE_DEMO=1). Owner keys are not tied to a category;
  * the fake workspace maps them from fixtures/dev-keys.json, the real one mints them at seed time.
  */
-export type Role = "personal" | "merchant" | "owner";
+export type Role = "personal" | "merchant" | "owner" | "assistant";
 
 /**
  * Learned-preference keys (2026-10-17, human direction "dynamic memory + learning from conversations"). Each is the
@@ -67,7 +75,7 @@ export function isField(x: unknown): x is Field {
 }
 
 export function roleOf(category: Category): Role {
-  return category === "personal" ? "personal" : "merchant";
+  return category === "personal" ? "personal" : category === "assistant" ? "assistant" : "merchant";
 }
 
 export interface Agent {
@@ -160,6 +168,14 @@ export interface Grant {
   purpose: string;
   expiresAt: string;
   revokedAt?: string;
+  /** Additive (Phase 1): id of the policy document the grant was issued under (policy-document.ts policyId). */
+  policyId?: string;
+  /**
+   * Additive (Phase 2): the funnel stage that issued the grant — "introduced" for the handshake grant; "quoted",
+   * "accepted", "checkout", "payment" for grants the workspace opens when the merchant reaches that stage for the
+   * intent. A stage grant's purpose is the stage name; the installed document decides which fields it opens.
+   */
+  stage?: FunnelStage;
 }
 
 /**
@@ -199,6 +215,8 @@ export interface Handshake {
  *  - kind   — optional hint, not an enum: registered merchants listing it in `capabilities` are introduced too.
  */
 export interface IntentRequest {
+  /** Opaque channel conversation id, shared with observe. Learning provenance only; never merchant input or authority. */
+  conversationId?: string;
   text: string;
   query?: string;
   public?: Record<string, string>;
@@ -339,6 +357,12 @@ export interface Intent {
   kind: string;
   public: Record<string, string>;
   expiresAt: string;
+  /**
+   * Additive (Phase 4 holdout, analytics.ts ExperimentArm): the arm the intent was assigned at creation, owner-side
+   * only. Never part of what a merchant is sent: the introduce callback builds its intent from id, kind, public and
+   * expiresAt alone.
+   */
+  arm?: ExperimentArm;
 }
 
 /**
@@ -400,6 +424,12 @@ export interface AcceptResult {
   code?: ErrorCode;
   /** Receipts written during this accept (who read which field for which purpose) — for telling the user. */
   receipts?: Receipt[];
+  /**
+   * Additive (lane D, A21): the payment authorization the workspace made for this accept, when payment is on and the
+   * card holds a payment_method token. The RESULT only (id, amount, status) — never the token or a provider reference.
+   * An authorization is not an order: `status` above still says what the store did.
+   */
+  authorization?: PaymentAuthorization;
 }
 
 export interface Receipt {
@@ -411,6 +441,10 @@ export interface Receipt {
   /** Filled by lane D's payment authorization. */
   amount?: number;
   createdAt: string;
+  /** Additive (Phase 0): the intent whose grant authorized the release; absent on legacy rows. Funnel attribution only. */
+  intentId?: string;
+  /** Additive (Phase 1): id of the policy document that allowed this release (policy-document.ts policyId). */
+  policyId?: string;
 }
 
 // ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
@@ -421,11 +455,38 @@ export interface PaymentAuthorization {
   quoteId: string;
   amount: number;
   currency: "USD";
-  status: "authorized" | "declined" | "used";
+  /**
+   * `reversed` (additive): the hold was released at the provider because the store did not take the delegated payment
+   * (today's UCP adapter passes none to complete), so nothing remains held on the user's card.
+   */
+  status: "authorized" | "declined" | "used" | "reversed";
   createdAt: string;
 }
+
+/**
+ * Additive (lane D): the billing address a payment provider may check the authorization against, given by the workspace
+ * from the address it already released for this checkout. Never sent to a merchant; never carries card data.
+ */
+export interface PaymentBillTo {
+  name?: string;
+  line1: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+  email?: string;
+}
+
 export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
-export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
+/** `billTo` is optional and additive: only a provider that checks the address (Visa Acceptance) reads it. */
+export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD"; billTo?: PaymentBillTo }) => Promise<PaymentAuthorization>;
+/**
+ * Additive (lane D): release an authorization's hold the store did not take. `outcome` says what happened: `reversed`
+ * (the provider confirmed; the authorization's status is `reversed`) or `not_supported` (the provider has no reversal;
+ * the authorization is still `authorized` and its hold may remain until it expires). A provider failure throws
+ * UPSTREAM_ERROR and leaves the authorization `authorized`.
+ */
+export type ReversePayment = (a: { authorizationId: string }) => Promise<{ authorization: PaymentAuthorization; outcome: "reversed" | "not_supported" }>;
 
 // ---- Error codes (plan §5 错误契约) ----
 
@@ -437,6 +498,7 @@ export type ErrorCode =
   | "PURPOSE_MISMATCH"       // 403
   | "NOT_FOUND"              // 404 — does not exist, or the caller may not know whether it exists
   | "IDEMPOTENCY_CONFLICT"   // 409
+  | "LINK_NOT_PENDING"       // 409 — approve/decline on a link already decided or expired
   | "MISSING_FIELD"          // 422
   | "UPSTREAM_ERROR"         // 502 — ucp / Photon / payment provider failed
   | "JAR_LOCKED"             // 403 — lane D
@@ -505,10 +567,13 @@ export interface ActivityEvent {
   object: string;
   result: string;
   reason: string;
-  /** Additive (2026-10-18): set on events the periodic Dreaming job writes; absent on request events. */
-  kind?: "dreaming";
-  /** Dreaming events only: counts, never field values. */
-  stats?: DreamingStats;
+  /**
+   * Additive (2026-10-18): "dreaming" on events the periodic Dreaming job writes; "search" on the `ucp.search` event
+   * of an intent (docs/commerce-analytics-plan.md Phase 0); absent on request events.
+   */
+  kind?: "dreaming" | "search" | "rank";
+  /** Dreaming, search and rank events only: counts, never field values. */
+  stats?: DreamingStats | SearchStats | RankStats;
 }
 
 // ---- Dreaming (2026-10-18, human direction; plan §规模与时间规则) ----
@@ -551,6 +616,8 @@ export interface DreamingRun {
 /** Wire shape of every error response. Never includes field names the caller is not allowed to know. */
 export interface ErrorBody {
   error: { code: ErrorCode; message: string };
+  /** Additive (A59, as UpstreamError.toBody sends it): UPSTREAM_ERROR only, the upstream's continue_url when it gave one. */
+  continueUrl?: string;
 }
 
 /** Response of POST /agents/register. The key is shown once; callers keep it in AGENT_COOKIE_KEY, never in chat or commits. */
@@ -561,6 +628,85 @@ export interface Registration {
   role: Role;
 }
 
+// ---- Consent link (bring-your-own-agent plan §3): how a company assistant gets its pairwise session.
+// The assistant asks for a link; the OWNER approves it (console, CLI, or the hosted gateway after a passkey tap);
+// approval creates the session and its grant (purpose "assist"). Single use, LINK_TTL_MS, never auto-approved.
+export type LinkStatus = "pending" | "approved" | "declined" | "expired";
+export const LINK_STATUSES: readonly LinkStatus[] = ["pending", "approved", "declined", "expired"];
+export const LINK_TTL_MS = 10 * 60_000;
+/** An approved link's grant lasts this long (a consumer links once, not every ten minutes); the owner can revoke it any time. */
+export const ASSISTANT_GRANT_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Owner view (GET /owner/links). */
+export interface Link {
+  id: string;
+  agentId: string;
+  agentName: string;
+  status: LinkStatus;
+  createdAt: string;
+  expiresAt: string;
+  /** When approved or declined. */
+  decidedAt?: string;
+  /** Set on approval: the assistant's pairwise session. */
+  sessionId?: string;
+}
+/** Assistant view (POST /assistant/link, GET /assistant/link/:id): never the owner's data, only the state of its own link. */
+export interface LinkView {
+  id: string;
+  status: LinkStatus;
+  /** Where the owner decides: an ABSOLUTE URL of the workspace resource (`${jar}/owner/links/${id}`); a console or gateway renders it. */
+  url: string;
+  expiresAt: string;
+  /** Present once approved. */
+  sessionId?: string;
+}
+/**
+ * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.
+ * `fields` = auto.assistant fields that have a value; `unknown` = auto.assistant fields without one (ask only when the
+ * task needs them); `writable` = write.assistant. A call that serves values writes a receipt (purpose "assist", field
+ * names only), except when the session's last assist receipt named the same fields under the same policy less than an
+ * hour ago (a chat reads its context on every message; every receipt is a git commit).
+ */
+export interface AssistantContext {
+  v: 1;
+  sessionId: string;
+  policyId: string;
+  fields: Partial<Record<Field, string>>;
+  unknown: Field[];
+  writable: Field[];
+  expiresAt: string;
+}
+
+/**
+ * POST /assistant/contributions body (bring-your-own-agent): a linked assistant records what the user told it.
+ *  - basis "stated": the user said it to this assistant. REQUIRES `evidence` with both fields — `conversationId`
+ *    (opaque, at most 128 bytes, never a phone number or email) and `snippet` (the user's own words, 1–EVIDENCE_SNIPPET_MAX
+ *    characters, no contact or payment data) — else 422 MISSING_FIELD. Stored as "stated" with its evidence. While the
+ *    assistant holds a live assist grant its stated values are trusted like the user's own agents' (a single source puts
+ *    the value on the card, MergeOptions.personalAgentIds); once the grant is revoked or expires they count as one learned
+ *    source and fall back to candidates; a new approved link restores them.
+ *  - "observed" (the default): stored as observed (evidence optional, same checks), a candidate until a second
+ *    independent source agrees.
+ *  - "inferred": the assistant's own record, never on the card.
+ * A field outside write.assistant, or unknown, is kept as the assistant's own inferred record (A11). shipping_address
+ * and payment_method → 403 SCOPE_DENIED whatever the policy says. The response never carries the user's id.
+ */
+export interface AssistantContributionInput {
+  field: Field;
+  value: string;
+  basis?: Basis;
+  evidence?: AssistantEvidence;
+}
+/**
+ * The evidence of an assistant's contribution: both fields required. Named (A59) so the JSON Schema keeps them required;
+ * the same shape as Required<Pick<ContributionEvidence, "conversationId" | "snippet">>.
+ */
+export interface AssistantEvidence {
+  /** Opaque, at most 128 bytes; never a phone number or email. */
+  conversationId: string;
+  /** The user's own words, 1–EVIDENCE_SNIPPET_MAX characters, no contact or payment data. */
+  snippet: string;
+}
+
 /** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */
 export interface Me {
   agentId: string;
@@ -569,6 +715,13 @@ export interface Me {
 }
 
 export const GRANT_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long an intent (and the quotes made for it) stays acceptable. Named separately from GRANT_TTL_MS (Phase 2) but
+ * kept equal to it on purpose: accepting an offer after its merchant's grant expired is blocked before anything goes
+ * upstream (a 10-minute-old quote may no longer be the store's price). Lengthening it needs a quote-validity rule and
+ * a human decision — docs/commerce-analytics-plan.md Phase 2.
+ */
+export const INTENT_TTL_MS = GRANT_TTL_MS;
 export const NOTE_MAX_BYTES = 2048;
 export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;

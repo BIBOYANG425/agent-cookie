@@ -9,6 +9,7 @@
 import type {
   Agent, Basis, Card, Contribution, ContributionEvidence, ContributionRevocationTarget, IntentRecord, Note, ObservationTurn, Quote, Receipt,
 } from "./types.js";
+import type { PolicyDocument } from "./policy-document.js";
 
 // ---------------------------------------------------------------------------------------------------------
 // RulesApi — pure functions, no IO, no clock, no model.
@@ -17,7 +18,11 @@ import type {
 export interface MergeOptions {
   /** ISO timestamp. Required. */
   now: string;
-  /** agentIds of the user's own agents (category personal). Their "stated" values qualify on a single source. */
+  /**
+   * agentIds whose "stated" values qualify on a single source: the user's own agents (category personal) and, as the
+   * workspace passes it (Store.trustedStatedAgentIds), every company assistant holding a live assist grant at `now`.
+   * Everyone else's stated rows count like learned ones.
+   */
   personalAgentIds: string[];
 }
 
@@ -133,6 +138,13 @@ export interface MemoryRepo {
   deleteNote(sessionId: string, agentId: string, key: string, meta: WriteMeta): Promise<CommitRef>;
   /** Append one line to receipts.md. */
   appendReceipt(r: Receipt, meta: WriteMeta): Promise<CommitRef>;
+  /**
+   * Phase 1 (docs/commerce-analytics-plan.md; lane C implements, optional until shipped): the user's installed field
+   * policy, POLICY.yaml. `readPolicy` returns undefined when the file is the generated seed or absent; `writePolicy`
+   * replaces it in one commit (author = the owner). The workspace falls back to SQLite + DEFAULT_POLICY without them.
+   */
+  readPolicy?(): Promise<PolicyDocument | undefined>;
+  writePolicy?(doc: PolicyDocument, meta: WriteMeta): Promise<CommitRef>;
   /** Hard reset to the `fixtures-seed` commit and remove untracked files (POST /demo/reset). */
   resetToSeed(): Promise<void>;
   /** Every contribution in contributions/*.md, for rebuilds and exports. */
@@ -279,8 +291,12 @@ export interface UcpApi {
   createCheckout(cart: UcpCart): Promise<UcpCheckout>;
   /** `ucp checkout update <id>` with the destination (and buyer email if one is ever available). The only step that sees the address. */
   setDestination(checkout: UcpCheckout, destination: UcpDestination, buyer?: { email?: string }): Promise<UcpCheckout>;
-  /** `ucp checkout complete <id>`. requires_escalation is a normal outcome, not an error. */
-  complete(checkout: UcpCheckout): Promise<UcpCheckout>;
+  /**
+   * `ucp checkout complete <id>`. requires_escalation is a normal outcome, not an error. `payment` (optional, additive,
+   * lane D) is the workspace's authorization RESULT for this checkout — an id, the amount and the currency, never a
+   * provider reference or a token; an adapter with no place for UCP `payment.instruments` is not passed one.
+   */
+  complete(checkout: UcpCheckout, payment?: { authorizationId: string; amount: number; currency: "USD" }): Promise<UcpCheckout>;
 }
 
 export interface UcpOptions {

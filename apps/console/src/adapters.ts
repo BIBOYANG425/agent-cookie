@@ -1,7 +1,13 @@
-import type { IntentHistoryEntry, Receipt } from '../../../packages/contract/src/types';
+import type { IntentHistoryEntry, Link, Receipt } from '../../../packages/contract/src/types';
 import fixtureContributions from '../../../fixtures/contributions.json';
-import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
+import { isFunnelStage } from '../../../packages/contract/src/analytics';
+import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView, Section } from './model';
 import { countEvidenceSources, normalizeLearning, normalizeLearningPaused, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
+import { normalizePolicyView, normalizeShadowReport, parseViolations, PolicyViolationError, samplePolicyView } from './policy';
+import { FUNNEL_LIMIT, normalizeFunnelReport, sampleFunnelReport, type FunnelReport } from './funnel';
+import { normalizeExperimentReport, sampleExperimentReport, type ExperimentReport } from './experiments';
+import { samplePaymentEvents } from './receipts';
+import { decisionLabels, decisionStatus, isDecisionAck, LinkNotPendingError, normalizeLinks, sampleLink } from './links';
 
 export interface PresentationSeed { receipts: Receipt[]; intents: IntentHistoryEntry[]; grantFields?: string[]; needs?: { agentId: string; object: string; unavailable: string[] }[] }
 
@@ -20,6 +26,9 @@ export function createSampleAdapter(now: () => number = Date.now,
   const stage = () => initialLearning.stages?.find((row) => row.id === stageId);
   let grants: GrantView[] = [];
   let events: ActivityEvent[] = [];
+  let funnel: FunnelReport = sampleFunnelReport(now());
+  let experiments: ExperimentReport = sampleExperimentReport(now());
+  let links: Link[] = [];
   let serial = 0;
   const addEvent = (event: string, object: string, reason: string) => events.push({
     id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), event,
@@ -35,8 +44,13 @@ export function createSampleAdapter(now: () => number = Date.now,
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
       agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...(presentation.grantFields ?? fields)], purpose: 'handshake',
       createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 600000).toISOString(), remainingMs: 600000, status: 'live',
+      policyId: 'sample-policy', stage: 'introduced',
     }));
-    events = [];
+    funnel = sampleFunnelReport(now());
+    experiments = sampleExperimentReport(now());
+    // One pending Sample consent link; approving or declining it changes only this page (no session, no grant).
+    links = [sampleLink(now())];
+    events = samplePaymentEvents(now(), () => `sample-event-${++serial}`);
     addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
     for (const need of presentation.needs ?? []) {
       const grant = grants.find((row) => row.agentId === need.agentId);
@@ -46,6 +60,8 @@ export function createSampleAdapter(now: () => number = Date.now,
     }
   };
   seed();
+  // A pending link past its ten minutes reads as expired, as the workspace reports it.
+  const linkNow = (link: Link): Link => link.status === 'pending' && now() >= Date.parse(link.expiresAt) ? { ...link, status: 'expired' } : link;
   if (initialLearningStage && initialLearning.stages?.some((row) => row.id === initialLearningStage)) {
     stageId = initialLearningStage;
     learned = structuredClone(stage()!.learned);
@@ -69,7 +85,11 @@ export function createSampleAdapter(now: () => number = Date.now,
           const remainingMs = Math.max(0, Date.parse(grant.expiresAt) - now());
           const status = grant.revokedAt ? 'revoked' : remainingMs === 0 ? 'expired' : 'live';
           return { ...grant, status, remainingMs: status === 'live' ? remainingMs : 0 } as GrantView;
-        }), learning, receipts: presentation.receipts, intents: presentation.intents, events: [...events].reverse(), receivedAt: now() });
+        }), learning, receipts: presentation.receipts, intents: presentation.intents, events: [...events].reverse(), receivedAt: now(),
+        policy: { availability: 'ready', data: samplePolicyView(), sample: true },
+        funnel: { availability: 'ready', data: funnel, sample: true },
+        experiments: { availability: 'ready', data: experiments, sample: true },
+        links: { availability: 'ready', data: { links: links.map(linkNow) }, sample: true } });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
@@ -102,7 +122,20 @@ export function createSampleAdapter(now: () => number = Date.now,
       learned = structuredClone(next.learned);
       addEvent('切换 Sample 学习阶段', id, '加载已编写的演示记录，不代表真实提取或购物结果。');
     },
+    async decideLink(id, decision) {
+      const index = links.findIndex((row) => row.id === id);
+      if (index === -1) throw new Error('Sample 连接请求不存在');
+      if (linkNow(links[index]).status !== 'pending') throw new LinkNotPendingError();
+      links[index] = { ...links[index], status: decisionStatus[decision], decidedAt: new Date(now()).toISOString(),
+        ...(decision === 'approve' ? { sessionId: 'sample-session-assistant' } : {}) };
+      addEvent(decisionLabels[decision], id, decision === 'approve'
+        ? 'Sample 连接请求已批准；仅更新本页，没有创建真实会话或授权，也未请求工作台。'
+        : 'Sample 连接请求已拒绝；仅更新本页，未请求工作台。');
+    },
     async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
+    // Sample has no workspace to evaluate against; the floor check and the shadow replay are the workspace's job.
+    async shadowPolicy() { throw new Error('Sample 模式不评估策略：请连接本机工作台，由工作台重放回执和读取记录。'); },
+    async installPolicy() { throw new Error('Sample 模式不安装策略：请连接本机工作台，由工作台按底线核对。'); },
   };
 }
 
@@ -123,13 +156,22 @@ const validGrant = (row: unknown): boolean => object(row) && string(row.id) && s
   && string(row.agentId) && string(row.agentName) && strings(row.fields) && string(row.purpose)
   && date(row.createdAt) && date(row.expiresAt) && typeof row.remainingMs === 'number' && Number.isFinite(row.remainingMs)
   && row.remainingMs >= 0 && ['live', 'expired', 'revoked'].includes(String(row.status))
-  && (row.revokedAt === undefined || date(row.revokedAt));
+  && (row.revokedAt === undefined || date(row.revokedAt))
+  && (row.policyId === undefined || string(row.policyId)) && (row.stage === undefined || isFunnelStage(row.stage));
 const validEvent = (row: unknown): boolean => object(row) && date(row.at)
   && ['id', 'event', 'actor', 'object', 'result', 'reason'].every((key) => string(row[key]));
+const text = (value: unknown): value is string => string(value) && value.length > 0 && value.length <= 256;
+// Receipts name released fields, never values. amount is integer cents (lane D's payment authorization).
 const validReceipt = (row: unknown): boolean => object(row)
-  && ['id', 'sessionId', 'agentId', 'purpose'].every((key) => string(row[key]))
-  && strings(row.fields) && date(row.createdAt)
-  && (row.amount === undefined || (typeof row.amount === 'number' && Number.isFinite(row.amount)));
+  && ['id', 'sessionId', 'agentId', 'purpose'].every((key) => text(row[key]))
+  && Array.isArray(row.fields) && row.fields.every((field) => string(field) && field.length > 0 && field.length <= 64) && date(row.createdAt)
+  && (row.amount === undefined || (Number.isSafeInteger(row.amount) && (row.amount as number) >= 0))
+  && (row.intentId === undefined || text(row.intentId)) && (row.policyId === undefined || text(row.policyId));
+/** Copies only the contract's receipt keys, so nothing else a response carries can reach the page. */
+const receiptRow = (row: Json): Receipt => ({ id: row.id as string, sessionId: row.sessionId as string, agentId: row.agentId as string,
+  fields: [...row.fields as Receipt['fields']], purpose: row.purpose as string,
+  ...(row.amount !== undefined ? { amount: row.amount as number } : {}), createdAt: row.createdAt as string,
+  ...(row.intentId !== undefined ? { intentId: row.intentId as string } : {}), ...(row.policyId !== undefined ? { policyId: row.policyId as string } : {}) });
 const validIntent = (row: unknown): boolean => object(row) && string(row.id) && string(row.agentId)
   && date(row.createdAt) && date(row.expiresAt) && object(row.public) && Object.values(row.public).every(string)
   && ['text', 'query', 'kind'].every((key) => row[key] === undefined || string(row[key]));
@@ -141,7 +183,8 @@ class RequestError extends Error {
 // The same-origin server bridge owns @agent-cookie/sdk and AGENT_COOKIE_KEY.
 // No owner credentials enter browser JavaScript. Missing SDK methods live in server/workspace.ts.
 export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = Date.now): ConsoleAdapter {
-  const request = async (path: string, method: 'GET' | 'POST' | 'PUT', signal?: AbortSignal, body?: unknown): Promise<unknown> => {
+  const request = async (path: string, method: 'GET' | 'POST' | 'PUT', signal?: AbortSignal, body?: unknown,
+    violations = false): Promise<unknown> => {
     let response: Response;
     try {
       const timeout = AbortSignal.timeout(8000);
@@ -160,6 +203,13 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         ? result.error.code : 'REQUEST_FAILED';
       if (code === 'CONSOLE_KEY_MISSING') throw new Error('请在本机控制台服务设置 AGENT_COOKIE_KEY 后重新连接。');
       if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('本机控制台服务需要 owner 钥匙，请核对 AGENT_COOKIE_KEY。');
+      // Policy routes only: the 422 message is policyViolations(...).join("; "), which names sections and field
+      // names, never values (packages/contract/src/policy-document.ts).
+      if (violations && response.status === 422 && code === 'MISSING_FIELD' && object(result) && object(result.error)
+        && string(result.error.message)) {
+        const lines = parseViolations(result.error.message);
+        if (lines.length > 0) throw new PolicyViolationError(lines);
+      }
       // Server messages may contain secrets or field values; show only the error code.
       throw new RequestError(`工作台拒绝请求：${response.status} ${code}`, response.status);
     }
@@ -174,10 +224,23 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
     }
   };
-  const optionalRows = async <T>(path: string, key: string, check: (row: unknown) => boolean, signal?: AbortSignal): Promise<T[] | null> => {
+  const section = async <T>(path: string, normalize: (body: unknown) => T & { sample?: boolean }, name: string,
+    signal?: AbortSignal): Promise<Section<T>> => {
+    try {
+      const data = normalize(await request(path, 'GET', signal));
+      return { availability: 'ready', data, ...(data.sample === true ? { sample: true } : {}) };
+    } catch (error) {
+      if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable',
+        message: `工作台尚未提供${name}接口。其他面板可继续使用。` };
+      return { availability: 'error', message: `暂时无法读取${name}。${error instanceof Error ? error.message : '请稍后重试。'}` };
+    }
+  };
+  const optionalRows = async <T>(path: string, key: string, check: (row: unknown) => boolean, signal?: AbortSignal,
+    project?: (row: Json) => T): Promise<T[] | null> => {
     try {
       const body = await request(path, 'GET', signal);
-      return object(body) && rows(body[key], check) ? body[key] as T[] : null;
+      if (!object(body) || !rows(body[key], check)) return null;
+      return project ? (body[key] as Json[]).map(project) : body[key] as T[];
     } catch { return null; } // Distinguish a failed read from a successful empty history.
   };
   const acknowledged = (body: unknown): body is Json => object(body) && body.ok === true;
@@ -186,16 +249,20 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
-      const [card, grantBody, activityBody, learned, receipts, intents] = await Promise.all([
+      const [card, grantBody, activityBody, learned, receipts, intents, policy, funnel, experiments, links] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
         learning(signal),
-        optionalRows<Receipt>('/personal/receipts', 'receipts', validReceipt, signal),
+        optionalRows<Receipt>('/personal/receipts', 'receipts', validReceipt, signal, receiptRow),
         optionalRows<IntentHistoryEntry>('/personal/intents', 'intents', validIntent, signal),
+        section('/personal/policy', normalizePolicyView, '策略', signal),
+        section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, '漏斗', signal),
+        section('/owner/experiments', normalizeExperimentReport, '实验', signal),
+        section('/owner/links', normalizeLinks, '连接请求', signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, receipts, intents,
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, receipts, intents, policy, funnel, experiments, links,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {
@@ -214,6 +281,22 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
       // A 0129f08: PUT /personal/learning and its acknowledgement both use { paused }.
       const body = await request('/personal/learning', 'PUT', signal, { paused });
       if (normalizeLearningPaused(body) !== paused) throw new Error('工作台未确认所请求的学习开关状态。');
+    },
+    async shadowPolicy(candidate, signal) {
+      return normalizeShadowReport(await request('/personal/policy/shadow', 'POST', signal, { policy: candidate }, true));
+    },
+    async installPolicy(candidate, signal) {
+      return normalizePolicyView(await request('/personal/policy', 'PUT', signal, candidate, true));
+    },
+    async decideLink(id, decision, signal) {
+      // No body: the route and the owner key are the whole request. Success is only the link back in its decided status.
+      let body: unknown;
+      try { body = await request(`/owner/links/${encodeURIComponent(id)}/${decision}`, 'POST', signal); }
+      catch (error) {
+        if (error instanceof RequestError && error.status === 409) throw new LinkNotPendingError();
+        throw error;
+      }
+      if (!isDecisionAck(body, id, decision)) throw malformed();
     },
   };
 }

@@ -28,7 +28,8 @@ const client=new WorkspaceClient({baseUrl:'http://127.0.0.1:4310',key:Object.key
 const result:Record<string,unknown>={scope:'Isolated A SQLite/C Git, synthetic extractor, no phone/model, existing fixture identity only'};
 try{
   const conversationId=conversationIdForChat('synthetic-hana-chat');const guid='synthetic-hana-source-one';
-  await client.find({text:phrase,conversationId},operationIdForMessage(guid,'find'));
+  const found=await client.find({text:phrase,conversationId},operationIdForMessage(guid,'find'));
+  assert.equal(deps.store.intent(found.intentId)?.conversationId,conversationId);
   await deps.learning.settle();
   const ack=await client.observe({conversationId,channel:'imessage',turns:[{role:'user',text:phrase,messageId:guid,at:new Date().toISOString()}]});
   assert.equal(ack.queued,true);
@@ -39,6 +40,20 @@ try{
   Object.assign(result,{status:row?.status??'absent',evidenceCount:row?.evidence.length??0,evidenceSources:sources});
   assert.equal(sources.length,1,'One message reaching find and observe must have one evidence source');
   assert.equal(row?.status,'candidate','One incidental source must not reach card');
+  const replay=await client.find({text:phrase,conversationId},operationIdForMessage(guid,'find'));
+  assert.equal(replay.intentId,found.intentId,'Same GUID keeps one intent');
+  assert.equal(deps.store.intentsForUser(deps.store.intent(found.intentId)!.userId).length,1);
+  await client.accept(found.quotes[1].id,operationIdForMessage('synthetic-selection','accept'));
+  await deps.learning.settle();
+  assert.equal((await client.getLearned()).learned.find(r=>r.field==='pref.color')?.evidence.length,1,'Accept cannot add a source');
+  const allEvents=deps.store.db.prepare("SELECT event,result FROM activity WHERE event='memory.write' AND result='failed'").all();
+  assert.equal(allEvents.length,0,'Intent history and learning writes must both succeed');
+  await client.observe({conversationId:conversationIdForChat('synthetic-other-chat'),channel:'imessage',turns:[{role:'user',text:phrase,messageId:'synthetic-other-message',at:new Date().toISOString()}]});
+  await app.request('/test/clock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offsetMs:602000})});
+  await deps.learning.flushDue();await deps.learning.settle();
+  const promoted=(await client.getLearned()).learned.find(r=>r.field==='pref.color');
+  assert.equal(promoted?.status,'card');assert.equal(promoted?.evidence.length,2);
+  result.secondConversation={status:promoted?.status,evidenceCount:promoted?.evidence.length};
   result.passed=true;
 }catch(error){result.passed=false;result.error=(error as Error).message;process.exitCode=1;}
 finally{await deps.close();await rm(dir,{recursive:true,force:true});}
