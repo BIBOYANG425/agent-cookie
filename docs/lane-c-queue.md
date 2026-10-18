@@ -43,7 +43,7 @@
 ## 2026-10-17 18:50 任务单（按序提交并推送）
 
 - [x] C21 收口：统一 A01–A23 证据索引、日期及四类状态；C14 已勾选。
-- [ ] C22 控制台模型来源与 needs / unavailable 可选字段。
+- [x] C22 控制台模型来源与 needs / unavailable 可选字段：模型接正式契约，needs 按可选投影兼容、无事件不显示；46 tests、typecheck/build通过。A/B owner handshake投影与activity.kind透传缺口已追加requests，尚不宣称needs实连。
 - [ ] C23 通用字段、本次 intent 标记与新 fixture 截图。
 - [ ] T9-1 README 定稿（根目录与 docs）。
 - [ ] T9-2 Devpost 中英草稿。

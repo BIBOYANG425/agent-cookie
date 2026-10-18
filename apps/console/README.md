@@ -82,3 +82,9 @@ Learning checks cover A grouped payloads, source alias deduplication, allowliste
 - The console also connected through its actual proxy to A's unmodified `bd9d6e3` workspace on isolated Sample data; grant revoke and demo reset succeeded. The upstream used its own stubs, so this does not prove real memory/UCP integration. Live source-record revoke remains blocked as described above. See [C10 evidence](../../docs/evidence/C10-console.md).
 
 C10b adds server bridge tests for SDK routing, missing-method fallback, failed writes without retries, owner checks, redirects and cross-origin rejection. The earlier C10 browser evidence describes the former manual-key transport; current SDK/environment verification is recorded separately in [C10b evidence](../../docs/evidence/C10b-sdk.md).
+
+## C22 provenance and declared needs
+
+Each learned evidence item displays its actual `models.gate → models.extractor`; one available ID is shown alone, and absent provenance displays “本地规则”. Invalid optional model metadata is ignored without rejecting older core payloads. Model labels never affect authorization or source counts. A live backend's Sample/fixture flag does not make learned records a scripted Sample stage.
+
+The grants view optionally displays the latest `kind=needs_declared` activity object's exact summary next to the merchant, matched by exact actor/agentId. No event means no badge. A provisional `grant.handshake.unavailable: string[]` projection supplies gray field tags. It is never inferred from a field complement. `TODO(contract)` remains until A publishes the owner projection and B preserves `kind`; existing SDK reads remain the only path, with no new endpoint or owner access to merchant handshakes. See docs/requests.md. Fixture support is display verification, not evidence that the backend has declared needs.

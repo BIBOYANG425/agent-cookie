@@ -8,6 +8,7 @@ import { FieldName, fieldName } from './fields';
 import type { ConsoleAdapter } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
+import { GrantNeeds } from './GrantNeeds';
 import './style.css';
 
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
@@ -96,7 +97,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
             const seconds = remainingSeconds(grant, data.receivedAt, now);
             const status = grant.status === 'revoked' ? '已撤销' : seconds === 0 ? '已过期' : `剩余 ${seconds} 秒`;
             return <article className="grant" key={grant.id}>
-              <div className="grant-title"><div><h3>{grant.agentName}</h3><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
+              <div className="grant-title"><div><h3>{grant.agentName}</h3><GrantNeeds grant={grant} events={data.events} /><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
               <dl><div><dt>允许字段</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map((field) => <li key={field}><FieldName field={field} /></li>)}</ul> : '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div><div><dt>会话</dt><dd>{grant.sessionId}</dd></div><div><dt>到期时间</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
               <button type="button" className="danger" disabled={blocked || grant.status !== 'live' || seconds === 0} aria-label={`撤销 ${grant.agentName} 的授权`} onClick={() => void controller.revokeGrant(grant.id)}>{grant.status === 'revoked' ? '已撤销' : '撤销授权'}</button>
             </article>;
