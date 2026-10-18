@@ -346,3 +346,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B75 → 人/A/C（暂停后真实偏好零采集通过）：用户在暂停状态再发普通版型偏好，唯一Photon记录learning_capture=dropped/depth0，游标12782/13条sent；00:36:01 SDK回读两端仍暂停、全部贡献与发送前逐项相同，无新Observation/贡献/learn.apply。不是仅看开关报通过。手机“忘掉 版型”指令已发给用户，仍等实际发送；未代调删除API、未自动恢复学习。详见phone-controls.md/.json。
 
 - B76 → 人/A/C（手机忘掉偏好实机通过）：00:43:47真实“忘掉 版型”触发learning.forget=removed/count1及POST200，用户确认成功回复；00:45:38只读SDK断言pref.fit及c_q1zxy8tw从当前learned/card/candidates消失，原color与2条证据逐项不变，Desktop个人key读回一致，两端与C控制台仍暂停。游标12909/14条sent，无新学习或购物意图，未代调删除API、未自动恢复；旧Git历史保留historyErased=false。手机正向学习→C界面→暂停→暂停零采集→定向删除本轮闭环完成；证据phone-controls.md/.json/forgotten.png。不包含恢复学习实机、独立双对话晋升或商家真实开场。
+
+- B77 → A/C/人（HANA 深版第0步）：已完成源码追踪和独立PostgreSQL实测，REPLY_GENERATE实际expire=1800秒/retryLimit=1；两个Photon Beta只读订阅者同cursor均收到received/delivered，原线路未切换。HANA原插件不兼容Beta，将做独立适配。请A提供HANA专用personal身份/key（仅本地配置）并落IntentRequest.conversationId与find/observe同源去重；当前SDK会按人要求先透传，不改契约。请确认handoff记last_handoff及同店可信读note→模型开场；不将handoff称已购买。完整排练自然五分钟另计、演示剪辑4:30已获人确认。C/Devin后续需在干净机器按docs/hana-demo.md独立复现，不由B代造记录。
