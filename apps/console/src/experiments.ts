@@ -1,3 +1,4 @@
+import { t } from './i18n';
 // Mirrors of packages/contract/src/analytics.ts (Phase 4, holdout experiment E1). Kept local like src/policy.ts so the
 // browser build never depends on the contract's runtime modules; test/experiments.test.ts checks at compile time that
 // these stay identical to the contract types.
@@ -18,10 +19,10 @@ export interface ExperimentReport {
 
 export const EXPERIMENT_ARMS: readonly ExperimentArm[] = ['control', 'treatment'];
 export const isExperimentArm = (value: unknown): value is ExperimentArm => value === 'control' || value === 'treatment';
-export const armLabels: Record<ExperimentArm, string> = { control: '对照', treatment: '处理' };
+export const armLabels: Record<ExperimentArm, string> = { get control() { return t("control"); }, get treatment() { return t("treatment244"); } };
 export const armNotes: Record<ExperimentArm, string> = {
-  control: '今天的顺序：指定商家、尺码、偏好、预算、目录顺序',
-  treatment: '按卖家在你过往意图中的结果记录排序',
+  get control() { return t("existingOrderRequestedMerchantSizePreferences"); },
+  get treatment() { return t("rankBySellerOutcomesInYour"); },
 };
 /** docs/commerce-analytics-plan.md §6: no sentence about lift before each E1 arm has at least this many intents. */
 export const MIN_ARM_N = 40;
@@ -30,7 +31,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const date = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const unit = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
-const malformed = () => new Error('实验响应格式与契约不一致。');
+const malformed = () => new Error(t("experimentResponseDoesNotMatchThe"));
 
 function normalizeArm(value: unknown): ExperimentArmStats {
   if (!object(value) || !count(value.n) || !count(value.accepted) || value.accepted > value.n || !unit(value.rate)
@@ -88,11 +89,11 @@ export function points(value: number): string {
   return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded).toFixed(1)}`;
 }
 export function durationText(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} 毫秒`;
-  if (ms < 60000) return `${Math.round(ms / 100) / 10} 秒`;
+  if (ms < 1000) return t("ms", Math.round(ms));
+  if (ms < 60000) return t("seconds", Math.round(ms / 100) / 10);
   const seconds = Math.round(ms / 1000);
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
-  return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
+  if (seconds < 3600) return t("minSec", Math.floor(seconds / 60), seconds % 60);
+  return t("hrMin", Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60));
 }
 
 /**
