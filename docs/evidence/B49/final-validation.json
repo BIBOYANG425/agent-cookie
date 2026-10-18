@@ -1,0 +1,206 @@
+{
+  "startedAt": "2026-10-18T00:27:33.284895+00:00",
+  "finishedAt": "2026-10-18T00:28:39.280402+00:00",
+  "baseline": "final-baseline.json",
+  "runtime": "/private/tmp/agent-cookie-b49-runtime-hs8xs43o",
+  "commands": [
+    {
+      "label": "packages/sdk build tsc",
+      "cwd": "packages/sdk",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "-p",
+        "tsconfig.build.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.156
+    },
+    {
+      "label": "packages/sdk build bundle",
+      "cwd": "packages/sdk",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "build.mjs"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.077
+    },
+    {
+      "label": "packages/learn build tsc",
+      "cwd": "packages/learn",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "-p",
+        "tsconfig.build.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.114
+    },
+    {
+      "label": "packages/learn build bundle",
+      "cwd": "packages/learn",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "build.mjs"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.05
+    },
+    {
+      "label": "packages/rules tests",
+      "cwd": "packages/rules",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/vitest/vitest.mjs",
+        "run"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 2.628,
+      "vitestSummary": [
+        "Test Files  9 passed (9)",
+        "Tests  70 passed (70)"
+      ]
+    },
+    {
+      "label": "packages/rules typecheck",
+      "cwd": "packages/rules",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 5.537
+    },
+    {
+      "label": "packages/memory-repo tests",
+      "cwd": "packages/memory-repo",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/vitest/vitest.mjs",
+        "run"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 17.969,
+      "vitestSummary": [
+        "Test Files  9 passed (9)",
+        "Tests  48 passed (48)"
+      ]
+    },
+    {
+      "label": "packages/memory-repo typecheck",
+      "cwd": "packages/memory-repo",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.936
+    },
+    {
+      "label": "apps/workspace tests",
+      "cwd": "apps/workspace",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/vitest/vitest.mjs",
+        "run"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 38.112,
+      "vitestSummary": [
+        "Test Files  16 passed (16)",
+        "Tests  234 passed | 4 todo (238)"
+      ]
+    },
+    {
+      "label": "apps/workspace typecheck",
+      "cwd": "apps/workspace",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 1.581
+    },
+    {
+      "label": "packages/sdk tests",
+      "cwd": "packages/sdk",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/vitest/vitest.mjs",
+        "run"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 11.407,
+      "vitestSummary": [
+        "Test Files  9 passed (9)",
+        "Tests  79 passed (79)"
+      ]
+    },
+    {
+      "label": "packages/sdk typecheck",
+      "cwd": "packages/sdk",
+      "command": [
+        "/private/tmp/agent-cookie-c-node22/node_modules/.bin/node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 0.228
+    },
+    {
+      "label": "B d9aa3ce root build:deps",
+      "cwd": ".",
+      "command": [
+        "pnpm",
+        "build:deps"
+      ],
+      "bCommit": "d9aa3cea353d1c95d5b672188ab4a1dad5ad6db2",
+      "changedFilesFromProbeBaseline": [
+        "package.json"
+      ],
+      "exitCode": 0,
+      "durationSeconds": 1.06,
+      "startedAt": "2026-10-18T00:28:38.220050+00:00",
+      "finishedAt": "2026-10-18T00:28:39.280402+00:00"
+    }
+  ],
+  "allCommandsPassed": true,
+  "sixScenarioCheckSeparate": {
+    "result": "final-six-scenarios.json",
+    "exitCode": 1,
+    "passed": 1,
+    "failed": 5
+  },
+  "realModelCalls": 0,
+  "existingServicesAccessed": false,
+  "formalTestTotals": {
+    "rules": {
+      "passed": 70
+    },
+    "memoryRepo": {
+      "passed": 48
+    },
+    "workspace": {
+      "passed": 234,
+      "todo": 4
+    },
+    "sdk": {
+      "passed": 79
+    },
+    "passed": 431,
+    "todo": 4
+  }
+}

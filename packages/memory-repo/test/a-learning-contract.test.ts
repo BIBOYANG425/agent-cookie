@@ -9,12 +9,11 @@ const temps: string[] = [];
 async function setup() { const f = await fixture(); temps.push(f.temp); return f; }
 afterEach(async () => { await Promise.all(temps.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 
-describe('A 0129f08 default memory-repo integration', () => {
+describe('shared learning contract default memory-repo integration', () => {
   it('persists nested pref evidence through default openMemoryRepo and preserves it on revoke and reopen', async () => {
     const f = await setup(); const repo = await f.open();
-    const rows = [1, 2].map(n => ({ ...contribution(`a-${n}`), field: 'pref.fit', basis: 'observed',
-      // Main's old contract lacks pref fields; the same structural record compiles against A's overlay.
-      evidence: { conversationId: `conversation-${n}`, snippet: 'I prefer a relaxed fit; [%]\n剪裁' } } as unknown as Contribution));
+    const rows = [1, 2].map((n): Contribution => ({ ...contribution(`a-${n}`), field: 'pref.fit', basis: 'observed',
+      evidence: { conversationId: `conversation-${n}`, snippet: 'I prefer a relaxed fit; [%]\n剪裁' } }));
     for (const c of rows) await repo.appendContribution(c, meta());
     expect(await repo.listContributions()).toEqual(rows);
     expect((await repo.regenerateCard({ now: AT, personalAgentIds: ['sample-personal'] }, meta('workspace'))).card.card)
@@ -85,8 +84,8 @@ describe('A 0129f08 default memory-repo integration', () => {
       { intentId: '\u0000' }, { evidence: { conversationId: '\u0000' } },
     ];
     for (const value of metadata) {
-      const row = { ...contribution(), ...value } as unknown as Contribution;
-      await expect(repo.appendContribution(row, meta())).rejects.toMatchObject({ code: 'MISSING_FIELD' });
+      // Deliberately invalid runtime evidence must still be rejected by the boundary.
+      await expect(repo.appendContribution({ ...contribution(), ...value } as never, meta())).rejects.toMatchObject({ code: 'MISSING_FIELD' });
     }
     expect(await repoGit(f.path).revparse(['HEAD'])).toBe(head);
   });

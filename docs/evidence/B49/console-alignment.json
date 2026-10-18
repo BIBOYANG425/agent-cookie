@@ -1,0 +1,46 @@
+{
+  "mode": "local-console-regression-and-build",
+  "cBase": "e094414c3a5a9dc581842283ea64da2b97e34b39",
+  "cSnapshot": "Working-tree adjustment, identified by file SHA256",
+  "fileSha256": {
+    "apps/console/src/learning.ts": "d1a9080adcd2014697ef3e10be1d626acd8e038c5687014af550f8a94f3dab90",
+    "apps/console/src/LearningPanel.tsx": "61a885c10839e661135484ebbb5681404bfed5d0db56c811cdabea67613b9b55",
+    "apps/console/test/learning.test.ts": "727b5a428e4fab0fe4f5941d361df7a7760c191467aa95700ee3444a5ce1d5d5",
+    "packages/contract/src/types.ts": "796558cff010cab99f30e7401e73be51782cc1a1ab9abbe97c6b2d985102df66"
+  },
+  "node": "v22.23.3",
+  "checks": [
+    {
+      "command": "node node_modules/vitest/vitest.mjs run test/learning.test.ts",
+      "phase": "before fix",
+      "passed": 8,
+      "failed": 2,
+      "exitCode": 1,
+      "reason": "Missing evidence IDs incorrectly fell back to writer IDs; one writer counted as 1, two writers as 2."
+    },
+    {
+      "command": "node node_modules/vitest/vitest.mjs run",
+      "phase": "after fix",
+      "passed": 36,
+      "failed": 0,
+      "exitCode": 0,
+      "note": "SDK bridge uses temporary loopback listeners; run with tool permission after sandbox EPERM."
+    },
+    {
+      "command": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    {
+      "command": "node node_modules/vite/bin/vite.js build",
+      "exitCode": 0
+    }
+  ],
+  "behavior": [
+    "Missing conversation/intent IDs count as zero evidence sources; writer identities remain visible.",
+    "Same conversation counts once across writers; two conversations from one writer count twice.",
+    "Personal stated records can remain on the card without evidence IDs; returned status is not recomputed by the live UI.",
+    "Published learned types and preference whitelist are imported directly from contract source."
+  ],
+  "liveModel": false,
+  "existingDemoServicesTouched": false
+}

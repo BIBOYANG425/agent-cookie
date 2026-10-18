@@ -9,7 +9,7 @@ const nested = (id: string, conversationId: string): LearningContribution => ({
   evidence: { conversationId, intentId: `intent-${id}`, snippet: 'I prefer relaxed; [%0A]\n剪裁\u2028' },
 });
 
-describe('A 0129f08 nested learning contract', () => {
+describe('shared nested learning contract', () => {
   it('round-trips nested evidence through the default RulesApi, not just the learning-only parser', () => {
     const c = nested('one', 'conversation-one');
     const line = rules.renderContribution(c as Contribution);

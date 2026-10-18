@@ -1,0 +1,22 @@
+Final C21 + B49 verification
+Command: pnpm --filter @agent-cookie/rules --filter @agent-cookie/memory-repo --filter @agent-cookie/workspace test
+Baseline: main 32490f1 + C21/B49 lane-c changes; isolated Node 22 runtime
+
+packages/rules test:  Test Files  9 passed (9)
+packages/rules test:       Tests  70 passed (70)
+packages/rules test:    Duration  690ms (transform 549ms, setup 0ms, collect 1.06s, tests 272ms, environment 1ms, prepare 931ms)
+packages/memory-repo test:  Test Files  9 passed (9)
+packages/memory-repo test:       Tests  48 passed (48)
+packages/memory-repo test:    Duration  15.42s (transform 596ms, setup 0ms, collect 1.96s, tests 60.29s, environment 1ms, prepare 860ms)
+apps/workspace test:  Test Files  16 passed (16)
+apps/workspace test:       Tests  234 passed | 4 todo (238)
+apps/workspace test:    Duration  36.69s (transform 1.38s, setup 0ms, collect 9.78s, tests 114.20s, environment 2ms, prepare 1.65s)
+
+Typecheck:
+Scope: 3 of 15 workspace projects
+packages/rules typecheck$ tsc --noEmit -p tsconfig.json
+packages/rules typecheck: Done
+packages/memory-repo typecheck$ tsc --noEmit -p tsconfig.json
+packages/memory-repo typecheck: Done
+apps/workspace typecheck$ tsc --noEmit -p tsconfig.json
+apps/workspace typecheck: Done
