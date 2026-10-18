@@ -38,7 +38,7 @@ Press **Save & continue**.
 
 Clear the placeholder. Open `docs/devpost-story.md` in this repository and paste its **entire raw contents**, exactly as written: Markdown, the `$$` formula blocks and the image line included. Do not paste the rendered preview.
 
-The image line points at `docs/assets/agent-cookie-loop.png` on `main`. It shows only once that file is on `main` and the repository is public; if Devpost's preview shows a broken image, leave the line in and tell the human.
+The image line points at `docs/assets/agent-cookie-loop.png` on `main`, which is public and loads. If Devpost's preview still shows a broken image, leave the line in and tell the human. If the two `$$` formula blocks show as raw text in the preview, delete those two blocks and tell the human.
 
 ### Built with (up to 25 tags)
 
