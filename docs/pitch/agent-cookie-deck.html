@@ -83,6 +83,21 @@
   .pill3 .card { padding: 20px 22px; gap: 8px; }
   .pill3 .card h3 { font-size: 26px; }
   .pill3 .card p { font-size: 20px; }
+
+  .eng .eyebrow { color: #8fc3e8; }
+  .flow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; position: relative; }
+  .step .n { font-family: var(--mono); font-size: 14px; color: #8fc3e8; letter-spacing: .08em; }
+  .step h4 { margin: 0; font-family: var(--display); font-size: 21px; line-height: 1.15; }
+  .step p { margin: 0; font-size: 16.5px; line-height: 1.4; color: var(--muted); }
+  .step code, .eng code { font-family: var(--mono); font-size: .9em; color: var(--text); }
+  .err { font-family: var(--mono); font-size: 14px; color: var(--no); }
+  .mono { font-family: var(--mono); }
+  .stack { display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; flex: 1; min-height: 0; }
+  .layers { display: flex; flex-direction: column; gap: 10px; }
+  .layer { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+  .layer b { font-family: var(--display); font-size: 21px; }
+  .layer span { font-size: 17.5px; color: var(--muted); line-height: 1.4; }
 </style>
 
 <div class="bar" id="bar"></div>
@@ -245,11 +260,67 @@ payment details.
   <div class="foot"><span>Next: hotels, airlines, hospital intake on the same primitives</span><span></span></div>
 </section>
 
+<!-- E1 · Architecture -->
+<section class="slide eng" aria-label="Engineering, architecture">
+  <div class="eyebrow">Engineering appendix · E1 · architecture and storage</div>
+  <h2 style="font-size:50px">One contract, one workspace per person, two kinds of storage.</h2>
+  <div class="stack">
+    <div class="layers">
+      <div class="layer"><b>Contract</b><span><code>packages/contract</code>: every type, field, endpoint, error code and the field policy. <code>endpoints.ts</code> generates <code>openapi.json</code>. Lanes change it first, implement second.</span></div>
+      <div class="layer"><b>Doors</b><span>TypeScript SDK (one HTTP client for all), generated Python client, MCP server (stdio and Streamable HTTP), CLI, console bridge. All call the SDK; nobody writes a second client.</span></div>
+      <div class="layer"><b>Workspace</b><span><code>apps/workspace</code>: Hono on <code>127.0.0.1:4310</code>. The key decides the role: personal, assistant, merchant or owner. Services for fields, sessions, commerce, learning, receipts, policy.</span></div>
+      <div class="layer"><b>Gateway</b><span><code>apps/gateway</code>: one real workspace process per person, passkeys, consent page, reverse proxy under <code>/u/:userId</code>. Each jar's owner key stays inside the gateway.</span></div>
+    </div>
+    <div class="layers">
+      <div class="layer" style="grid-template-columns:150px 1fr"><b>SQLite</b><span>Hot state: <code>users</code>, <code>agents</code>, <code>keys</code> (hashed), <code>sessions</code>, <code>grants</code>, <code>intents</code>, <code>quotes</code>, <code>links</code>, <code>receipts</code>, <code>payment_authorizations</code>, <code>idempotency</code>, <code>activity</code>.</span></div>
+      <div class="layer" style="grid-template-columns:150px 1fr"><b>Git repo</b><span>Durable, user-owned state in Agent Memory Repo format. The workspace manages <code>contributions/</code>, <code>notes/</code>, <code>CARD.md</code>, <code>receipts.md</code>, <code>POLICY.yaml</code>; every write is a commit with the agent as author.</span></div>
+      <div class="layer" style="grid-template-columns:150px 1fr"><b>Card</b><span><code>CARD.md</code> is generated from contributions by the merge rules, never edited. Stores never touch Git.</span></div>
+      <div class="layer" style="grid-template-columns:150px 1fr"><b>Limits</b><span>Grant 10 min · consent link 10 min · assistant grant 30 days · store note ≤ 2 KB · pref value ≤ 80 chars · evidence ≤ 200 chars.</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>apps/workspace · apps/gateway · packages/contract</span><span></span></div>
+</section>
+
+<!-- E2 · One read -->
+<section class="slide eng" aria-label="Engineering, one read">
+  <div class="eyebrow">Engineering appendix · E2 · one field read, in order</div>
+  <h2 style="font-size:50px"><code style="font-size:.8em">GET /agent/fields</code>: every check is code, and a refusal never names a field.</h2>
+  <div class="flow">
+    <div class="step"><span class="n">01 · KEY</span><h4>Who is asking</h4><p>Bearer key → agent, role and category. A model's <code>userId</code> or <code>purpose</code> is only a parameter.</p><span class="err">401 AUTH_REQUIRED</span></div>
+    <div class="step"><span class="n">02 · SESSION</span><h4>Its own session</h4><p>The pairwise session must belong to this agent, with a live grant.</p><span class="err">403 GRANT_EXPIRED · GRANT_REVOKED</span></div>
+    <div class="step"><span class="n">03 · FLOOR</span><h4>Hard refusals</h4><p>Unknown field, or <code>payment_method</code> from any store: refused before policy runs.</p><span class="err">403 SCOPE_DENIED</span></div>
+    <div class="step"><span class="n">04 · POLICY</span><h4>Installed policy</h4><p><code>readDecision()</code> per field, against the policy installed now, not when the grant was issued.</p><span class="err">SCOPE_DENIED · PURPOSE_MISMATCH</span></div>
+    <div class="step"><span class="n">05 · STAGE</span><h4>Purpose grounded</h4><p>A purpose field needs a grant widened for that purpose, which exists only after you accepted this store's quote.</p><span class="err">403 PURPOSE_MISMATCH</span></div>
+    <div class="step"><span class="n">06 · RECEIPT</span><h4>No receipt, no release</h4><p>Receipt to Git, then SQLite, then values. Handshake reads deduplicated hourly.</p></div>
+    <div class="step"><span class="n">07 · LOG</span><h4>Names, not values</h4><p>Activity logs field names, purpose, intent and counts. Never a value.</p></div>
+  </div>
+  <div class="row" style="gap:20px;align-items:stretch">
+    <div class="term" style="flex:1;font-size:17px">sessionId = base32(HMAC-SHA256(userSecret, merchantKey))[0..8]
+<span class="d"># merchantKey = store domain, else agentId</span></div>
+    <div class="card" style="flex:1;padding:16px 20px"><p style="font-size:19px">Stages only move forward: <span class="mono" style="color:var(--text)">introduced → quoted → accepted → checkout → payment → completed</span>. Each stage opens a grant with only that stage's fields.</p></div>
+  </div>
+  <div class="foot"><span>apps/workspace/src/services/fields.ts · sessions.ts · packages/rules/src/session.ts</span><span></span></div>
+</section>
+
+<!-- E3 · Trust, learning, payments, tests -->
+<section class="slide eng" aria-label="Engineering, trust and tests">
+  <div class="eyebrow">Engineering appendix · E3 · trust rules, learning, payments, tests</div>
+  <h2 style="font-size:50px">Models suggest. Rules decide. Tests prove it over HTTP.</h2>
+  <div class="grid3" style="grid-template-columns:repeat(2,1fr);gap:18px">
+    <div class="card" style="padding:18px 22px"><h3 style="font-size:24px">Merge rules · <code>packages/rules</code></h3><p style="font-size:18.5px">You stated it: on the card. Observed: needs two distinct sources, and one conversation is one source. Inferred: never. Newest trusted statement wins; support older than 180 days drops to medium, 365 days drops off.</p></div>
+    <div class="card" style="padding:18px 22px"><h3 style="font-size:24px">Learning · <code>packages/learn</code></h3><p style="font-size:18.5px">Opt-in. After 5 quiet minutes: local filter → <code>typesafe/jev-1.14</code> gate → <code>gpt-oss-120b</code> extractor → schema whitelist → the same merge rules. Raw text waits only in a bounded queue.</p></div>
+    <div class="card" style="padding:18px 22px"><h3 style="font-size:24px">Keys and payments · <code>auth</code>, <code>pay</code></h3><p style="font-size:18.5px">Signing keys derived per session, so no global jar key exists. Visa TAP signatures (RFC 9421). One payment authorization per quote, within budget, never a card number; a store only sees the result.</p></div>
+    <div class="card" style="padding:18px 22px"><h3 style="font-size:24px">Tests · <code>tests/acceptance</code></h3><p style="font-size:18.5px">Acceptance A01–A33 hit a real workspace over HTTP only: isolation, purpose, expiry, revoke, injection, churn, hosted jars. Idempotency keys on every create. 1,856 tests pass in total.</p></div>
+  </div>
+  <div class="card" style="padding:14px 22px;flex-direction:row;gap:24px;align-items:center"><span class="tag" style="flex:none">How we built it</span><p style="font-size:18.5px">Four parallel lanes (Claude Code, two Codex sessions, Devin), each owning its directories. Contract first; cross-lane asks appended to <code>docs/requests.md</code>; only people merge to <code>main</code>.</p></div>
+  <div class="foot"><span>packages/rules · packages/learn · packages/auth · packages/pay · tests/acceptance</span><span></span></div>
+</section>
+
 </div></div>
 
 <nav class="nav" aria-label="Slide controls">
   <button type="button" id="prev" aria-label="Previous slide">←</button>
-  <span class="count" id="count">1 / 6</span>
+  <span class="count" id="count">1 / 9</span>
   <button type="button" id="next" aria-label="Next slide">→</button>
   <button type="button" id="full" aria-label="Full screen">⤢</button>
 </nav>
