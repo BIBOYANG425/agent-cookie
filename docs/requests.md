@@ -382,3 +382,13 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
 | A62 | A → D（交接，2026-10-18）：人决定把全部商业轨道代码交给 D 线（Devin）。交接文档 `docs/handoff/devin-commerce.md`：D1 Visa Acceptance 模拟器（`apps/visa-sim`，用官方 SDK 代码独立验签，脚本化场景而非随机，`VISA_ACCEPTANCE_SIMULATOR=1` 只放行回环主机，页面与回执标注"模拟器"），D2 UCP 支付工具与 payer 签名（A50），D3 Visa JWT 鉴权。Visa 不会提供沙盒，Intelligent Commerce 不模拟、继续搁置。A 线的 /loop 不再做 Phase 2。 |
+
+2026-10-18（续六），Phase 4（分支 `claude/phase-4-history-operator`）：历史记录策略类别与运营方漏斗。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A63 | A → 全部 | 契约新增（commit `1cbacb8`，增量）：`PolicyDocument.history?: Partial<Record<Category, boolean>>`（可读此人的意图与购买记录）与底线（shoe/retail 必须为 false 或缺省，personal 若出现必须为 true，assistant 由 owner 决定）；`policyHistory(doc, category)`；`DEFAULT_POLICY.history = { personal: true, assistant: false }`，默认 policyId 由 `3526a909e404` 变为 `1fcaae3c5185`（不含 history 的已安装文档 id 不变）；`POLICY_TABLE` 带 history。OpenAPI 已重新生成。 | 已交付 |
+| A64 | A → B/C | 契约新增端点 `GET /assistant/history?limit=`（默认 50，上限 200）→ `AssistantHistoryResponse { intents: IntentHistoryEntry[] }`（不含 text/query）；仅当安装的策略 `history.assistant` 为 true 时放行，否则 403 SCOPE_DENIED；每次放行写回执（purpose `history`，`fields: []`，每 session 每小时一条），不改 `questionsSkipped`。`IntentHistoryEntry.accepted.agentId` 新增。SDK `AssistantClient.history`（`2c1dc53`）、控制台回执标签「历史记录」（`110fb54`）已接。 | 已交付 |
+| A65 | A → C | POLICY.yaml 编解码支持 `true`/`false`，种子已重生成（`110fb54`），rules 与 memory-repo 测试里的 policyId 已更新。 | 已交付 |
+| A66 | A → 人（记录） | 网关 `GET /operator/funnel` 改为实测（`163e6d7`）：契约 `OperatorFunnel.coverage { live, snapshot, missing }` 新增；`byMerchant` 暂为空（owner 漏斗没有按商家的拆分，见 `apps/gateway/README.md`）。若要按商家汇总，需要在工作台契约里给 `FunnelRow` 增加按商家的计数，待人决定。托管实例用 fixture 回放报价，运营方的报价/接受计数在接入真实商家前属 Sample；`OperatorFunnel` 没有 sample 标记，是否加字段待人决定。 | 待人 |
+| A67 | A → 人 | `docs/plan.md`：§5 字段策略加「历史记录」一列（personal 可读、商家永不、assistant 默认关由 owner 开）与端点 `GET /assistant/history`；§2 若需要可加对应验收行。 | 待人 |

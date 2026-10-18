@@ -95,6 +95,10 @@ cd tests/acceptance && node node_modules/vitest/vitest.mjs run --config vitest.c
 
 两个示例和 A32（两家助理公司之间的 churn：第二家助理第一次读 context 就知道第一家学到的）都对演示模式的真实工作台跑，输出只有计数、id 和字段名；数据为 Sample，UCP 报价为录制回放。设计见 `docs/bring-your-own-agent-plan.md`。
 
+### 托管网关
+
+`apps/gateway` 是 Phase 3 的托管网关：用户用 passkey 注册，每人一个工作台进程，助理公司在网关注册一次并通过一键 consent link 拿到这个人的 jar（详见 `apps/gateway/README.md`）。运营方用 operator key 读 `GET /operator/funnel`，得到跨人汇总的计数（意图、报价、接受、questionsSkipped，按助理分组）：从每个实例的 owner 漏斗实测（运行中的实例实时读，已停的用停机时存下的快照，`?refresh=1` 按需启动），`coverage` 标明多少人来自实时、快照或缺失，从不返回单人行或任何字段值。
+
 ### 环境变量与端口
 
 | 变量 | 默认 / 使用者 |
