@@ -67,6 +67,8 @@ export interface MeView {
 /** Phase 4 reserve: GET /operator/funnel on the gateway. Counts across instances, never per-person rows, never a field value. */
 export interface OperatorFunnel {
   generatedAt: string;
+  /** false until Phase 4 computes the counters across instances: zeros below are placeholders, not measurements. */
+  measured: boolean;
   persons: number;
   intents: number;
   quoted: number;
@@ -91,7 +93,8 @@ export const GATEWAY_ENDPOINTS: GatewayEndpoint[] = [
   { method: "GET", path: "/healthz", caller: "anyone", summary: "→ GatewayHealth { ok, instances: { running, known } }" },
   { method: "POST", path: "/agents/register", caller: "anyone", summary: "Global registration of an assistant or merchant company at the gateway → 201 Registration { agentId, key, category, role }; the key is shown once and works at the gateway only (POST /assistant/link, GET /assistant/link/:id)" },
   { method: "POST", path: "/assistant/link", caller: "assistant", summary: "→ 201 LinkView { id, status: pending, url, expiresAt }: url is the consent page the person opens; one pending link per assistant is reused (200)" },
-  { method: "GET", path: "/assistant/link/:id", caller: "assistant", summary: "→ LinkView: own link only; once approved it carries `jar: { url, key }` (the person's instance under /u/:userId and the assistant's instance key) until the link expires; declined/expired as in the workspace" },
+  { method: "GET", path: "/assistant/link/:id", caller: "assistant", summary: "→ LinkView: own link only; once approved it carries sessionId and `jar: { url, key }` (the person's instance under /u/:userId and the assistant's instance key) for LINK_TTL_MS after the APPROVAL, then the key is purged and `jar` disappears; declined/expired as in the workspace" },
+  { method: "GET", path: "/vendor/webauthn.js", caller: "anyone", summary: "The @simplewebauthn/browser bundle the consent and sign-in pages load (served locally, no CDN)" },
   { method: "GET", path: "/link/:id", caller: "anyone", summary: "HTML consent page: sign in or sign up with a passkey, see the assistant's name and what it will receive (field names by policy), approve or decline" },
   { method: "POST", path: "/webauthn/register/options", caller: "anyone", summary: "Passkey sign-up, step 1 (as in apps/unlock)" },
   { method: "POST", path: "/webauthn/register/verify", caller: "anyone", summary: "Passkey sign-up, step 2 → creates the person, starts their instance (blank seed), sets the browser session cookie" },

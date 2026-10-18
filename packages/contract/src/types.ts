@@ -657,8 +657,8 @@ export interface LinkView {
   /** Present once approved. */
   sessionId?: string;
   /**
-   * Hosted gateway only (gateway.ts): present once approved, until the link expires. The person's instance under the
-   * gateway and the assistant's key for it. A single workspace never sets it.
+   * Hosted gateway only (gateway.ts): present once approved, for LINK_TTL_MS after the approval (then purged). The
+   * person's instance under the gateway and the assistant's key for it. A single workspace never sets it.
    */
   jar?: { url: string; key: string };
 }
