@@ -61,7 +61,7 @@ These are field names served by policy, never values. An unknown field stays unk
 
 - **Contract first.** One TypeScript contract defines the types, field policy, endpoints and error codes, and generates an OpenAPI 3.1 document.
 - **The workspace.** Hono and SQLite hold hot state, and a Git-backed memory repository holds durable state. Authorization, merging, expiry and stage transitions are plain deterministic code. **No model output is ever an input to an authorization decision.**
-- **One integration surface.** `@agent-cookie/sdk` offers `AssistantClient`, `MerchantClient` and `WorkspaceClient`. A Python client is generated from the OpenAPI document, and an MCP server serves Claude Desktop.
+- **One integration surface.** `@agent-cookie/sdk`, published on npm (`npm i @agent-cookie/sdk`), offers `AssistantClient`, `MerchantClient` and `WorkspaceClient`. A Python client is generated from the OpenAPI document, and an MCP server serves Claude Desktop.
 - **Hosted jars.** A gateway runs one real workspace process per person behind a passkey. It renders the consent page and the cookie page, and a jar's owner key never leaves it.
 - **Channels.** The person's own agent lives in iMessage on Photon. There is also Claude Desktop through MCP and a React console.
 - **Commerce and payments.** Shopify UCP handles catalog, cart and checkout. Visa Trusted Agent Protocol signatures use per-session keys. A Visa Acceptance provider is matched byte for byte against Visa's official SDK, and a simulator verifies requests with Visa's own code.
@@ -108,7 +108,7 @@ Only shopping is built today. Each new industry needs its fields and purposes ad
 - **Fill the jar on day one** from what you already have, such as autofill, a wallet address or order history.
 - **Verify assistant identity** on the consent page.
 - **Let stores take the payment.** Wire the direct UCP checkout path so a store consumes the jar's payment authorization, and run against a real Visa environment once credentials exist.
-- **Publish** the SDK to npm, and publish the acceptance scenarios as a public conformance suite.
+- **Publish the acceptance scenarios** as a public conformance suite, so any implementation can prove it is compatible.
 
 ## Honest scope
 

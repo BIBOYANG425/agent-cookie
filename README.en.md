@@ -143,7 +143,11 @@ Run the whole suite with `pnpm test` and `pnpm typecheck`. Reset the demo state 
 
 ## Integrate in a dozen lines
 
-`@agent-cookie/sdk` is the single integration surface: Node 22+, ESM, typed, no runtime dependencies. Three quickstarts under 25 lines each are in [`packages/sdk/README.md`](packages/sdk/README.md).
+`@agent-cookie/sdk` is the single integration surface, published on npm: Node 22+, ESM, typed, no runtime dependencies. Three quickstarts under 25 lines each are in [`packages/sdk/README.md`](packages/sdk/README.md).
+
+```sh
+npm i @agent-cookie/sdk
+```
 
 ```ts
 import { AssistantClient, assistantPrompt, registerAgent } from '@agent-cookie/sdk';
@@ -164,7 +168,7 @@ More doors, all generated from or wrapping the same contract:
 
 | Door | For |
 | --- | --- |
-| [`packages/sdk`](packages/sdk) | `AssistantClient`, `MerchantClient`, `WorkspaceClient` |
+| [`@agent-cookie/sdk`](https://www.npmjs.com/package/@agent-cookie/sdk) on npm ([`packages/sdk`](packages/sdk)) | `AssistantClient`, `MerchantClient`, `WorkspaceClient` |
 | [`packages/sdk-python`](packages/sdk-python) | A Python client generated from the OpenAPI document, same method names in snake_case |
 | [`packages/contract/openapi.json`](packages/contract/openapi.json) | OpenAPI 3.1 for any other language |
 | [`packages/mcp`](packages/mcp) | MCP over stdio for Claude Desktop, or Streamable HTTP on `127.0.0.1:4311` |

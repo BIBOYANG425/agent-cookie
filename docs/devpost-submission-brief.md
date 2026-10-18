@@ -83,7 +83,7 @@ Memory needs a lifecycle, not a database: provenance, expiry, revocation, recove
 
 ### What's next
 
-A first fill for the jar from what the person already has (browser autofill, wallet address, order history), so a new assistant has value on day one without any incumbent's cooperation. Verified assistant identity on the consent page. Purchase history as its own policy category (built, off by default). The operator funnel across persons (built, Sample until live stores are on). A real Visa Acceptance run when any test credentials exist. Publishing the SDK to npm and the conformance tests as a public suite so other implementations can call themselves compatible.
+A first fill for the jar from what the person already has (browser autofill, wallet address, order history), so a new assistant has value on day one without any incumbent's cooperation. Verified assistant identity on the consent page. Purchase history as its own policy category (built, off by default). The operator funnel across persons (built, Sample until live stores are on). A real Visa Acceptance run when any test credentials exist. Publishing the conformance tests as a public suite so other implementations can call themselves compatible. The SDK is already on npm as `@agent-cookie/sdk`.
 
 ### Built with
 

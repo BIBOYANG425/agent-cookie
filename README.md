@@ -18,6 +18,20 @@ Agent Cookie introduces connected assistants to the context they are allowed to 
 
 The English console shows context and its sources, learning candidates, connection requests, permissions, and receipts. A new company assistant connects through a consent link. Its context excludes shipping addresses and payment methods. Personal agents have a different trust role: do not describe their access as identical to company assistants.
 
+## Install the SDK
+
+The SDK is published on npm as [`@agent-cookie/sdk`](https://www.npmjs.com/package/@agent-cookie/sdk). Node 22 or later, ESM, types included, no runtime dependencies.
+
+```sh
+npm i @agent-cookie/sdk
+```
+
+```ts
+import { AssistantClient, MerchantClient, WorkspaceClient, assistantPrompt } from '@agent-cookie/sdk';
+```
+
+Quickstarts for an assistant company, a store and your own agent are in the [SDK guide](packages/sdk/README.md).
+
 ## Run a local Sample
 
 Use Node **22.12+ (22.x)**, Git, and pnpm. The local Sample requires no Photon or model account.
