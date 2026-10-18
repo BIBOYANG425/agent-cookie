@@ -66,3 +66,35 @@ export interface FunnelReport {
   sample: boolean;
   generatedAt: string;
 }
+
+// ---- Phase 3: outcome-aware ranking (deterministic, logged) ----
+
+/** One seller's history over THIS user's own intents. Counts only. */
+export interface SellerStats {
+  sellerDomain: string;
+  /** Intents the seller was introduced to. */
+  intents: number;
+  quotes: number;
+  /** Quotes the user accepted. */
+  accepted: number;
+  ordered: number;
+  handoff: number;
+  /** Accepts that ended "failed" (the store refused the cart, sold out, unreachable). "blocked" is the user's doing and is not counted. */
+  failed: number;
+}
+
+/**
+ * Integer weights 0–100 in the policy document (`ranking`). Both 0, or the section absent, means today's order:
+ * pinned, size, preferences, budget, catalog order. outcomeRank = −(round(winRate·winRate) − round(failRate·failure)),
+ * so sellers with equal history tie and catalog order still breaks the tie.
+ */
+export interface RankingWeights {
+  winRate: number;
+  failure: number;
+}
+
+/** What moved the order of one search (`ucp.rank` activity event). Ranks are the integer sort buckets, not scores. */
+export interface RankStats {
+  weights: RankingWeights;
+  sellers: Array<{ sellerDomain: string; sizeRank: number; prefRank: number; outcomeRank: number; picked: boolean }>;
+}

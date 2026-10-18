@@ -3,7 +3,7 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
-import type { FunnelStage, SearchStats } from "./analytics.js";
+import type { FunnelStage, RankStats, SearchStats } from "./analytics.js";
 
 export type Basis = "observed" | "stated" | "inferred";
 
@@ -523,9 +523,9 @@ export interface ActivityEvent {
    * Additive (2026-10-18): "dreaming" on events the periodic Dreaming job writes; "search" on the `ucp.search` event
    * of an intent (docs/commerce-analytics-plan.md Phase 0); absent on request events.
    */
-  kind?: "dreaming" | "search";
-  /** Dreaming and search events only: counts, never field values. */
-  stats?: DreamingStats | SearchStats;
+  kind?: "dreaming" | "search" | "rank";
+  /** Dreaming, search and rank events only: counts, never field values. */
+  stats?: DreamingStats | SearchStats | RankStats;
 }
 
 // ---- Dreaming (2026-10-18, human direction; plan §规模与时间规则) ----

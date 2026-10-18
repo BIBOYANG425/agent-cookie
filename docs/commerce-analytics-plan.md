@@ -140,33 +140,22 @@ Tests (`apps/workspace/test/stages.test.ts`, proposed **A27**): default document
 
 **Decision parked for a human: intent lifetime.** The draft set intents to 24 hours with grants renewed by user actions. A lane A test (`review-fixes.test.ts`, "accepting after the offer expired is blocked before anything goes upstream") pins that an accept after the merchant's grant expired is refused before any cart is created, because a 10-minute-old quote may no longer be the store's price. Lengthening intents therefore needs a quote-validity rule (re-quote on accept, or a merchant-declared quote TTL) before it is a pure refactor. `INTENT_TTL_MS` exists so the knob is one constant once that rule is chosen.
 
-## 5 · Phase 3 — Outcome-aware ranking, deterministic and logged (A)
+## 5 · Phase 3 — Outcome-aware ranking, deterministic and logged (A) · built 2026-10-18, off by default
 
-Goal: sellers that quote fast, get accepted and do not escalate rank higher; everything that moved the order is logged as counts.
+Goal: sellers whose accepts went through rank ahead of sellers whose accepts failed; everything that moved the order is logged as counts.
 
-Contract additions:
+Contract (`analytics.ts`, `policy-document.ts`): `SellerStats` (intents, quotes, accepted, ordered, handoff, failed — "blocked" is the user's doing and not counted), `RankingWeights { winRate, failure }` as integers 0–100, `RankStats` for the `ucp.rank` event, and `PolicyDocument.ranking?: RankingWeights` validated by the floor (unknown weights and sections are violations). A document with weights has a different `policyId`. `ActivityEvent.kind` gains `"rank"`.
 
-```ts
-export interface SellerStats {
-  sellerDomain: string; intents: number; quotes: number; accepted: number;
-  handoff: number; failed: number; escalations: number; medianQuoteMs?: number; returningSessions: number;
-}
-export interface RankingWeights { winRate: number; escalation: number; latency: number }   // integers, bucketed
-export interface PolicyDocumentV2 { /* … */ ranking?: RankingWeights }                      // absent = today's order
-export interface RankStats { sellers: Array<{ sellerDomain: string; sizeRank: number; prefRank: number; outcomeRank: number; picked: boolean }> }
-```
+Workspace:
 
-`ActivityInput.kind` widens to include `"rank"`; `stats` accepts `RankStats`.
+1. `services/seller-stats.ts`: `outcomeRank(stats, weights) = 0 − (round(winRate·winRate) − round(failRate·failure))`; no history or both weights 0 → 0. Integer buckets, so equal histories tie and catalog order still breaks the tie. `SellerStatsService.forSellers(domains)` reads one SQL aggregate per seller (`Store.sellerStats`).
+2. `ucp-filter.ts` `pickSellers`: the bucket sits in the sort key between size and preferences (`SearchConditions.outcome`); absent → today's order exactly. `rankStats()` reports per eligible seller its size, preference and outcome buckets and whether it was picked.
+3. `createIntent`: only when the installed document has non-zero weights does it consult history and write a `ucp.rank` event; otherwise nothing changes and nothing is logged.
+4. `scripts/rank-replay.ts`: offline gate. Replays past intents against the recorded catalog, builds each seller's history from intents strictly before the one replayed, and reports hit@1 and MRR of the accepted seller for baseline and ranked arms, with n and the approximations stated (card values at the time are not stored; fixture catalog).
 
-Workspace work:
+Tests (`apps/workspace/test/ranking.test.ts`): bucket arithmetic (including that a zero score is +0), the key order (size beats outcome, outcome beats preferences), ranking weights validated and changing the id, and through the workspace: a seller whose accept failed ranks behind a seller with no history once weights are installed, the `ucp.rank` event names both buckets, and weights 0 → catalog order with no event.
 
-1. New `src/services/seller-stats.ts`: `SellerStatsService.for(domains)` from `quotes` (`seller`/`agent.domain`, `status`, `result.status`, `result.code`), `intents`, `sessions` and `intent_sessions` (returning = sessions with more than one intent). Cached per request.
-2. `ucp-filter.ts` `pickSellers`: new sort key between `sizeRank` and `prefRank`: `outcomeRank(o)` = integer bucket from weights × stats (0 when no history or no `ranking` in the document). Catalog order remains the final tiebreak so results stay stable and reproducible.
-3. `createIntent`: log `ucp.rank` with `kind: "rank"` and `RankStats`.
-4. Offline evaluation `apps/workspace/scripts/rank-replay.ts`: reads a workspace SQLite copy (owner's machine) or the fixture flow, replays every intent's offers through `pickSellers` with and without `ranking`, reports hit@1 and MRR of the quote the user actually accepted, with n.
-5. Tests: A09 unchanged (fixture history is empty, so `outcomeRank` is 0 everywhere); unit test that a seller with 0/3 accepts and two escalations sorts below a seller with 2/3 at equal size and prefs; determinism: same inputs, same order, across 100 shuffles of the offers array.
-
-Gate: replay hit@1 with ranking ≥ without, on the recorded runs, reported with n in `docs/evidence/`. If n is in single digits the plan says so and ships ranking off by default (`ranking` absent).
+Gate (still open, needs real runs): `rank-replay.ts` hit@1 with ranking ≥ without on recorded runs, reported with n in `docs/evidence/`. Until then `ranking` stays absent from the installed document, which is exactly today's behaviour.
 
 ## 6 · Phase 4 — Holdout experiment (A, analysis by C)
 
@@ -207,6 +196,8 @@ Gate: the report is reproducible from the database by a stranger; the plan state
 | A48 | A → D | `authorizePayment` 在 accept 路径的调用点与返回形状（§7）；A21 作为验收。 | 待 D |
 
 ## 10 · Order, size and the definition of done
+
+**Progress 2026-10-18 (lane A, branch `claude/amazing-allen-cnv3s6`).** Phases 0, 1, 2 (stages; intent lifetime parked, see §4) and 3 (ranking, off by default) are built with tests; the workspace suite went from 283 to 303 tests and the contract suite from 14 to 22, all green with the root typecheck. Phases 4–6 are not started: Phase 4 needs real runs, Phase 5 needs lanes C and D, Phase 6 needs lane B. The cross-lane lines in §9 are appended to `docs/requests.md`.
 
 | Phase | Depends on | Size | Done when |
 | --- | --- | --- | --- |

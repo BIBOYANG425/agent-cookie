@@ -7,7 +7,7 @@ import type {
   ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
   Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
-import { isFunnelStage, type SearchStats } from "@agent-cookie/contract";
+import { isFunnelStage, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
@@ -139,7 +139,7 @@ function toContribution(r: Row): StoredContribution {
 function toActivity(r: Row): ActivityEvent {
   const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
     result: String(r.result), reason: String(r.reason) };
-  if (r.kind === "dreaming" || r.kind === "search") e.kind = r.kind;
+  if (r.kind === "dreaming" || r.kind === "search" || r.kind === "rank") e.kind = r.kind;
   if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
   return e;
 }
@@ -432,6 +432,19 @@ export class Store {
   }
   setQuoteResult(id: string, result: AcceptResult): void {
     this.exec("UPDATE quotes SET status = ?, result = ? WHERE id = ?", result.status, JSON.stringify(result), id);
+  }
+  /** Phase 3: one seller's history over this user's intents (counts only; "blocked" accepts are the user's doing and not failures). */
+  sellerStats(agentId: string, sellerDomain: string): SellerStats {
+    const r = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM intent_sessions WHERE agent_id = ?) AS intents,
+        COUNT(*) AS quotes,
+        COALESCE(SUM(CASE WHEN accepted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS accepted,
+        COALESCE(SUM(CASE WHEN status = 'ordered' THEN 1 ELSE 0 END), 0) AS ordered,
+        COALESCE(SUM(CASE WHEN status = 'handoff' THEN 1 ELSE 0 END), 0) AS handoff,
+        COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed
+      FROM quotes WHERE agent_id = ?`).get(agentId, agentId) as Row;
+    return { sellerDomain, intents: Number(r.intents), quotes: Number(r.quotes), accepted: Number(r.accepted), ordered: Number(r.ordered),
+      handoff: Number(r.handoff), failed: Number(r.failed) };
   }
   /** Purpose grounding: has the user accepted a quote by this agent, on this session, under this intent? */
   hasAcceptedQuote(intentId: string, sessionId: string, agentId: string): boolean {

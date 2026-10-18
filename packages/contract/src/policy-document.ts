@@ -5,6 +5,7 @@
 // "checkout", merchants write only shoe_size, and the user's own agents read and write everything.
 // The evaluator is deterministic code over data; no model output is ever an input here.
 import { createHash } from "node:crypto";
+import type { RankingWeights } from "./analytics.js";
 import type { ReadDecision, ReadMode } from "./policy.js";
 import { FIELDS, isField, PREF_FIELDS, type Category, type Field } from "./types.js";
 
@@ -23,7 +24,12 @@ export interface PolicyDocument {
   purpose: Record<Category, Partial<Record<Field, string[]>>>;
   /** Writable through contributions. */
   write: Record<Category, Field[]>;
+  /** Phase 3, optional: outcome-aware seller ranking weights. Absent = catalog order after size and preferences. */
+  ranking?: RankingWeights;
 }
+
+const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set(["v", "auto", "purpose", "write", "ranking"]);
+const RANKING_KEYS: ReadonlySet<string> = new Set(["winRate", "failure"]);
 
 const MERCHANT_AUTO: readonly Field[] = ["lang", "tone", "length", "shoe_size", "budget", "deadline"];
 
@@ -112,6 +118,19 @@ export function policyViolations(input: unknown): string[] {
   if (!input || typeof input !== "object" || Array.isArray(input)) return ["document must be an object"];
   const doc = input as Record<string, unknown>;
   if (doc.v !== 1) out.push("v must be 1");
+  for (const k of Object.keys(doc)) if (!TOP_LEVEL_KEYS.has(k)) out.push(`${k}: unknown section`);
+  if (doc.ranking !== undefined) {
+    const r = doc.ranking;
+    if (!r || typeof r !== "object" || Array.isArray(r)) {
+      out.push("ranking must be an object { winRate, failure }");
+    } else {
+      for (const k of Object.keys(r)) if (!RANKING_KEYS.has(k)) out.push(`ranking.${k}: unknown weight`);
+      for (const k of RANKING_KEYS) {
+        const v = (r as Record<string, unknown>)[k];
+        if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100) out.push(`ranking.${k} must be an integer 0–100`);
+      }
+    }
+  }
   const sections = ["auto", "purpose", "write"] as const;
   for (const s of sections) {
     const sec = doc[s];

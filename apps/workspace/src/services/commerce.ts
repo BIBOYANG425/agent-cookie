@@ -2,13 +2,14 @@
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
   DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type Field, type Quote, type Receipt, type SearchStats, type UcpCheckout, type UcpMessage, type UcpOffer,
+  type AcceptResult, type Agent, type Field, type Quote, type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
-import { parseAddress, parseBudgetCents, parseCount, pickSellers, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
+import { parseAddress, parseBudgetCents, parseCount, pickSellers, rankStats, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
+import { outcomeRank, SellerStatsService } from "./seller-stats.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
 import { persistStrict, writeMeta, type Ctx } from "./context.js";
@@ -109,6 +110,8 @@ export class CommerceService {
     let ucpNote: { result: string; reason: string } | undefined;
     // Filter counts for the funnel (Phase 0): what the hard filters dropped before sellers were picked. Counts only.
     let stats: SearchStats | undefined;
+    // Ranking buckets (Phase 3), only when the installed document turns outcome ranking on.
+    let rankNote: RankStats | undefined;
     const query = input.query ?? input.text ?? input.kind?.replace(/_/g, " ");
     if (query) {
       const card = this.card.values(userId);
@@ -134,9 +137,17 @@ export class CommerceService {
       if (offers) {
         // Pinned rehearsal variants are a fixture-mode aid only: live search never looks at them.
         const pinned = this.ctx.config.ucpMode === "fixture" ? this.pinned : [];
+        // Phase 3: with ranking weights in the installed document, each seller's outcome history becomes a sort
+        // bucket between size and preferences. Off (absent or both weights 0) → today's order, no rank event.
+        const ranking = policyDoc.ranking;
+        if (ranking && (ranking.winRate > 0 || ranking.failure > 0)) {
+          const history = new SellerStatsService(store).forSellers(offers.map((o) => o.sellerDomain));
+          conditions.outcome = Object.fromEntries([...history].map(([d, s]) => [d, outcomeRank(s, ranking)]));
+        }
         const picked = pickSellers(offers, conditions, count, pinned);
         ucpNote = { result: "ok", reason: `offers=${offers.length} picked=${picked.length}` };
         stats = searchStats(offers, conditions, picked.length);
+        if (ranking && conditions.outcome) rankNote = rankStats(offers, conditions, ranking, new Set(picked.map((p) => p.offer.sellerDomain)));
         for (const { offer, sizeNote } of picked) {
           const existing = store.agentByDomain(offer.sellerDomain);
           const proxy: Agent = existing ?? { agentId: `ucp:${offer.sellerDomain}`, name: `${offer.sellerName} (UCP proxy)`, category: "retail",
@@ -160,6 +171,7 @@ export class CommerceService {
       this.ctx.log({ event: "intent.create", actor: personal.agentId, object: intent.id, result: "ok",
         reason: input.text ? (input.kind ?? "text") : `${input.kind} (legacy: no text)` });
       if (ucpNote) this.ctx.log({ event: "ucp.search", actor: "workspace", object: intent.id, ...ucpNote, ...(stats ? { kind: "search" as const, stats } : {}) });
+      if (rankNote) this.ctx.log({ event: "ucp.rank", actor: "workspace", object: intent.id, result: "ok", reason: `sellers=${rankNote.sellers.length}`, kind: "rank", stats: rankNote });
       for (const p of plans) {
         if (p.newAgent) {
           store.insertAgent(p.newAgent);

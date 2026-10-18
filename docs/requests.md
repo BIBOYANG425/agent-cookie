@@ -327,3 +327,14 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B69 → A/C/人（按人要求 B 自行设计并完成门控）：复查正式契约的自由文本 pref.style 后，修正 B 自己过窄的 visual-style 提示，明确服装款式/长短设计归 style、松紧归 fit、偏好比较不等于 hard avoid；没有新增字段或改变授权。Jev 三问区分安全、可作为候选的偏好线索、字段；阈值不变，新增独立拒绝原因，成功 HTTP 的畸形/缺失安全响应不再触发服务失败兜底。最终真实模型合成矩阵12/12、原六场景6/6（断言未改）、capture1/1；78 learn测试、3 SDK→A隔离联调、全仓类型通过。初版提示曾使六场景降到4/6，已修复且保留失败证据。详见 docs/evidence/2026-10-17-gate-redesign.md/.json；B68 的 B 提示语义工作已解决，不再仅等待 A/C 扩白名单。此前真实手机记录未重放、未改写为成功，运行实例切换与手机自然五分钟验收须另列；B60 C 展示与真实商家开场仍独立待办。
 
 - B70 → A/C/人（新门控实机加载）：19:16 PDT 将已验证的05a5d8f加载到现有4310工作台；唯一Photon监听短暂停止后按原游标恢复，channel_ready learning=true。SDK回读 learned 校验值不变（旧1行/2证据），完整channel-state校验值不变（cursor8515、9条sent），无新模型调用/原消息重放/资料修正。停服备份留在本机忽略目录。只证明版本切换和数据保留，不冒称新五分钟正向手机验收，详见gate-redesign证据。
+
+2026-10-18（续三），A 线：商业分析与动态策略（`docs/commerce-analytics-plan.md`，分支 `claude/amazing-allen-cnv3s6`，Phase 0–3 已实现并有测试）。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A43 | A → B/C | **契约新增（已落在 lane A 分支，待两线确认后合 main）**：`FunnelStage`、`SearchStats`、`FunnelRow`、`FunnelReport`、`SellerStats`、`RankingWeights`、`RankStats`（analytics.ts）；`PolicyDocument`(v1，含可选 `ranking`)、`DEFAULT_POLICY`、`policyId`、`evaluateRead/evaluateWrite/policyViolations`、`PolicyView`、`ShadowReport`（policy-document.ts）；`Grant.policyId/stage`、`Receipt.intentId/policyId`、`INTENT_TTL_MS`（= GRANT_TTL_MS，见计划 §4 待人决定）、`ActivityEvent.kind` 增 `"search"`/`"rank"`；端点 `GET /owner/funnel`、`GET/PUT /personal/policy`、`POST /personal/policy/shadow`。`readDecision` 等旧签名不变（golden 测试锁定 270 个决策）；`buildTier0Prefix`/`renderHandshakePrefix` 多一个可选 `doc` 参数。SDK 若严格校验 Receipt/Grant 形状，请接受新增可选键。 | 待 B、C 确认 |
+| A44 | A → C | `MemoryRepo.readPolicy?()` / `writePolicy?(doc, meta)` 读写 `POLICY.yaml`（一次 commit，author=owner；种子文件读为 undefined）；`generate-seed.ts` 继续从 `DEFAULT_POLICY`（即 `POLICY_TABLE`）生成。未实现前工作台回退到 SQLite `settings` 再到编译内默认，并记 `policy.load`。 | 待 C |
+| A45 | A → C | 控制台新增：Policy 面板（`GET /personal/policy` 文档与 id、`POST /personal/policy/shadow` 差异，只读；安装用 owner 钥匙 `PUT`）、Funnel 面板（`GET /owner/funnel`，`sample:true` 时标 Sample）、grants 显示 `stage`/`policyId`。后续商业面板见计划 §7。 | 待 C |
+| A46 | A → 人 | `docs/plan.md`：§2 新增 A24 漏斗、A25 策略文档、A26 影子、A27 阶段（测试已在 `apps/workspace/test/acceptance` 与 `apps/workspace/test`）；§5 字段策略表改为"由安装的 `PolicyDocument` 决定，`DEFAULT_POLICY` 为种子"；§4 决定 intent 生命周期是否与 grant 解耦（需要报价有效期规则，见计划 §4）。 | 待人 |
+| A47 | A → B | 计划 §8：quotes 的 SSE 端点与 `_meta["agent-cookie"]` 绑定契约草案待 A 起草，B 评估 Photon/MCP 切换成本；CLI 新增 `funnel`、`policy show|shadow|set` 子命令（走现有 SDK/HTTP）。 | 待 B |
+| A48 | A → D | accept 路径已有 `advance(session, intentId, "payment", category)` 钩子位（sessions.ts）：D 的 `authorizePayment` 成功后由 A 调用，打开 `payment_method`（purpose=payment）并写带 `amount` 的回执；A21 作为验收。 | 待 D |

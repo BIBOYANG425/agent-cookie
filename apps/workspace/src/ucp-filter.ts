@@ -3,7 +3,7 @@
 // learned `pref.avoid` names. Everything else ranks: the wanted size (stated, else the card's), then learned brand /
 // color preferences, then the card's budget. Then the first N distinct sellers.
 // No model involved. An unknown delivery date (etaDate null) never disqualifies an offer.
-import { DEFAULT_SELLER_COUNT, type SearchStats, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
+import { DEFAULT_SELLER_COUNT, type RankingWeights, type RankStats, type SearchStats, type UcpDestination, type UcpOffer } from "@agent-cookie/contract";
 import { parseSize, sizeMatch, sizeMatches, toSystem } from "@agent-cookie/ucp";
 
 // Size matching is shared with lane D (B22): one strict men's EU↔US table and one label parser, in @agent-cookie/ucp.
@@ -32,6 +32,8 @@ export interface SearchConditions {
   lang?: string;
   /** Learned preferences (card pref.*), already split into terms: brand/color rank, avoid is a HARD exclusion. */
   prefs?: { brand: string[]; color: string[]; avoid: string[] };
+  /** Phase 3: outcome bucket per seller domain (services/seller-stats.ts outcomeRank); absent seller or map = 0. Ranks only. */
+  outcome?: Record<string, number>;
 }
 
 /**
@@ -125,7 +127,9 @@ export function pickSellers(offers: readonly UcpOffer[], q: SearchConditions, n 
   const budgetRank = (o: UcpOffer) => (q.preferMaxPriceCents === undefined || o.priceCents <= q.preferMaxPriceCents ? 0 : 1);
   // More matched preferences rank higher: −(brand matched) − (color matched).
   const prefRank = (o: UcpOffer) => -(Number(q.prefs?.brand.some((t) => mentions(o, t)) ?? false) + Number(q.prefs?.color.some((t) => mentions(o, t)) ?? false));
-  const ranked = eligible.map((o, i) => ({ o, key: [pinRank(o), sizeRank(o), prefRank(o), budgetRank(o), i] }))
+  // Phase 3: a seller's outcome history, between size and preferences; 0 without history or when ranking is off.
+  const outcomeRank = (o: UcpOffer) => q.outcome?.[o.sellerDomain] ?? 0;
+  const ranked = eligible.map((o, i) => ({ o, key: [pinRank(o), sizeRank(o), outcomeRank(o), prefRank(o), budgetRank(o), i] }))
     .sort((a, b) => lexCompare(a.key, b.key));
   const out: Picked[] = [];
   const seen = new Set<string>();
@@ -137,6 +141,22 @@ export function pickSellers(offers: readonly UcpOffer[], q: SearchConditions, n 
     out.push(note ? { offer: o, sizeNote: note } : { offer: o });
   }
   return out;
+}
+
+/**
+ * What moved the order of this search, per eligible seller (its best size and preference buckets, its outcome bucket,
+ * whether it was picked), for the `ucp.rank` activity event. Counts and buckets only. Phase 3.
+ */
+export function rankStats(offers: readonly UcpOffer[], q: SearchConditions, weights: RankingWeights, picked: ReadonlySet<string>): RankStats {
+  const bySeller = new Map<string, { sizeRank: number; prefRank: number }>();
+  for (const o of offers) {
+    if (!isEligible(o, q)) continue;
+    const size = q.size === undefined ? 0 : (() => { const m = sizeMatch(o.sizeOptions ?? [], q.size!); return m === "match" ? 0 : m === "no-size" ? 1 : 2; })();
+    const pref = 0 - (Number(q.prefs?.brand.some((t) => mentions(o, t)) ?? false) + Number(q.prefs?.color.some((t) => mentions(o, t)) ?? false));
+    const cur = bySeller.get(o.sellerDomain);
+    bySeller.set(o.sellerDomain, { sizeRank: Math.min(cur?.sizeRank ?? size, size), prefRank: Math.min(cur?.prefRank ?? pref, pref) });
+  }
+  return { weights, sellers: [...bySeller].map(([sellerDomain, r]) => ({ sellerDomain, ...r, outcomeRank: q.outcome?.[sellerDomain] ?? 0, picked: picked.has(sellerDomain) })) };
 }
 
 /**
