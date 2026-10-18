@@ -10,7 +10,7 @@ type RevokeName = 'revokeGrant' | 'revokeContribution';
 export type SdkClient = Partial<Record<ReadName, () => Promise<unknown>>
   & Record<RevokeName, (id: string) => Promise<unknown>>
   & { setLearning: (input: { enabled: boolean }) => Promise<unknown> }>;
-type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: 'setLearning' };
+type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: 'setLearning' } | { name: 'intentHistoryHttp' };
 type ClientFactory = (options: { key: string; fetch: typeof fetch; timeoutMs: number; baseUrl: string; sample?: boolean }) => SdkClient;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -40,6 +40,8 @@ class BridgeError extends Error {
 
 function route(method: string | undefined, path: string): SdkRoute | undefined {
   if (method === 'GET') {
+    // TODO(sdk): B has no owner intent-history read method yet; this GET is A's existing contract.
+    if (path === '/personal/intents') return { name: 'intentHistoryHttp' };
     const names: Record<string, ReadName> = { '/me': 'getMe', '/personal/card': 'getMyCard',
       '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity',
       '/personal/learned': 'getLearned', '/personal/learning': 'getLearning' };
@@ -141,6 +143,7 @@ export function createWorkspaceBridge(options: {
       // TODO(sdk): remove the direct path only when B's installed SDK provides the corresponding method.
       let body: unknown;
       if (selected.name === 'getMe') body = me;
+      else if (selected.name === 'intentHistoryHttp') body = await direct('/personal/intents', 'GET');
       else if (selected.name === 'setLearning') {
         const payload = await readLearningChange(request);
         body = client?.setLearning ? await client.setLearning({ enabled: !payload.paused }) : await direct(path, request.method!, payload);

@@ -17,6 +17,8 @@
 
 截图为 320 px 宽的整页截屏，拍摄时 viewport 高 740 px；图片长于 viewport 是完整页面内容，并非横向溢出。
 
-![320px Sample 控制台整页截屏](console/sample-320.jpg)
+![320px Sample 控制台整页截屏](console/history/sample-320.jpg)
 
 相关测试：C10 的 12 项 adapter/controller 测试、类型检查与生产构建通过。此界面证据不替代 A14 的真实来源记录撤销；A 的 contribution ID 载荷仍需补齐。
+
+2026-10-17 C23：本页保留历史截图；新版通用字段/本次条件/回执见 [当前控制台证据](console/README.md)。

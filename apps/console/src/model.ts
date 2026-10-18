@@ -1,3 +1,4 @@
+import type { IntentHistoryEntry, Receipt } from '../../../packages/contract/src/types';
 // Display models keep field keys open for generic rendering; adapters validate wire responses.
 // Card/Contribution/ActivityEvent mirror packages/contract/src/types.ts.
 // GrantView projects the HTTP view from apps/workspace/src/services/sessions.ts.
@@ -28,6 +29,8 @@ export interface ConsoleSnapshot {
   card: Card; contributions: Contribution[] | null; grants: GrantView[]; events: ActivityEvent[]; receivedAt: number;
   sample?: boolean;
   learning?: import('./learning').LearningState;
+  receipts?: Receipt[] | null;
+  intents?: IntentHistoryEntry[] | null;
 }
 export interface ConsoleAdapter {
   mode: 'sample' | 'live';

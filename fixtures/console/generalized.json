@@ -1,0 +1,114 @@
+{
+  "contributions": [
+    {
+      "id": "sample-console-0",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "lang",
+      "value": "中文",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    },
+    {
+      "id": "sample-console-1",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "tone",
+      "value": "简洁",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    },
+    {
+      "id": "sample-console-2",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "shoe_size",
+      "value": "L",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    },
+    {
+      "id": "sample-console-3",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "budget",
+      "value": "100",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    },
+    {
+      "id": "sample-console-4",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "pref.color",
+      "value": "藏青色",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    },
+    {
+      "id": "sample-console-5",
+      "userId": "sample-user",
+      "agentId": "sample-personal-photon",
+      "field": "pref.material",
+      "value": "棉质",
+      "basis": "stated",
+      "createdAt": "2026-10-17T19:00:00.000Z"
+    }
+  ],
+  "presentation": {
+    "receipts": [
+      {
+        "id": "sample-receipt-auto",
+        "sessionId": "sample-session-a",
+        "agentId": "sample-store-a",
+        "fields": [
+          "lang",
+          "shoe_size",
+          "pref.color",
+          "pref.material"
+        ],
+        "purpose": "handshake",
+        "createdAt": "2026-10-17T19:00:00.000Z"
+      },
+      {
+        "id": "sample-receipt-address",
+        "sessionId": "sample-session-b",
+        "agentId": "sample-store-b",
+        "fields": [
+          "shipping_address"
+        ],
+        "purpose": "fulfillment",
+        "createdAt": "2026-10-17T19:00:00.000Z"
+      }
+    ],
+    "intents": [
+      {
+        "id": "sample-intent-jacket",
+        "agentId": "sample-personal-photon",
+        "query": "轻便夹克",
+        "public": {
+          "budget": "85",
+          "size": "M",
+          "color": "藏青色"
+        },
+        "createdAt": "2026-10-17T19:00:00.000Z",
+        "expiresAt": "2026-10-18T19:00:00.000Z"
+      }
+    ],
+    "grantFields": [
+      "lang",
+      "shoe_size",
+      "pref.color",
+      "pref.material"
+    ],
+    "needs": [
+      {
+        "agentId": "sample-store-a",
+        "object": "5 requested / 4 grantable / 1 denied",
+        "unavailable": [
+          "payment_method"
+        ]
+      }
+    ]
+  }
+}

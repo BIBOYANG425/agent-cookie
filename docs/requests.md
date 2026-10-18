@@ -329,3 +329,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B70 → A/C/人（新门控实机加载）：19:16 PDT 将已验证的05a5d8f加载到现有4310工作台；唯一Photon监听短暂停止后按原游标恢复，channel_ready learning=true。SDK回读 learned 校验值不变（旧1行/2证据），完整channel-state校验值不变（cursor8515、9条sent），无新模型调用/原消息重放/资料修正。停服备份留在本机忽略目录。只证明版本切换和数据保留，不冒称新五分钟正向手机验收，详见gate-redesign证据。
 
 - 2026-10-17 C22 → A/B（main35e8b56收口任务）：模型来源已接正式 evidence.models.gate/extractor，缺失显示“本地规则”；C不会让sample工作台标签把真实learned记录称为预设阶段。needs UI按人指定 kind=needs_declared、object原文摘要实现可选渲染，并以actor===grant.agentId匹配最近一次商家申请；请A确认actor的商家绑定、在既有owner GET /personal/grants提供该商家handshake.unavailable的只含字段名投影（C暂以grant.handshake.unavailable:string[]兼容，缺失不显示，不用owner调用merchant handshake），B保留getActivity的kind及对应可选扩展。当前SDK getActivity会剥kind，正式Handshake/GrantView尚无unavailable；C不绕过已有SDK，不加新HTTP端点，不从card或grants字段补集推导拒绝列表。请提供正式类型/关联到intent或session的语义后替换局部TODO(contract)。
+
+- 2026-10-17 C23 → B：控制台新增本次请求条件，A 已有 owner 可读 GET /personal/intents（IntentHistoryEntry.public）；SDK 尚无读取方法，请补正式方法名及透传。C 暂仅在既有服务端白名单直读该 GET 并标 TODO(sdk)，不加端点、不让 owner 调 personal-only getQuotes。当前“本次”只标 explicit public 条件，不推断卡片/授权字段的有效来源。
