@@ -1,0 +1,47 @@
+{
+  "result": "not-passed-interrupted-by-clamshell-sleep",
+  "sourceCommit": "05a5d8f",
+  "branchCommit": "f788108",
+  "mergedMain": "35e8b56",
+  "baselineAt": "2026-10-18T02:35:16.688Z",
+  "checkedAt": "2026-10-18T07:11:29.415Z",
+  "queuedAt": "2026-10-18T02:37:04.933Z",
+  "queueEventId": "13928",
+  "acceptedHttpStatus": 202,
+  "earliestIdleEligibilityAt": "2026-10-18T02:42:04.933Z",
+  "systemSleep": {
+    "at": "2026-10-18T02:42:00-00:00",
+    "reason": "Clamshell Sleep",
+    "firstDarkWakeAt": "2026-10-18T02:50:58Z",
+    "nextSleepAt": "2026-10-18T02:51:10Z"
+  },
+  "beforeIdle": {
+    "lastObservedAt": "2026-10-18T02:41:52.075Z",
+    "newContributions": 0,
+    "newShoppingIntents": 0
+  },
+  "afterRecovery": {
+    "newContributions": 0,
+    "learnedRows": 1,
+    "evidenceCount": 2,
+    "lastObservedOpenRouterGeneration": "2026-10-17 19:13 PDT",
+    "newModelRowsObserved": false,
+    "originalListenerResult": "RECONNECT_FAILED"
+  },
+  "channelRecovery": {
+    "cursor": 8843,
+    "messageCount": 10,
+    "phases": [
+      "sent"
+    ],
+    "pid": 31923,
+    "ready": true,
+    "learning": true
+  },
+  "limits": [
+    "No manual flush, reset, replay or model probe was performed.",
+    "Sleep before the idle deadline is confirmed; the precise zero-result learner reason is not retained by the current LearnApi boundary.",
+    "No clean positive five-minute phone result is claimed.",
+    "Temporary 15-minute idle-sleep inhibition is active for the next user-initiated attempt; the laptop lid must remain open."
+  ]
+}

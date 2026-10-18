@@ -13,15 +13,15 @@ function event(text:string,id='fresh'){
     receivedBy:{id:'agent',kind:'agent',handle:config.agentHandle,platform:'imessage'},
     space:{id:'private-space',kind:'direct',platform:'imessage'},content:{type:'text',format:'plain',text}}}};
 }
-async function setup(paused=false){
+async function setup(paused=false,listenOnly=false){
   const state:ChannelState={version:1,binding:'test',cursor:6775,startedAt:Date.now()-1000,conversations:{},messages:{}};
   const workspace={getLearning:vi.fn().mockResolvedValue({paused}),getLearned:vi.fn().mockResolvedValue({paused,learned:[]}),
     setLearning:vi.fn().mockResolvedValue({paused:true}),forgetLearning:vi.fn(),observe:vi.fn().mockResolvedValue({queued:true}),
     find:vi.fn(),accept:vi.fn(),getMyCard:vi.fn(),getReceipts:vi.fn()};
   const save=vi.fn(async()=>{}),send=vi.fn(async()=> 'outgoing');
-  const learning=await createBetaLearning({workspace,state,save,ownerHandle:config.testSender,identifierSalt:'s'.repeat(64)});
+  const learning=await createBetaLearning({workspace,state,save,ownerHandle:config.testSender,identifierSalt:'s'.repeat(64),listenOnly});
   close.push(learning.close);
-  const deliver=(e:unknown)=>handleDelivery(e,state,config,workspace,save,send,learning);
+  const deliver=(e:unknown)=>handleDelivery(e,state,config,workspace,save,send,learning,listenOnly?'listen-only':'personal');
   return {state,workspace,send,save,deliver,learning};
 }
 it('learns a fresh owner turn without blocking replies, keeps dedup/outbox and never stores raw text',async()=>{
@@ -73,4 +73,27 @@ it('learns a shopping request only through its intent, not a second observation 
   await s.deliver(event('帮我找一件蓝色外套'));
   expect(s.workspace.find).toHaveBeenCalledOnce();expect(s.workspace.observe).not.toHaveBeenCalled();
   expect(s.send).toHaveBeenCalledOnce();
+});
+
+it('listen-only shares HANA conversation identity, observes shopping too, but never replies or runs commands',async()=>{
+  const s=await setup(false,true);
+  await s.deliver(event('我一直喜欢黑色，帮我找件外套','observer-find'));
+  await vi.waitFor(()=>expect(s.workspace.observe).toHaveBeenCalledOnce());
+  const {conversationIdForChat}=await import('@agent-cookie/sdk/hana-identifiers');
+  expect(s.workspace.observe.mock.calls[0][0].conversationId).toBe(conversationIdForChat('private-space'));
+  expect(s.state.messages['observer-find'].phase).toBe('observed');
+  await s.deliver(event('我一直喜欢黑色，帮我找件外套','observer-find'));
+  await s.deliver(event('暂停学习','observer-command'));
+  expect(s.workspace.observe).toHaveBeenCalledOnce();
+  expect(s.workspace.setLearning).not.toHaveBeenCalled();expect(s.workspace.find).not.toHaveBeenCalled();expect(s.send).not.toHaveBeenCalled();
+  expect(JSON.stringify(s.state)).not.toContain('我一直喜欢');
+});
+it('listen-only follows HANA remote pause/resume and stops late checks on shutdown',async()=>{
+  const s=await setup(true,true);await s.deliver(event('我一直喜欢黑色','paused'));
+  await new Promise(r=>setTimeout(r,0));expect(s.workspace.observe).not.toHaveBeenCalled();
+  s.workspace.getLearning.mockResolvedValue({paused:false});await s.deliver(event('我一直喜欢黑色','resumed'));
+  await vi.waitFor(()=>expect(s.workspace.observe).toHaveBeenCalledOnce());
+  let resolve!:(v:{paused:boolean})=>void;s.workspace.getLearning.mockImplementation(()=>new Promise(r=>resolve=r));
+  await s.deliver(event('我一直喜欢黑色','late'));await s.learning.close();resolve({paused:false});
+  await new Promise(r=>setTimeout(r,0));expect(s.workspace.observe).toHaveBeenCalledOnce();expect(s.send).not.toHaveBeenCalled();
 });

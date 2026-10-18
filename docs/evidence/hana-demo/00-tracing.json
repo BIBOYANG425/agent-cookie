@@ -1,0 +1,714 @@
+{
+  "trace": {
+    "startedAt": "2026-10-18T07:57:45.407Z",
+    "mode": "isolated HANA, synthetic prompt; no phone transport",
+    "http": [
+      {
+        "path": "/api/v1/chat/completions",
+        "model": "openai/gpt-oss-120b",
+        "status": 200,
+        "elapsedMs": 1609,
+        "bodyKeys": [
+          "model",
+          "max_tokens",
+          "temperature",
+          "messages",
+          "tools",
+          "tool_choice"
+        ]
+      },
+      {
+        "path": "/api/v1/chat/completions",
+        "model": "google/gemini-2.0-flash-001",
+        "status": 404,
+        "elapsedMs": 36,
+        "bodyKeys": [
+          "model",
+          "messages",
+          "plugins",
+          "max_tokens",
+          "temperature"
+        ]
+      },
+      {
+        "path": "/api/v1/chat/completions",
+        "model": "openai/gpt-oss-120b",
+        "status": 200,
+        "elapsedMs": 504,
+        "bodyKeys": [
+          "model",
+          "max_tokens",
+          "temperature",
+          "messages",
+          "tools",
+          "tool_choice"
+        ]
+      }
+    ],
+    "job": {
+      "id": "688fcd9b-3423-4bdf-b3bd-04b3ee17b521",
+      "name": "hana.reply.generate",
+      "state": "created",
+      "retry_limit": 1,
+      "retry_delay": 30,
+      "expire_seconds": 1800
+    },
+    "generate": {
+      "elapsedMs": 11167,
+      "finishReason": "stop",
+      "textLength": 0,
+      "hasResponseBlock": false,
+      "steps": [
+        {
+          "finishReason": "tool-calls",
+          "toolCalls": [
+            {
+              "toolName": "web-search",
+              "argsKeys": [
+                "query"
+              ]
+            }
+          ],
+          "toolResults": [
+            {
+              "toolName": "web-search",
+              "resultKeys": [
+                "summary",
+                "sources",
+                "sourceCount"
+              ]
+            }
+          ]
+        },
+        {
+          "finishReason": "stop",
+          "toolCalls": [],
+          "toolResults": []
+        }
+      ]
+    }
+  },
+  "defaultExporterSpans": [
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "58995f467b0aa1a8",
+      "parentSpanId": null,
+      "name": "agent run: 'hana'",
+      "spanType": "agent_run",
+      "elapsedMs": 11098.0,
+      "inputType": "string",
+      "inputKeys": null,
+      "outputType": "object",
+      "outputKeys": [
+        "text",
+        "files"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "65e9003713b7732c",
+      "parentSpanId": "58995f467b0aa1a8",
+      "name": "input processor: working-memory",
+      "spanType": "processor_run",
+      "elapsedMs": 2.0,
+      "inputType": "object",
+      "inputKeys": [
+        "phase",
+        "messageCount"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "phase",
+        "messages",
+        "retryCount",
+        "messageList",
+        "systemMessages"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "311b89e2fc9c6fa4",
+      "parentSpanId": "58995f467b0aa1a8",
+      "name": "llm: 'openai/gpt-oss-120b'",
+      "spanType": "model_generation",
+      "elapsedMs": 11024.0,
+      "inputType": "object",
+      "inputKeys": [
+        "messages"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "text",
+        "files",
+        "sources",
+        "warnings",
+        "reasoning",
+        "reasoningText"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "ce3522aea6a2cd32",
+      "parentSpanId": "311b89e2fc9c6fa4",
+      "name": "step: 0",
+      "spanType": "model_step",
+      "elapsedMs": 4380.0,
+      "inputType": "object",
+      "inputKeys": [
+        "body"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "text",
+        "toolCalls"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "2001937376e8d59e",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "input step processor: observational-memory",
+      "spanType": "processor_run",
+      "elapsedMs": 71.0,
+      "inputType": "object",
+      "inputKeys": [
+        "phase",
+        "messageCount"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "model",
+        "phase",
+        "tools",
+        "messages",
+        "messageId",
+        "retryCount",
+        "stepNumber",
+        "toolChoice",
+        "messageList",
+        "modelSettings",
+        "systemMessages",
+        "rotateResponseMessageId"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "2afabe46777d52c0",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "input step processor: prepare-step",
+      "spanType": "processor_run",
+      "elapsedMs": 1.0,
+      "inputType": "object",
+      "inputKeys": [
+        "model",
+        "tools",
+        "messages",
+        "messageId",
+        "stepNumber",
+        "toolChoice",
+        "modelSettings",
+        "requestContext",
+        "systemMessages"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "model",
+        "phase",
+        "tools",
+        "messages",
+        "messageId",
+        "retryCount",
+        "stepNumber",
+        "toolChoice",
+        "messageList",
+        "modelSettings",
+        "systemMessages",
+        "rotateResponseMessageId"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "81461e77a7d6465f",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "chunk: 'reasoning'",
+      "spanType": "model_chunk",
+      "elapsedMs": 1.0,
+      "inputType": null,
+      "inputKeys": null,
+      "outputType": "object",
+      "outputKeys": [
+        "text"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "656e5a5667ce6acd",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "chunk: 'tool-call'",
+      "spanType": "model_chunk",
+      "elapsedMs": 2.0,
+      "inputType": null,
+      "inputKeys": null,
+      "outputType": "object",
+      "outputKeys": [
+        "toolName",
+        "toolInput",
+        "toolCallId"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "b032e29e99816cfd",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "tool: 'web-search'",
+      "spanType": "tool_call",
+      "elapsedMs": 657.0,
+      "inputType": "object",
+      "inputKeys": [
+        "query"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "sources",
+        "summary",
+        "sourceCount"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "254058e057461d03",
+      "parentSpanId": "ce3522aea6a2cd32",
+      "name": "chunk: 'tool-result'",
+      "spanType": "model_chunk",
+      "elapsedMs": null,
+      "inputType": null,
+      "inputKeys": null,
+      "outputType": "object",
+      "outputKeys": [
+        "sources",
+        "summary",
+        "sourceCount"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "73a3b0f290bcdf84",
+      "parentSpanId": "311b89e2fc9c6fa4",
+      "name": "step: 1",
+      "spanType": "model_step",
+      "elapsedMs": 6622.0,
+      "inputType": "object",
+      "inputKeys": [
+        "body"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "text",
+        "toolCalls"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "d3c922ce1b5527ee",
+      "parentSpanId": "73a3b0f290bcdf84",
+      "name": "input step processor: observational-memory",
+      "spanType": "processor_run",
+      "elapsedMs": 12.0,
+      "inputType": "object",
+      "inputKeys": [
+        "phase",
+        "messageCount"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "model",
+        "phase",
+        "tools",
+        "messages",
+        "messageId",
+        "retryCount",
+        "stepNumber",
+        "toolChoice",
+        "messageList",
+        "modelSettings",
+        "systemMessages",
+        "rotateResponseMessageId"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "fbf382b6f42ba397",
+      "parentSpanId": "73a3b0f290bcdf84",
+      "name": "input step processor: prepare-step",
+      "spanType": "processor_run",
+      "elapsedMs": 0.0,
+      "inputType": "object",
+      "inputKeys": [
+        "model",
+        "tools",
+        "messages",
+        "messageId",
+        "stepNumber",
+        "toolChoice",
+        "modelSettings",
+        "requestContext",
+        "systemMessages"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "model",
+        "phase",
+        "tools",
+        "messages",
+        "messageId",
+        "retryCount",
+        "stepNumber",
+        "toolChoice",
+        "messageList",
+        "modelSettings",
+        "systemMessages",
+        "rotateResponseMessageId"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "31dacb31b4eb995a",
+      "parentSpanId": "73a3b0f290bcdf84",
+      "name": "chunk: 'reasoning'",
+      "spanType": "model_chunk",
+      "elapsedMs": 3.0,
+      "inputType": null,
+      "inputKeys": null,
+      "outputType": "object",
+      "outputKeys": [
+        "text"
+      ],
+      "hasError": false
+    },
+    {
+      "traceId": "2b8146057b394a469e776d068ef7fdb4",
+      "spanId": "fee8ac1259a22eed",
+      "parentSpanId": "58995f467b0aa1a8",
+      "name": "output processor: observational-memory",
+      "spanType": "processor_run",
+      "elapsedMs": 6.0,
+      "inputType": "object",
+      "inputKeys": [
+        "phase",
+        "messageCount"
+      ],
+      "outputType": "object",
+      "outputKeys": [
+        "phase",
+        "result",
+        "messages",
+        "retryCount",
+        "messageList",
+        "systemMessages"
+      ],
+      "hasError": false
+    }
+  ],
+  "photonReadOnlyProbe": {
+    "at": "2026-10-18T07:58:47.596Z",
+    "mode": "two read-only subscriptions; no sends and no state writes",
+    "startSeq": 12907,
+    "subscribers": [
+      {
+        "index": 0,
+        "startSeq": 12907,
+        "ack": true,
+        "deliveries": [
+          {
+            "meta": {
+              "seq": 12908,
+              "replyExpected": false
+            },
+            "event": {
+              "id": "sha256:423a40952b3aa887",
+              "apiVersion": "2026-07-01",
+              "type": "message.received",
+              "source": "imessage.photon",
+              "timestamp": "2026-10-18T07:43:46.699Z",
+              "data": {
+                "object": {
+                  "content": {
+                    "format": "plain",
+                    "text": "[omitted]",
+                    "type": "text"
+                  },
+                  "createdAt": "2026-10-18T07:43:46.932Z",
+                  "updatedAt": "2026-10-18T07:43:46.932Z",
+                  "id": "sha256:61d02a58cf2d8510",
+                  "metadata": {
+                    "transport": "imessage"
+                  },
+                  "platform": "imessage",
+                  "projectId": "sha256:45554a498f572638",
+                  "receivedBy": {
+                    "details": {
+                      "type": "shared"
+                    },
+                    "handle": "[omitted]",
+                    "id": "sha256:7883e4741c6fa565",
+                    "kind": "agent",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "sentBy": {
+                    "details": {},
+                    "handle": "[omitted]",
+                    "id": "sha256:ce32443feddc65a6",
+                    "kind": "human",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "space": {
+                    "details": {},
+                    "id": "sha256:9becea5b6f15ef5f",
+                    "kind": "direct",
+                    "metadata": {},
+                    "participantIds": [
+                      "pho_usr_0e62181b6yhp6va4n5g5v3faka",
+                      "pho_usr_4gcs8dqmeygecsbc5pmdxan33j"
+                    ],
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "status": "received",
+                  "timestamps": {
+                    "receivedAt": "2026-10-18T07:43:46.699Z"
+                  }
+                },
+                "projectId": "sha256:45554a498f572638"
+              }
+            }
+          },
+          {
+            "meta": {
+              "seq": 12909,
+              "replyExpected": false
+            },
+            "event": {
+              "id": "sha256:e9f100e069fd10b2",
+              "apiVersion": "2026-07-01",
+              "type": "message.delivered",
+              "source": "imessage.photon",
+              "timestamp": "2026-10-18T07:43:48.257Z",
+              "data": {
+                "object": {
+                  "addressedTo": {
+                    "details": {},
+                    "handle": "[omitted]",
+                    "id": "sha256:ce32443feddc65a6",
+                    "kind": "human",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "content": {
+                    "format": "plain",
+                    "text": "[omitted]",
+                    "type": "text"
+                  },
+                  "createdAt": "2026-10-18T07:43:47.767Z",
+                  "updatedAt": "2026-10-18T07:43:48.427Z",
+                  "id": "sha256:24ea3715f4661d79",
+                  "metadata": {},
+                  "platform": "imessage",
+                  "projectId": "sha256:45554a498f572638",
+                  "sentBy": {
+                    "details": {
+                      "type": "shared"
+                    },
+                    "handle": "[omitted]",
+                    "id": "sha256:7883e4741c6fa565",
+                    "kind": "agent",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "space": {
+                    "details": {},
+                    "id": "sha256:9becea5b6f15ef5f",
+                    "kind": "direct",
+                    "metadata": {},
+                    "participantIds": [
+                      "pho_usr_0e62181b6yhp6va4n5g5v3faka",
+                      "pho_usr_4gcs8dqmeygecsbc5pmdxan33j"
+                    ],
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "status": "delivered",
+                  "timestamps": {
+                    "deliveredAt": "2026-10-18T07:43:48.257Z",
+                    "dispatchedAt": "2026-10-18T07:43:47.767Z"
+                  }
+                },
+                "projectId": "sha256:45554a498f572638"
+              }
+            }
+          }
+        ],
+        "status": "received"
+      },
+      {
+        "index": 1,
+        "startSeq": 12907,
+        "ack": true,
+        "deliveries": [
+          {
+            "meta": {
+              "seq": 12908,
+              "replyExpected": false
+            },
+            "event": {
+              "id": "sha256:423a40952b3aa887",
+              "apiVersion": "2026-07-01",
+              "type": "message.received",
+              "source": "imessage.photon",
+              "timestamp": "2026-10-18T07:43:46.699Z",
+              "data": {
+                "object": {
+                  "content": {
+                    "format": "plain",
+                    "text": "[omitted]",
+                    "type": "text"
+                  },
+                  "createdAt": "2026-10-18T07:43:46.932Z",
+                  "updatedAt": "2026-10-18T07:43:46.932Z",
+                  "id": "sha256:61d02a58cf2d8510",
+                  "metadata": {
+                    "transport": "imessage"
+                  },
+                  "platform": "imessage",
+                  "projectId": "sha256:45554a498f572638",
+                  "receivedBy": {
+                    "details": {
+                      "type": "shared"
+                    },
+                    "handle": "[omitted]",
+                    "id": "sha256:7883e4741c6fa565",
+                    "kind": "agent",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "sentBy": {
+                    "details": {},
+                    "handle": "[omitted]",
+                    "id": "sha256:ce32443feddc65a6",
+                    "kind": "human",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "space": {
+                    "details": {},
+                    "id": "sha256:9becea5b6f15ef5f",
+                    "kind": "direct",
+                    "metadata": {},
+                    "participantIds": [
+                      "pho_usr_0e62181b6yhp6va4n5g5v3faka",
+                      "pho_usr_4gcs8dqmeygecsbc5pmdxan33j"
+                    ],
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "status": "received",
+                  "timestamps": {
+                    "receivedAt": "2026-10-18T07:43:46.699Z"
+                  }
+                },
+                "projectId": "sha256:45554a498f572638"
+              }
+            }
+          },
+          {
+            "meta": {
+              "seq": 12909,
+              "replyExpected": false
+            },
+            "event": {
+              "id": "sha256:e9f100e069fd10b2",
+              "apiVersion": "2026-07-01",
+              "type": "message.delivered",
+              "source": "imessage.photon",
+              "timestamp": "2026-10-18T07:43:48.257Z",
+              "data": {
+                "object": {
+                  "addressedTo": {
+                    "details": {},
+                    "handle": "[omitted]",
+                    "id": "sha256:ce32443feddc65a6",
+                    "kind": "human",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "content": {
+                    "format": "plain",
+                    "text": "[omitted]",
+                    "type": "text"
+                  },
+                  "createdAt": "2026-10-18T07:43:47.767Z",
+                  "updatedAt": "2026-10-18T07:43:48.427Z",
+                  "id": "sha256:24ea3715f4661d79",
+                  "metadata": {},
+                  "platform": "imessage",
+                  "projectId": "sha256:45554a498f572638",
+                  "sentBy": {
+                    "details": {
+                      "type": "shared"
+                    },
+                    "handle": "[omitted]",
+                    "id": "sha256:7883e4741c6fa565",
+                    "kind": "agent",
+                    "metadata": {},
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "space": {
+                    "details": {},
+                    "id": "sha256:9becea5b6f15ef5f",
+                    "kind": "direct",
+                    "metadata": {},
+                    "participantIds": [
+                      "pho_usr_0e62181b6yhp6va4n5g5v3faka",
+                      "pho_usr_4gcs8dqmeygecsbc5pmdxan33j"
+                    ],
+                    "platform": "imessage",
+                    "projectId": "sha256:45554a498f572638"
+                  },
+                  "status": "delivered",
+                  "timestamps": {
+                    "deliveredAt": "2026-10-18T07:43:48.257Z",
+                    "dispatchedAt": "2026-10-18T07:43:47.767Z"
+                  }
+                },
+                "projectId": "sha256:45554a498f572638"
+              }
+            }
+          }
+        ],
+        "status": "received"
+      }
+    ]
+  }
+}

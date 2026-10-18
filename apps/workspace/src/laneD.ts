@@ -7,7 +7,7 @@
 // wired in deps.ts), so payment may be on while the jar is off. With the jar wired, the accept path's merchant requests
 // carry the TAP `agent-payer-auth` signature (services/delivery.ts); UCP steps go through the `ucp` CLI and carry none.
 import { resolve } from "node:path";
-import type { AuthorizePayment, ReversePayment, SignHandshake } from "@agent-cookie/contract";
+import type { AuthorizePayment, PaymentAuthorization, ReversePayment, SignHandshake } from "@agent-cookie/contract";
 import { createLaneDHooks, JarKeyStore } from "@agent-cookie/auth";
 import type { Clock } from "./clock.js";
 import type { Config } from "./config.js";
@@ -23,6 +23,8 @@ export interface LaneDHooks {
   authorizePayment?: AuthorizePayment;
   /** Releases the hold of an authorization the store did not take (set with authorizePayment by AGENT_COOKIE_PAY). */
   reversePayment?: ReversePayment;
+  /** D1: set with authorizePayment; `simulated` when the configured provider is lane D's Visa Acceptance simulator. */
+  paymentProvenance?: Pick<PaymentAuthorization, "provider" | "simulated">;
   /** POST /personal/unlock → @agent-cookie/auth handleUnlock (the unlock app's HMAC handoff token is the credential). */
   handleUnlock?: (req: Request) => Promise<Response>;
   /** GET /.well-known/agent-cookie-jwks.json?sessionId= → the session's pairwise jar key. */

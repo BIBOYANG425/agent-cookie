@@ -3,7 +3,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-const upstream = 'http://127.0.0.1:4310';
+// Explicit local demo upstream; credentials remain in the existing request path.
+function localWorkspaceUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
+    || url.pathname !== '/' || url.search || url.hash) throw new Error('Workspace upstream must be a loopback HTTP origin.');
+  return url.origin;
+}
 const prefix = '/workspace-api';
 type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned'
   | 'listLinks';
@@ -145,8 +151,13 @@ export function createWorkspaceBridge(options: {
   key: () => string | undefined;
   sdk: Promise<ClientFactory | undefined>;
   sample?: boolean;
+  port?: number;
   fetcher?: typeof fetch;
 }) {
+  const port = options.port ?? 5173;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid console port.');
+  const allowedHost = `127.0.0.1:${port}`;
+  const upstream = localWorkspaceUrl(process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310');
   const send = (response: ServerResponse, status: number, body: unknown) => {
     if (response.destroyed) return;
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
@@ -161,7 +172,7 @@ export function createWorkspaceBridge(options: {
     try {
       const host = request.headers.host;
       // Custom header prevents cross-origin form/fetch access; Host prevents DNS rebinding.
-      if (!host || !/^127\.0\.0\.1:5173$/u.test(host)
+      if (!host || host !== allowedHost
         || request.headers['x-agent-cookie-console'] !== '1'
         || (request.headers.origin !== undefined && request.headers.origin !== `http://${host}`)
         || request.headers['sec-fetch-site'] === 'cross-site') throw new BridgeError(403, 'SCOPE_DENIED');

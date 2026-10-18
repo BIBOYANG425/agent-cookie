@@ -22,11 +22,11 @@ it('accepts A 0129f08 grouped evidence and counts dual IDs as aliases of one sou
   const state = normalizeLearning(payload);
   expect(state).toMatchObject({ paused: false, entries: payload.learned });
   const html = renderToStaticMarkup(createElement(LearningPanel, { state, sample: false, disabled: false, revoke: () => {} }));
-  expect(html).toContain('已进入身份卡');
-  expect(html).toContain('3 条贡献 · 2 个来源');
-  expect(html).not.toContain('3 个来源');
+  expect(html).toContain('Added to context');
+  expect(html).toContain('3 contributions · 2 sources');
+  expect(html).not.toContain('3 sources');
   for (const id of ['contribution/one', 'contribution-two', 'contribution-three']) {
-    expect(html).toContain(`记录 ${id}`);
+    expect(html).toContain(`Record ${id}`);
   }
   for (const text of ['conversation-one', 'intent-alias', 'conversation-two', '一直喜欢棉质', 'personal-two']) expect(html).toContain(text);
 });

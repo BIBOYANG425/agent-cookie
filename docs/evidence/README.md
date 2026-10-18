@@ -1,4 +1,12 @@
-# 验收证据索引
+# Verification evidence
+
+## October 18 English demo delivery
+
+The current demo evidence is linked from the [HANA and assistant-switch guide](../hana-demo.md). The [actual Claude Desktop run](hana-demo/12-desktop-switch.json) and [Sample company-assistant flow](hana-demo/17-company-assistant-recording.json) are separate checks with different agent roles. The latter verified owner approval, inherited context, stable merchant sessions, fixture-only address release, and `403 GRANT_REVOKED` after revocation. English console screenshots are included in the same directory. The [submission copy](../devpost-submission-en.md) describes the verified scope and remaining limits.
+
+The historical index below is retained in its original language. Its dated results do not replace the current evidence or claim that all production integrations are complete.
+
+## Historical evidence index
 
 更新：2026-10-17。当前源码基线为 main `35e8b56`（PR #25 已合并）。此页索引已发生的验收，不将旧录制改称当前版本现场实测。状态统一为 **通过 / 手动证据 / 已砍 / 阻塞**；括号说明范围。A15/A16/A23 按人的最新收口裁决标记，原始执行材料保留。
 

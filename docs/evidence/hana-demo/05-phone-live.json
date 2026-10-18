@@ -1,0 +1,196 @@
+{
+  "capturedAt": "2026-10-18T17:37:27.144Z",
+  "scope": "Real owner phone input; real HANA generation and UCP live search. Natural idle learning; no reset, replay or manual flush.",
+  "agentCookieRevision": "d3baa132265070f867ea1486292cd19354216790",
+  "hanaRevision": "3b5e416a1846f6e52d630577a51b7707ab34ed77",
+  "workspacePort": 4314,
+  "personalAgentId": "ag_vy8nqnkg",
+  "intentId": "i_h022per5",
+  "requiredIdleMs": 300000,
+  "manualFlush": false,
+  "clockAdvance": false,
+  "quotes": [
+    {
+      "id": "q_84khftx2",
+      "agentId": "ucp:sagetosummit.myshopify.com",
+      "price": 11500,
+      "currency": "USD",
+      "etaDate": null,
+      "title": "Topo Men's Traverse · Topo Men's Traverse",
+      "seller": "sagetosummit.myshopify.com",
+      "variantId": "gid://shopify/ProductVariant/44793556828415",
+      "source": "live"
+    },
+    {
+      "id": "q_7ptk0pza",
+      "agentId": "ucp:g11qh1-tw.myshopify.com",
+      "price": 7849,
+      "currency": "USD",
+      "etaDate": null,
+      "title": "Lone Peak 9 Trail Running Shoes · Lone Peak 9 Trail Running Shoes",
+      "seller": "g11qh1-tw.myshopify.com",
+      "variantId": "gid://shopify/ProductVariant/45388706709590",
+      "source": "live"
+    }
+  ],
+  "sample": false,
+  "nativeJobs": [
+    {
+      "id": "3756a949-aea4-4cd2-ac2d-1b749e98db95",
+      "name": "hana.reply.generate",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 1800,
+      "created_on": "2026-10-18T17:32:02.652797+00:00",
+      "started_on": "2026-10-18T17:32:03.096382+00:00",
+      "completed_on": "2026-10-18T17:32:18.116672+00:00"
+    },
+    {
+      "id": "467bbfdc-3fe5-4ac8-802e-9210a32530af",
+      "name": "hana.reply.send",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 900,
+      "created_on": "2026-10-18T17:32:18.111093+00:00",
+      "started_on": "2026-10-18T17:32:19.101272+00:00",
+      "completed_on": "2026-10-18T17:32:20.040741+00:00"
+    }
+  ],
+  "deliveries": [
+    {
+      "message_id": "pho_msg_5t15e7ngt1hjta3hbqvm6xrxxa",
+      "status": "delivered",
+      "seq": 23737,
+      "at": "2026-10-18T17:32:20.787178+00:00"
+    },
+    {
+      "message_id": "pho_msg_7tt2ejz898heqb2k9h1qe508te",
+      "status": "delivered",
+      "seq": 23738,
+      "at": "2026-10-18T17:32:21.097387+00:00"
+    },
+    {
+      "message_id": "pho_msg_6q88pxdd34hyh937yxp951fczp",
+      "status": "delivered",
+      "seq": 23739,
+      "at": "2026-10-18T17:32:21.29345+00:00"
+    }
+  ],
+  "learning": {
+    "paused": false,
+    "learned": []
+  },
+  "activity": [
+    {
+      "id": "128",
+      "at": "2026-10-18T17:32:18.012Z",
+      "event": "POST /personal/intents",
+      "actor": "ag_vy8nqnkg",
+      "object": "",
+      "result": "201",
+      "reason": ""
+    },
+    {
+      "id": "127",
+      "at": "2026-10-18T17:32:18.011Z",
+      "event": "ucp.handshake",
+      "actor": "workspace",
+      "object": "k5pmwmer",
+      "result": "written",
+      "reason": "fields=2 intent=i_h022per5"
+    },
+    {
+      "id": "126",
+      "at": "2026-10-18T17:32:18.011Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "k5pmwmer",
+      "result": "ok",
+      "reason": "ucp:g11qh1-tw.myshopify.com via ucp"
+    },
+    {
+      "id": "125",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "ucp.proxy",
+      "actor": "workspace",
+      "object": "ucp:g11qh1-tw.myshopify.com",
+      "result": "registered",
+      "reason": ""
+    },
+    {
+      "id": "124",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "ucp.handshake",
+      "actor": "workspace",
+      "object": "169v3feq",
+      "result": "written",
+      "reason": "fields=2 intent=i_h022per5"
+    },
+    {
+      "id": "123",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "introduce",
+      "actor": "workspace",
+      "object": "169v3feq",
+      "result": "ok",
+      "reason": "ucp:sagetosummit.myshopify.com via ucp"
+    },
+    {
+      "id": "122",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "ucp.proxy",
+      "actor": "workspace",
+      "object": "ucp:sagetosummit.myshopify.com",
+      "result": "registered",
+      "reason": ""
+    },
+    {
+      "id": "121",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "ucp.search",
+      "actor": "workspace",
+      "object": "i_h022per5",
+      "result": "ok",
+      "reason": "offers=43 picked=2"
+    },
+    {
+      "id": "120",
+      "at": "2026-10-18T17:32:18.010Z",
+      "event": "intent.create",
+      "actor": "ag_vy8nqnkg",
+      "object": "i_h022per5",
+      "result": "ok",
+      "reason": "text"
+    },
+    {
+      "id": "117",
+      "at": "2026-10-18T17:32:02.659Z",
+      "event": "POST /personal/observations",
+      "actor": "ag_vy8nqnkg",
+      "object": "",
+      "result": "202",
+      "reason": ""
+    },
+    {
+      "id": "116",
+      "at": "2026-10-18T17:32:02.659Z",
+      "event": "observation.queue",
+      "actor": "ag_vy8nqnkg",
+      "object": "",
+      "result": "ok",
+      "reason": "turns=1 user=1"
+    }
+  ],
+  "limitations": [
+    "No phone selection or checkout handoff in this capture yet.",
+    "Live catalog is not an endorsement or authentication of the merchant.",
+    "Console still uses preserved4310; no new4314 UI acceptance.",
+    "OpenRouter per-request ledger timestamps not captured for this phone turn."
+  ],
+  "afterNaturalIdle": {
+    "at": "2026-10-18T17:37:48.884Z",
+    "paused": false,
+    "learnedCount": 0,
+    "passed": false
+  }
+}

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuthorizePayment, PaymentAuthorization, ReversePayment } from "./contract.js";
 import { LaneError } from "./contract.js";
+import { PAYMENT_SIMULATOR_LABEL } from "@agent-cookie/contract";
 import type { PaymentProvider } from "./providers.js";
 
 export interface PaymentContext {
@@ -48,6 +49,7 @@ const publicAuthorization = (record: InternalAuthorization): PaymentAuthorizatio
   currency: record.currency,
   status: record.status,
   createdAt: record.createdAt,
+  ...(record.simulated ? { provider: PAYMENT_SIMULATOR_LABEL, simulated: true as const } : {}),
 });
 
 export function createPayments({
@@ -70,9 +72,8 @@ export function createPayments({
   reverseAuthorization: ReversePayment;
   get: (id: string) => PaymentAuthorization | undefined;
 } {
-  if (provider.simulated) {
-    throw new LaneError("SCOPE_DENIED", "Visa Acceptance simulator: workspace provenance contract not wired");
-  }
+  // D1: a simulated provider's results carry its provenance (contract PaymentAuthorization.provider / simulated).
+  const provenance = provider.simulated ? { provider: PAYMENT_SIMULATOR_LABEL, simulated: true as const } : {};
   const authorizePayment: AuthorizePayment = async ({ sessionId, quoteId, amount, currency, billTo }) => {
     const context = await getContext({ sessionId, quoteId });
     if (!context) throw new LaneError("NOT_FOUND");
@@ -109,6 +110,7 @@ export function createPayments({
       providerRef: authorization.providerRef,
       paymentMethodRef: context.paymentMethodRef,
       agentId: context.quoteAgentId,
+      ...provenance,
       ...(authorization.status === "authorized" ? { authorizedAmount: authorization.authorizedAmount ?? amount } : {}),
     };
     store.put(record);

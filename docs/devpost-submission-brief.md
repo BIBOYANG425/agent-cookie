@@ -161,7 +161,7 @@ Verified on this checkout on 2026-10-18: after the two statements a new assistan
 
 ## 5 · Submission checklist
 
-1. **English README at the repository root.** Done: `README.md` is the English README (the cookie pitch, what is real versus Sample, the five-minute run, the doors, the tracks) and the Chinese original is `README.zh.md`. The interim `README.en.md` from PR 37 was folded in and removed.
+1. **English README at the repository root.** Done: `README.md` is the English overview (from PR 39) with the two-way loop diagram, `README.en.md` is the full English guide (pitch, loop, industries, five-minute run, doors, tracks), and `README.zh.md` is the Chinese guide.
 2. **Repository access.** Make the repository public, or add the judging accounts as collaborators, before the deadline.
 3. **One-line tweak for the demo:** let `examples/assistant-sdk/main.mjs` take the assistant's display name from an environment variable so the console shows "Dots" and "Muse" instead of the same Sample name twice.
 4. **Video.** One continuous take per the run-of-show, 1080p, English only, no Chinese on any screen (console set to English, iMessage replies are English when the message is English). Upload unlisted. Under three minutes if the track rules say so.

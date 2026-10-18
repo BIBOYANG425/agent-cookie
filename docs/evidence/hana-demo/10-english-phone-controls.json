@@ -1,0 +1,9 @@
+{
+  "provenance": "Verified by the prior demo operator; handoff supplied to this thread, with user confirmation that both phone replies were English.",
+  "hanaCommit": "2886cde",
+  "pause": {"activityId": "775", "at": "2026-10-18T17:55:04.455Z", "httpStatus": 200, "deliveredAt": "2026-10-18T17:55:06.232813Z", "deliverySeq": 23974},
+  "resume": {"activityId": "779", "at": "2026-10-18T17:55:23.806Z", "httpStatus": 200, "deliveredAt": "2026-10-18T17:55:26.675352Z", "deliverySeq": 23977},
+  "jobs": {"generate": "completed", "send": "completed", "retryCount": 0},
+  "after": {"at": "2026-10-18T17:57:38Z", "paused": false, "contributionId": "c_msp515p7", "field": "pref.fit", "value": "loose", "status": "candidate", "preserved": true},
+  "scope": "English pause/resume templates. No claim that a second English shopping/checkout phone rehearsal ran after the update."
+}

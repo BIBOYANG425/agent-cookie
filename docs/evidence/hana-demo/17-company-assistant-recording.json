@@ -1,0 +1,149 @@
+{
+  "verifiedAt": "2026-10-18T18:23:51.609361+00:00",
+  "environment": "Separate Sample workspace 4315; fixture UCP; payment off",
+  "prepare": {
+    "label": "Sample \u00b7 Fixture replay",
+    "step": "Ready for owner consent",
+    "assistant": "Muse",
+    "linkId": "lk_frhfa6mv",
+    "earlierAssistant": "Dots",
+    "earlierIntent": "i_rje3gtc1",
+    "action": "Open the English console on port 5174. Approve Sample \u00b7 Muse under Connections."
+  },
+  "steps": [
+    {
+      "label": "Sample \u00b7 actual SDK context",
+      "assistant": "Muse",
+      "fields": {
+        "lang": "en",
+        "tone": "concise",
+        "shoe_size": "42",
+        "pref.brand": "Brooks"
+      },
+      "unknown": [
+        "length",
+        "budget",
+        "deadline",
+        "pref.color",
+        "pref.material",
+        "pref.style",
+        "pref.fit",
+        "pref.avoid",
+        "pref.occasion",
+        "pref.recipient",
+        "pref.price_band",
+        "pref.size_system"
+      ],
+      "shippingAddressIncluded": false,
+      "paymentMethodIncluded": false
+    },
+    {
+      "label": "Sample \u00b7 Fixture replay",
+      "intentId": "i_5hdzcz3h",
+      "offers": [
+        {
+          "quoteId": "q_gh2hhs7r",
+          "merchant": "ucp:marathonsports.myshopify.com",
+          "title": "Brooks Men's Cascadia 18 \u00b7 Brooks Men's Cascadia 18",
+          "price": 10995
+        },
+        {
+          "quoteId": "q_46n4cm29",
+          "merchant": "ucp:black-flag-outfitters-clothing.myshopify.com",
+          "title": "Keen Men's Wander Trail Running Shoe \u00b7 Keen Men's Wander Trail Running Shoe",
+          "price": 11200
+        }
+      ]
+    },
+    {
+      "label": "Sample \u00b7 Fixture checkout \u00b7 no real payment",
+      "status": "handoff"
+    },
+    {
+      "label": "Actual workspace receipts \u00b7 field names only",
+      "receipts": [
+        {
+          "agentId": "ucp:marathonsports.myshopify.com",
+          "sessionId": "nzkw4v4a",
+          "purpose": "checkout",
+          "fields": [
+            "shipping_address"
+          ],
+          "intentId": "i_5hdzcz3h"
+        },
+        {
+          "agentId": "ucp:black-flag-outfitters-clothing.myshopify.com",
+          "sessionId": "jrrg7b6g",
+          "purpose": "handshake",
+          "fields": [
+            "lang",
+            "shoe_size",
+            "pref.brand"
+          ],
+          "intentId": "i_5hdzcz3h"
+        },
+        {
+          "agentId": "ucp:marathonsports.myshopify.com",
+          "sessionId": "nzkw4v4a",
+          "purpose": "handshake",
+          "fields": [
+            "lang",
+            "shoe_size",
+            "pref.brand"
+          ],
+          "intentId": "i_5hdzcz3h"
+        },
+        {
+          "agentId": "ag_5y3r5qrv",
+          "sessionId": "6g2edb8t",
+          "purpose": "assist",
+          "fields": [
+            "lang",
+            "tone",
+            "shoe_size",
+            "pref.brand"
+          ]
+        },
+        {
+          "agentId": "ucp:black-flag-outfitters-clothing.myshopify.com",
+          "sessionId": "jrrg7b6g",
+          "purpose": "handshake",
+          "fields": [
+            "lang",
+            "shoe_size",
+            "pref.brand"
+          ],
+          "intentId": "i_rje3gtc1"
+        },
+        {
+          "agentId": "ucp:marathonsports.myshopify.com",
+          "sessionId": "nzkw4v4a",
+          "purpose": "handshake",
+          "fields": [
+            "lang",
+            "shoe_size",
+            "pref.brand"
+          ],
+          "intentId": "i_rje3gtc1"
+        }
+      ]
+    }
+  ],
+  "revocation": {
+    "label": "Sample \u00b7 verified revocation",
+    "assistant": "Muse",
+    "nextRead": "GRANT_REVOKED",
+    "status": 403
+  },
+  "uiVerification": {
+    "approval": "Clicked Approve connection for Sample \u00b7 Muse; UI readback Approved",
+    "revocation": "Clicked Revoke access for Sample \u00b7 Muse; active grant disappeared; subsequent SDK read 403 GRANT_REVOKED",
+    "viewport": "1920x1080",
+    "visibleChineseText": false
+  },
+  "limits": [
+    "No real model greeting was generated. The displayed values are actual SDK context.",
+    "No paid order or live address release. The address receipt belongs to the isolated fixture checkout.",
+    "Dots evidence was deliberately seeded for this Sample; it is not the real phone learning history."
+  ]
+}

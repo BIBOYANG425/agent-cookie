@@ -1,21 +1,17 @@
-import { t, localizeUiText, subscribeLocale, type MessageKey } from './i18n';
 import type { ConsoleAdapter, ConsoleSnapshot, GrantView } from './model';
-import { LinkNotPendingError, type LinkDecision } from './links';
+import { decisionLabels, LinkNotPendingError, type LinkDecision } from './links';
 import { parseCandidate, PolicyViolationError, type ShadowReport } from './policy';
 /** The last policy-panel action's outcome. Kept apart from notice/error so the next poll does not clear it. */
 export type PolicyResult = { kind: 'invalid'; message: string }
   | { kind: 'shadow'; report: ShadowReport }
-  | { kind: 'violations'; action: 'shadow' | 'install'; violations: string[] }
+  | { kind: 'violations'; action: 'Policy preview' | 'Install'; violations: string[] }
   | { kind: 'installed'; policyId: string };
 interface State {
   data: ConsoleSnapshot | null; loading: boolean; notice: string; error: string; pending: string; policyResult?: PolicyResult;
-  /** Links the workspace answered 409 for (already approved, declined or expired): shown as 已处理, with no buttons. */
+  /** Links the workspace answered 409 for (already approved, declined or expired): shown as Handled, with no buttons. */
   handledLinks: readonly string[];
 }
-const STATUS_KEYS = ['notice', 'error', 'pending'] as const;
-type StatusKey = typeof STATUS_KEYS[number];
-type StateUpdate = Omit<Partial<State>, StatusKey> & Partial<Record<StatusKey, string | (() => string)>>;
-const message = (error: unknown) => error instanceof Error ? localizeUiText(error.message) : t("requestFailed");
+const message = (error: unknown) => error instanceof Error ? error.message : 'Request failed';
 export function remainingSeconds(grant: GrantView, receivedAt: number, now: number): number {
   return grant.status !== 'live' ? 0 : Math.max(0, Math.ceil((grant.remainingMs - Math.max(0, now - receivedAt)) / 1000));
 }
@@ -23,24 +19,13 @@ export class ConsoleController {
   private state: State = { data: null, loading: true, notice: '', error: '', pending: '', handledLinks: [] };
   private listeners = new Set<() => void>();
   private interval?: ReturnType<typeof setInterval>;
-  private unsubscribeLocale?: () => void;
-  private statusText: Partial<Record<StatusKey, () => string>> = {};
   private request?: AbortController;
   private generation = 0;
   constructor(readonly adapter: ConsoleAdapter) {}
   getState = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private update(next: StateUpdate) {
-    const { notice, error, pending, ...rest } = next;
-    const statuses = { notice, error, pending };
-    const rendered: Partial<State> = rest;
-    for (const key of STATUS_KEYS) {
-      const value = statuses[key];
-      if (value === undefined) continue;
-      if (typeof value === 'function') { this.statusText[key] = value; rendered[key] = value(); }
-      else { delete this.statusText[key]; rendered[key] = value; }
-    }
-    this.state = { ...this.state, ...rendered };
+  private update(next: Partial<State>) {
+    this.state = { ...this.state, ...next };
     this.listeners.forEach((listener) => listener());
   }
   private sorted(data: ConsoleSnapshot): ConsoleSnapshot {
@@ -53,14 +38,10 @@ export class ConsoleController {
   }
   start() {
     if (this.interval !== undefined) return;
-    this.unsubscribeLocale = subscribeLocale(() => this.update(this.statusText));
-    this.update(this.statusText);
     void this.refresh();
     this.interval = setInterval(() => { void this.refresh(); }, 2000);
   }
   stop() {
-    this.unsubscribeLocale?.();
-    this.unsubscribeLocale = undefined;
     clearInterval(this.interval);
     this.interval = undefined;
     this.generation++;
@@ -76,41 +57,41 @@ export class ConsoleController {
       const data = await this.adapter.load(request.signal);
       if (generation === this.generation) this.update({ data: this.sorted(data), error: '', loading: false });
     } catch (error) {
-      if (generation === this.generation) this.update({ error: () => t("refreshFailed", message(error)), loading: false });
+      if (generation === this.generation) this.update({ error: `Refresh failed: ${message(error)}`, loading: false });
     } finally { if (generation === this.generation) this.request = undefined; }
   }
   /**
    * `reload: false` for read-only operations (shadow evaluation) whose answer is shown, not a new snapshot. An operation
-   * that resolves with a renderer settled without a change (a link already decided): it replaces the notice.
+   * that resolves with a string settled without a change (a link already decided): that string replaces the notice.
    */
-  private async perform(label: MessageKey, operation: (signal: AbortSignal) => Promise<void | (() => string)>, reload = true) {
+  private async perform(label: string, operation: (signal: AbortSignal) => Promise<void | string>, reload = true) {
     if (this.state.pending) return;
     this.request?.abort();
     const request = new AbortController();
     this.request = request;
     const generation = ++this.generation;
-    this.update({ pending: () => t(label), notice: '', error: '' });
+    this.update({ pending: label, notice: '', error: '' });
     let acknowledged = false;
     try {
       const settled = await operation(request.signal);
       acknowledged = true;
-      const notice = typeof settled === 'function' ? settled : () => t("completed", this.adapter.mode === 'sample' ? t("sampleThisPageOnly") : t("workspaceConfirmed"), t(label));
+      const notice = typeof settled === 'string' ? settled : `${this.adapter.mode === 'sample' ? 'Sample · local preview: ' : 'Workspace confirmed: '}${label} completed.`;
       if (!reload) { if (generation === this.generation) this.update({ notice }); return; }
       const data = await this.adapter.load(request.signal);
       if (generation === this.generation) this.update({ data: this.sorted(data), loading: false, notice });
     } catch (error) {
-      if (generation === this.generation) this.update({ error: () => acknowledged
-        ? t("confirmedButRefreshFailedTheDisplay", t(label), message(error))
-        : t("wasNotConfirmedSuccessfulDisplayUnchanged", t(label), message(error)) });
+      if (generation === this.generation) this.update({ error: acknowledged
+        ? `${label} was confirmed, but refresh failed. Displayed data may be outdated. ${message(error)}`
+        : `${label} was not confirmed. Displayed data is unchanged. ${message(error)}` });
     } finally {
       if (generation === this.generation) { this.request = undefined; this.update({ pending: '' }); }
     }
   }
-  revokeContribution(id: string) { return this.perform("revokeSourceRecord", (signal) => this.adapter.revokeContribution(id, signal)); }
-  revokeGrant(id: string) { return this.perform("revokeGrant", (signal) => this.adapter.revokeGrant(id, signal)); }
-  setLearning(paused: boolean) { return this.perform(paused ? "pauseLearning" : "resumeLearning", (signal) => this.adapter.setLearning(paused, signal)); }
-  selectLearningStage(id: string) { return this.perform("switchSampleLearningStage", async () => {
-    if (!this.adapter.selectLearningStage) throw new Error(t("thisConnectionDoesNotSupportSample"));
+  revokeContribution(id: string) { return this.perform('Remove source', (signal) => this.adapter.revokeContribution(id, signal)); }
+  revokeGrant(id: string) { return this.perform('Revoke access', (signal) => this.adapter.revokeGrant(id, signal)); }
+  setLearning(paused: boolean) { return this.perform(paused ? 'Pause learning' : 'Resume learning', (signal) => this.adapter.setLearning(paused, signal)); }
+  selectLearningStage(id: string) { return this.perform('Change sample stage', async () => {
+    if (!this.adapter.selectLearningStage) throw new Error('This connection does not support sample stages.');
     await this.adapter.selectLearningStage(id);
   }); }
   /** Candidate text → POST shadow. Invalid JSON never leaves the page. */
@@ -119,9 +100,9 @@ export class ConsoleController {
     const candidate = parseCandidate(text);
     if (!candidate.ok) { this.update({ policyResult: { kind: 'invalid', message: candidate.message } }); return; }
     this.update({ policyResult: undefined });
-    await this.perform("shadowEvaluation", async (signal) => {
+    await this.perform('Policy preview', async (signal) => {
       try { this.update({ policyResult: { kind: 'shadow', report: await this.adapter.shadowPolicy(candidate.value, signal) } }); }
-      catch (error) { this.policyRejected('shadow', error); throw error; }
+      catch (error) { this.policyRejected('Policy preview', error); throw error; }
     }, false);
   }
   /** Candidate text → PUT. On 422 every violation is listed and the installed document stays as it was. */
@@ -130,30 +111,30 @@ export class ConsoleController {
     const candidate = parseCandidate(text);
     if (!candidate.ok) { this.update({ policyResult: { kind: 'invalid', message: candidate.message } }); return; }
     this.update({ policyResult: undefined });
-    await this.perform("installPolicy", async (signal) => {
+    await this.perform('Install policy', async (signal) => {
       try { this.update({ policyResult: { kind: 'installed', policyId: (await this.adapter.installPolicy(candidate.value, signal)).policyId } }); }
-      catch (error) { this.policyRejected('install', error); throw error; }
+      catch (error) { this.policyRejected('Install', error); throw error; }
     });
   }
-  private policyRejected(action: 'shadow' | 'install', error: unknown) {
+  private policyRejected(action: 'Policy preview' | 'Install', error: unknown) {
     if (error instanceof PolicyViolationError) this.update({ policyResult: { kind: 'violations', action, violations: error.violations } });
   }
   /**
    * Approve or decline one consent link. The row changes only after the workspace acknowledges and the snapshot reloads;
-   * a 409 (decided elsewhere, or expired) is not a failure: the row is marked 已处理 and the snapshot reloads.
+   * a 409 (decided elsewhere, or expired) is not a failure: the row is marked Handled and the snapshot reloads.
    */
   decideLink(id: string, decision: LinkDecision) {
-    return this.perform(decision === 'approve' ? 'linkApproveAction' : 'linkDeclineAction', async (signal) => {
+    return this.perform(decisionLabels[decision], async (signal) => {
       try { await this.adapter.decideLink(id, decision, signal); }
       catch (error) {
         if (!(error instanceof LinkNotPendingError)) throw error;
         if (!this.state.handledLinks.includes(id)) this.update({ handledLinks: [...this.state.handledLinks, id] });
-        return () => t('linkAlreadyHandled', this.adapter.mode === 'sample' ? 'Sample · ' : '');
+        return `${this.adapter.mode === 'sample' ? 'Sample · ' : ''}This request was already approved, declined or expired. No change was made.`;
       }
     });
   }
   reset() {
-    return this.perform(this.adapter.mode === 'sample' ? 'resetSample' : 'resetDemo', async (signal) => {
+    return this.perform(this.adapter.mode === 'sample' ? 'Reset sample' : 'Reset demo', async (signal) => {
       await this.adapter.reset(signal);
       this.update({ handledLinks: [] });
     });

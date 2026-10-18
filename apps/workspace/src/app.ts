@@ -240,10 +240,14 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const text = optStr(body, "text", { max: 1000 })?.trim() || undefined;
     const query = optStr(body, "query", { max: 200 })?.trim() || undefined;
     const kind = optStr(body, "kind", { max: 64 });
+    const conversationId = optStr(body, "conversationId", { max: 128 });
+    if (conversationId !== undefined && (!/^[a-zA-Z0-9_-]{1,128}$/.test(conversationId) || looksLikeContactHandle(conversationId))) {
+      fail("MISSING_FIELD", "conversationId must be an opaque identifier");
+    }
     if (kind !== undefined && !/^[a-z][a-z0-9_]{0,63}$/.test(kind)) fail("MISSING_FIELD", "invalid kind");
     if (!text && !kind) fail("MISSING_FIELD", "missing text");
     const out = await deps.commerce.createIntent(c.get("agent"), user(), { public: stringRecord(body.public, "public"),
-      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(kind ? { kind } : {}) });
+      ...(text ? { text } : {}), ...(query ? { query } : {}), ...(kind ? { kind } : {}), ...(conversationId ? { conversationId } : {}) });
     return json(out, 201);
   });
 

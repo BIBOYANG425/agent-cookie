@@ -1,0 +1,168 @@
+{
+  "result": "pause-suppression-and-forget-passed",
+  "integration": {
+    "main": "18188fd",
+    "mergeCommit": "2b2598c",
+    "evidenceCommitBeforePhoneCommands": "ea72fae",
+    "consoleTestsPassed": 57,
+    "phoneFocusedTestsPassed": 34,
+    "consoleTypecheck": "passed",
+    "consoleBuild": "passed"
+  },
+  "baseline": {
+    "at": "2026-10-18T07:30:41.082Z",
+    "paused": false,
+    "contributionIds": [
+      "c_2tgkeby2",
+      "c_0ggs1r0w",
+      "c_q1zxy8tw"
+    ],
+    "channel": {
+      "cursor": 12523,
+      "messageCount": 11,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": false,
+        "lastSummaryDay": "2026-10-18"
+      }
+    }
+  },
+  "pause": {
+    "checkedAt": "2026-10-18T07:32:47.037Z",
+    "backendPaused": true,
+    "localCapturePaused": true,
+    "allPreferencesPreserved": true,
+    "commandBecameLearningObservation": false,
+    "userConfirmedExpectedReply": true,
+    "events": [
+      {
+        "id": "17343",
+        "at": "2026-10-18T07:32:32.197Z",
+        "event": "PUT /personal/learning",
+        "actor": "sample-personal-photon",
+        "object": "",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "id": "17342",
+        "at": "2026-10-18T07:32:32.197Z",
+        "event": "learning.set",
+        "actor": "sample-personal-photon",
+        "object": "",
+        "result": "paused",
+        "reason": ""
+      }
+    ],
+    "channel": {
+      "cursor": 12746,
+      "messageCount": 12,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": true,
+        "lastSummaryDay": "2026-10-18"
+      }
+    }
+  },
+  "pausedInput": {
+    "result": "passed",
+    "checkedAt": "2026-10-18T07:36:01.424Z",
+    "newMessageHandled": true,
+    "captureMetric": {
+      "event": "learning_capture",
+      "status": "dropped",
+      "depth": 0
+    },
+    "newObservations": 0,
+    "newContributions": 0,
+    "preferencesUnchanged": true,
+    "backendPaused": true,
+    "localCapturePaused": true,
+    "channel": {
+      "cursor": 12782,
+      "messageCount": 13,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": true,
+        "lastSummaryDay": "2026-10-18"
+      }
+    },
+    "nonDreamingEvents": []
+  },
+  "forget": {
+    "result": "passed",
+    "checkedAt": "2026-10-18T07:45:38.277Z",
+    "userConfirmedExpectedReply": true,
+    "targetField": "pref.fit",
+    "removedContributionId": "c_q1zxy8tw",
+    "removedCurrentContributions": 1,
+    "events": [
+      {
+        "id": "20548",
+        "at": "2026-10-18T07:43:47.552Z",
+        "event": "POST /personal/learning/forget",
+        "actor": "sample-personal-photon",
+        "object": "",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "id": "20547",
+        "at": "2026-10-18T07:43:47.141Z",
+        "event": "learning.forget",
+        "actor": "sample-personal-photon",
+        "object": "pref.fit",
+        "result": "removed",
+        "reason": "count=1"
+      }
+    ],
+    "assertions": {
+      "targetRemoved": true,
+      "currentEvidenceRemoved": true,
+      "unrelatedColorExactlyPreserved": true,
+      "backendPaused": true,
+      "localCapturePaused": true,
+      "desktopSdkAgrees": true,
+      "noNewLearningOrShopping": true,
+      "newMessageHandled": true
+    },
+    "remainingFields": [
+      "pref.color"
+    ],
+    "preservedContributionIds": [
+      "c_2tgkeby2",
+      "c_0ggs1r0w"
+    ],
+    "channel": {
+      "cursor": 12909,
+      "messageCount": 14,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": true,
+        "lastSummaryDay": "2026-10-18"
+      }
+    },
+    "historyErased": false,
+    "projectionVerification": "HTTP 200, expected success reply and current learned/card readback; no separate write call",
+    "desktopVerification": "sample-personal-desktop key via SDK, not a new Claude Desktop UI run",
+    "console": {
+      "learningPaused": true,
+      "fitAbsentFromLearned": true,
+      "colorPresent": true
+    },
+    "noAssistantMutation": true
+  },
+  "screenshots": {
+    "2026-10-18-phone-controls-ui-ready.png": "bf98631241e27cc9bde8ca1bcb8e912888a731922b4f72f646bbbd2f0b2dd8e8",
+    "2026-10-18-phone-controls-paused.png": "5bc81e046a32e33af47a8ec1a43af60c36634409583b9d1c000612018bcc2ac8",
+    "2026-10-18-phone-controls-forgotten.png": "fbeb19837cc68c8efa2dd0695ff989daf1b3c890934803e34b439799b43c8ba9"
+  }
+}

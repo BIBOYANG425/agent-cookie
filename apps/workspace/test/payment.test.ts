@@ -91,7 +91,7 @@ describe("A21 · payment configuration", () => {
     expect(Object.keys(off.deps.laneD)).toEqual([]);
     const on = await harness({ env: PAY });
     // Only the payment hooks: the jar (handshake/TAP signing, unlock) stays off.
-    expect(Object.keys(on.deps.laneD)).toEqual(["authorizePayment", "reversePayment"]);
+    expect(Object.keys(on.deps.laneD)).toEqual(["authorizePayment", "reversePayment", "paymentProvenance"]);
   });
 
   it("budget rule: the intent's stated budget, else the card's, else the quote's own price (dollars → cents)", () => {

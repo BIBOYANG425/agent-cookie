@@ -215,6 +215,8 @@ export interface Handshake {
  *  - kind   — optional hint, not an enum: registered merchants listing it in `capabilities` are introduced too.
  */
 export interface IntentRequest {
+  /** Opaque channel conversation id, shared with observe. Learning provenance only; never merchant input or authority. */
+  conversationId?: string;
   text: string;
   query?: string;
   public?: Record<string, string>;
@@ -451,6 +453,9 @@ export interface Receipt {
   intentId?: string;
   /** Additive (Phase 1): id of the policy document that allowed this release (policy-document.ts policyId). */
   policyId?: string;
+  /** Additive (lane D, D1): on a payment receipt only, the provenance of the authorization it records (PaymentAuthorization). */
+  provider?: PaymentProviderLabel;
+  simulated?: true;
 }
 
 // ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
@@ -467,7 +472,19 @@ export interface PaymentAuthorization {
    */
   status: "authorized" | "declined" | "used" | "reversed";
   createdAt: string;
+  /**
+   * Additive (lane D, D1): set together, and only when a simulator produced this result: `provider` names it and
+   * `simulated: true` says no payment network answered (never a claim that Visa accepted the request). Kept for the
+   * life of the authorization, through reversal and re-reads; absent = not marked (the Visa sandbox, and the fake
+   * provider of AGENT_COOKIE_PAY=fake, are not marked).
+   */
+  provider?: PaymentProviderLabel;
+  simulated?: true;
 }
+
+/** Additive (lane D, D1): the providers that mark their results. apps/visa-sim is loopback only (VISA_ACCEPTANCE_SIMULATOR=1). */
+export type PaymentProviderLabel = "Visa Acceptance simulator";
+export const PAYMENT_SIMULATOR_LABEL: PaymentProviderLabel = "Visa Acceptance simulator";
 
 /**
  * Additive (lane D): the billing address a payment provider may check the authorization against, given by the workspace

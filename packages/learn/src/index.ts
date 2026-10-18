@@ -95,6 +95,7 @@ export function createLearner(options: {
         const result:LearnResult = await bounded(async signal => {
           let selected = policy;
           let gate: string | undefined;
+          let explicitOnlyFallback = false;
           if (classify) {
             let rawClassification:unknown;
             let gateAvailable=false;
@@ -105,6 +106,10 @@ export function createLearner(options: {
               // Only an unavailable service can fall back, never a negative or malformed answer.
               metric({stage:'classify',status:'unavailable',count:0,durationMs:performance.now()-start});
               if (signal.aborted) return {preferences:[],reason:'unavailable'};
+              // HANA demo failure policy: an unavailable gate may retain only
+              // explicit owner statements, never infer an incidental preference.
+              if (!explicitStatement(turn.text)) return {preferences:[],reason:'unavailable'};
+              explicitOnlyFallback = true;
             }
             if(gateAvailable){
               const parsedClassification=classificationSchema.safeParse(rawClassification);
@@ -133,7 +138,7 @@ export function createLearner(options: {
               || characters(p.value) > (selected[p.key].maxLength ?? 80) || !turn.text.includes(p.evidence)
               || containsSensitive(p.value + ' ' + p.evidence) || untrusted.test(p.value)
               || (p.basis === 'stated' && !explicitStatement(p.evidence))
-              || (options.mode === 'explicit-only' && p.basis !== 'stated')) return false;
+              || ((options.mode === 'explicit-only' || explicitOnlyFallback) && p.basis !== 'stated')) return false;
             seen.add(p.key); return true;
           });
           metric({stage:'extract',status:'ok',count:preferences.length,durationMs:performance.now()-start});

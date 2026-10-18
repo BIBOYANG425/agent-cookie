@@ -328,6 +328,10 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 - B70 → A/C/人（新门控实机加载）：19:16 PDT 将已验证的05a5d8f加载到现有4310工作台；唯一Photon监听短暂停止后按原游标恢复，channel_ready learning=true。SDK回读 learned 校验值不变（旧1行/2证据），完整channel-state校验值不变（cursor8515、9条sent），无新模型调用/原消息重放/资料修正。停服备份留在本机忽略目录。只证明版本切换和数据保留，不冒称新五分钟正向手机验收，详见gate-redesign证据。
 
+- B71 → 人/A/C（新门控手机验收被休眠打断）：新机主消息19:37:04.933入队202，截止19:41:52无提前贡献/新购物意图；macOS确认19:42:00合盖休眠，距五分钟门槛约5秒。恢复后SDK仍0新增，OpenRouter未观察到这轮新generation，原Photon有限重连耗尽退出；已保留cursor8843/10条sent并恢复唯一监听，channel_ready learning=true。未手动flush/reset/重放/新增模型诊断，不把此轮报绿。详情2026-10-18-phone-gate-acceptance.md/.json；重测需电脑接电开盖，已加临时15分钟防自动闲置休眠。A后续可补无正文的学习结果原因诊断，当前LearnApi空数组无法区分模型不可用与拒绝，B不越目录修改。
+
+- B72 → 人/A/C（新门控真实手机正向闭环通过）：10月18日00:16:02.132用户主动重发的一条偏好202入队，00:21:30.856自然调度 written=1（5分28.724秒）；新增 c_q1zxy8tw / pref.fit=loose / observed / candidate，仅1贡献1对话来源，无新购物意图或提前上卡。真实Jev1.14+gpt-oss120b来源已在evidence.models及OpenRouter00:21两条generation核对，页面成本合计约$0.0001768；Desktop个人key经SDK读到相同候选，未冒称新Desktop界面验收。控制台截图、脱敏JSON及断言存2026-10-18-phone-gate-retry.md/.json/png，旧合盖失败记录保留。无手动flush/reset/自动重放，原DB和cursor/outbox保留。C的00e566d已有相关Sample误标/模型来源显示修正，本次运行控制台尚未加载；请按既定合并流程接上，不把旧Sample文案误认为本次模型是桩。独立来源晋升、手机暂停/忘记与商家模型开场不包含在本次通过范围。
+
 - 2026-10-17 C22 → A/B（main35e8b56收口任务）：模型来源已接正式 evidence.models.gate/extractor，缺失显示“本地规则”；C不会让sample工作台标签把真实learned记录称为预设阶段。needs UI按人指定 kind=needs_declared、object原文摘要实现可选渲染，并以actor===grant.agentId匹配最近一次商家申请；请A确认actor的商家绑定、在既有owner GET /personal/grants提供该商家handshake.unavailable的只含字段名投影（C暂以grant.handshake.unavailable:string[]兼容，缺失不显示，不用owner调用merchant handshake），B保留getActivity的kind及对应可选扩展。当前SDK getActivity会剥kind，正式Handshake/GrantView尚无unavailable；C不绕过已有SDK，不加新HTTP端点，不从card或grants字段补集推导拒绝列表。请提供正式类型/关联到intent或session的语义后替换局部TODO(contract)。
 
 - 2026-10-17 C23 → B：控制台新增本次请求条件，A 已有 owner 可读 GET /personal/intents（IntentHistoryEntry.public）；SDK 尚无读取方法，请补正式方法名及透传。C 暂仅在既有服务端白名单直读该 GET 并标 TODO(sdk)，不加端点、不让 owner 调 personal-only getQuotes。当前“本次”只标 explicit public 条件，不推断卡片/授权字段的有效来源。
@@ -335,6 +339,16 @@ C 线合入时的原始交接记录（保留全部原文）：
 - 2026-10-17 T9-4 C → B：请按 docs/video-storyboard.md / docs/evidence/recording-manifest.md 补 R1-commute、R2-jacket、R3-daypack 三条独立连续 iMessage 原片及 metadata（实际UTC/SHA/模式/同次意图报价回执），另补 RR-07-desktop-return、RR-08-phone-learning 与 RR-08-quote-ranking。新gate后需干净的自然五分钟正向手机学习、同一对话不误计双源、相同候选集/显式预算的排序对照；旧首轮双源误晋升及gate停止不算C20通过。没有两家或gate拒绝如实录，不改断言/数据凑结果；缺片仍标待录。
 - 2026-10-17 T9-4 C → A：请给同一条已录 R1/R2/R3 的 RR-03-workspace-search、RR-05-workspace-checkout、RR-06-workspace-denial 终端原片与脱敏活动/回执：商家≤2、价格≤本次预算、尺码未知/不匹配有说明；地址若放行仅accept一家checkout，没放行则保留事实。needs 真投影未到跳过镜头，不另造事件；接口缺口沿用C22请求。A15已砍不再补拍。
 
+- B73 → 人/A/C（接入C新界面，准备手机控制验收）：已将人工合并PR28的main18188fd同步到lane-b2b2598c，requests双方追加历史保留；当前5173已加载并重连原4310，真实fit候选显示Jev1.14→gpt-oss120b，不再显示预设学习文案。C57项测试、类型/构建及B34项控制/采集/Beta测试通过；初次9项桥接因沙箱端口EPERM未执行，获本机监听权限后原断言通过。后台与唯一手机监听未重启，DB/游标12523/11条sent不变；手机暂停与忘掉版型已准备，等待人逐步发消息，尚不报实机通过。证据2026-10-18-phone-controls.md/png。另请C将历史缺models的来源显示为“未记录”而非肯定“本地规则”，旧记录缺元数据不能证明来源；新fit的真实来源不受影响。
+
+- B74 → 人/A/C（手机暂停已实测）：00:32:32.197真实手机“暂停学习”触发learning.set=paused及PUT200，用户确认收到预期回复；SDK、原Photon本地状态、控制台开关均paused=true，原color/fit的3条贡献完整保留，命令未入学习队列。证据phone-controls.md/.json及paused截图；暂停后普通偏好是否零采集、手机forget仍等下一条人工消息，尚不宣称通过。当前保持暂停，不自动恢复或代发删除。
+
+- B75 → 人/A/C（暂停后真实偏好零采集通过）：用户在暂停状态再发普通版型偏好，唯一Photon记录learning_capture=dropped/depth0，游标12782/13条sent；00:36:01 SDK回读两端仍暂停、全部贡献与发送前逐项相同，无新Observation/贡献/learn.apply。不是仅看开关报通过。手机“忘掉 版型”指令已发给用户，仍等实际发送；未代调删除API、未自动恢复学习。详见phone-controls.md/.json。
+
+- B76 → 人/A/C（手机忘掉偏好实机通过）：00:43:47真实“忘掉 版型”触发learning.forget=removed/count1及POST200，用户确认成功回复；00:45:38只读SDK断言pref.fit及c_q1zxy8tw从当前learned/card/candidates消失，原color与2条证据逐项不变，Desktop个人key读回一致，两端与C控制台仍暂停。游标12909/14条sent，无新学习或购物意图，未代调删除API、未自动恢复；旧Git历史保留historyErased=false。手机正向学习→C界面→暂停→暂停零采集→定向删除本轮闭环完成；证据phone-controls.md/.json/forgotten.png。不包含恢复学习实机、独立双对话晋升或商家真实开场。
+
+- B77 → A/C/人（HANA 深版第0步）：已完成源码追踪和独立PostgreSQL实测，REPLY_GENERATE实际expire=1800秒/retryLimit=1；两个Photon Beta只读订阅者同cursor均收到received/delivered，原线路未切换。HANA原插件不兼容Beta，将做独立适配。请A提供HANA专用personal身份/key（仅本地配置）并落IntentRequest.conversationId与find/observe同源去重；当前SDK会按人要求先透传，不改契约。请确认handoff记last_handoff及同店可信读note→模型开场；不将handoff称已购买。完整排练自然五分钟另计、演示剪辑4:30已获人确认。C/Devin后续需在干净机器按docs/hana-demo.md独立复现，不由B代造记录。
+- B78 → A/C/人（HANA01:25准备交付）：六工具+Beta专属传输/PG原子入站去重+listen-only已在本地实现，原手机未切。真实HANA模型两轮完成Sample两报价/选择第二件，4次200合计$0.001895755；真实隔离PG强制重试后1作业/1intent/1accepted quote/1checkout回执。HANA本地14392bb，补丁与证据见docs/evidence/hana-demo/02-plugin-verification.md，复现说明docs/hana-demo.md。B77同源缺口现有可执行证据：packages/sdk/test/hana-source.acceptance.ts不改断言，当前A产出2来源（intent+conversation）并提前上卡，预期1来源candidate；请A把conversationId贯穿IntentRequest、持久化和学习来源后复验。HANA专用key仍待本地路径，不能用Photon/Desktop旧身份替代。按指定SHA256(chatId)规则，同一手机线程隔五分钟仍是同一来源；请确认第二来源使用Xia/另一个真实conversation，不能换假ID凑晋升。尚需真实商家/同店note开场及C/Devin独立复现；已实现Jev不可用explicit-only回退，正向敏感判断不兜底。Step4手机故障截图和Step5三次排练未完成；06:00截止保留原个人agent。
 2026-10-18（续三），A 线：商业分析与动态策略（`docs/commerce-analytics-plan.md`，分支 `claude/amazing-allen-cnv3s6`，Phase 0–3 已实现并有测试）。只追加。
 
 | ID | 发起 → 接收 | 请求与依据 | 状态 |
@@ -381,6 +395,20 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A57 | 状态更新（2026-10-18）：已完成（lane C，commits `b21549c`、`ea0eeab`）：POLICY.yaml 与种子含 assistant 类别（policyId `3526a909e404`）；Sample 助理与 key；控制台「连接请求」面板；`examples/assistant-sdk`、`examples/merchant-sdk`；`tests/acceptance` A32 通过（两助理两商家 churn）。发现：SDK 不传 `kind` 时无法引荐回调商家（见 A52，lane B 处理中）；商家握手 auto 字段不写回执，故 `questionsSkipped` 只计 purpose 放行与 Tier 0 投递。 |
 | A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
+
+- B79 → A/C/人（人取消06:00截止并授权B补身份/同源）：已合main b1e049a到B隔离分支，IntentRequest.conversationId与SQLite v14、学习来源去重已补；原单源candidate断言保留，重放/accept不新增来源，另一个真实conversation才晋升，原六场景+capture合成回归通过。HANA专用personal身份已通过owner注册到独立4314，key仅本机.env.demo；两家UCP实时搜索返回live $113/$112，尚未手机切换/accept/付款。main移除fake后HANA测试迁移正式隔离A；详见hana-demo/03-source-and-identity.md。现有商家note开场、三次手机排练与独立复现仍待，不将此准备标为实机通过。
+
+- B80 → 人/A/C（HANA切换准备）：lane-b37be7c8已推，HANA工具迁移正式A后9测试及类型通过。新4314使用专用HANA身份，实时UCP两报价；专用PG快照/重置及身份回读通过。原监听已退出，保留14sent/12909/paused状态并归档死锁；新HANA唯一回复者和listen-only旁听均ready，已请人发第一条真实手机消息，尚不报实机通过。原06:00截止已由人明确取消。
+
+
+### B81 · HANA first phone attempt failed; generation path repaired (2026-10-18)
+Native traces: two one-job inbound turns, repeated updateWorkingMemory/hanaActivityBucket validation, no find/send. Installed Mastra maxSteps overrides stopWhen; B fixed the demo to one combined stop condition, scoped optional-memory recovery and Cookie capability guidance, without changing character/memory schema. Final real-model synthetic regression passed two Sample offers then handoff (one model call per turn); details docs/evidence/hana-demo/04-generation-repair.md/.json. Original suggested budget phrase was filtered by existing finance policy; next phone request omits money, rules unchanged. Restart retained cursor23657, no replay/reset; awaiting real phone recheck. C console still hardcodes4310 in apps/console/server/workspace.ts; isolated HANA jar is4314. Please support an explicit local upstream config (same localhost/origin protections) so we can display the new jar without replacing the preserved original4310 service.
+
+- B82 → 人/A/C（HANA手机报价通过、学习未通过后修门控）：真实手机17:32 UTC产生一个HANA intent，两条live目录报价$115/$78.49及提示共三条均Photon delivered，PG生成/发送各一作业零重试；自然五分钟后learned仍空，未冒充通过。独立合成复现Jev pref.fit置信度0.72被正确拒绝；B仅澄清一次性搜索与长期习惯的字段分类，保留整句敏感检查和0.90阈值。真实合成三例通过（混合句1候选、购物单句无候选、敏感零调用），80项learn测试及类型/构建通过。4314已优雅重载，报价/身份/cursor23739保留，无重放；等人发送纯偏好作下一实机验收，再选第二件核同源。详见hana-demo/05-phone-live.md/.json及05-gate-regression.json。B81控制台上游缺口仍在，不重复当作已接通。
+
+- B83 → 人/A/C（HANA手机自然学习通过）：真实机主偏好轮次在17:41:04 UTC入队，17:46:11 learn.apply；自然等待5分7秒、无flush/reset/replay。pref.fit=loose保持candidate，一条贡献、一个conversation来源；Jev/gpt-oss记录与OpenRouter10:46日志对齐。PG生成/发送各一作业零重试、Photon delivered。证据hana-demo/06-phone-preference.md/.json。手机重新找商品→选第二件正在继续；4314控制台上游B81及商家真实开场未完成。
+
+- 2026-10-18 B/C consolidated demo delivery (Cyrus-authorized takeover): English console, loopback4314 bridge, current-context/request layout, collapsed advanced/history controls, and cross-assistant continuity derived only from matching receipt sessions and distinct requesting agents. HANA English controls/phone learning/live handoff evidence consolidated; patch regenerated through2886cde with reverse-check. No main merge, payment, merchant greeting, repeated reset rehearsal, or independent reproduction claimed. The original4310 data is preserved.
 | A62 | A → D（交接，2026-10-18）：人决定把全部商业轨道代码交给 D 线（Devin）。交接文档 `docs/handoff/devin-commerce.md`：D1 Visa Acceptance 模拟器（`apps/visa-sim`，用官方 SDK 代码独立验签，脚本化场景而非随机，`VISA_ACCEPTANCE_SIMULATOR=1` 只放行回环主机，页面与回执标注"模拟器"），D2 UCP 支付工具与 payer 签名（A50），D3 Visa JWT 鉴权。Visa 不会提供沙盒，Intelligent Commerce 不模拟、继续搁置。A 线的 /loop 不再做 Phase 2。 |
 | A80 | A → 人（记录，2026-10-18）：Phase 3 托管 jar 已建成（分支 `claude/amazing-allen-cnv3s6`，PR 待开）：契约 `gateway.ts`、工作台 `AGENT_COOKIE_SEED=blank` 与 `GET /healthz`、SDK 路径前缀与 `forJar`、新应用 `apps/gateway`（每人一个工作台进程、passkey、consent link、cookie 页、反向代理、owner key 不出网关）、验收 A33。未做并已写明：邮箱、passkey 找回、第二设备；operator 汇总留待 Phase 4（`measured: false`）。Phase 4/5 已分别交给独立会话（分支 `claude/phase-4-history-operator`、`claude/phase-5-doors`，各自开 PR；requests 编号分别从 A63、A70 起）。 |
 | BC-i18n | B/C → 各线（负责人已批准跨线）：SDK/MCP 保留原话 text 并传英文 query、显式条件与商家数量，兼容旧 kind；Photon 用确定性双语词典搜通用品并按消息语言回复；控制台随卡片语言并支持持久化中英切换，保留 Sample、未知到货及未确认订单/支付提示；不改工作台或契约，不新增依赖或模型调用。 |
@@ -428,3 +456,13 @@ C 线合入时的原始交接记录（保留全部原文）：
 | ID | 发起 → 接收 | 请求与依据 | 状态 |
 | --- | --- | --- | --- |
 | A81 | A → 人（记录） | 按 owner 2026-10-18 的授权（A 线可直接改 `docs/plan.md`），A67 与 A71 已完成：§2 A29 改为已实现、A30 单列仍为计划；§4 环境变量加 `AGENT_COOKIE_SEED`、`AGENT_COOKIE_DATA_DIR`、`AGENT_COOKIE_MCP_TRANSPORT`、`MCP_HTTP_PORT`、`AGENT_COOKIE_OWNER_KEY`、`AGENT_COOKIE_WORKSPACE_DIR` 与网关变量，端口加 4320；§5 字段策略表加「历史记录」一列并在 floor 说明里写明，HTTP 段加 `GET /assistant/history`、三条 `/owner/keys`、`GET /healthz` 与新类型；§1 记下 Python 客户端。Phase 3 / 4 / 5 分别以 PR #33 / #35 / #34 合入 main（`6086bdd` / `abe3445` / `9712167`），`docs/bring-your-own-agent-plan.md` 的进展段落与 §9 状态同步。D 线的 PR #32（D1–D3：Visa Acceptance 模拟器、UCP 付款传输、JWT）也已于同日合入 main（`a38b8f3`）。仍待人：npm 发布（`packages/sdk/PUBLISHING.md`）、PyPI 发布（A74）、A66、A73、A75。 | 已完成 |
+2026-10-18，A 线回复 D1（A21 接线）。只追加。
+
+| ID | 请求 / 状态 |
+| --- | --- |
+| A81 | A → D（D1-label 已冻结）：契约 `PaymentAuthorization` 与 `Receipt` 新增可选 `provider?: PaymentProviderLabel`（目前只有 `"Visa Acceptance simulator"`，常量 `PAYMENT_SIMULATOR_LABEL`）与 `simulated?: true`，两者同时出现；OpenAPI 已重生成。工作台：schema v15 在 `payment_authorizations`、`receipts` 加 `provider`/`simulated` 列；标记在授权首次落库时按 provider 定下，之后的写（used、reversed）保留行上的标记；accept 结果、撤销结果、回执（SQLite）、重问的 accept 都带标记；`payment.authorize`/`payment.reverse` 活动 reason 加 `simulated=true`；accept 的 message 追加一句 "Payment ran against the Visa Acceptance simulator (simulated): no payment network was involved."。工作台从 provider 对象的 `label`/`simulated`（结构读取）或自身配置判定，不依赖 `createPayments` 的公开结果是否带标记。D 的 `createPayments` 对 simulated provider 的拒绝仍在（#32 已合入）：真实模拟器配置在工作台启动时即失败（fail closed）；工作台的标记由 `apps/workspace/test/payment-simulated.test.ts` 经测试注入的未标记 provider + 模拟器配置覆盖。请 D 在 A83/A84（控制台、通道显示）落地后去掉该拒绝，之后 A 补真实 `apps/visa-sim` 的 A21 用例与 CI。 |
+| A82 | A → D（D1-workspace 已接）：`VISA_ACCEPTANCE_SIMULATOR=1` 时 `VISA_ACCEPTANCE_HOST` 可为精确的 `http://127.0.0.1:<1–65535>`，否则仍只准 sandbox；`config.visa.simulator`。`pnpm --filter @agent-cookie/workspace smoke:visa --simulator`（默认 `http://127.0.0.1:4313`，同样的四个变量，摘要带 `simulated: true`；provider 不标记模拟时为 2 未运行），live 分支不变。待 #32 合入后由 A 补：A21 对真实 `apps/visa-sim` 的授权后撤销用例、CI 起模拟器跑 A21 与 `smoke:visa --simulator`。 |
+| A83 | A → C：①`packages/memory-repo` `renderReceipt` 目前丢弃未知键，git 里的模拟支付回执没有标记；请在回执行上写 `provider:`/`simulated:`（与 amount 同样的开放键）。②控制台在授权与支付回执旁显示 "Visa Acceptance simulator · 模拟"；活动 reason 里的 `simulated=true` 同样标注。 |
+| A84 | A → B：通道（Photon/MCP/SDK 输出）对 `AcceptResult.authorization.simulated` 与回执 `simulated` 显示模拟标签；accept 的 message 已带一句说明，原样转给用户即可。 |
+| A85 | A → 人（记录，人授权 A 判断）：`AGENT_COOKIE_PAY=fake` 的 fakeProvider 结果暂不标记（与改动前一致）：默认关闭，演示不开；标记会改动现有测试锁定的消息与活动文本。若哪次演示打开 fake，再在契约 `PaymentProviderLabel` 加一个 Sample 值并标记。 |
+| A86 | A → D（记录，人要求 A 直接完成，2026-10-18）：`packages/pay` `createPayments` 去掉对 simulated provider 的拒绝；simulated provider 的授权记录与公开结果带 `provider`/`simulated`（契约 A81）；`visa-simulator.test.ts` 的门测试改为接受；pay 与 visa-sim README 同步。工作台真实模拟器配置不再在启动时失败。 |

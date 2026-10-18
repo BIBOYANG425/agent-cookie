@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWorkspaceBridge, type SdkClient } from '../server/workspace';
 
 const servers: Server[] = [];
-afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
+afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
   server.closeAllConnections(); server.close(() => resolve());
 }))); });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -30,6 +30,34 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
 }
 
 describe('server SDK bridge', () => {
+  it('allows only the configured loopback port and same origin for a second recording console', async () => {
+    const factory = vi.fn(() => ({ getMe: async () => owner }));
+    const send = await start({ key: () => key, sdk: Promise.resolve(factory), port: 5174 });
+    expect((await send('/me')).status).toBe(403);
+    expect((await send('/me', 'GET', { Host: '127.0.0.1:5174', Origin: 'http://127.0.0.1:5174' })).status).toBe(200);
+    expect((await send('/me', 'GET', { Host: '127.0.0.1:5174', Origin: 'http://127.0.0.1:5173' })).status).toBe(403);
+    expect((await send('/me', 'GET', { Host: 'evil.test:5174' })).status).toBe(403);
+  });
+  it('uses an explicit loopback origin for both SDK and direct calls', async () => {
+    vi.stubEnv('AGENT_COOKIE_URL', 'http://127.0.0.1:4314/');
+    const factory = vi.fn(() => ({ getMe: async () => owner }));
+    const fetcher = vi.fn<typeof fetch>(async (url) => {
+      expect(String(url)).toBe('http://127.0.0.1:4314/personal/intents');
+      return json({ intents: [] });
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(factory), fetcher });
+    expect((await send('/personal/intents')).status).toBe(200);
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'http://127.0.0.1:4314' }));
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each(['https://example.com', 'http://192.168.1.2:4314', 'http://localhost:4314',
+    'http://user:secret@127.0.0.1:4314', 'http://127.0.0.1:4314/path',
+    'http://127.0.0.1:4314/?secret=value', 'http://127.0.0.1:4314/#fragment'])
+  ('rejects non-loopback or non-origin upstream configuration: %s', value => {
+    vi.stubEnv('AGENT_COOKIE_URL', value);
+    expect(() => createWorkspaceBridge({ key: () => key, sdk: Promise.resolve(undefined) })).toThrow();
+  });
+
   it('allows only the existing owner intent-history GET while its SDK read is missing', async () => {
     const http = vi.fn<typeof fetch>(async (input, init) => {
       expect(String(input)).toBe('http://127.0.0.1:4310/personal/intents');

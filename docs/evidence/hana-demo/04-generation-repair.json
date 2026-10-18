@@ -1,0 +1,130 @@
+{
+  "at": "2026-10-18T17:29:21.841Z",
+  "scope": "Live OpenRouter/HANA generation + isolated real A HTTP app/fixture commerce and dedicated PostgreSQL; synthetic inputs; no phone sends",
+  "modelCalls": [
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 29683,
+      "finishReason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 14782,
+        "completion_tokens": 770,
+        "total_tokens": 15552,
+        "cost": 0.000558,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 64,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.000558,
+          "upstream_inference_prompt_cost": 0.0004425,
+          "upstream_inference_completions_cost": 0.0001155
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 750,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 4049,
+      "finishReason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 14863,
+        "completion_tokens": 74,
+        "total_tokens": 14937,
+        "cost": 0.00045603,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 64,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.00045603,
+          "upstream_inference_prompt_cost": 0.00044493,
+          "upstream_inference_completions_cost": 1.11e-05
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 55,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    }
+  ],
+  "turns": [
+    {
+      "index": 0,
+      "elapsedMs": 30856,
+      "replyCount": 4,
+      "structuredReply": true,
+      "status": "two_sample_offers",
+      "passed": true
+    },
+    {
+      "index": 1,
+      "elapsedMs": 4966,
+      "replyCount": 2,
+      "structuredReply": true,
+      "status": "handoff",
+      "passed": true
+    }
+  ],
+  "merchantTitleAbsentFromFutureHistory": true,
+  "phoneAcceptance": false,
+  "failedPhoneJobs": [
+    {
+      "id": "3e6a5df4-b248-4a8a-aa57-007dd91798e4",
+      "name": "hana.reply.generate",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 1800,
+      "created_on": "2026-10-18T17:22:40.675023+00:00",
+      "started_on": "2026-10-18T17:22:42.57871+00:00",
+      "completed_on": "2026-10-18T17:23:52.195341+00:00"
+    },
+    {
+      "id": "511e8141-ebce-4ddf-a41d-c3b449d647b3",
+      "name": "hana.reply.generate",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 1800,
+      "created_on": "2026-10-18T17:23:34.520348+00:00",
+      "started_on": "2026-10-18T17:23:52.198237+00:00",
+      "completed_on": "2026-10-18T17:24:53.121034+00:00"
+    }
+  ],
+  "diagnosis": {
+    "memoryTool": "updateWorkingMemory",
+    "invalidField": "memory.hanaActivityBucket",
+    "phoneFindCalls": 0,
+    "phoneOutboundMessages": 0,
+    "mastraMaxStepsOverridesStopWhen": true,
+    "budgetSentenceSkippedByExistingSensitiveFilter": true
+  },
+  "restart": {
+    "cursor": 23657,
+    "oldJobsReplayed": false,
+    "onlyHanaReplies": true,
+    "observerMode": "listen-only"
+  },
+  "hanaRevision": "3b5e416a1846f6e52d630577a51b7707ab34ed77",
+  "patchSha256": "3cb38ef43151199eb3ebaade9bbdab28aeb04c2cbf6bafd1c1c321e1a9501524",
+  "verification": {
+    "pluginTests": 13,
+    "pluginTypecheck": true,
+    "coreTypecheck": true,
+    "patchReverseCheck": true
+  }
+}

@@ -1,3 +1,4 @@
+export * from './hana.js';
 // @agent-cookie/sdk — three clients over one transport (core.ts): WorkspaceClient for the person's own agent and the
 // owner's console/CLI, AssistantClient for a company assistant the owner linked, MerchantClient for a store's agent.
 // The workspace decides every release; these clients carry purpose and stage and validate what comes back.
@@ -54,6 +55,13 @@ export type LinkResult = Link & { sample: boolean };
  * quote, accept and observe methods are shared with AssistantClient.
  */
 export class WorkspaceClient extends ActingClient {
+  /** Owner-only provisioning. The returned key is shown once; save locally, never log it. */
+  async registerPersonalAgent(name: string, options?: RequestOptions): Promise<{agentId:string;key:string;category:'personal';role:'personal'}> {
+    if(typeof name!=='string'||!name.trim()||new TextEncoder().encode(name).length>200) throw new Error('Invalid personal agent name.');
+    const p=await this.request('/agents/register',{...options,body:{name,category:'personal',capabilities:[]}});
+    if(!isObject(p)||!validId(p.agentId)||typeof p.key!=='string'||!/^[\x21-\x7e]{1,512}$/.test(p.key)||p.category!=='personal'||p.role!=='personal') throw new Error('Invalid registration response.');
+    return {agentId:p.agentId,key:p.key,category:'personal',role:'personal'};
+  }
   async getLearning(options?: RequestOptions) {
     return learningState(await this.request('/personal/learning', options));
   }
