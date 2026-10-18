@@ -1,6 +1,7 @@
 // Opt-in cross-lane acceptance probe. Exit 1 means an unmet HUMAN requirement,
 // not a passing unit test. All data is synthetic and all storage is disposable.
 // Run: pnpm --filter @agent-cookie/sdk exec tsx test/learning-acceptance.check.ts
+import {spawnSync} from 'node:child_process';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -97,5 +98,13 @@ await check('cross_agent_fixture_accept_preserves_history',()=>isolated(noLearni
   return {passed:failures.length===0,observed:{acceptStatus:result.status,memoryWriteFailures:failures.length}};
 }));
 
-console.log(JSON.stringify({mode:'isolated-real-A-C-with-synthetic-extractor',liveModels:false,liveChannel:false,results},null,2));
-if(results.some(r=>!r.passed))process.exitCode=1;
+// Keep the capture→SDK→A queue→extraction assertions verbatim in their
+// Vitest runtime; this opt-in entry runs them in addition to the six requirements.
+const capture=spawnSync('pnpm',['exec','vitest','run','--config',
+  fileURLToPath(new URL('../vitest.learning-acceptance.config.ts',import.meta.url))],{
+  cwd:fileURLToPath(new URL('..',import.meta.url)),encoding:'utf8',timeout:120000,
+});
+const capturePassed=capture.status===0;
+if(!capturePassed)console.error('Capture acceptance failed. Run pnpm --filter @agent-cookie/sdk exec vitest run --config vitest.learning-acceptance.config.ts for its unchanged assertion report.');
+console.log(JSON.stringify({captureAcceptance:{passed:capturePassed,exitCode:capture.status},mode:'isolated-real-A-C-with-synthetic-extractor',liveModels:false,liveChannel:false,results},null,2));
+if(!capturePassed||results.some(r=>!r.passed))process.exitCode=1;

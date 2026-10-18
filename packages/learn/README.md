@@ -6,7 +6,7 @@
 import { createWorkspaceLearner, createHaikuExtractor, createJevClassifier, createLearningTelemetry } from '@agent-cookie/learn';
 const telemetry = createLearningTelemetry({ endpoint: process.env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT });
 const learn = createWorkspaceLearner({
-  extract: createHaikuExtractor({ apiKey: process.env.ANTHROPIC_API_KEY! }),
+  extract: createHaikuExtractor({ provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY! }),
   ...(process.env.JEV_API_KEY ? { classify: createJevClassifier({ apiKey: process.env.JEV_API_KEY }) } : {}),
   mode: process.env.AGENT_COOKIE_LEARN_MODE === 'explicit-only' ? 'explicit-only' : 'all',
   telemetry: telemetry.metric,
@@ -14,9 +14,9 @@ const learn = createWorkspaceLearner({
 // A injects learn and calls telemetry.shutdown() on shutdown.
 ```
 
-No key is read automatically by the library; a missing key must not silently enable synthetic results. Model is pinned to `claude-haiku-4-5-20251001`. Jev uses `/v1/systemone` typed noul questions. Missing/unavailable Jev falls back to Haiku; a negative or uncertain safety verdict does not. Zod validates model envelopes, allowed keys, conclusions, basis and evidence. Evidence must be a literal substring of the owner's words and at most 200 Unicode code points. Outputs contain conclusions/evidence only; errors are fixed public text.
+No key is read automatically by the library; a missing key must not silently enable synthetic results. The team runtime uses OpenRouter exclusively; the library still retains an unused direct-provider adapter for compatibility. Jev uses `/v1/systemone` typed noul questions. Missing/unavailable Jev falls back to Haiku; a negative or uncertain safety verdict does not. Zod validates model envelopes, allowed keys, conclusions, basis and evidence. Evidence must be a literal substring of the owner's words and at most 200 Unicode code points. Outputs contain conclusions/evidence only; errors are fixed public text.
 
-An OpenRouter key is an alternative to the direct Anthropic credential:
+Use the OpenRouter adapter in the workspace:
 
 ```ts
 const extract = createHaikuExtractor({
@@ -27,7 +27,7 @@ const extract = createHaikuExtractor({
 
 OpenRouter uses its canonical `anthropic/claude-haiku-4.5` alias; it is not a guarantee of Anthropic's dated snapshot ID. Requests require strict structured output, pin the provider endpoint to `amazon-bedrock/us`, disable provider fallback, deny data collection and require ZDR. First-party Anthropic is not available under OpenRouter's ZDR policy; the published [ZDR endpoint list](https://openrouter.ai/api/v1/endpoints/zdr) includes Bedrock US for this model. If this combination is unavailable, extraction returns no learned output; it does not relax retention or switch models. The accepted owner text is sent to OpenRouter and Amazon Bedrock for Haiku extraction; neither OTel nor the jar should receive the whole input. Keep account input/output logging disabled. See [OpenRouter Haiku](https://openrouter.ai/anthropic/claude-haiku-4.5/api), [ZDR policy](https://openrouter.ai/docs/guides/features/zdr), [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), and [routing controls](https://openrouter.ai/docs/guides/routing/provider-selection).
 
-Live synthetic check on 2026-10-17: credential authentication returned 200, but extraction returned 403 after the ZDR routing correction. No real-model extraction is claimed. Do not automatically retry account/access failures or relax routing; resolve access with the provider first. Offline protocol tests remain available without credentials.
+Live synthetic checks on 2026-10-17: credential authentication returned 200, but extraction returned 403 both with pinned Bedrock US and with any ZDR provider plus fallback. The account Privacy page had empty Allowed/Ignored Providers and displayed a closed-model access restriction. This was not a user-configured provider exclusion. The requested default-routing change is conditional on a successful live check, so the library default remains unchanged. See `docs/evidence/2026-10-17-openrouter-live.md`. No real-model extraction is claimed. Do not automatically retry account/access failures or relax routing; resolve access with the provider first. Offline protocol tests remain available without credentials.
 
 Local setup: put `OPENROUTER_API_KEY` in a Git-ignored `.env.openrouter` at the repository root, restrict that file to owner read/write, and never send its contents to chat. The library does not auto-load it. With Node22, from the root:
 
@@ -37,6 +37,9 @@ pnpm --filter @agent-cookie/learn build
 node packages/learn/scripts/check-openrouter.mjs --offline
 # Explicit live check: one bounded Haiku request, synthetic sentence only.
 node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs
+# Only after account access changes or a new explicit diagnostic authorization:
+# any ZDR provider, fallback allowed; same model, strict schema, ZDR and deny retained.
+node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs --zdr-fallback
 ```
 
 The check rejects a synthetic sensitive sentence and other group speaker before any model call, then tests one explicit color preference. Output contains only status, timing, call count and extracted field names; no key, original response, real conversation or workspace write. A successful check proves the model adapter, not production learning, card promotion, historical erasure or Spectrum delivery. The remaining A/C dependencies still apply.
