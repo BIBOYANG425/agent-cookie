@@ -36,6 +36,10 @@ export interface Config {
   learnTickMs: number;
   /** A LearnApi call that takes longer is abandoned and logged as failed (LEARN_TIMEOUT_MS). */
   learnTimeoutMs: number;
+  /** Lane B's Haiku extractor key (ANTHROPIC_API_KEY). Unset → nothing is learned (never synthetic results). Never logged. */
+  anthropicApiKey?: string;
+  /** AGENT_COOKIE_LEARN_MODE=explicit-only: lane B's H14 fallback (first-person statements only). Default "all". */
+  learnMode: "all" | "explicit-only";
   /** Sentry tracing + logs (plan §4). Off when unset. */
   sentryDsn?: string;
   sentryEnvironment: string;
@@ -94,6 +98,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
     learnTickMs: int(env.LEARN_TICK_MS, 30_000, 1000, 3_600_000),
     learnTimeoutMs: int(env.LEARN_TIMEOUT_MS, 30_000, 50, 600_000),
+    ...(env.ANTHROPIC_API_KEY?.trim() ? { anthropicApiKey: env.ANTHROPIC_API_KEY.trim() } : {}),
+    learnMode: env.AGENT_COOKIE_LEARN_MODE === "explicit-only" ? "explicit-only" : "all",
     ...(env.SENTRY_DSN ? { sentryDsn: env.SENTRY_DSN } : {}),
     sentryEnvironment: env.SENTRY_ENVIRONMENT ?? (env.AGENT_COOKIE_DEMO === "1" ? "demo" : "development"),
     sentryTracesSampleRate: rate(env.SENTRY_TRACES_SAMPLE_RATE, 1),

@@ -22,9 +22,11 @@ export interface NoteRow extends Note { sessionId: string }
 export interface ReceiptRow extends Receipt { userId: string }
 /** Contributions may carry an unknown field name when a merchant tried to write one (A11: stored inferred, never on the card). */
 export type StoredContribution = Omit<Contribution, "field"> & { field: Field | string };
-/** A conversation waiting to be learned from (learning.ts). Only counters and times: the text is in observation_turns. */
+/**
+ * A conversation waiting to be learned from: only its id, turn count and times (B49). The text never reaches SQLite;
+ * it waits in process memory (services/observations.ts).
+ */
 export interface ObservationBatchRow { agentId: string; conversationId: string; userId: string; channel: string; turnsSeen: number; firstAt: string; lastAt: string }
-export interface ObservationTurnRow { text: string; at: string }
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -49,8 +51,6 @@ CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, user_id TEXT NOT 
 CREATE TABLE IF NOT EXISTS settings (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key));
 CREATE TABLE IF NOT EXISTS observation_batches (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, user_id TEXT NOT NULL, channel TEXT NOT NULL,
   turns_seen INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (agent_id, conversation_id));
-CREATE TABLE IF NOT EXISTS observation_turns (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS observation_turns_conv ON observation_turns (agent_id, conversation_id, seq);
 CREATE INDEX IF NOT EXISTS observation_batches_user ON observation_batches (user_id, first_at);
 CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, computed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
@@ -71,10 +71,10 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 3, table: "quotes", column: "size_note", ddl: "ALTER TABLE quotes ADD COLUMN size_note TEXT" },
   { version: 4, table: "contributions", column: "evidence", ddl: "ALTER TABLE contributions ADD COLUMN evidence TEXT" },
 ];
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
-  "receipts", "activity", "idempotency", "settings", "observation_batches", "observation_turns"] as const;
+  "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : String(v));
@@ -149,12 +149,12 @@ export class Store {
     // Another connection (a second process, a console tool, a backup) may hold the write lock briefly:
     // wait for it instead of failing with SQLITE_BUSY. WAL lets readers proceed during a write.
     this.db.pragma(`busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
-    // Deleted rows are overwritten, not left in free pages: observed conversation text must be gone once processed.
+    // Deleted rows are overwritten, not left in free pages (the v5 migration drops stored conversation text).
     this.db.pragma("secure_delete = ON");
     if (path !== ":memory:") this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
     this.migrate();
-    for (const t of ["grants", "quotes", "contributions", "receipts", "observation_turns"]) {
+    for (const t of ["grants", "quotes", "contributions", "receipts"]) {
       const m = this.db.prepare(`SELECT COALESCE(MAX(seq), 0) AS m FROM ${t}`).get() as { m: number };
       this.seq = Math.max(this.seq, m.m);
     }
@@ -171,6 +171,11 @@ export class Store {
       }
       // v3: UCP store proxies are "retail" (any product), no longer "shoe" with a fixed kind.
       if (current < 3) this.db.exec("UPDATE agents SET category = 'retail', capabilities = '[]' WHERE domain IS NOT NULL AND category = 'shoe'");
+      // v5 (B49): conversation text is never stored. Zero the old queue's text (secure_delete), then drop the table;
+      // the batches it belonged to cannot be learned from any more.
+      if (current < 5 && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'observation_turns'").get()) {
+        this.db.exec("DELETE FROM observation_turns; DROP TABLE observation_turns; DELETE FROM observation_batches;");
+      }
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     })();
   }
@@ -215,52 +220,29 @@ export class Store {
     this.exec("INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value", userId, key, value);
   }
 
-  // ---- observation queue (learning.ts). Only the user's own turns are stored, and only until processed.
-  /** Add `seen` turns to the conversation's batch (creating it), storing the given user texts. Returns the batch. */
-  enqueueObservation(b: { agentId: string; conversationId: string; userId: string; channel: string }, seen: number,
-    userTurns: ObservationTurnRow[], now: string): ObservationBatchRow {
-    this.tx(() => {
-      this.exec(`INSERT INTO observation_batches (agent_id, conversation_id, user_id, channel, turns_seen, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (agent_id, conversation_id) DO UPDATE SET turns_seen = turns_seen + excluded.turns_seen, last_at = excluded.last_at, channel = excluded.channel`,
-        b.agentId, b.conversationId, b.userId, b.channel, seen, now, now);
-      for (const t of userTurns) {
-        this.exec("INSERT INTO observation_turns (agent_id, conversation_id, seq, text, at) VALUES (?, ?, ?, ?, ?)",
-          b.agentId, b.conversationId, this.next(), t.text, t.at);
-      }
-    });
-    return this.observationBatch(b.agentId, b.conversationId)!;
+  // ---- observation queue mirror (learning.ts): ids, counts and times only; the text is in memory.
+  /** Record a waiting conversation's counters (insert or update). */
+  mirrorObservation(b: ObservationBatchRow): void {
+    this.exec(`INSERT INTO observation_batches (agent_id, conversation_id, user_id, channel, turns_seen, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (agent_id, conversation_id) DO UPDATE SET turns_seen = excluded.turns_seen, last_at = excluded.last_at, channel = excluded.channel`,
+      b.agentId, b.conversationId, b.userId, b.channel, b.turnsSeen, b.firstAt, b.lastAt);
   }
   observationBatch(agentId: string, conversationId: string): ObservationBatchRow | undefined {
     const r = this.db.prepare("SELECT * FROM observation_batches WHERE agent_id = ? AND conversation_id = ?").get(agentId, conversationId) as Row | undefined;
     return r && toBatch(r);
   }
-  /** Batches idle since `idleBefore` or holding at least `minTurns` turns. */
-  dueObservationBatches(idleBefore: string, minTurns: number): ObservationBatchRow[] {
-    return (this.db.prepare("SELECT * FROM observation_batches WHERE last_at <= ? OR turns_seen >= ? ORDER BY first_at")
-      .all(idleBefore, minTurns) as Row[]).map(toBatch);
+  observationBatches(userId?: string): ObservationBatchRow[] {
+    const rows = userId === undefined ? this.db.prepare("SELECT * FROM observation_batches ORDER BY first_at, rowid").all()
+      : this.db.prepare("SELECT * FROM observation_batches WHERE user_id = ? ORDER BY first_at, rowid").all(userId);
+    return (rows as Row[]).map(toBatch);
   }
-  /** Read a batch's user turns and delete the batch and its text in one transaction (the text lives on only in memory). */
-  takeObservationBatch(agentId: string, conversationId: string): { batch: ObservationBatchRow; turns: ObservationTurnRow[] } | undefined {
-    return this.tx(() => {
-      const batch = this.observationBatch(agentId, conversationId);
-      if (!batch) return undefined;
-      const turns = (this.db.prepare("SELECT text, at FROM observation_turns WHERE agent_id = ? AND conversation_id = ? ORDER BY seq")
-        .all(agentId, conversationId) as Row[]).map((r) => ({ text: String(r.text), at: String(r.at) }));
-      this.exec("DELETE FROM observation_turns WHERE agent_id = ? AND conversation_id = ?", agentId, conversationId);
-      this.exec("DELETE FROM observation_batches WHERE agent_id = ? AND conversation_id = ?", agentId, conversationId);
-      return { batch, turns };
-    });
+  deleteObservationBatch(agentId: string, conversationId: string): void {
+    this.exec("DELETE FROM observation_batches WHERE agent_id = ? AND conversation_id = ?", agentId, conversationId);
   }
-  /** Drop every waiting conversation of the user (learning paused). Returns how many. */
-  dropObservations(userId: string): number {
-    return this.tx(() => {
-      const batches = (this.db.prepare("SELECT agent_id, conversation_id FROM observation_batches WHERE user_id = ?").all(userId) as Row[]);
-      for (const b of batches) {
-        this.exec("DELETE FROM observation_turns WHERE agent_id = ? AND conversation_id = ?", String(b.agent_id), String(b.conversation_id));
-      }
-      this.exec("DELETE FROM observation_batches WHERE user_id = ?", userId);
-      return batches.length;
-    });
+  /** Drop every waiting conversation of the user, or of everyone (startup: their text did not survive). Returns how many. */
+  dropObservations(userId?: string): number {
+    return userId === undefined ? this.exec("DELETE FROM observation_batches").changes
+      : this.exec("DELETE FROM observation_batches WHERE user_id = ?", userId).changes;
   }
   /**
    * After deleting observed text: move the overwritten pages out of the WAL and truncate it, so no copy of the text
@@ -279,16 +261,6 @@ export class Store {
       this.db.pragma(`busy_timeout = ${busyMs}`);
     }
   }
-  /** How many conversations of this user are waiting (queue bound). */
-  observationBatchCount(userId: string): number {
-    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM observation_batches WHERE user_id = ?").get(userId) as Row).n);
-  }
-  /** The user's oldest waiting conversation. */
-  oldestObservationBatch(userId: string): ObservationBatchRow | undefined {
-    const r = this.db.prepare("SELECT * FROM observation_batches WHERE user_id = ? ORDER BY first_at, rowid LIMIT 1").get(userId) as Row | undefined;
-    return r && toBatch(r);
-  }
-
   /** The user's intents, newest first. */
   intentsForUser(userId: string): IntentRow[] {
     return (this.db.prepare("SELECT * FROM intents WHERE user_id = ? ORDER BY created_at DESC, rowid DESC").all(userId) as Row[]).map(toIntent);

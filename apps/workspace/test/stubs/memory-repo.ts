@@ -18,7 +18,7 @@ export class InMemoryRepo implements MemoryRepo {
   private card: Card = { card: [], candidates: [], superseded: [] };
   private n = 0;
 
-  constructor(private rules: RulesApi, private seed: Contribution[]) {
+  constructor(private rules: RulesApi, private seed: Contribution[], private userId?: string) {
     this.contributions = structuredClone(seed);
   }
 
@@ -37,6 +37,17 @@ export class InMemoryRepo implements MemoryRepo {
     if (!c || c.revokedAt) return { sha: "" };
     c.revokedAt = revokedAt;
     return this.commit(`revoke ${id}`, meta);
+  }
+  /** B49: every listed revocation and the CARD.md rewrite in ONE commit; nothing known → no commit. */
+  async revokeContributions(ids: readonly string[], revokedAt: string, merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
+    const hit = this.contributions.filter((x) => ids.includes(x.id) && !x.revokedAt);
+    if (hit.length === 0) return { card: structuredClone(this.card), commit: { sha: "" } };
+    for (const c of hit) {
+      c.revokedAt = revokedAt;
+      if (c.evidence) delete c.evidence.snippet;
+    }
+    this.card = this.rules.mergeCard(this.contributions, merge);
+    return { card: structuredClone(this.card), commit: this.commit(`revoke ${hit.length} + regenerate CARD.md`, meta) };
   }
   async regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
     this.card = this.rules.mergeCard(this.contributions, merge);
@@ -60,6 +71,9 @@ export class InMemoryRepo implements MemoryRepo {
     return this.commit(`delete note ${key} by ${agentId}`, meta);
   }
   async appendIntent(record: IntentRecord, meta: WriteMeta): Promise<CommitRef> {
+    // lane C's rules (packages/memory-repo appendIntent): the user's own repo, written by the record's own agent
+    if (this.userId !== undefined && record.userId !== this.userId) throw new WorkspaceError("SCOPE_DENIED");
+    if (meta.author !== record.agentId) throw new WorkspaceError("SCOPE_DENIED");
     this.intents.push(structuredClone(record));
     return this.commit(`intent ${record.id}${record.chosenQuote ? " chosen" : ""} by ${record.agentId}`, meta);
   }
@@ -83,7 +97,7 @@ export class InMemoryRepo implements MemoryRepo {
 export function stubMemoryRepoApi(seedContributions: () => Contribution[]): MemoryRepoApi {
   return {
     async openMemoryRepo(opts: OpenMemoryRepoOptions): Promise<MemoryRepo> {
-      return new InMemoryRepo(opts.rules, seedContributions());
+      return new InMemoryRepo(opts.rules, seedContributions(), opts.userId);
     },
   };
 }

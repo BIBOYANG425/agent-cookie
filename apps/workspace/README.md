@@ -25,6 +25,9 @@ pnpm --filter @agent-cookie/workspace test
 | `AGENT_COOKIE_DEMO` | unset | `1` mounts `POST /demo/reset` and loads `dev-keys.json` |
 | `AGENT_COOKIE_TEST` | unset | `1` mounts `POST /test/clock` and loads `dev-keys.json` |
 | `CALLBACK_TIMEOUT_MS`, `CALLBACK_RETRIES` | `5000`, `3` | merchant callbacks and Tier 0 deliveries |
+| `ANTHROPIC_API_KEY` | unset | lane B's Haiku extractor (`@agent-cookie/learn`); unset → nothing is learned, never synthetic results |
+| `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only`: lane B's fallback, first-person statements only |
+| `LEARN_TICK_MS`, `LEARN_TIMEOUT_MS` | `30000`, `30000` | how often quiet conversations are checked; a learner call that takes longer is abandoned |
 
 ## Keys
 
@@ -62,5 +65,21 @@ pnpm --filter @agent-cookie/workspace test
 - Notes are per (merchant, user, key), ≤ 2 KB; another merchant and a missing key get the same 404.
 - `POST /demo/reset` (owner key + `AGENT_COOKIE_DEMO=1`): wipes SQLite, reseeds, resets the memory repo; session IDs stay the same.
 - `POST /test/clock {offsetMs}` (`AGENT_COOKIE_TEST=1`): shifts the workspace clock.
+
+## Learning (B49)
+
+- `POST /personal/observations`: the user's own turns wait **in memory only** (≤ 50 conversations × 20 turns per user; the
+  oldest are dropped and counted in the activity log). SQLite keeps the conversation id, turn count and times; a restart
+  loses what was waiting and logs how many. A turn whose `messageId` the same agent posted within the hour is ignored.
+- A conversation is learned from after 5 quiet minutes or 10 turns; every intent and accept is learned from too. Candidates
+  are kept only for `pref.*` whitelist fields with a valid value, quoting the user's own words, and written with the
+  extractor's basis: `stated` is on the card at once, observed/inferred need two independent sources (two conversations
+  or intents — lane C's rules count them). One record per value per conversation or intent.
+- On an accept, the intent-history record and anything learned are written by the accepting agent, naming the intent
+  (`evidence.intentId`), so another of the user's agents can accept what one asked for.
+- `POST /personal/learned/forget {conversationId | intentId}`: revokes everything learned from it at once (one SQLite
+  transaction, one memory-repo commit with CARD.md when lane C's `revokeContributions` is there), drops its waiting
+  turns, and discards a learner answer still in flight. `PUT /personal/learning {paused}` stops all of it.
+- `@agent-cookie/learn` is on lane B's branch until merged; until then (or without a key) the workspace logs `learn.off`.
 
 Full request/response shapes: `packages/contract/src/types.ts` and `endpoints.ts`.
