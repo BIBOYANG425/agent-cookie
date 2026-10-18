@@ -7,6 +7,7 @@ Agent Cookie introduces connected assistants to the context they are allowed to 
 ## See the demo
 
 - [English project story and submission answers](docs/devpost-submission-en.md)
+- [Devpost story, paste-ready, with the loop diagram](docs/devpost-story.md)
 - [English recording script and verified scope](docs/demo-script-en.md)
 - [Phone, learning, handoff, and assistant-switch evidence](docs/hana-demo.md)
 - [SDK integration guide](packages/sdk/README.md)
@@ -16,6 +17,20 @@ Agent Cookie introduces connected assistants to the context they are allowed to 
 - [Chinese technical guide](README.zh.md)
 
 The English console shows context and its sources, learning candidates, connection requests, permissions, and receipts. A new company assistant connects through a consent link. Its context excludes shipping addresses and payment methods. Personal agents have a different trust role: do not describe their access as identical to company assistants.
+
+## Install the SDK
+
+The SDK is published on npm as [`@agent-cookie/sdk`](https://www.npmjs.com/package/@agent-cookie/sdk). Node 22 or later, ESM, types included, no runtime dependencies.
+
+```sh
+npm i @agent-cookie/sdk
+```
+
+```ts
+import { AssistantClient, MerchantClient, WorkspaceClient, assistantPrompt } from '@agent-cookie/sdk';
+```
+
+Quickstarts for an assistant company, a store and your own agent are in the [SDK guide](packages/sdk/README.md).
 
 ## Run a local Sample
 
@@ -56,13 +71,27 @@ The October 18 live HANA handoff did **not** release the Sample shipping address
 
 ```mermaid
 flowchart LR
-  P[Phone personal assistant] -->|SDK| W[User-owned workspace]
-  D[Claude Desktop] -->|MCP| W
-  A[Company assistant] -->|Consent + scoped SDK| W
-  C[English console] -->|Owner API| W
-  W --> R[Rules, sessions, receipts]
-  W -->|UCP| M[Merchant services]
+  subgraph FOR["Agents that act for you"]
+    direction TB
+    P["Your own agents<br/>iMessage · Claude Desktop · CLI"]
+    A["Assistant companies<br/>Manus · Dots · Muse"]
+  end
+  J(("Your jar<br/>card · cookies<br/>receipts · policy"))
+  subgraph SERVE["Agents that serve you"]
+    direction TB
+    S["Stores<br/>Shopify UCP · MerchantClient"]
+    N["Next: hotels · airlines<br/>hospital intake · banks · landlords"]
+  end
+  U["You<br/>console · cookie page"]
+  P <-->|"context out · what you said back"| J
+  A <-->|"context by policy · your words as evidence"| J
+  J <-->|"names, then values by purpose · observations and its own note"| S
+  J <-.->|"same primitives"| N
+  U <-->|"policy and revoke · receipts"| J
 ```
+
+Context flows out to every agent by policy, and what agents learn flows back under deterministic merge rules: what you say counts at once, an observation needs a second independent source, a guess never reaches the card, and a store's note stays private to that store. Only shopping is built; other industries use the same primitives and are described in the [extended guide](README.en.md#across-industries).
+
 
 Pairwise IDs avoid exposing a single global workspace identifier to all recipients. They do not guarantee that recipients cannot correlate other information. Revocation blocks future access; it cannot recall data already delivered.
 
