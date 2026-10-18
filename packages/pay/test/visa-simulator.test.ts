@@ -65,9 +65,9 @@ describe("Visa Acceptance simulator: provider bytes over real loopback HTTP, not
     // A timeout AFTER a real provider made a hold is unknowable without reconciliation; this does not prove otherwise.
   });
 
-  it("public payment hooks refuse simulated providers until the shared provenance contract is wired", async () => {
+  it("public payment hooks accept simulated providers (the contract carries the provenance)", async () => {
     const { sim, provider } = await setup("authorize");
-    expect(() => createPayments({ provider, getContext: async () => null })).toThrow("Visa Acceptance simulator: workspace provenance contract not wired");
+    expect(() => createPayments({ provider, getContext: async () => null })).not.toThrow();
     expect(sim.snapshot().holds).toEqual([]);
   });
 

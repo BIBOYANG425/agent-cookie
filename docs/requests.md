@@ -465,3 +465,4 @@ Native traces: two one-job inbound turns, repeated updateWorkingMemory/hanaActiv
 | A83 | A → C：①`packages/memory-repo` `renderReceipt` 目前丢弃未知键，git 里的模拟支付回执没有标记；请在回执行上写 `provider:`/`simulated:`（与 amount 同样的开放键）。②控制台在授权与支付回执旁显示 "Visa Acceptance simulator · 模拟"；活动 reason 里的 `simulated=true` 同样标注。 |
 | A84 | A → B：通道（Photon/MCP/SDK 输出）对 `AcceptResult.authorization.simulated` 与回执 `simulated` 显示模拟标签；accept 的 message 已带一句说明，原样转给用户即可。 |
 | A85 | A → 人（记录，人授权 A 判断）：`AGENT_COOKIE_PAY=fake` 的 fakeProvider 结果暂不标记（与改动前一致）：默认关闭，演示不开；标记会改动现有测试锁定的消息与活动文本。若哪次演示打开 fake，再在契约 `PaymentProviderLabel` 加一个 Sample 值并标记。 |
+| A86 | A → D（记录，人要求 A 直接完成，2026-10-18）：`packages/pay` `createPayments` 去掉对 simulated provider 的拒绝；simulated provider 的授权记录与公开结果带 `provider`/`simulated`（契约 A81）；`visa-simulator.test.ts` 的门测试改为接受；pay 与 visa-sim README 同步。工作台真实模拟器配置不再在启动时失败。 |
