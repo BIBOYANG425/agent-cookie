@@ -168,7 +168,7 @@ These are the tracks we are entering, with the scope we can show. None of it is 
 | --- | --- |
 | **Applied Intelligence** | A working identity and consent layer for agents, and opt-in learning with a `typesafe/jev-1.14` gate and `openai/gpt-oss-120b` extraction via OpenRouter, where rules, not models, decide promotion and access. |
 | **Photon** | A real iMessage shopping agent: a request, up to two offers, a choice, and a merchant handoff, in the language the message was typed in. |
-| **Visa** | Trusted Agent Protocol interop with pairwise per-session keys, single-use and within-budget payment authorization in tests, and an Acceptance provider verified against Visa's SDK offline and against the simulator over HTTP. |
+| **Visa** | Trusted Agent Protocol interop with pairwise per-session keys, single-use and within-budget payment authorization in tests, and a Visa Acceptance provider (HTTP Signature and JWT) matched byte for byte against Visa's official SDK and exercised over HTTP against a simulator that verifies requests with the SDK's own code. |
 | **Cognition** | Format interop with the stock Agent Memory Repo skill (A23), and Claude Code and Devin integration runs from our skill (A16). |
 | **Paper** | A console that shows where every fact came from, who may read it, for what, until when, and how to revoke it. Screenshots are labelled Sample. |
 | **Sentry** | Tracing and logs validated offline, bodies dropped, no trace propagated to a merchant. Dashboard evidence from a live account is still planned. |
