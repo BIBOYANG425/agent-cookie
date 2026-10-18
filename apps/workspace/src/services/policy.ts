@@ -121,7 +121,7 @@ export class PolicyService {
     for (const e of this.ctx.store.fieldReadEvents(SHADOW_LIMIT)) {
       const c = categoryOf(e.actor);
       if (!c) continue;
-      // reason = "<field,field> purpose=<p>[ intent=<id>]" (services/fields.ts)
+      // reason = "<field,field> purpose=<p>[ intent=<id>][ receipts=<n> deduped=<0|1>]" (services/fields.ts)
       const fields = (e.reason.split(" ")[0] ?? "").split(",").filter(isField);
       const purpose = /(?:^|\s)purpose=(\S*)/.exec(e.reason)?.[1] || undefined;
       for (const f of fields) compare(e.id, "read", c, f, purpose);

@@ -619,7 +619,7 @@ export class Store {
   insertReceipt(r: ReceiptRow): void {
     this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null);
   }
-  /** The newest receipt of one session for one purpose (assistant context receipt de-duplication). */
+  /** The newest receipt of one session for one purpose (receipt de-duplication, services/receipts.ts). */
   lastReceipt(sessionId: string, purpose: string): ReceiptRow | undefined {
     const r = this.db.prepare("SELECT * FROM receipts WHERE session_id = ? AND purpose = ? ORDER BY seq DESC LIMIT 1").get(sessionId, purpose) as Row | undefined;
     return r && toReceipt(r);
@@ -632,7 +632,7 @@ export class Store {
   receiptsForUser(userId: string, limit: number): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE user_id = ? ORDER BY seq DESC LIMIT ?").all(userId, limit) as Row[]).map(toReceipt);
   }
-  /** Receipts attributed to one intent (purpose releases and Tier 0 deliveries), oldest first. Funnel only. */
+  /** Receipts attributed to one intent (handshake reads, purpose releases and Tier 0 deliveries), oldest first. Funnel only. */
   receiptsForIntent(intentId: string): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toReceipt);
   }
@@ -640,7 +640,7 @@ export class Store {
   grantsForIntent(intentId: string): GrantRow[] {
     return (this.db.prepare("SELECT * FROM grants WHERE intent_id = ? ORDER BY seq ASC").all(intentId) as Row[]).map(toGrant);
   }
-  /** `fields.read` allows whose reason ends in `intent=<id>` (services/fields.ts), oldest first. Funnel only. */
+  /** `fields.read` allows whose reason carries `intent=<id>` (services/fields.ts), oldest first. Funnel only. */
   fieldReadsForIntent(intentId: string): ActivityEvent[] {
     const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' AND instr(reason, ?) > 0 ORDER BY id ASC")
       .all(` intent=${intentId}`) as Row[];
@@ -653,7 +653,7 @@ export class Store {
     return r?.stats ? (JSON.parse(String(r.stats)) as SearchStats) : undefined;
   }
   releasedPurposeFields(sessionId: string): Field[] {
-    const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0')").all(sessionId) as Row[];
+    const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0', 'handshake')").all(sessionId) as Row[];
     return [...new Set(rows.flatMap((r) => JSON.parse(String(r.fields)) as Field[]))];
   }
 

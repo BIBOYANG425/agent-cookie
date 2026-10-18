@@ -14,7 +14,8 @@ import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { questionsSkipped } from "./analytics.js";
 import type { CardService } from "./card.js";
-import { persistStrict, writeMeta, type Ctx } from "./context.js";
+import type { Ctx } from "./context.js";
+import { RECEIPT_DEDUPE_MS, ReceiptWriter, type ReceiptOutcome } from "./receipts.js";
 import type { SessionService } from "./sessions.js";
 
 /** The purpose of an assistant's consent grant and of the receipts its context reads write. */
@@ -28,15 +29,14 @@ export function assistantSafe(fields: readonly Field[]): Field[] {
 }
 
 /**
- * Receipt de-duplication for GET /assistant/context. A chat reads its context on every message and every receipt is a
- * git commit, so: a read writes NO new receipt when the newest assist receipt of the same session named exactly the
- * same field set, under the same policy document, less than ASSIST_RECEIPT_DEDUPE_MS ago (workspace clock); any other
- * read writes one. A read that serves no value writes none (nothing was released). The `assist.context` activity event
- * (counts only) is written on every read, deduplicated or not.
+ * Receipt de-duplication for GET /assistant/context (services/receipts.ts, the rule merchants' auto reads follow too). A
+ * chat reads its context on every message and every receipt is a git commit, so: a read writes NO new receipt when the
+ * newest assist receipt of the same session named exactly the same field set, under the same policy document, less
+ * than ASSIST_RECEIPT_DEDUPE_MS ago (workspace clock); any other read writes one. A read that serves no value writes
+ * none (nothing was released). The `assist.context` activity event (counts only) is written on every read,
+ * deduplicated or not.
  */
-export const ASSIST_RECEIPT_DEDUPE_MS = 60 * 60 * 1000;
-
-const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
+export const ASSIST_RECEIPT_DEDUPE_MS = RECEIPT_DEDUPE_MS;
 
 export type AssistantEvidence = NonNullable<AssistantContributionInput["evidence"]>;
 
@@ -65,9 +65,11 @@ export function assistantEvidence(raw: unknown): AssistantEvidence | undefined {
 
 export class AssistantService {
   /** Receipt decisions run one at a time, so two reads at once cannot both decide "no recent receipt". */
-  private serial: Promise<unknown> = Promise.resolve();
+  private readonly receipts: ReceiptWriter;
 
-  constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {}
+  constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {
+    this.receipts = new ReceiptWriter(ctx);
+  }
 
   /**
    * GET /assistant/context. Needs a live assist grant (SessionService.assistAccess): the grant proves the owner linked
@@ -98,23 +100,10 @@ export class AssistantService {
   }
 
   /** "每次放行写回执" with the de-duplication rule above. Git first, then SQLite: no durable receipt, no values. */
-  private receipt(agent: AuthedAgent, userId: string, sessionId: string, served: Field[]): Promise<"written" | "deduped" | "none"> {
-    const run = this.serial.then(async () => {
-      if (served.length === 0) return "none" as const;
-      const policyId = this.ctx.policy.id();
-      const last = this.ctx.store.lastReceipt(sessionId, ASSIST_PURPOSE);
-      if (last && last.policyId === policyId && sameSet(last.fields, served)) {
-        const age = this.ctx.clock.now() - Date.parse(last.createdAt);
-        if (age >= 0 && age < ASSIST_RECEIPT_DEDUPE_MS) return "deduped" as const;
-      }
-      const r: Receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: served, purpose: ASSIST_PURPOSE,
-        createdAt: this.ctx.clock.nowIso(), policyId };
-      await persistStrict(this.ctx, "receipt", agent.agentId, (repo) => repo.appendReceipt(r, writeMeta(this.ctx, "workspace", r)));
-      this.ctx.store.insertReceipt({ ...r, userId });
-      return "written" as const;
-    });
-    this.serial = run.catch(() => undefined);
-    return run;
+  private receipt(agent: AuthedAgent, userId: string, sessionId: string, served: Field[]): Promise<ReceiptOutcome> {
+    const r: Receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: served, purpose: ASSIST_PURPOSE,
+      createdAt: this.ctx.clock.nowIso(), policyId: this.ctx.policy.id() };
+    return this.receipts.write(r, userId, agent.agentId, { dedupe: true });
   }
 
   /**

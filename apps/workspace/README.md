@@ -76,6 +76,11 @@ network missing). The request shapes were written offline and have not been run 
   upstream) and `blocked` (policy, expired, revoked) as they are. Upstream text is shown without local paths.
 - `GET /agent/fields?sessionId=&fields=&purpose=`: auto fields with a live grant; purpose fields only after the user accepted this
   merchant's quote; names outside the table → `SCOPE_DENIED`; denials never name fields; every purpose release writes a receipt.
+  Auto fields are receipted too, under purpose `handshake` (field names, session, intent, policy id; git before the values, whatever
+  purpose the merchant declared), and so is the workspace's own read of the card when it searches for a UCP store (one `handshake`
+  receipt per store session and intent, naming the card fields the search used), which is what the funnel's `questionsSkipped` sums.
+  A repeat is not receipted again when the session's newest `handshake` receipt named the same field set, for the same intent and
+  policy, less than an hour ago on the workspace clock (`services/receipts.ts`, the rule assistant context reads follow); every read is still logged, counts and names only.
 - Notes are per (merchant, user, key), ≤ 2 KB; another merchant and a missing key get the same 404.
 - `POST /demo/reset` (owner key + `AGENT_COOKIE_DEMO=1`): wipes SQLite, reseeds, resets the memory repo; session IDs stay the same.
 - `POST /test/clock {offsetMs}` (`AGENT_COOKIE_TEST=1`): shifts the workspace clock.

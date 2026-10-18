@@ -655,15 +655,20 @@ describe("funnel and stats", () => {
     const first = (await h.post("/personal/intents", a.key, { text: "Sample · trail shoes", public: { budget: "120" } })).body.intentId as string;
     const q = ((await h.get(`/personal/intents/${first}/quotes?wait=0`, a.key)).body.quotes as Json[]).find((x) => x.seller)!;
     expect((await h.post(`/personal/quotes/${q.id}/accept`, a.key)).body.status).toBe("handoff");
-    await h.post("/personal/intents", a.key, { text: "Sample · trail shoes again", public: { budget: "120" } });
+    const second = (await h.post("/personal/intents", a.key, { text: "Sample · trail shoes again", public: { budget: "120" } })).body.intentId as string;
     await h.post("/personal/intents", b.key, { text: "Sample · b's shoes", public: { budget: "120" } });
     await h.intent();
 
-    const skipped = (await receipts(h)).filter((r) => r.intentId === first).reduce((n, r) => n + r.fields.length, 0);
+    // Both of A's intents count: the second was never accepted, but its search read the card for each store it quoted
+    // (one handshake receipt per store, since 2026-10-18).
+    const all = await receipts(h);
+    const skippedFor = (id: string) => all.filter((r) => r.intentId === id).reduce((n, r) => n + r.fields.length, 0);
+    const skipped = skippedFor(first) + skippedFor(second);
     const s = await h.get("/assistant/stats", a.key);
     expect(s.status).toBe(200);
     expect(s.body).toEqual({ intents: 2, quoted: 2, accepted: 1, completed: 1, questionsSkipped: skipped, generatedAt: START });
-    expect(skipped).toBeGreaterThanOrEqual(1);
+    expect(skippedFor(first)).toBeGreaterThan(skippedFor(second));
+    expect(skippedFor(second)).toBeGreaterThanOrEqual(1);
     expect((await h.get("/assistant/stats", b.key)).body).toMatchObject({ intents: 1, accepted: 0, completed: 0 });
     expect(s.text).not.toContain(first);
   });

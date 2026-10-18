@@ -22,7 +22,8 @@ export function elapsedMs(from: string, to: string): number | undefined {
 
 /**
  * Questions the user was not asked (bring-your-own-agent plan §0): the field NAMES served to agents by policy, summed over
- * an intent's receipts (every purpose: tier0 prefixes, checkout, payment). A count; never a value.
+ * an intent's receipts (every purpose: merchants' handshake reads of the auto fields, the workspace's handshake read for
+ * a UCP store proxy, tier0 prefixes, checkout, payment). A count; never a value.
  */
 export function questionsSkipped(receipts: readonly Pick<Receipt, "fields">[]): number {
   return receipts.reduce((n, r) => n + r.fields.length, 0);
@@ -51,7 +52,7 @@ export class FunnelService {
     for (const g of store.grantsForIntent(i.id)) for (const f of g.fields) granted.add(f);
     const read = new Set<string>();
     for (const e of store.fieldReadsForIntent(i.id)) {
-      // reason = "<field,field> purpose=<p> intent=<id>" (services/fields.ts); the first token is the field list.
+      // reason = "<field,field> purpose=<p> intent=<id> receipts=<n> deduped=<0|1>" (services/fields.ts); the first token is the field list.
       for (const f of (e.reason.split(" ")[0] ?? "").split(",")) if (f) read.add(f);
     }
     const receipts = store.receiptsForIntent(i.id);
@@ -64,6 +65,9 @@ export class FunnelService {
       accepted: chosen !== undefined,
       fieldsGranted: granted.size,
       fieldsRead: read.size,
+      // Every receipt written for this intent: purpose releases, Tier 0 deliveries and, since 2026-10-18, the handshake
+      // receipts of auto reads (a merchant's GET /agent/fields, the workspace's read for a UCP store proxy). The name
+      // predates the handshake receipts and is kept (contract FunnelRow).
       purposeReleases: receipts.length,
       // Bring-your-own-agent: who asked (a personal agent or a linked assistant), and what nobody had to ask the user.
       createdBy: i.agentId,
