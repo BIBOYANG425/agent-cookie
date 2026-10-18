@@ -1,82 +1,87 @@
-# Bring your own agent, SDK first: skip onboarding — plan v0.1 (2026-10-18)
+# Bring your own agent, SDK first: skip onboarding — plan v0.2 (2026-10-18)
 
-Companion to `docs/commerce-analytics-plan.md` (same form: phases, contract additions, cross-lane requests). Scope decided with the owner on 2026-10-18: **the SDK is the integration surface; MCP gets doors, not work.** Human-only decisions stay in `docs/plan.md`.
+Companion to `docs/commerce-analytics-plan.md` (same form: phases, contract additions, cross-lane requests). v0.1 of this plan assumed a technical person running their own agent. The owner corrected it the same day: **the audience is consumers who churn between companies' agents and will never mint a key.** There are two kinds of company, and they are different companies: assistant companies (Manus, Dots, Muse) build personal assistants and nothing else; commerce platforms (Shopify) build shopping agents and nothing else. Agent Cookie is the network between them, owned by neither, with the person's jar in the middle. The SDK is the integration surface; MCP gets doors, not work. Human-only decisions stay in `docs/plan.md`.
 
 ## 0 · The goal in one sentence
 
-There are more agents than anyone can onboard to. With Agent Cookie an agent the user has never used knows them on its first message, within policy and with a receipt, so the onboarding interview disappears on both sides: for the user's **own new agent** (it reads the card) and for a **third-party agent** that serves them (it gets the handshake, then fields by purpose, and never asks for what the workspace already serves).
+There are more agents than anyone can onboard to. With Agent Cookie an agent the person has never used knows them on its first message, within policy and with a receipt, so the onboarding interview disappears: an assistant they switch to reads the merged card; a store they have never bought from gets the handshake and then fields by purpose, and asks for nothing the workspace already serves.
 
-"Onboarding" here is concrete: the questions an agent asks before it can do the job (language, size, preferences; address at checkout; a payment method at payment). The measure of success is therefore a count, not a feeling: **questions skipped** = fields the agent needed that the workspace served by policy without the user being asked. Counts and field names only, as everywhere else in the design. Skipping applies only to fields the user stated or that were learned under the learning rules; an unknown field stays unknown and is asked for when the task needs it. Nothing is invented.
+"Onboarding" is concrete: the questions an agent asks before it can do the job (language, size, preferences; address at checkout; a payment method at payment). The success measure is a count: **questions skipped** = the field names served to agents by policy, summed over an intent's receipts. Counts and field names only. Skipping applies only to fields the person stated or that were learned under the learning rules; an unknown field stays unknown and is asked for when the task needs it. Nothing is invented.
 
-## 1 · What exists today (the honest starting point)
+## 1 · The two sides, and what each integrates
 
-- **Personal side, SDK:** `WorkspaceClient` covers identity (`getMe`), the card (`getMyCard`), learning (`observe`, `getLearning`, `setLearning`, `getLearned`, `forgetLearning`), commerce (`createIntent`, `getQuotes`, `streamQuotes`, `find`, `accept`), accountability (`getReceipts`, `getActivity`, `getGrants`, `revokeGrant`, `revokeContribution`), policy (`getPolicy`, `setPolicy`, `shadowPolicy`), the funnel (`getFunnel`) and `demoReset`. Configuration from `AGENT_COOKIE_URL` / `AGENT_COOKIE_KEY`.
-- **Many personal agents per user already work:** keys carry `role: personal` and an `agentId`; the Sample seed has two (Photon, Desktop). Contributions merge deterministically; revocation is per contribution.
-- **Third-party side, HTTP only:** `POST /agents/register`, `GET /agent/handshake`, `GET /agent/fields`, `POST /agent/quotes`, `POST /agent/contributions`, `PUT/GET /agent/notes/:key`, `GET /agent/stats`, plus the `add-agent-cookie` skill. There is no merchant client in the SDK.
-- **Gaps that block "everyone with their own agent":**
-  1. Keys exist only as the Sample fixtures (demo mode) or the minted `owner.key` file; there is no API to mint a personal or merchant key for an agent the user adds.
-  2. The seed always creates the Sample persona (`seedStore` inserts the fixture users and contributions); there is no blank-user start.
-  3. The SDK cannot write a stated preference (`POST /personal/contributions` exists, the SDK has no method for it) and has nothing that turns the card into prompt context.
-  4. MCP is stdio only and wraps HTTP; Photon is bound to one test sender.
-  5. One user per workspace process by design (one SQLite file, one git memory repo, bound to 127.0.0.1); nothing hosted.
+| | Assistant company (Manus, Dots, Muse) | Commerce platform (Shopify and its stores) |
+| --- | --- | --- |
+| What its agent does | Acts for the person: finds, compares, books, remembers | Sells: quotes, checks out, delivers |
+| Role in Agent Cookie | `assistant`: pairwise session the owner approved, policy-limited values, no provenance | `merchant`: pairwise session per intent, handshake field names, purpose fields at the stage that needs them |
+| Integrates | `AssistantClient` from the SDK plus the consent link ("Continue with Agent Cookie", one tap) | Its protocol: UCP today; the `MerchantClient` for the long tail; Tier 0 text prefix for stores with nothing |
+| Gets | A complete profile on the first message, within policy; never has to store an address or a card, because the workspace hands them to the store | A buyer whose size and preferences arrive with the intent and whose address arrives at checkout; payment authorized at the payment stage |
+| Never sees | `payment_method`, `shipping_address`, other assistants, purchase history unless the person allows it | `payment_method`, other merchants, other assistants |
+| Why it says yes | A challenger gains everything from imported context; the incumbent gains nothing, so launch with two challengers who accept each other's users | Conversion with fewer questions, measurable in its own stats |
+
+The piece that makes an assistant safe to churn between: it does not need the sensitive fields to do its job. When it accepts a quote the workspace releases the address to the store at checkout and authorizes payment at the payment stage, each with a receipt. The assistant orchestrated the purchase and never carried the address or the card.
+
+**What only the jar can see.** Manus cannot see which stores convert its users; Shopify cannot see which assistant brought the buyer. The jar sees both, as counts, with the person's consent: by assistant, intents that reach a quote and an order; by store, quotes that win; for the person, questions skipped and who knew what. That cross-company funnel is the analytics product and the pitch to both sides.
+
+**Cold start.** The jar is created at the moment the person is typing anyway: checkout inside the first assistant, one tap for "remember this for every agent". It is cashed in at the next assistant, so the demo opens on the second assistant, not the first.
 
 ## 2 · Decisions
 
-- **D1 · The SDK is the only client.** `@agent-cookie/sdk` gets a second class, `MerchantClient`, beside `WorkspaceClient`. CLI, MCP, Photon, the console bridge and both skills call the SDK; nobody writes a second HTTP client (this is already the rule in CLAUDE.md, now it has no exception).
-- **D2 · Doors for MCP, not MCP.** (a) Every SDK method is a function of `(url, key, input)` with JSON-serialisable input and output, so an MCP tool is a one-line wrapper and the tool list is the SDK method list. (b) The MCP server keeps wrapping the SDK; a remote transport is a later unit that changes no SDK code. (c) The `_meta["agent-cookie"]` binding stays parked (commerce plan §8). (d) For agents not written in TypeScript, the door is a generated OpenAPI document from the contract's `endpoints.ts`, not a hand-written second client.
-- **D3 · One workspace per person.** Hosting is instance orchestration plus a gateway. The workspace is not rewritten to be multi-tenant: that would put many people's memory repos in one place and touch every service.
-- **D4 · Authorization never moves into the SDK.** The SDK carries purpose and stage; the workspace decides, as today. A client cannot widen a grant, and `payment_method` is never released to a merchant, whatever the client asks.
+- **D1 · The SDK is the only client.** `@agent-cookie/sdk` has three clients: `AssistantClient` (assistant companies), `MerchantClient` (long-tail stores and any commerce agent off-protocol), `WorkspaceClient` (the person's own agent and the owner's console/CLI). CLI, MCP, Photon, the console bridge and both skills call the SDK; nobody writes a second HTTP client.
+- **D2 · Doors for MCP, not MCP.** Every SDK method is a function of `(url, key, input)` with JSON input and output, so an MCP tool is a one-line wrapper and the tool list is the SDK method list; a remote transport is a later unit that changes no SDK code; the `_meta["agent-cookie"]` binding stays parked. For agents not written in TypeScript, the door is an OpenAPI document generated from the contract's `endpoints.ts`.
+- **D3 · One workspace per person.** Hosting is instance orchestration plus a gateway; the workspace is not rewritten to be multi-tenant.
+- **D4 · Authorization never moves into the SDK.** The SDK carries purpose and stage; the workspace decides. An assistant cannot widen its policy, and `payment_method` and `shipping_address` never reach an assistant or a merchant session, whatever the client asks or the document says (a floor in code).
+- **D5 · Consent is one owner action, never automatic.** A link is approved by the person (console, CLI, or the hosted gateway after a passkey tap). Nothing auto-approves, and a link is single use with a ten-minute life.
 
-## 3 · Phase 1 — A fresh identity and its keys (lanes A + B)
+## 3 · Phase 1 — The assistant side (lanes A + B + C) · in progress 2026-10-18
 
-The first thing a stranger needs is a workspace that is theirs, with no Sample persona in it, and a key for the agent they already use.
+Contract (landed, commit `300c810`): Category and Role `assistant`; consent link (`LinkStatus`, `Link`, `LinkView`, `LINK_TTL_MS`, `ASSISTANT_GRANT_TTL_MS` = 30 days, `LINK_NOT_PENDING` 409); `AssistantContext` (values by `auto.assistant`, `unknown`, `writable`, no provenance); policy maps gain the assistant category with a floor that forbids `shipping_address` and `payment_method` anywhere for it; endpoints `POST /assistant/link`, `GET /assistant/link/:id`, `GET /assistant/context`, `POST /assistant/contributions`, `GET /assistant/stats`, `GET /owner/links`, `POST /owner/links/:id/approve|decline`; the intent, quotes, events, accept and observation routes also accept a linked assistant's key; `FunnelRow.createdBy` and `questionsSkipped`; `AssistantStats`.
 
-- **Blank seed (contract + workspace).** `AGENT_COOKIE_SEED=sample|blank` (default `sample`, so nothing changes for the demo). `blank`: one user with an empty card, the default policy, no Sample agents, no Sample keys; `POST /demo/reset` returns a blank workspace to blank. The console and the SDK keep labelling Sample data; a blank workspace has none.
-- **Key minting, owner only (contract + workspace).** `POST /owner/keys` `{ agentId, role: "personal" | "merchant", label }` → `{ key, agentId, role, createdAt }`, the key returned exactly once and never logged; `GET /owner/keys` lists `{ agentId, role, label, createdAt, revokedAt? }` and never a key; `POST /owner/keys/:agentId/revoke`. A revoked key's agent keeps its contributions and receipts; it just cannot act. `POST /agents/register` stays what it is (a merchant's self-registration where a deployment allows it); minting is the owner adding their own agents.
-- **CLI (lane B).** `agent-cookie init`: starts or points at a workspace, blank seed, reads the owner key, mints the first personal key, prints the environment variables and a five-line SDK snippet; `agent-cookie keys mint|list|revoke`. The key is printed once, to the terminal, never to a file the CLI chooses.
-- **SDK (lane B).** `mintKey`, `listKeys`, `revokeKey` on `WorkspaceClient` (owner role).
-- **Acceptance A29 (HTTP, lane C).** Blank workspace → owner mints a personal key → an agent holding only the SDK writes two preferences and reads them back on the card → the Sample persona is absent everywhere → the owner revokes the key and the agent's next call is refused.
+- **Workspace (A).** Registration as assistant; links table and routes; approval creates the pairwise session and a 30-day grant (purpose `assist`, stage `introduced`); context with a receipt per read (deduped within an hour for an unchanged field set); the hard refusal of address and token in code; pairwise isolation on the intent routes (an assistant reads and accepts only its own intents); assistant contributions through the merchant write path with `write.assistant`; funnel and stats. Acceptance A31 over HTTP.
+- **SDK (B).** `AssistantClient` (`requestLink`, `link`, `waitForLink`, `context`, the intent methods, `observe`, `remember`, `stats`), `assistantPrompt()` as a pure golden-tested renderer, `MerchantClient` over `/agent/*`, `registerAgent()`, typed errors for every code, and a **self-contained npm package**: the contract bundled into `dist`, `version 0.1.0`, a pack-and-install smoke that proves `npm install` works outside this repo, and a README with three quickstarts under 25 lines each. CLI `links list|approve|decline`.
+- **Rules, fixtures, console (C).** POLICY.yaml codec and regenerated seed for the assistant category; a Sample assistant agent and key; the console's 连接请求 panel (pending links, approve and decline, Sample mode local); policy panel rows for the category.
+- **Examples and the churn acceptance (C, after A and B).** `examples/assistant-sdk/` and `examples/merchant-sdk/`, runnable against the demo workspace, Sample labelled, counts only in logs. `tests/acceptance` scenario A32: assistant A links, learns two preferences, buys from store B; assistant C links and knows everything on its first context read, buys from store D, which gets the address only at checkout; receipts list four sessions; `questionsSkipped` ≥ the auto field count on each intent; `payment_method` never appears in any assistant or merchant response.
 
-## 4 · Phase 2 — The user's own agent, in five lines (lane B, contract by A)
+Definition of done for the phase: A31 and A32 green over HTTP; `pnpm pack` of the SDK installs and imports in an empty directory; the three README quickstarts run as written against the demo workspace.
 
-- **`remember(field, value, basis, evidence?)`** → `POST /personal/contributions` (the workspace keeps deciding whether the field is writable by the policy document). **`forget(contributionId)`** is `revokeContribution`, documented as such.
-- **`context(card, policy)`**, a pure function: the card as a compact text block for the agent's own prompt. The user's own agent may see values (it is theirs); unknown fields are listed as unknown; the block ends with one line per category saying what a merchant would receive automatically and what it gets only by purpose, so the agent can answer "what will the store know?" truthfully. Golden-tested; no network.
-- **The first-message protocol** (one page in the SDK README, enforced by an example and a test): on session start `getMe` → `getMyCard` → `context`; never ask for a field the card has; for an unknown field ask only when the task needs it, then `remember` it; `observe` conversation turns when learning is on, so stated preferences become card fields without a form.
-- **Example (lane C): `examples/personal-agent-sdk/`.** A short agent (any model; the Claude API by default from the environment, never a key in the repo) that demonstrates the protocol end to end: first message with zero questions for known fields, `find`, `accept`, `getReceipts`. Sample labelled; counts only in its logs.
+## 4 · Phase 2 — The commerce side is protocol work (lanes D + A)
 
-## 5 · Phase 3 — A third-party agent that skips its own onboarding (lanes B + A)
+- **UCP payment instruments and the request-header hook** (request A50): today the UCP CLI cannot carry the TAP payer signature or consume the workspace's payment authorization, so every accept reverses its hold after `complete`. Closing A50 is what makes a Shopify store the second half of the demo rather than a replayed fixture.
+- **Visa rail** as in `docs/commerce-analytics-plan.md` §7b: the Acceptance provider is checked against Visa's SDK offline; the first live run waits for test credentials; Intelligent Commerce is parked.
+- **`MerchantClient` and Tier 0** stay for the long tail and for stores with nothing; Google's and OpenAI's commerce protocols slot in beside UCP later through the same `UcpApi`-style adapter, not through the SDK.
 
-This is the other half of the claim, and the one merchants care about.
+## 5 · Phase 3 — Hosted jars, created at checkout (lane A for the workspace, D for sign-in, human for hosting)
 
-- **`MerchantClient` (SDK).** `handshake()`, `fields(purpose)`, `quote(intentId, quote)`, `contribute(field, value)`, `note.get(key)` / `note.set(key, value)`, `stats()`; typed errors (`SCOPE_DENIED`, `EXPIRED`, `NOT_FOUND`, …) so an agent can tell the user "I am not allowed to see that yet" instead of guessing. The `add-agent-cookie` skill switches to it.
-- **Measuring the skip (contract + workspace, lane A).** `IntroStats { fieldsOffered, fieldsAutoServed, purposeFieldsGated }` recorded at the handshake, counts only; a `questionsSkipped` count on the funnel row = auto fields served at introduction plus purpose fields served at a stage, never asked; `GET /agent/stats` shows a merchant its own. This is the number that proves "skip onboarding", and the analytics people see first.
-- **Example (lane C): `examples/merchant-agent-sdk/`.** A stranger agent that on first contact greets with the auto fields, quotes, and at checkout reads the address by purpose; it is shown asking for `payment_method` and being refused, with the receipt the owner sees.
-- **Acceptance A30 (HTTP, lane C).** New merchant agent id → handshake → zero questions for auto fields → quote → accept → checkout release with receipt → `questionsSkipped` on the funnel row ≥ the number of auto fields in the category; `payment_method` never appears in any merchant response.
+- **Sign-in with a passkey.** The WebAuthn registration and authentication the unlock app already has becomes the sign-up of a gateway; no passwords.
+- **One workspace process per person.** A container with its own data directory (SQLite, git memory repo, `owner.key`), bound to 127.0.0.1 inside; the gateway terminates TLS, maps a key to an instance, renders the consent link page (approve = the owner endpoint, called with the owner key the gateway holds, after the passkey), and serves the person's cookie page (receipts, sessions, revoke). Delete my data = stop the instance and remove the directory.
+- **Jar creation at checkout.** The first assistant's checkout offers "remember this for every agent": one tap creates the jar through the gateway and links that assistant in the same step.
+- **Always-on sample merchants** (UCP fixture replay and one Tier 0 merchant), labelled fixture replay. Payments stay `AGENT_COOKIE_PAY=fake`, labelled.
 
-## 6 · Phase 4 — Hosted, one instance per person (lane A for the workspace, D for sign-in, human for hosting)
+## 6 · Phase 4 — Two-sided analytics and history (lane A, contract)
 
-- **Sign-in with a passkey.** The WebAuthn registration and authentication the unlock app already has becomes the sign-up of a gateway; no passwords, no email loop.
-- **One workspace process per user.** A container with its own data directory (SQLite, git memory repo, `owner.key`), still bound to 127.0.0.1 inside; the gateway terminates TLS, maps a key to an instance and forwards. Per-user base URL; the console served per user with the owner key held by the gateway, never by the browser. Delete my data = stop the instance and remove the directory. Rate limits at the gateway.
-- **Merchants that are always on.** The UCP fixture-replay store and one Tier 0 merchant run as instances the gateway knows; labelled fixture replay, never live inventory. Payments stay `AGENT_COOKIE_PAY=fake`, labelled; Visa stays off (commerce plan §7b).
-- **Operator aggregate.** `GET /operator/funnel` on the gateway: counts across instances (intents, quotes, accepts, questions skipped, receipts), never a field value and never per-user rows. "Operator" is a gateway role; the workspace does not learn a new role.
+- **Operator aggregate** on the gateway: counts across instances by assistant and by merchant (intents, quotes, accepts, questions skipped), never a field value and never per-person rows. "Operator" is a gateway role; the workspace learns no new role.
+- **History as a policy category.** "You bought trail shoes in March" is the most useful and the most sensitive thing an assistant can know. Purchase and intent history becomes its own policy section (off by default for assistants, on for the person's own agent), with receipts when read.
+- **Assistant and merchant stats** both exist from Phase 1; this phase joins them for the operator and documents them as the pitch to each side.
 
-## 7 · Phase 5 — Doors, not built now
+## 7 · Phase 5 — The person's own agent, and the doors
 
-Each becomes one unit once Phases 1–3 exist, and none changes the SDK: MCP remote transport wrapping the SDK (D2); a Python client generated from the OpenAPI document; Photon mapping phone numbers to users and keys instead of one test sender.
+- **Blank seed and key minting** (`AGENT_COOKIE_SEED=blank`, `POST/GET /owner/keys`, `agent-cookie init`) for people who run their own agent; `remember`/`context()` on `WorkspaceClient` as in v0.1 of this plan. Kept, but last: it is not the adoption path.
+- **Doors:** MCP remote transport wrapping the SDK; a Python client generated from the OpenAPI document; Photon mapping phone numbers to persons and keys instead of one test sender.
 
-## 8 · Cross-lane requests, ready to append to `docs/requests.md`
+## 8 · Cross-lane requests (append to `docs/requests.md` as each lands)
 
 | ID | 发起 → 接收 | 请求与依据 | 状态 |
 | --- | --- | --- | --- |
-| A54 | A → 人（记录） | 本计划起草：SDK 优先、MCP 留门、每人一个工作台实例；目标"跳过 onboarding"的度量是 `questionsSkipped`（只计数）。 | 已记录 |
-| A55 | A → B | 契约新增后 SDK 实现：`mintKey/listKeys/revokeKey`（owner）、`remember/forget`、`context()` 纯函数、`MerchantClient`；CLI `init`、`keys mint\|list\|revoke`。`packages/mcp` 继续只包 SDK。 | 待契约 |
-| A56 | A → 人 | `docs/plan.md`：§2 新增 A29（空白工作台 + 自带 agent）、A30（陌生商家 agent 跳过 onboarding）；§4 新增 `AGENT_COOKIE_SEED=sample\|blank`；§5 契约新增 `POST/GET /owner/keys`、`POST /owner/keys/:agentId/revoke`、`IntroStats`、`FunnelRow.questionsSkipped`。 | 待人 |
-| A57 | A → C | `examples/personal-agent-sdk/`、`examples/merchant-agent-sdk/`（Sample 标注，日志只计数）；验收 A29/A30 只打 HTTP；控制台新增"我的代理"面板（列 agentId/label/角色/创建与撤销时间，永不显示 key）。 | 待契约 |
-| A58 | A → D | 网关登录复用 `apps/unlock` 的 WebAuthn 注册/认证；operator 角色只存在于网关。 | 待 Phase 4 |
-| A59 | B → A（预约） | 从 `packages/contract/src/endpoints.ts` 生成 OpenAPI 文档作为非 TypeScript agent 的入口（Phase 5 的门）。 | 待评估 |
+| A54 | A → 人（记录） | 本计划 v0.1 起草。 | 已记录 |
+| A55 | A → B | 契约已落（commit `300c810`）：SDK 增 `AssistantClient`、`MerchantClient`、`registerAgent`、`assistantPrompt`、owner 的 `listLinks/approveLink/declineLink`；CLI `links list\|approve\|decline`；包可独立安装（contract 打包进 dist，`pack:smoke`）。 | 进行中 |
+| A56 | A → 人 | `docs/plan.md`：§2 新增 A31（助理 link → context → intent → accept → 回执）、A32（两助理两商家 churn）；§5 契约新增 Category/Role `assistant`、link 端点、`AssistantContext`、`FunnelRow.createdBy/questionsSkipped`、`AssistantStats`；§5 字段策略表加 assistant 列（floor：永不 shipping_address/payment_method）。 | 待人 |
+| A57 | A → C | POLICY.yaml 支持 assistant 类别并重生成种子；fixtures 加 Sample 助理与 key；控制台「连接请求」面板；`examples/assistant-sdk`、`examples/merchant-sdk`；`tests/acceptance` A32。 | 进行中 |
+| A58 | A → D | 网关登录复用 `apps/unlock` 的 WebAuthn；网关持 owner key 代人批准 link；operator 角色只在网关。 | 待 Phase 3 |
+| A59 | B → A（预约） | 从 `endpoints.ts` 生成 OpenAPI 文档（非 TypeScript agent 的门）。 | 待评估 |
+| A60 | A → 人 | v0.2 改向：受众是会在公司 agent 之间流失的普通用户；助理公司接 SDK + 一键 link，商务平台走协议（UCP、Visa）；托管 jar 在结账时创建；历史记录成为独立策略类别。 | 待人确认 |
 
 ## 9 · Order, size and the definition of done
 
-Phases 1–3 are the local bring-your-own-agent path and come first: with agents per lane as before, about two to three days, each unit reviewed and committed separately. Phase 4 is one to two weeks and is what "everyone" needs; it changes no contract except the operator aggregate, which lives on the gateway.
+Phase 1 is in progress now (one session drives all lanes; Opus agents write per lane; the reviewer commits each unit). Phase 2 is lane D's A50 plus the live Visa run when credentials exist. Phase 3 is one to two weeks and is what "everyone" needs. Phases 4 and 5 follow.
 
-Done means: a person with a blank workspace and any SDK-capable agent completes first message → `find` → `accept` → receipt with zero onboarding questions for fields the card has, and the funnel row shows the skipped count; a stranger merchant agent does the same from its side through `MerchantClient`; every number on a page is a count, Sample data is labelled, no field value appears in a log, and `payment_method` never reaches a merchant.
+Done means: a person with a jar and two company assistants that integrated the SDK completes first message → `find` → `accept` → receipt on the second assistant with zero questions for fields the card has, and the funnel row shows the skipped count; a store reached by protocol or `MerchantClient` gets the address only at checkout; every number on a page is a count, Sample data is labelled, no field value appears in a log, and `payment_method` never reaches an assistant or a merchant.
