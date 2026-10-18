@@ -77,8 +77,8 @@ describe('console locales', () => {
   });
   it('localizes consent labels, actions, dates and warnings while preserving raw assistant names', () => {
     const link = {...sampleLink(0), agentName:'Sample · 云端助理'};
-    const render = (handled: string[] = []) => renderToStaticMarkup(createElement(LinksPanel, {
-      sample:true, blocked:false, handled, decide:()=>{}, state:{availability:'ready',data:{links:[link]}},
+    const render = (handled: string[] = [], sample = true) => renderToStaticMarkup(createElement(LinksPanel, {
+      sample, blocked:false, handled, decide:()=>{}, state:{availability:'ready',sample:true,data:{links:[link]}},
     }));
     expect(render()).toContain('1 条待批准，共 1 条。');
     expect(render()).toContain('批准 Sample · 云端助理 的连接请求');
@@ -88,6 +88,8 @@ describe('console locales', () => {
       'creates no session or grant','never shipping addresses or payment methods','30-day grant','10 minutes',
       new Date(0).toLocaleString('en-US', {hour12:false})]) expect(html).toContain(text);
     expect(html).not.toContain('待批准'); expect(html).not.toContain('批准连接请求');
+    expect(html).toContain('workspace. After approval');
+    expect(render([], false)).toContain('users. This row changes only after the workspace acknowledges the action. After approval');
     expect(render([link.id])).toContain('Handled'); expect(render([link.id])).not.toContain('</button>');
     setLocaleOverride('zh'); expect(render([link.id])).toContain('已处理');
   });

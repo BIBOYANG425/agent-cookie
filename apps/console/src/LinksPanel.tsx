@@ -53,7 +53,7 @@ export function LinksPanel({ state, sample, blocked, handled, decide }: {
         })}</ol>
       </>}
     {list && <p className="panel-note">{sample ? t('linkSampleNote')
-      : `${labelled ? t('linkSampleAssistantsNote') : ''}${t('linkConfirmedNote')}`}
-      {t('linkConsentNote', GRANT_DAYS, LINK_MINUTES)}</p>}
+      : `${labelled ? `${t('linkSampleAssistantsNote')} ` : ''}${t('linkConfirmedNote')}`}
+      {' '}{t('linkConsentNote', GRANT_DAYS, LINK_MINUTES)}</p>}
   </section>;
 }
