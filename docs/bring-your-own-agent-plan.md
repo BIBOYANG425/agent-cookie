@@ -49,6 +49,8 @@ Definition of done for the phase: A31 and A32 green over HTTP; `pnpm pack` of th
 
 ## 4 · Phase 2 — The commerce side is protocol work (lanes D + A)
 
+> 2026-10-18: handed to lane D (Devin) in full, see `docs/handoff/devin-commerce.md` (D1 Visa Acceptance simulator with scripted scenarios, D2 UCP payment instruments and payer signature, D3 JWT). Visa will provide no sandbox; Intelligent Commerce stays parked and is not simulated. Lane A's loop no longer builds this phase.
+
 - **UCP payment instruments and the request-header hook** (request A50): today the UCP CLI cannot carry the TAP payer signature or consume the workspace's payment authorization, so every accept reverses its hold after `complete`. Closing A50 is what makes a Shopify store the second half of the demo rather than a replayed fixture.
 - **Visa rail** as in `docs/commerce-analytics-plan.md` §7b: the Acceptance provider is checked against Visa's SDK offline; the first live run waits for test credentials; Intelligent Commerce is parked.
 - **`MerchantClient` and Tier 0** stay for the long tail and for stores with nothing; Google's and OpenAI's commerce protocols slot in beside UCP later through the same `UcpApi`-style adapter, not through the SDK.
