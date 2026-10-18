@@ -9,7 +9,7 @@ Stdio server using the shared SDK. Startup calls `/me` and requires `role=person
 | `accept_quote` | Accept the user's selected quote; preserve ordered/handoff/blocked/failed and Sample |
 | `list_receipts` | List who read which fields for which purpose, without values |
 
-Read tools do not cache prior successful data. Errors use fixed public text, not raw SDK/HTTP details. stdout contains MCP frames only. Mutation tools have write annotations; accept is marked destructive/open-world because live workspaces may checkout. The local fake only returns a Sample handoff.
+Read tools do not cache prior successful data. Errors use fixed public text, not raw SDK/HTTP details. stdout contains MCP frames only. Mutation tools have write annotations; accept is marked destructive/open-world because live workspaces may checkout. In demo mode (`AGENT_COOKIE_UCP=fixture`) the workspace replays recorded quotes and only returns a Sample handoff to the recorded merchant checkout.
 
 ## Build and run
 
@@ -22,7 +22,7 @@ pnpm --filter @agent-cookie/mcp test
 pnpm --dir packages/mcp check
 ```
 
-Copy `env.example` to ignored `.env`, set a personal workspace credential and the loopback URL. Start `apps/workspace-fake` for Sample tests or A's formal backend for live integration. `check` only validates configuration; it does not prove backend health.
+Copy `env.example` to ignored `.env`, set a personal workspace credential and the loopback URL. The real workspace (`apps/workspace`) is the only backend: for Sample runs start it in demo mode from the repository root with `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture pnpm workspace`, take the key from `fixtures/dev-keys.json`, and reset with `pnpm demo:reset` (owner key). `check` only validates configuration; it does not prove backend health.
 
 ## Claude Desktop
 
@@ -44,7 +44,7 @@ Back up the existing desktop config and preserve all unrelated settings. Add:
 
 Restart Desktop after adding the config. Ask: “Call get_my_card, show language and shoe size, and preserve Sample labels. Then call find_agents with request “Find a black coat, size M, under 150 dollars.” Preserve sizeNote and fixture warnings. Do not accept a quote.” Save actual Desktop tool output screenshots under `docs/evidence`. Automated stdio tests alone do not count as A10 Desktop acceptance.
 
-The test-only Sample HTTP server remains for denial/cache regression coverage. Current integration uses `apps/workspace` (SQLite) on 4310; `apps/workspace-fake` remains an optional standalone fallback. Select the `sample-personal-desktop` entry from `fixtures/dev-keys.json` for the local `AGENT_COOKIE_KEY`; Photon uses its distinct `sample-personal-photon` key. Set `AGENT_COOKIE_SAMPLE=1` for the current stub/fixture backend so tool output retains Sample labels. Merchant MCP tools and streamable HTTP on 4311 remain unimplemented. Account login and Desktop UI evidence are separate from a successful stdio protocol check.
+The test-only Sample HTTP server remains for denial/cache regression coverage. Current integration uses `apps/workspace` (SQLite) on 4310; the offline stand-in workspace was retired on 2026-10-18 and there is no other fallback. Select the `sample-personal-desktop` entry from `fixtures/dev-keys.json` for the local `AGENT_COOKIE_KEY`; Photon uses its distinct `sample-personal-photon` key. Set `AGENT_COOKIE_SAMPLE=1` for the current stub/fixture backend so tool output retains Sample labels. Merchant MCP tools and streamable HTTP on 4311 remain unimplemented. Account login and Desktop UI evidence are separate from a successful stdio protocol check.
 
 ## Passive learning and Claude Code hooks (contract adapter, not enabled by default)
 

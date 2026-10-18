@@ -38,6 +38,8 @@ pnpm workspace
 # http://127.0.0.1:4310
 ```
 
+这是唯一的本机后台：离线假工作台已于 2026-10-18 退役，SDK / CLI / MCP / Photon 的联调和 B 线测试都对演示模式下的真实工作台运行；personal / owner 的 Sample key 见 `fixtures/dev-keys.json`。
+
 终端二，在本机环境设置 `AGENT_COOKIE_KEY` 为 **owner** key 后启动控制台：
 
 ```sh

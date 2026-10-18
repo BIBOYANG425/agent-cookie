@@ -247,7 +247,7 @@ export class WorkspaceClient {
   /** Requires an owner key; never expose this method as a personal MCP tool. */
   async getActivity(options?: RequestOptions): Promise<{ activity: ActivityEvent[]; sample: boolean }> {
     const payload = await this.#request('/owner/activity', undefined, undefined, options);
-    // A's SQLite backend returns `events`; the B-local fake used `activity`.
+    // The workspace returns `events`; `activity` was the envelope of the offline stand-in retired on 2026-10-18.
     const rows = isObject(payload) ? payload.events ?? payload.activity : undefined;
     if (!isObject(payload) || (payload.events !== undefined && payload.activity !== undefined)
       || !Array.isArray(rows) || !rows.every(row => isObject(row)

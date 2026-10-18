@@ -2,6 +2,8 @@
 
 2026-10-17 起，**C14 只收集手动证据**。P0 自动项由 A 线的 [apps/workspace/test/acceptance](../../apps/workspace/test/acceptance) 维护，用户确认已执行 66/66；C 不在 `tests/acceptance` 重复扩写整套；按最新要求维护已有历史断言和通用性质检查。该数字不替代 A10/A17 的真实客户端证据，未录制失败路径也应以 A 的最新报告单列。
 
+2026-10-18：B 线的离线假工作台 `apps/workspace-fake` 已退役并删除，B 线测试（Photon `test/runtime.test.ts`）改为对演示模式下的真实工作台运行；此前证据中提到它的地方保留原文，作历史记录。
+
 | 编号 | 文件 / 入口 | 状态 |
 | --- | --- | --- |
 | A10 · Claude Desktop MCP（B） | [A10-real-client.md](A10-real-client.md) | 待 B 放入真实客户端截图 / 录屏与工作台活动；当前文件是证据模板 |

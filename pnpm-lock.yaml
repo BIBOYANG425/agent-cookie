@@ -150,28 +150,6 @@ importers:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.20.5)(lightningcss@1.33.0)
 
-  apps/workspace-fake:
-    dependencies:
-      '@agent-cookie/contract':
-        specifier: workspace:*
-        version: link:../../packages/contract
-      '@agent-cookie/rules':
-        specifier: workspace:*
-        version: link:../../packages/rules
-    devDependencies:
-      '@types/node':
-        specifier: 22.20.5
-        version: 22.20.5
-      tsx:
-        specifier: 4.23.15
-        version: 4.23.15
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: 2.1.9
-        version: 2.1.9(@types/node@22.20.5)(lightningcss@1.33.0)
-
   packages/auth:
     dependencies:
       '@agent-cookie/contract':
