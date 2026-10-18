@@ -26,6 +26,7 @@ import { fail, type AuthedAgent } from "../http.js";
 import type { CardService } from "./card.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
 import { ObservationQueue, type QueuedConversation } from "./observations.js";
+import { evidenceModels } from "./provenance.js";
 
 const PAUSED_KEY = "learning.paused";
 /** Bumped on every pause: a learner answer that started before a pause is dropped even if learning was resumed since. */
@@ -428,6 +429,9 @@ export class LearningService {
         && (x.evidence?.intentId ?? "") === (source.intentId ?? "");
       if (existing.some((x) => same(x) && !x.revokedAt && sameSource(x) && BASIS_RANK[x.basis] >= BASIS_RANK[basis])) { skip("duplicate"); continue; }
       const evidence: ContributionEvidence = { ...source };
+      // B60: which models produced it (gate, extractor), when the learner says and the ids are well-formed.
+      const models = evidenceModels(c.evidence?.models);
+      if (models) evidence.models = models;
       const snippet = typeof c.evidence?.snippet === "string" ? [...c.evidence.snippet.trim()].slice(0, EVIDENCE_SNIPPET_MAX).join("") : "";
       // A snippet is kept only if the user said it, it names the value, and it carries no contact or payment data.
       if (snippet && heard.includes(norm(snippet)) && norm(snippet).includes(norm(value)) && !containsContactOrPayment(snippet)) {

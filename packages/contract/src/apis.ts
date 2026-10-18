@@ -49,7 +49,12 @@ export interface RulesApi {
   /** CARD.md text (generated, never hand-edited). `generatedAt` is injected; same input → same bytes. */
   renderCard(card: Card, meta: { userId: string; generatedAt: string }): string;
 
-  /** One record line of contributions/<agentId>.md, Agent Memory Repo style: "- <field>: <value> [k: v; ...]". */
+  /**
+   * One record line of contributions/<agentId>.md, Agent Memory Repo style: "- <field>: <value> [k: v; ...]".
+   * B60: `evidence.models` is written as the open keys `gate: <id>` / `extractor: <id>` (and parseContributions reads
+   * them back into evidence.models); mergeCard ignores it. Until lane C ships this the workspace leaves `models` out
+   * of what it writes (it probes renderContribution once) and keeps it in SQLite only.
+   */
   renderContribution(c: Contribution): string;
 
   /**
