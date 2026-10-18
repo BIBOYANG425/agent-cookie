@@ -9,6 +9,7 @@ Status: real phone offers, natural candidate learning, merchant handoff, and act
 - [Company-assistant verification](evidence/hana-demo/17-company-assistant-recording.json): a distinct consent flow with actual SDK calls, UI approval and revocation, stable sessions across Dots and Muse, and fixture-only checkout.
 - [English overview](evidence/hana-demo/16-english-overview.png), [context](evidence/hana-demo/13-english-recording-context.png), and [receipts](evidence/hana-demo/15-english-receipts.png), captured at 1920 × 1080.
 - [English script](demo-script-en.md) and [submission copy](devpost-submission-en.md). Video production is handled separately; these files do not establish that a video has been uploaded.
+- [Delivery validation](evidence/hana-demo/18-delivery-validation.json): package checks, the final assistant-churn acceptance, and explicit skipped cases.
 
 ## Inputs an independent operator needs
 
