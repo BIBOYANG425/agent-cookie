@@ -130,3 +130,5 @@ L8 验证（16:10 PDT）：learn43、Photon69、MCP13、fake6、SDK78通过；SD
 L9 部分进展（16:43 PDT）：接入C688754d至lane-b的e9112cf；SDK79/rules52/memory29/console35共195项通过，learn43项通过；SDK/learn/MCP/Photon/rules/memory/console七包类型检查通过。新增控制台→真实SDK→隔离A的学习状态/记录/暂停/恢复覆盖，十一种SDK方法均实际调用，修改后该聚焦测试及SDK/learn类型检查再通过。learn构建通过。OpenRouter key已本地保存且鉴权有效，提取仍被上游403阻止。A隐私/晋升/删除接线、真实Spectrum及外部Sentry未验收；L9保持未勾选。详见 docs/evidence/2026-10-17-learning-c-alignment.md。
 
 L9 新进展（A e381b15 / C688754d）：A新代码经0fbf12d合入B，SDK79项和SDK/learn/MCP/Photon/workspace五包类型检查通过。新增可复跑的六场景验收探针，使用真实A SQLite/C rules与Git、注入合成抽取器：暂停恢复迟到结果1项通过，明确陈述上卡、两对话短间隔/31天间隔晋升、原话不落盘、跨个人agent接受后历史写入5项未满足人的要求。探针失败会返回退出码1，不纳入“全部通过”的单测统计。结果与定位见 docs/evidence/2026-10-17-learning-a-alignment.md / .json 和B49。人已选择先完成本地联调、模型稍后处理；保持无真实模型调用、不热接手机采集。Jev仅完成备选评估，尚未切换或真实调用。
+
+L9 后续裁决（人已明确，优先于A29/A31旧说明）：stated直接上卡；两个独立conversationId/intentId可晋升，取消A的30天全局去重；原话有界内存、forget一次事务；author为当前操作执行agent、原intent在evidence.intentId，C一致性检查和权限不放宽。A在P0后实现并接loadLearn/build:deps。B保留六场景全部断言，待契约实现后复跑。人已授权改用Anthropic直连跑真实模型验收，OpenRouter暂停重试；本机尚缺队友使用的Anthropic配置路径，已询问，不打印或复制聊天密钥。PR交付先行，最新main32490f1已同步到lane-b；不自行合main。详见B50。
