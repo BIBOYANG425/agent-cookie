@@ -21,7 +21,7 @@
 - [ ] C11（P1）fixtures/expected/agent_cookie_memory_store.py 参考实现 — 1abcbfa（13 项离线协议测试通过） BLOCKED: 完整 Tier 2 HTTP 缺 note 删除/枚举/clear、持久 generation/条件写入及卡字段映射；已交可验证的六方法内存参考和 TODO(contract)。
 - [x] C12 skills/add-agent-cookie/SKILL.md — 8a331bc（front matter/引用检查通过；A16真实接入及录屏仍待办）
 - [x] C13 ACME Tier 0 注册项与 docs/evidence/A15 说明 — 2e544bc（配置已核对；A15真实模型证据仍待办）
-- [ ] C14 手动证据收集（用户于 2026-10-17 调整范围）：A15 原版 retail :8000 + Tier 0 首条回复正确使用本次卡上适用 auto 字段；A16 干净克隆由 Claude Code、Devin 各跑一次并录屏；A10/A17 由 B 提供，C 维护索引。P0 自动项由 apps/workspace/test/acceptance 推进（用户确认 66/66），tests/acceptance 保留历史并维护性质断言，不复制 A 的整套。A15 已尝试并 BLOCKED；A16 Claude / Devin 实跑完成，有限 HTTP 接缝通过（34/34、29/29），完整 MemoryStore 仍 BLOCKED。
+- [x] C14 手动证据收口（2026-10-17 人的裁决）：A15 已砍（Tier 0 协议不匹配），A16 通过（Claude Code + Devin），A23 通过；A10/A17 索引统一维护，原始材料与范围限制保留。见 [证据总表](evidence/README.md)。C11 仍独立 BLOCKED。
 - [x] C15 README：agent 名、启动命令、环境变量表 — 6327cb1（本地链接/agent 名核对通过，已同步 main 798e0de 状态）
 - [x] C16 控制台打磨（Paper 赛道）：间距、空状态、键盘可达、320 宽度 — d94557e（真实窄屏截图、44px 按钮与键盘/空状态证据；C10b 浏览器复核受工具策略限制）
 
@@ -36,6 +36,18 @@
 - [x] C17 晋升规则：默认 rules/parser 接受 A 的 pref 白名单与嵌套 evidence；按 intentId/conversationId 别名连通关系去重，personal stated 立即 medium，observed/inferred 两个独立来源晋升 medium；同对话重复不算第二源，衰减后掉卡。52 tests，main/A/B 契约类型验证通过；已修复 A 扩展 FIELDS 导致 pref 卡重复的问题。
 - [x] C18 意图记忆：默认 openMemoryRepo 支持嵌套 evidence 和 A 的 flat IntentRecord；作者使用实际 personal agentId，保留旧 C wrapper；仅写结构化摘要和 ≤200 字证据，剔除 text/query/public/title/seller 自由文本。append/list/revoke/reopen、commit author、检索与原文排除共 29 个真实 Git tests；main 与 B 整合契约类型检查通过。
 - [x] C19 学到的视图：正式 `{paused,learned}` 分组，逐 evidence 用真实 contributionId 撤销，来源/短摘句/时间及暂停、2 秒轮询。SDK getLearned/getLearning 与 setLearning({enabled:!paused}) 已接真实 4310；5173 控制台通过 B e24957c SDK 的 10 个读取/暂停/恢复请求均200，owner key仅在服务端。35 tests、typecheck/build通过；正式载荷 fixture 使用 pref.material/color，旧截图只作历史 Sample。缺 SDK 方法才走标注 fallback。
-- [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、真实 HTTP/SDK/延时读取 JSON、两家 live 报价基线、19 项性质/配置日志保护检查。两句目标对话被接受202，五分钟静默后 learned仍为空；未验证模型或偏好排序，未有本轮界面录屏。用户已明确 OpenRouter 配置由B处理且尚未完成；A默认learner接线、stated保留、跨对话去重及允许字段的排序映射仍见 requests。接口连通不计C20完成。
+- [ ] C20 学习真实证据：新gate真实模型六场景6/6已过；手机历史首次误计双源，修复后第二次gate停止，新gate部署后仍缺干净正向自然五分钟手机学习与同候选集报价排序。保留未勾，见 [手机记录](evidence/2026-10-17-phone-learning-live.md)、[新gate](evidence/2026-10-17-gate-redesign.md)与[待录清单](evidence/recording-manifest.md)；不以Sample图或合成输入替代。
 
 本轮验证：main 契约副本全量 545 passed（另1 skipped、4 todo），根typecheck与console build通过；B e24957c整合副本 rules52 / memory29 / learn43 / SDK79 / workspace214通过，workspace另4 todo，相关类型检查通过。没有复制A的P0验收，也未改plan.md。
+
+## 2026-10-17 18:50 任务单（按序提交并推送）
+
+- [x] C21 收口：统一 A01–A23 证据索引、日期及四类状态；C14 已勾选。
+- [x] C22 控制台模型来源与 needs / unavailable 可选字段：模型接正式契约，needs 按可选投影兼容、无事件不显示；46 tests、typecheck/build通过。A/B owner handshake投影与activity.kind透传缺口已追加requests，尚不宣称needs实连。
+- [x] C23 通用字段、本次 intent 标记与新 fixture 截图：57 tests、TypeScript/build通过；已补 SDK 回执读取及现有 owner intent 历史 GET 过渡，六张新 Sample 截图见 evidence/console/README.md。
+- [x] T9-1 README 定稿：根 README 为启动/范围/环境变量/23项验收入口，docs README 指向它；架构图与 plan 完全一致并注明 ACME 已砍，链接和23行状态核对通过。
+- [x] T9-2 Devpost 中英草稿：英文主稿+完整中文，技术/挑战/计划与证据一致；旧稿入口指向 devpost.md，本地链接核验通过。
+- [x] T9-3 4:30 分镜：三条现场需求、每拍台词/画面/兜底文件、ACME删除、needs可跳过、学习缺片诚实短版3:45；时长与现有素材链接已核验，文件名不冒充已录。
+- [x] T9-4 Recorded run 素材清单：逐拍文件/归属线/现有或待录范围齐全，A/B补件已追加requests；清单完成不等于最终视频完成。
+
+同步说明：已 fast-forward 到 main `35e8b56`，无冲突。B49 的后续真实模型 6/6 已到，旧 1/6 记录仅为历史。C20 暂不勾：新到手机材料记录一次重复来源误晋升与一次 gate 停止；新 gate 未有干净正向手机五分钟学习/报价排序证据。C11 不动。

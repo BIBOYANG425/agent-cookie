@@ -1,5 +1,5 @@
 import type { CardField } from './model';
-import { PREF_FIELDS, type PrefField, type LearnedEntry, type LearnedEvidence, type LearnedResponse } from '../../../packages/contract/src/types';
+import { PREF_FIELDS, EVIDENCE_MODEL_ID_MAX, type EvidenceModels, type PrefField, type LearnedEntry, type LearnedEvidence, type LearnedResponse } from '../../../packages/contract/src/types';
 
 // Read the published contract directly; workspace requests still go through the SDK bridge.
 export const LEARNED_FIELDS = PREF_FIELDS;
@@ -22,6 +22,17 @@ const text = (v: unknown): v is string => typeof v === 'string';
 const identifier = (v: unknown): v is string => text(v) && v.length > 0;
 const date = (v: unknown): v is string => text(v) && Number.isFinite(Date.parse(v));
 const malformed = () => new Error('学习响应格式与 A 线已核对契约不一致。');
+
+// Optional provenance can degrade independently; it never changes core validation or status.
+function normalizeModels(value: unknown): EvidenceModels | undefined {
+  if (!object(value)) return undefined;
+  const models: EvidenceModels = {};
+  for (const key of ['gate', 'extractor'] as const) {
+    const id = value[key];
+    if (text(id) && id.length > 0 && id.length <= EVIDENCE_MODEL_ID_MAX && /^[A-Za-z0-9._:/@-]+$/.test(id)) models[key] = id;
+  }
+  return Object.keys(models).length ? models : undefined;
+}
 
 export function normalizeLearningPaused(body: unknown): boolean {
   if (!object(body) || typeof body.paused !== 'boolean') throw malformed();
@@ -47,9 +58,10 @@ export function normalizeLearning(body: unknown): LearningState {
         || (item.conversationId !== undefined && !identifier(item.conversationId))
         || (item.snippet !== undefined && (!text(item.snippet) || [...item.snippet].length > 200))) throw malformed();
       ids.add(item.contributionId);
+      const models = normalizeModels(item.models);
       return { contributionId: item.contributionId, agentId: item.agentId, basis: item.basis as LearnedEvidence['basis'], createdAt: item.createdAt,
         ...(text(item.intentId) ? { intentId: item.intentId } : {}), ...(text(item.conversationId) ? { conversationId: item.conversationId } : {}),
-        ...(text(item.snippet) ? { snippet: item.snippet } : {}) };
+        ...(text(item.snippet) ? { snippet: item.snippet } : {}), ...(models ? { models } : {}) };
     });
     return { field: row.field as LearnedField, value: row.value, status: row.status as LearnedEntry['status'],
       sources: [...new Set(row.sources as string[])], evidence };

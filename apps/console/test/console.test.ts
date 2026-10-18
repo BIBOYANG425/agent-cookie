@@ -68,6 +68,33 @@ describe('Sample adapter', () => {
 });
 
 describe('live HTTP boundary', () => {
+  it('reads generic receipts and explicit intent conditions without changing card defaults', async () => {
+    const receipts = [{ id: 'r', sessionId: 's', agentId: 'merchant', fields: ['pref.material', 'length'], purpose: 'handshake', createdAt: new Date(at).toISOString() }];
+    const intents = [{ id: 'i', agentId: 'personal', public: { budget: '85', size: 'M', color: 'navy' }, createdAt: new Date(at).toISOString(), expiresAt: new Date(at + 600000).toISOString() }];
+    const live = createLiveAdapter(async (path) => {
+      if (path.endsWith('/me')) return json({ role: 'owner' });
+      if (path.endsWith('/card')) return json(empty.card);
+      if (path.endsWith('/grants')) return json({ grants: [] });
+      if (path.endsWith('/activity')) return json({ events: [] });
+      if (path.endsWith('/receipts')) return json({ receipts });
+      if (path.endsWith('/intents')) return json({ intents });
+      return json({ error: { code: 'NOT_FOUND' } }, 404);
+    }, () => at);
+    expect(await live.load()).toMatchObject({ card: empty.card, receipts, intents });
+  });
+
+  it('does not turn unavailable or malformed optional history into an empty successful result', async () => {
+    const live = createLiveAdapter(async (path) => {
+      if (path.endsWith('/me')) return json({ role: 'owner' });
+      if (path.endsWith('/card')) return json(empty.card);
+      if (path.endsWith('/grants')) return json({ grants: [] });
+      if (path.endsWith('/activity')) return json({ events: [] });
+      if (path.endsWith('/receipts')) return json({ receipts: [{ fields: 'bad' }] });
+      return json({ error: { code: 'NOT_FOUND' } }, 404);
+    }, () => at);
+    expect(await live.load()).toMatchObject({ card: empty.card, receipts: null, intents: null });
+  });
+
   it('preserves multiple returned fields across the card, candidates, history and grants', async () => {
     const card = {
       card: ['lang', 'length', 'budget', 'deadline'].map((field) => ({
@@ -106,7 +133,7 @@ describe('live HTTP boundary', () => {
     expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
       '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
-      '/workspace-api/personal/learned',
+      '/workspace-api/personal/intents', '/workspace-api/personal/learned', '/workspace-api/personal/receipts',
     ]);
     for (const call of calls) {
       expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });

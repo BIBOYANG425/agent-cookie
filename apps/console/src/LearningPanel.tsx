@@ -22,7 +22,7 @@ export function LearningPanel({ state, sample, disabled, revoke, selectStage }: 
 }) {
   return <section id="learned" className="panel" aria-labelledby="learned-title">
     <div className="sheet-heading"><h2 id="learned-title" tabIndex={-1}>学到的</h2>
-      <span>{sample || state?.sample ? 'Sample · 学习状态演示' : '记录、来源与证据'}</span></div>
+      <span>{sample ? 'Sample · 学习状态演示' : '记录、来源与证据'}</span></div>
     <p id="learning-toggle-note" className="panel-note">{state?.availability === 'ready'
       ? state.paused ? '学习已暂停。已有记录仍保留，你可以逐条撤销。' : '学习已开启。你可以在页面顶部暂停，也可以逐条撤销。'
       : '学习开关状态尚未确认，暂不能修改。身份卡、授权和活动仍可使用。'}</p>
@@ -42,13 +42,14 @@ export function LearningPanel({ state, sample, disabled, revoke, selectStage }: 
         <p className="small">来源 agent：{entry.sources.length ? entry.sources.join('、') : '尚未提供'}</p>
         <details className="learned-sources" open><summary>{entry.evidence.length === 0 ? '来源与证据 · 尚未提供'
           : <>来源与证据 · {entry.evidence.length} 条贡献 · {countEvidenceSources(entry.evidence)} 个来源</>}</summary>
-          <p className="source-note">{sample || state.sample ? 'Sample 示意；上卡状态来自预设演示阶段。'
+          <p className="source-note">{sample ? 'Sample 示意；上卡状态来自预设演示阶段。'
             : '上卡状态由工作台返回。对话与意图同时标注在同一证据时，只算一个来源。'}</p>
           {entry.evidence.length === 0 ? <p className="source-note">工作台尚未提供贡献记录，暂不能逐条撤销。</p>
             : entry.evidence.map((evidence) => <article className="source-record" key={evidence.contributionId}>
               <h3>{evidence.agentId}</h3>
               {evidence.snippet && <blockquote className="learned-evidence">{evidence.snippet}</blockquote>}
               <dl><div><dt>记录依据</dt><dd>{basis[evidence.basis]}（{evidence.basis}）</dd></div>
+                <div><dt>模型来源</dt><dd>{[evidence.models?.gate, evidence.models?.extractor].filter(Boolean).join(' → ') || '本地规则'}</dd></div>
                 <div><dt>记录时间</dt><dd><time dateTime={evidence.createdAt}>{time(evidence.createdAt)}</time></dd></div>
                 {evidence.conversationId && <div><dt>对话</dt><dd><code>{evidence.conversationId}</code></dd></div>}
                 {evidence.intentId && <div><dt>意图</dt><dd><code>{evidence.intentId}</code></dd></div>}
