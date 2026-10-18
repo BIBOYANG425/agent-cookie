@@ -1,5 +1,7 @@
 # Agent Cookie
 
+> English README: [README.en.md](README.en.md)
+
 让陌生 agent 在第一条消息之前认识你，并且只拿到当前任务允许的上下文。
 
 ## 它做什么
