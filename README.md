@@ -12,6 +12,7 @@ Agent Cookie introduces connected assistants to the context they are allowed to 
 - [SDK integration guide](packages/sdk/README.md)
 - [Assistant company example](examples/assistant-sdk/README.md)
 - [Evidence index](docs/evidence/README.md)
+- [Extended English technical guide](README.en.md)
 - [Chinese technical guide](README.zh.md)
 
 The English console shows context and its sources, learning candidates, connection requests, permissions, and receipts. A new company assistant connects through a consent link. Its context excludes shipping addresses and payment methods. Personal agents have a different trust role: do not describe their access as identical to company assistants.

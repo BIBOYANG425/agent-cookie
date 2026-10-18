@@ -71,7 +71,7 @@ flowchart LR
 - **存储分两层。**长期数据（贡献记录、身份卡、note、回执、策略）存在用户的 git 记忆库里，格式 fork 自 Cognition 的 Agent Memory Repo，工作台用 simple-git 写入。短期热状态（sessions、grants、intents、quotes）存 better-sqlite3，不进 git。
 - **git 是存储和溯源层，不是传输层。**只有用户自己的 agent 可以 clone 这个仓库。商家 agent 永远不碰 git，只通过挂钩调 API，由工作台代为提交。
 - 自建商家 agent 的模型用 `claude-sonnet-5-5`；需要更快时换 `claude-haiku-4-5-20251001`。借来的 blueprint 用它自己的配置。
-- Python 3.11 只用于 blueprint；商家侧 Python 调用直接用 httpx 打工作台 HTTP，不另写 Python SDK。
+- Python 3.11 只用于 blueprint；商家侧 Python 调用直接用 httpx 打工作台 HTTP。2026-10-18 起另有从 `packages/contract/openapi.json` 生成的 Python 客户端 `packages/sdk-python`（Python ≥ 3.11，`openapi-python-client` 生成，薄封装与 TypeScript SDK 的方法同名；未发布到 PyPI，见 `docs/requests.md` A74）。
 - 工作台只监听 127.0.0.1。每个 agent 一把钥匙，放环境变量。模型传来的 userId、agentId、purpose 只是参数，不是授权依据。
 - 字段判断、授权、过期、合并全部用确定性代码。模型只做两件事：把商家的文本归到标准字段、生成对话回复。
 - 页面和日志不展示编造的指标。示例数据统一标 Sample。
@@ -209,7 +209,8 @@ Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以
 | A31 | 公司助理接入 | 助理注册 → 申请 link → owner 批准 → `GET /assistant/context` 只有策略允许的值、没有地址与支付 → 建 intent、accept → 回执含 assist 与 checkout → 漏斗行 createdBy/questionsSkipped → 撤销后 403；带用户原话证据的 stated 写入上卡，第二个助理第一次读就能看到（`a31-assistant.test.ts`） | `P1` |
 | A32 | 助理之间的 churn | 两家公司助理、两家商家：A 学到两件事并下单；C 第一次 context 就知道；D 只在结账拿到地址；回执恰好四个 session；C 读不到 A 的 intent；撤销 A 后 C 不再看到 A 的值；任何面向助理或商家的响应不含 payment_method（`tests/acceptance/a32-churn.test.ts`） | `P1` |
 | A33 | 托管 jar（网关） | 助理公司在网关注册一次 → 申请 link → 两个用户分别用 passkey（测试里用 `/test/session`）登录并批准 → 各得一个 `/u/:userId` 下的 jar 与各自的 key；跨 jar 的 key 被拒；代理拒绝 owner / demo / test 路由；cookie 页只有计数与名字；撤销后 403；删除数据后 jar 与 link 均 404（`tests/acceptance/a33-gateway.test.ts`，`apps/gateway/test`） | `P1` |
-| A29 / A30 | （计划）空白工作台 + 自带 agent；陌生商家 agent 跳过自身 onboarding | `docs/bring-your-own-agent-plan.md` v0.1 的个人自建路径，v0.2 排到最后，未实现 | — |
+| A29 | 自带 agent（空白工作台） | `AGENT_COOKIE_SEED=blank` 起一个空白工作台 → owner 用 `POST /owner/keys`（或 `agent-cookie init`）铸一把 personal 钥匙 → 只装了 SDK 的 agent 写两条偏好并读回 → `GET /owner/keys` 不含钥匙也不含哈希 → 撤销 → 下一次 SDK 调用 401，写过的东西留着（`apps/workspace/test/acceptance/a29-own-agent.test.ts`；`packages/sdk-python` 的 pytest 走同一流程） | `P1` |
+| A30 | （计划）陌生商家 agent 跳过自身 onboarding | `docs/bring-your-own-agent-plan.md` v0.2 的商家侧由协议完成（Phase 2，D 线，`docs/handoff/devin-commerce.md`），未实现 | — |
 
 ### 比赛目标（10 月 17 日赛道页）
 
@@ -397,10 +398,17 @@ sequenceDiagram
 | `AGENT_COOKIE_PAY` | `off`（默认）/ `fake` / `visa`：支付阶段的 provider；`visa` 只允许 Visa Acceptance 沙盒主机；Stripe 代码在 `packages/pay` 但未接线 | 工作台，D 线 |
 | `VISA_ACCEPTANCE_MERCHANT_ID` / `VISA_ACCEPTANCE_KEY_ID` / `VISA_ACCEPTANCE_SHARED_SECRET` | `AGENT_COOKIE_PAY=visa` 必需；只从环境读，不记录；截至 2026-10-18 Visa 未提供沙盒，provider 对照官方 Node SDK 离线校验 | D 线 |
 | `AGENT_COOKIE_EXPERIMENT` | `off`（默认）/ `ranking`：按 intent 分组的排序对照实验，`GET /owner/experiments` | 工作台，A 线 |
+| `AGENT_COOKIE_SEED` | `sample`（默认，灌 fixtures）/ `blank`：一个生成的用户、空卡、无 Sample 钥匙，监听前把 `owner.key` 写进数据目录 | 工作台；网关与 `agent-cookie init --start` 用 blank |
+| `AGENT_COOKIE_DATA_DIR` | 一个工作台实例的数据目录（SQLite、记忆库、`owner.key`） | 工作台、网关、CLI `init --start` |
+| `AGENT_COOKIE_MCP_TRANSPORT` | `stdio`（默认）/ `http`：`http` 在 127.0.0.1:4311 的 `/mcp` 提供 Streamable HTTP，每个会话的 bearer 钥匙按 `GET /me` 的角色决定工具集；owner、商家、未知钥匙 401 | MCP，B 线 |
+| `MCP_HTTP_PORT` | `4311`（契约常量；MCP 包内复制一份并有测试核对，A72）；`0` 取空闲端口，仅测试 | MCP，B 线 |
+| `AGENT_COOKIE_OWNER_KEY` | 主人钥匙；CLI `init` / `keys` 不设时读 `<data-dir>/owner.key`；从不打印、从不进错误信息 | CLI，B 线 |
+| `AGENT_COOKIE_WORKSPACE_DIR` | `agent-cookie init --start` 要启动的工作台目录（默认本仓库 `apps/workspace`） | CLI，B 线 |
+| `AGENT_COOKIE_GATEWAY_ORIGIN` / `AGENT_COOKIE_GATEWAY_RP_ID` / `AGENT_COOKIE_GATEWAY_DATA_DIR` / `AGENT_COOKIE_GATEWAY_SECRET` / `AGENT_COOKIE_GATEWAY_IDLE_MS` / `AGENT_COOKIE_GATEWAY_OPERATOR_KEY` / `AGENT_COOKIE_WORKSPACE_ENTRY` | 托管网关 `apps/gateway`：每人一个工作台进程、passkey、同意链接、cookie 页、运营方漏斗；含义见 `apps/gateway/README.md` | 网关，A 线 |
 | `SENTRY_DSN` | tracing + logs | A 线，P1 |
 | Photon 凭据 | 名字以 Photon 文档为准 | B 线 |
 
-端口：工作台 4310（只听 127.0.0.1）；MCP streamable HTTP 4311；控制台 5173（Vite 默认）；ACME 8000 / 3000；`apps/unlock` 4312，只经 HTTPS tunnel 暴露给手机。
+端口：工作台 4310（只听 127.0.0.1）；MCP streamable HTTP 4311；控制台 5173（Vite 默认）；ACME 8000 / 3000；`apps/unlock` 4312，只经 HTTPS tunnel 暴露给手机；网关 `apps/gateway` 4320（每人的工作台实例以 `PORT=0` 起在 127.0.0.1，经 `/u/:userId` 代理）。
 
 H0–2T0 · 契约冻结`P0`A 线先行，B、C 搭脚手架
 初始化 pnpm 单仓库：`packages/core sdk mcp`，`apps/workspace console`，`examples/*`，`fixtures`，`tests/acceptance`。锁 Node 22，vitest，tsx。 `packages/core/src/types.ts`：写下本文"接口与数据"一节的全部类型，一字不改。 `packages/core/src/policy.ts`：字段策略表（下文表格）导出为常量；`canRead(category, field, purpose) → "allow" | "deny"`（auto 字段任何用途都 allow；purpose 字段只在声明用途匹配时 allow）；`canWrite(category, field) → boolean`。 `packages/core/src/merge.ts`：`mergeCard(contributions) → { card: CardField[], candidates: Candidate[] }`，按规则：同一 field+value 有 ≥2 个不同 agentId 且 basis≠inferred → 上卡；personal 的 stated 单源 → 上卡（confidence medium）；其余进候选；inferred 永不。**时间规则：**同一字段多个合格值时最新的赢，旧值标 superseded 留在历史；新值只有一个来源时 confidence=medium 并带 `changedRecently`；`lastSupportedAt` 超过 180 天降为 medium，超过 365 天掉卡；personal stated 永远立即覆盖。 `packages/core/src/render.ts`：`renderCard(card) → CARD.md 文本` 和 `parseContributions(md) → Contribution[]`，格式与 Agent Memory Repo 的"一行一条 + \[key: value\]"一致。各 3 个用例，往返无损。 `packages/core/src/session.ts`：`deriveSessionId(userSecret, merchantKey)` = base32(HMAC-SHA256).slice(0,8)，`merchantKey = agent.domain ?? agent.agentId`（UCP 代理用 domain，重置和重新注册后回头客不变）。所有涉及时间的纯函数显式接收 `now`，不读系统时钟。 policy、merge、session 各写 3 个 vitest 用例，render 往返 3 个（A02、A03 的核心断言在这里先过）。 `fixtures/`：1 个用户、3 条贡献记录（lang/tone/shoe_size）、3 个 agent 注册项、1 个 Sample 地址。 把验收清单 A01–A22 全部写成 `tests/acceptance/*.test.ts` 的空壳（`it.todo`），编号和标题一致；A10、A17 写成指向 `docs/evidence/` 的说明。
@@ -568,20 +576,20 @@ H21–24T9 · 冻结与提交`P0`四线（D 线未达出口则不合并）
 
 ### 字段策略表（packages/contract/src/policy-document.ts）
 
-2026-10-18 起，这张表由安装的 `PolicyDocument` 决定（`DEFAULT_POLICY` 即下表，是种子；用户记忆库里的 `POLICY.yaml` 可改，但不能低于 floor：风格字段随每次握手、payment_method 只在 payment、shipping_address 只在 checkout、商家只写 shoe_size、个人 agent 读写全部、公司助理永不读写地址与支付）。
+2026-10-18 起，这张表由安装的 `PolicyDocument` 决定（`DEFAULT_POLICY` 即下表，是种子；用户记忆库里的 `POLICY.yaml` 可改，但不能低于 floor：风格字段随每次握手、payment_method 只在 payment、shipping_address 只在 checkout、商家只写 shoe_size、个人 agent 读写全部、公司助理永不读写地址与支付；历史记录：个人 agent 永远可读、商家永不、公司助理默认关、由 owner 打开）。
 
-| 类别 | 随握手可读（auto） | 按用途可读（purpose） | 可写的字段 |
-|----|----|----|----|
-| personal | 全部 | 无 | 全部，basis 可为 stated |
-| shoe | lang, tone, length, shoe_size, budget, deadline | shipping_address，仅 purpose=checkout | shoe_size（observed） |
-| 任何商家类别 | — | payment_method，仅 purpose=payment，且金额 ≤ intent.budget、单次有效、只给被接受报价的那一家；放行的是授权结果，不是 token | 无 |
-| assistant（公司助理，`docs/bring-your-own-agent-plan.md`） | lang, tone, length, shoe_size, budget, deadline, pref.*（以值读取，不带来源；owner 批准 link 后，按安装的文档在读取时决定） | 无；shipping_address 与 payment_method 在代码里硬拒，工作台在 checkout / payment 阶段直接交给商家 | shoe_size, pref.*（stated 须带用户原话证据，link 有效期内与个人 agent 同级信任；observed 为候选，需第二个独立来源） |
+| 类别 | 随握手可读（auto） | 按用途可读（purpose） | 可写的字段 | 历史记录（history） |
+|----|----|----|----|----|
+| personal | 全部 | 无 | 全部，basis 可为 stated | 可读（自己的意图历史 `GET /personal/intents`；floor：个人 agent 永远可读） |
+| shoe | lang, tone, length, shoe_size, budget, deadline | shipping_address，仅 purpose=checkout | shoe_size（observed） | 永不（floor） |
+| 任何商家类别 | — | payment_method，仅 purpose=payment，且金额 ≤ intent.budget、单次有效、只给被接受报价的那一家；放行的是授权结果，不是 token | 无 | 永不（floor） |
+| assistant（公司助理，`docs/bring-your-own-agent-plan.md`） | lang, tone, length, shoe_size, budget, deadline, pref.*（以值读取，不带来源；owner 批准 link 后，按安装的文档在读取时决定） | 无；shipping_address 与 payment_method 在代码里硬拒，工作台在 checkout / payment 阶段直接交给商家 | shoe_size, pref.*（stated 须带用户原话证据，link 有效期内与个人 agent 同级信任；observed 为候选，需第二个独立来源） | 默认关（`DEFAULT_POLICY.history.assistant=false`，默认 policyId 因此为 `1fcaae3c5185`）；owner 在 `POLICY.yaml` 打开后 `GET /assistant/history?limit=` 给出该用户的全部意图与结果，不含用户原话；每次允许的读取写 purpose=history、无字段的回执，一个 session 一小时一条 |
 
 表里没有的组合一律 deny。pharmacy、hotel 两类连同 date_of_birth、allergies、diet 字段已砍掉；下文"药店"只作隔离的举例。用途由商家声明，工作台只核对用途与字段是否相符，并把每次放行写成回执给用户。电话号码不是字段，永远不进卡。
 
 ### 工作台 HTTP（apps/workspace，127.0.0.1:4310）
 
-2026-10-18：冻结的端点清单以 `packages/contract/src/endpoints.ts`（及由它生成的 `packages/contract/openapi.json`）为准。本表之外当日新增：`GET /owner/funnel`、`GET /owner/experiments`、`GET/PUT /personal/policy`、`POST /personal/policy/shadow`、`GET /personal/intents/:id/events`（SSE）、`GET /agent/stats`、公司助理的 `POST /assistant/link`、`GET /assistant/link/:id`、`GET /assistant/context`、`POST /assistant/contributions`、`GET /assistant/stats`、`GET /owner/links`、`POST /owner/links/:id/approve|decline`；intent / quotes / events / accept / observations 路由也接受已 link 的助理钥匙。类型新增见 `packages/contract/src/{analytics,events,policy-document,types}.ts`（`FunnelRow`、`PolicyDocument`、`IntentEvent`、`Link`、`AssistantContext`、`AssistantStats` 等）。
+2026-10-18：冻结的端点清单以 `packages/contract/src/endpoints.ts`（及由它生成的 `packages/contract/openapi.json`）为准。本表之外当日新增：`GET /owner/funnel`、`GET /owner/experiments`、`GET/PUT /personal/policy`、`POST /personal/policy/shadow`、`GET /personal/intents/:id/events`（SSE）、`GET /agent/stats`、公司助理的 `POST /assistant/link`、`GET /assistant/link/:id`、`GET /assistant/context`、`POST /assistant/contributions`、`GET /assistant/stats`、`GET /owner/links`、`POST /owner/links/:id/approve|decline`；intent / quotes / events / accept / observations 路由也接受已 link 的助理钥匙；`GET /assistant/history?limit=`（Phase 4：受安装文档的 `history.assistant` 约束，读取时判定，每次允许的读取写回执）；`POST /owner/keys`、`GET /owner/keys`、`POST /owner/keys/:agentId/revoke`（Phase 5：owner 给自己的 agent 铸 personal 或 merchant 钥匙，钥匙只返回一次、只存哈希，列表不含钥匙与哈希，撤销后 401 而贡献与回执留着）；`GET /healthz`（无钥匙）。类型新增见 `packages/contract/src/{analytics,events,policy-document,types,wire,gateway}.ts`（`FunnelRow`、`PolicyDocument` 及其 `history`、`IntentEvent`、`Link`、`AssistantContext`、`AssistantStats`、`AssistantHistoryQuery`/`AssistantHistoryResponse`、`MintKeyRequest`/`MintKeyResult`/`KeyView`/`KeysResponse`/`RevokeKeyResult`、网关的 `GATEWAY_ENDPOINTS`/`JarAccess`/`OperatorFunnel` 等）。
 
 | 方法与路径 | 调用方 | 行为 |
 |----|----|----|
