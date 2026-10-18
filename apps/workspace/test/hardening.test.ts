@@ -49,7 +49,7 @@ describe("P1: an old database upgrades in place", () => {
     // v11 (lane D, A21): durable single-use payment authorizations, one row per quote (the quote reservation);
     // v12: the amount the provider's response authorized (what a reversal names)
     expect(cols("payment_authorizations")).toEqual(["id", "quote_id", "session_id", "amount", "currency", "status", "provider_ref",
-      "payment_method_ref", "agent_id", "created_at", "reserved_at", "authorized_amount"]);
+      "payment_method_ref", "agent_id", "created_at", "reserved_at", "authorized_amount", "provider", "simulated"]);
     // v4: learned-contribution evidence, the learning setting and the observation queue; v5 (B49): the queue keeps
     // only ids, counts and times — there is no table for conversation text
     expect(cols("contributions")).toContain("evidence");
