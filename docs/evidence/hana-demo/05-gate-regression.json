@@ -1,0 +1,127 @@
+{
+  "scope": "Synthetic diagnostic examples only. Real OpenRouter; no workspace writes or phone sends.",
+  "at": "2026-10-18T17:39:29.779Z",
+  "before": {
+    "status": 200,
+    "elapsedMs": 370,
+    "gate": {
+      "outcome": "uncertain_key",
+      "stableScore": 0.98,
+      "sensitiveScore": 0.04,
+      "selectedKey": "pref.fit",
+      "keyConfidence": 0.72,
+      "keyProbability": 0.75
+    }
+  },
+  "records": [
+    {
+      "name": "mixed_request_and_habit",
+      "elapsedMs": 883,
+      "passed": true,
+      "calls": [
+        {
+          "stage": "gate",
+          "status": 200,
+          "elapsedMs": 301,
+          "id": "gen-dec-1792345168-Lyue0FwMRMRcIOBYjsXM",
+          "usage": {
+            "input_tokens": 1017,
+            "output_tokens": 127,
+            "cost": 0.000042714
+          }
+        },
+        {
+          "stage": "extract",
+          "status": 200,
+          "elapsedMs": 576,
+          "id": "gen-1792345169-Q7fn0cVXseorPe0OmP9W",
+          "usage": {
+            "prompt_tokens": 440,
+            "completion_tokens": 141,
+            "total_tokens": 581,
+            "cost": 0.0001506,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.0001506,
+              "upstream_inference_prompt_cost": 0.000066,
+              "upstream_inference_completions_cost": 0.0000846
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 64,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        }
+      ],
+      "result": {
+        "preferences": [
+          {
+            "key": "pref.fit",
+            "value": "loose",
+            "evidence": "look at the loose-fit one first",
+            "basis": "observed"
+          }
+        ],
+        "reason": "learned",
+        "models": {
+          "gate": "typesafe/jev-1.14",
+          "extractor": "openai/gpt-oss-120b"
+        },
+        "gate": {
+          "outcome": "allow",
+          "stableScore": 0.97,
+          "sensitiveScore": 0.04,
+          "keyConfidence": 1,
+          "keyProbability": 1,
+          "selectedKey": "pref.fit"
+        }
+      }
+    },
+    {
+      "name": "one_time_request",
+      "elapsedMs": 180,
+      "passed": true,
+      "calls": [
+        {
+          "stage": "gate",
+          "status": 200,
+          "elapsedMs": 179,
+          "id": "gen-dec-1792345169-prQGHu3Y5yZ6gK5q4EwX",
+          "usage": {
+            "input_tokens": 1002,
+            "output_tokens": 126,
+            "cost": 0.000042084
+          }
+        }
+      ],
+      "result": {
+        "preferences": [],
+        "reason": "not_stable",
+        "gate": {
+          "outcome": "not_stable",
+          "stableScore": 0.04,
+          "sensitiveScore": 0.06,
+          "keyConfidence": 0.91,
+          "keyProbability": 0.92
+        }
+      }
+    },
+    {
+      "name": "sensitive_mixed",
+      "elapsedMs": 0,
+      "passed": true,
+      "calls": [],
+      "result": {
+        "preferences": [],
+        "reason": "sensitive"
+      }
+    }
+  ]
+}

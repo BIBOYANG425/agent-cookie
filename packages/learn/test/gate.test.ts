@@ -30,6 +30,20 @@ it('safety wins over a broken key response; missing safety never means unavailab
   expect(evaluateGate({answers:{sensitive:{type:'noul',noul:0.4},key:'bad'}},keys).gate).toEqual({outcome:'uncertain_safety',sensitiveScore:0.4});
   expect(evaluateGate({answers:{stable:{type:'noul',noul:1}}},keys).gate?.outcome).toBe('invalid_safety');
 });
+it('keeps a mixed shopping/habit turn intact and refuses the recorded uncertain field decision',async()=>{
+  const text='Find me trail running shoes. When I choose tops, I usually look at the loose-fit one first.';
+  const fetcher=vi.fn(async()=>Response.json(response(0.98,0.04,'pref.fit',0.72,0.75)));
+  const extract=vi.fn();
+  const classify=createJevClassifier({apiKey:'test',fetch:fetcher});
+  const result=await createLearner({policy:DEFAULT_LEARNING_POLICY,classify,extract}).learn({...turn,text});
+  expect(result.reason).toBe('uncertain_gate');expect(result.preferences).toEqual([]);expect(extract).not.toHaveBeenCalled();
+  const call=fetcher.mock.calls[0] as unknown as [string,RequestInit];
+  const body=JSON.parse(String(call[1].body));
+  expect(body.state.utterance).toBe(text); // No clause stripping before the safety decision.
+  expect(body.questions.key.instructions).toContain('one-time request is not another preference dimension');
+  expect(body.questions.key.instructions).toContain('sensitive question must still inspect the entire utterance');
+  expect(body.questions.sensitive.instructions).toContain('even mixed with an ordinary preference');
+});
 it.each([
   ()=>new Response('invalid JSON',{status:200}),
   ()=>new Response('x'.repeat(65537),{status:200}),
