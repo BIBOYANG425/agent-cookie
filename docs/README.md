@@ -1,6 +1,6 @@
 # Agent Cookie 文档入口
 
-当前可复现的介绍、命令、环境变量、演示范围和 A01–A23 状态统一在 [仓库 README](../README.md)，以避免两个启动手册漂移。2026-10-17 更新：ACME/A15 已退出 demo，A16（Claude Code + Devin）与 A23 通过；C20 仍等干净实机学习与报价排序证据，C11 保持 P1 BLOCKED。
+当前可复现的介绍、命令、环境变量、演示范围和 A01–A23 状态统一在 [仓库 README](../README.zh.md)，以避免两个启动手册漂移。2026-10-17 更新：ACME/A15 已退出 demo，A16（Claude Code + Devin）与 A23 通过；C20 仍等干净实机学习与报价排序证据，C11 保持 P1 BLOCKED。
 
 - [工程计划 v0.3](plan.md)：人维护的设计基线，包含历史 ACME 拍点；不覆盖后续人的收口裁决。
 - [证据索引](evidence/README.md)：编号、文件、范围、状态与日期。

@@ -122,6 +122,6 @@ Agent Cookie 有三个对象：
 | stock 记忆 skill | A23 通过：未修改 skill、新会话读回、同库工作台写入与限定重置。 |
 | 商家与支付 | 有真实商家响应录制和 handoff 证据；没有真实付款完成声明，部分失败录制仍缺。 |
 
-代码：[BIBOYANG425/agent-cookie](https://github.com/BIBOYANG425/agent-cookie)（当前私有，需安排评审访问）。视频：**草稿，待完成并审阅录屏**，制作安排见[分镜](video-storyboard.md)。准备提交 Applied Intelligence、Photon、Visa、Cognition、Paper、Sentry 赛道，各项实际范围见 [README](../README.md#赛道与提交材料)；不宣称获奖或已获资格确认。
+代码：[BIBOYANG425/agent-cookie](https://github.com/BIBOYANG425/agent-cookie)（当前私有，需安排评审访问）。视频：**草稿，待完成并审阅录屏**，制作安排见[分镜](video-storyboard.md)。准备提交 Applied Intelligence、Photon、Visa、Cognition、Paper、Sentry 赛道，各项实际范围见 [README](../README.zh.md#赛道与提交材料)；不宣称获奖或已获资格确认。
 
 第三方材料包括 A16 使用的仓库外 Anthropic commerce-agents blueprint、采集的 Shopify UCP 响应，以及未修改的 Agent Memory Repo stock skill。Sample、fixture 回放、Recorded run 和现场实时结果须清楚区分。项目不存卡号，不替用户完成付款。
