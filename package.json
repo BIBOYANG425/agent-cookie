@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build:deps": "pnpm --filter @agent-cookie/sdk build",
+    "build:deps": "pnpm --filter @agent-cookie/sdk build && pnpm --filter @agent-cookie/learn build",
     "typecheck": "pnpm build:deps && pnpm -r --if-present typecheck",
     "test": "pnpm build:deps && pnpm -r --if-present test",
     "fake": "pnpm --filter @agent-cookie/workspace-fake start",
