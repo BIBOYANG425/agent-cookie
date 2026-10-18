@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Analytics from '../../../packages/contract/src/analytics';
 import { EXPERIMENT_ARMS as CONTRACT_ARMS } from '../../../packages/contract/src/analytics';
-import type * as Types from '../../../packages/contract/src/types';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController } from '../src/controller';
 import { compareArms, durationText, EXPERIMENT_ARMS, intervalText, MIN_ARM_N, normalizeExperimentReport, percent,
@@ -12,12 +11,12 @@ import { ExperimentPanel } from '../src/ExperimentPanel';
 import { normalizeFunnelReport, sampleFunnelReport, type FunnelReport } from '../src/funnel';
 import { FunnelPanel } from '../src/FunnelPanel';
 import type { Section } from '../src/model';
-import type { Receipt } from '../src/receipts';
 
-// Compile-time (pnpm typecheck): the console's mirrors equal the contract types in both directions.
+// Compile-time (pnpm typecheck): the console's mirrors equal the contract types in both directions. (Receipts need no
+// mirror: ReceiptPanel imports the contract's Receipt type directly.)
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 export const mirrors: [Same<ExperimentArm, Analytics.ExperimentArm>, Same<ExperimentArmStats, Analytics.ExperimentArmStats>,
-  Same<ExperimentReport, Analytics.ExperimentReport>, Same<Receipt, Types.Receipt>] = [true, true, true, true];
+  Same<ExperimentReport, Analytics.ExperimentReport>] = [true, true, true];
 
 const at = Date.parse('2026-10-17T20:00:00.000Z');
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });

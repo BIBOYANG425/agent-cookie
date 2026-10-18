@@ -328,6 +328,13 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 - B70 → A/C/人（新门控实机加载）：19:16 PDT 将已验证的05a5d8f加载到现有4310工作台；唯一Photon监听短暂停止后按原游标恢复，channel_ready learning=true。SDK回读 learned 校验值不变（旧1行/2证据），完整channel-state校验值不变（cursor8515、9条sent），无新模型调用/原消息重放/资料修正。停服备份留在本机忽略目录。只证明版本切换和数据保留，不冒称新五分钟正向手机验收，详见gate-redesign证据。
 
+- 2026-10-17 C22 → A/B（main35e8b56收口任务）：模型来源已接正式 evidence.models.gate/extractor，缺失显示“本地规则”；C不会让sample工作台标签把真实learned记录称为预设阶段。needs UI按人指定 kind=needs_declared、object原文摘要实现可选渲染，并以actor===grant.agentId匹配最近一次商家申请；请A确认actor的商家绑定、在既有owner GET /personal/grants提供该商家handshake.unavailable的只含字段名投影（C暂以grant.handshake.unavailable:string[]兼容，缺失不显示，不用owner调用merchant handshake），B保留getActivity的kind及对应可选扩展。当前SDK getActivity会剥kind，正式Handshake/GrantView尚无unavailable；C不绕过已有SDK，不加新HTTP端点，不从card或grants字段补集推导拒绝列表。请提供正式类型/关联到intent或session的语义后替换局部TODO(contract)。
+
+- 2026-10-17 C23 → B：控制台新增本次请求条件，A 已有 owner 可读 GET /personal/intents（IntentHistoryEntry.public）；SDK 尚无读取方法，请补正式方法名及透传。C 暂仅在既有服务端白名单直读该 GET 并标 TODO(sdk)，不加端点、不让 owner 调 personal-only getQuotes。当前“本次”只标 explicit public 条件，不推断卡片/授权字段的有效来源。
+
+- 2026-10-17 T9-4 C → B：请按 docs/video-storyboard.md / docs/evidence/recording-manifest.md 补 R1-commute、R2-jacket、R3-daypack 三条独立连续 iMessage 原片及 metadata（实际UTC/SHA/模式/同次意图报价回执），另补 RR-07-desktop-return、RR-08-phone-learning 与 RR-08-quote-ranking。新gate后需干净的自然五分钟正向手机学习、同一对话不误计双源、相同候选集/显式预算的排序对照；旧首轮双源误晋升及gate停止不算C20通过。没有两家或gate拒绝如实录，不改断言/数据凑结果；缺片仍标待录。
+- 2026-10-17 T9-4 C → A：请给同一条已录 R1/R2/R3 的 RR-03-workspace-search、RR-05-workspace-checkout、RR-06-workspace-denial 终端原片与脱敏活动/回执：商家≤2、价格≤本次预算、尺码未知/不匹配有说明；地址若放行仅accept一家checkout，没放行则保留事实。needs 真投影未到跳过镜头，不另造事件；接口缺口沿用C22请求。A15已砍不再补拍。
+
 2026-10-18（续三），A 线：商业分析与动态策略（`docs/commerce-analytics-plan.md`，分支 `claude/amazing-allen-cnv3s6`，Phase 0–3 已实现并有测试）。只追加。
 
 | ID | 发起 → 接收 | 请求与依据 | 状态 |

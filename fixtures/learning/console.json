@@ -27,7 +27,11 @@
               "basis": "inferred",
               "createdAt": "2026-10-17T12:00:00.000Z",
               "conversationId": "sample-conversation-weekend",
-              "snippet": "棉质摸起来更舒服"
+              "snippet": "棉质摸起来更舒服",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
             }
           ]
         },
@@ -45,7 +49,11 @@
               "basis": "inferred",
               "createdAt": "2026-10-17T12:00:00.000Z",
               "conversationId": "sample-conversation-weekend",
-              "snippet": "我平时更常选黑色"
+              "snippet": "我平时更常选黑色",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
             }
           ]
         }
@@ -79,7 +87,11 @@
               "basis": "inferred",
               "createdAt": "2026-10-17T12:00:00.000Z",
               "conversationId": "sample-conversation-weekend",
-              "snippet": "棉质摸起来更舒服"
+              "snippet": "棉质摸起来更舒服",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
             }
           ]
         },
@@ -106,7 +118,11 @@
               "basis": "inferred",
               "createdAt": "2026-10-17T12:00:00.000Z",
               "conversationId": "sample-conversation-weekend",
-              "snippet": "我平时更常选黑色"
+              "snippet": "我平时更常选黑色",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
             }
           ]
         }

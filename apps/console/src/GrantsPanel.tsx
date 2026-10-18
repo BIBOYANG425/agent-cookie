@@ -1,5 +1,6 @@
 import { remainingSeconds } from './controller';
 import { FieldName } from './fields';
+import { GrantNeeds } from './GrantNeeds';
 import { stageLabels } from './funnel';
 import type { ConsoleSnapshot } from './model';
 import { shortPolicyId } from './policy';
@@ -17,7 +18,7 @@ export function GrantsPanel({ data, sample, now, blocked, currentPolicyId, revok
         const seconds = remainingSeconds(grant, data.receivedAt, now);
         const status = grant.status === 'revoked' ? '已撤销' : seconds === 0 ? '已过期' : `剩余 ${seconds} 秒`;
         return <article className="grant" key={grant.id}>
-          <div className="grant-title"><div><h3>{grant.agentName}</h3><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
+          <div className="grant-title"><div><h3>{grant.agentName}</h3><GrantNeeds grant={grant} events={data.events} /><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
           <dl><div><dt>允许字段</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map((field) => <li key={field}><FieldName field={field} /></li>)}</ul> : '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div>
             <div><dt>阶段</dt><dd>{grant.stage ? `${stageLabels[grant.stage]}（${grant.stage}）` : '未记录'}</dd></div>
             <div><dt>策略</dt><dd>{grant.policyId ? <><code title={grant.policyId}>{shortPolicyId(grant.policyId)}</code>{grant.policyId === currentPolicyId ? ' · 当前策略' : ''}</> : '未记录'}</dd></div>

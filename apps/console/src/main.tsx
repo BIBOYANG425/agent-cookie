@@ -1,26 +1,28 @@
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
+import consoleSeed from '../../../fixtures/console/generalized.json';
+import { ReceiptPanel } from './ReceiptPanel';
+import { IntentConditionsPanel } from './IntentConditionsPanel';
 import agents from '../../../fixtures/agents.json';
 import learningSeed from '../../../fixtures/learning/console.json';
 import { ActivityPanel } from './ActivityPanel';
-import { createLiveAdapter, createSampleAdapter } from './adapters';
+import { createLiveAdapter, createSampleAdapter, type PresentationSeed } from './adapters';
 import { ConsoleController } from './controller';
 import { ExperimentPanel } from './ExperimentPanel';
 import { FieldName, fieldName } from './fields';
 import { FunnelPanel } from './FunnelPanel';
 import { GrantsPanel } from './GrantsPanel';
-import type { ConsoleAdapter } from './model';
+import type { ConsoleAdapter, Contribution } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
 import { PolicyPanel } from './PolicyPanel';
-import { ReceiptsPanel } from './ReceiptsPanel';
 import './style.css';
 
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
 const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN', { hour12: false });
 const focusCard = () => document.getElementById('card-title')?.focus({ preventScroll: true });
-const createConsoleSample = () => createSampleAdapter(Date.now, undefined, learningSeed as LearningSeed,
-  new URLSearchParams(window.location.search).get('learningStage') ?? undefined);
+const createConsoleSample = () => createSampleAdapter(Date.now, consoleSeed.contributions as Contribution[], learningSeed as LearningSeed,
+  new URLSearchParams(window.location.search).get('learningStage') ?? undefined, consoleSeed.presentation as PresentationSeed);
 
 function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (next: ConsoleAdapter) => void }) {
   return <details className="connection">
@@ -60,7 +62,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#experiments">实验</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#intent-conditions">本次请求</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#experiments">实验</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -95,11 +97,13 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         revoke={(id) => void controller.revokeContribution(id).then(() => document.getElementById('learned-title')?.focus({ preventScroll: true }))}
         selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
 
+      <IntentConditionsPanel intents={data?.intents} />
+
       <GrantsPanel data={data} sample={sample} now={now} blocked={blocked}
         currentPolicyId={data?.policy?.availability === 'ready' ? data.policy.data.policyId : undefined}
         revoke={(id) => void controller.revokeGrant(id)} />
 
-      <ReceiptsPanel state={data?.receipts} sample={sample} />
+      <ReceiptPanel receipts={data?.receipts} sample={sample || data?.sample === true} />
 
       <PolicyPanel state={data?.policy} sample={sample} result={state.policyResult} disabled={blocked}
         shadow={(text) => void controller.shadowPolicy(text)} install={(text) => void controller.installPolicy(text)} />

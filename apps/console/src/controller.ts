@@ -27,10 +27,9 @@ export class ConsoleController {
     // Preserve the adapter's newest-first order when timestamps tie; IDs are opaque.
     const funnel = data.funnel?.availability === 'ready' ? { ...data.funnel, data: { ...data.funnel.data,
       rows: [...data.funnel.data.rows].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)) } } : data.funnel;
-    const receipts = data.receipts?.availability === 'ready' ? { ...data.receipts, data: { ...data.receipts.data,
-      receipts: [...data.receipts.data.receipts].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)) } } : data.receipts;
+    // Receipts and intents stay as read; their panels order them newest first.
     return { ...data, events: [...data.events].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
-      ...(funnel ? { funnel } : {}), ...(receipts ? { receipts } : {}) };
+      ...(funnel ? { funnel } : {}) };
   }
   start() {
     if (this.interval !== undefined) return;

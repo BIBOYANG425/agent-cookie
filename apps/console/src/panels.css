@@ -1,0 +1,17 @@
+.receipt-list, .intent-list { list-style: none; margin: 0; padding: 0; }
+.receipt-record, .intent-record { padding: 24px 28px; }
+.receipt-record + .receipt-record, .intent-record + .intent-record { border-top: 1px solid #e7ebf1; }
+.receipt-heading, .intent-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.receipt-heading time, .intent-heading time { color: #667189; font-size: 12px; }
+.receipt-record dl:last-child, .intent-record dl:last-child { margin-bottom: 0; }
+.intent-conditions > div { grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); align-items: baseline; }
+.intent-conditions dt .field-label, .intent-conditions dt .field-key { display: block; }
+.intent-conditions dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.intent-condition-value { white-space: pre-wrap; }
+.intent-scope { display: inline-block; padding: 1px 7px; border: 1px solid #bdc9de; border-radius: 4px; color: #304c9a; background: #edf1ff; font-size: 12px; }
+@media (max-width: 720px) {
+  .receipt-record, .intent-record { padding: 20px; }
+}
+@media (max-width: 380px) {
+  .intent-conditions > div { grid-template-columns: 1fr; }
+}

@@ -1,55 +1,45 @@
 # 验收证据索引
 
-2026-10-17 起，**C14 只收集手动证据**。P0 自动项由 A 线的 [apps/workspace/test/acceptance](../../apps/workspace/test/acceptance) 维护，用户确认已执行 66/66；C 不在 `tests/acceptance` 重复扩写整套；按最新要求维护已有历史断言和通用性质检查。该数字不替代 A10/A17 的真实客户端证据，未录制失败路径也应以 A 的最新报告单列。
+更新：2026-10-17。当前源码基线为 main `35e8b56`（PR #25 已合并）。此页索引已发生的验收，不将旧录制改称当前版本现场实测。状态统一为 **通过 / 手动证据 / 已砍 / 阻塞**；括号说明范围。A15/A16/A23 按人的最新收口裁决标记，原始执行材料保留。
 
 2026-10-18：B 线的离线假工作台 `apps/workspace-fake` 已退役并删除，B 线测试（Photon `test/runtime.test.ts`）改为对演示模式下的真实工作台运行；此前证据中提到它的地方保留原文，作历史记录。
 
-| 编号 | 文件 / 入口 | 状态 |
-| --- | --- | --- |
-| A10 · Claude Desktop MCP（B） | [A10-real-client.md](A10-real-client.md) | 待 B 放入真实客户端截图 / 录屏与工作台活动；当前文件是证据模板 |
-| A15 · 原版 ACME Tier 0（C） | [A15/README.md](A15/README.md) | 已实际尝试，**BLOCKED / 未通过**：旧 Sample 卡前缀已投递并写回执，原版返回 401；正确协议诊断又遇模型凭据缺失，没有首条 assistant 回复 |
-| A16 · Claude Code（C） | [A16/README.md](A16/README.md) | 独立实跑完成；新增 21 项测试、34/34 HTTP 步骤通过。有限 preferences/note 接入已验证；完整 MemoryStore 与全程录像仍缺，A16 BLOCKED |
-| A16 · Devin（C / Devin） | [交接说明](A16/devin-brief.md) | 用户授权的[独立实跑](https://app.devin.ai/sessions/94dae4b1d11547c698d04be4119e41eb)完成；新增 10 项测试、29/29 HTTP 检查通过。完整 MemoryStore 未实现，A16 BLOCKED |
-| A17 · iMessage 主流程（B） | [B 实际收发日志](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-imessage-real-adapters.json)、[B 联调报告](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-real-adapters-verification.md)、[原片待交项](A17-imessage.md) | 已合并的 PR #12 交付真实搜索 / 选择 / handoff 日志（三条 delivered、一次 accept 和 checkout 地址回执）；连续原片待 B，尚不标完整 A17 通过 |
-| A23 · stock Agent Memory Repo skill 互操作（P1） | [cognition-skill-interop.md](cognition-skill-interop.md) | 已通过：未修改 stock skill 在 Claude Code 保存/commit、新会话读回；同库10次真实HTTP及限定reset成功，四路径回seed、skill文件与双方历史保留。Synthetic自动支撑另7项通过 |
-| C20 · 动态记忆与对话旁听学习 | [learning.md](learning.md) · [真实 HTTP](learning-backend-http.json) · [真实 SDK](learning-sdk-bridge.json) · [静默后读取](learning-idle-observation.json) | 正式契约/读取/暂停/贡献撤销已实连，两家 live 报价为基线；B负责OpenRouter接线，真实学习与排序、当前界面录屏仍待，未通过 |
-| B49 · 学习六场景隔离复跑 | [最终 C 复跑](B49/final-report.md) · [原始结果](B49/final-six-scenarios.json) · [前次基线](b49-c-alignment.md) | 原版 B 脚本/断言未改，1/6 通过；五项 A 接线仍缺。Synthetic extractor + fixture checkout，不计作真实 C20 |
+| 编号 | 文件 | 状态 | 日期 |
+| --- | --- | --- | --- |
+| A01 注册 agent | [HTTP 验收](../../apps/workspace/test/acceptance/a01-a04.test.ts) | 通过（自动 HTTP） | 2026-10-17 |
+| A02 合并规则 | [HTTP 验收](../../apps/workspace/test/acceptance/a01-a04.test.ts) · [学习补充](2026-10-17-learning-live.md) | 通过（普通字段按 writer；pref 按独立证据） | 2026-10-17 |
+| A03 session ID 隔离 | [HTTP 验收](../../apps/workspace/test/acceptance/a01-a04.test.ts) | 通过（自动 HTTP；算法向量另见 rules） | 2026-10-17 |
+| A04 握手只有字段名 | [HTTP 验收](../../apps/workspace/test/acceptance/a01-a04.test.ts) | 通过（auto 风格值与字段名按契约） | 2026-10-17 |
+| A05 按用途读字段 | [HTTP 验收](../../apps/workspace/test/acceptance/a05-a08.test.ts) | 通过（地址仅选中商家 checkout） | 2026-10-17 |
+| A06 过期 | [HTTP 验收](../../apps/workspace/test/acceptance/a05-a08.test.ts) | 通过（POST /test/clock） | 2026-10-17 |
+| A07 撤销 | [HTTP 验收](../../apps/workspace/test/acceptance/a05-a08.test.ts) | 通过（后续读取拒绝，不承诺收回已传内容） | 2026-10-17 |
+| A08 note 隔离 | [HTTP 验收](../../apps/workspace/test/acceptance/a05-a08.test.ts) | 通过（自动 HTTP） | 2026-10-17 |
+| A09 意图匹配 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) · [UCP 通用搜索](2026-10-17-ucp-generic-search.md) | 通过（录制 UCP fixture；不等于实时库存） | 2026-10-17 |
+| A10 真实客户端 | [Desktop 实录](A10-real-client.md) | 通过（手动 Claude Desktop / MCP，录制基线） | 2026-10-17 |
+| A11 注入 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) | 通过（商家输入不能扩权） | 2026-10-17 |
+| A12 重置复演 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) · [限定重置](cognition-skill-interop.md) | 通过（隔离 fixture；只重置四个受管路径） | 2026-10-17 |
+| A13 并发与幂等 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) | 通过（自动 HTTP） | 2026-10-17 |
+| A14 控制台 | [当前通用视图](console/README.md) · [SDK 实连](C10b-sdk.md) | 手动证据（Sample 来源撤销、SDK 实连；当前截图见 console/） | 2026-10-17 |
+| A15 零接入投递 | [历史尝试](A15/README.md) | 已砍（Tier 0 协议不匹配，2026-10-17 决定） | 2026-10-17 |
+| A16 skill 生成的接入 | [Claude Code + Devin 实录](A16/README.md) | 通过（Claude Code + Devin；按 2026-10-17 人的收口裁决） | 2026-10-17 |
+| A17 iMessage 主流程 | [取证入口](A17-imessage.md) · [真实收发](2026-10-17-real-adapters-verification.md) | 手动证据（搜索→选择→handoff 日志；连续原片待补） | 2026-10-17 |
+| A18 UCP 失败路径 | [HTTP 验收](../../apps/workspace/test/acceptance/a18-a22.test.ts) · [录制目录](../../fixtures/ucp/README.md) | 阻塞（handoff 已验；真实售罄和 escalation 两种录制仍 todo） | 2026-10-17 |
+| A19 passkey 解锁 jar | [auth 测试](../../packages/auth/test/auth.test.ts) | 阻塞（库级实现与测试已有；缺真实手机 passkey 证据） | 2026-10-17 |
+| A20 商家验签登录 | [TAP 互通](2026-10-17-tap-interop.md) · [auth 测试](../../packages/auth/test/auth.test.ts) | 手动证据（库级成对钥匙/验签；真实商家登录闭环未声明通过） | 2026-10-17 |
+| A21 支付单次限额 | [pay 测试](../../packages/pay/test/payments.test.ts) | 手动证据（授权边界测试；不代表真实支付） | 2026-10-17 |
+| A22 回头客 | [HTTP 验收](../../apps/workspace/test/acceptance/a18-a22.test.ts) · [同店 session](2026-10-17-postmerge-b-verification.md) | 通过（同店 session 连续性；未声称商家模型记忆开场） | 2026-10-17 |
+| A23 stock skill 互操作 | [Cognition stock skill 实录](cognition-skill-interop.md) | 通过 | 2026-10-17 |
+| B49 学习六场景 | [真实模型 6/6](2026-10-17-learning-live.md) · [新 gate 6/6](2026-10-17-gate-redesign.md) · [历史 C 复跑](B49/final-report.md) | 通过（真实模型、合成输入、隔离 SQLite/Git、fixture commerce） | 2026-10-17 |
+| C20 手机学习与报价排序 | [手机实录](2026-10-17-phone-learning-live.md) · [新 gate 状态](2026-10-17-gate-redesign.md) | 阻塞（旧手机首次误计双源；更正后 gate 停止；新 gate 尚缺干净正向实机与排序） | 2026-10-17 |
+| R1–R3 Recorded run | [逐拍清单](recording-manifest.md) · [历史 catalog](recorded-needs/README.md) | 阻塞（新需求连续手机原片待补，旧 catalog 不替代） | 2026-10-17 |
+| T8 Sentry | [离线 trace / logs](T8-sentry.md) | 手动证据（离线验证，缺外部 Sentry 界面） | 2026-10-17 |
 
-A15 核对原版首回是否正确使用本次卡上适用的 auto 字段，不要求固定字段或具体数值；仍需实际投递回执与运行前后代码未改证明。错误截图不能代替成功回复。A16 必须各自从干净克隆开始，由 Claude Code 和 Devin 独立应用 skill，并实际读到授权字段、写回本商家 note；仅基线测试、生成 diff 或部分录制不构成通过。C11 缺 note 枚举、删除、clear 等完整生命周期契约，保持 **P1 BLOCKED**，详见 [requests](../requests.md)。
+P0 = A01–A12、A17、A18、A22。A 的自动 HTTP 验收为主，C 不重复扩写整套。A18 的两个真实录制缺口和 A17 原片缺口仍需单列，不把已有自动项通过描述为所有 P0 已完成。
 
-## 新方向的性质验收
+C14 已收口：A15 退出 demo，A16 两个 coding agent 的接入实跑按人确认通过，A10/A17 由 B 提供而 C 维护索引。**C11 仍为 P1 BLOCKED**，A16 收口不代表缺失的完整 note 生命周期已交付。
 
-人的最新要求覆盖旧固定商品示例；保留原始历史日志的店名、价格和尺码，不把它们当后续通过条件，也不改写历史记录。下列性质需对每次意图独立核验，缺少证据标“待验证”，不能用页面看起来有两张卡代替。
+每次演示核对性质：至多两家不同商家；报价不超本次预算；地址仅在 accept 后按 checkout 给被选中的一家；尺码不匹配或未知时明确说明；本次意图优先于卡上的默认。商品名、价格、尺码只作为当时观察值，不能成为固定的通过条件。
 
-| 性质 | 核对材料 | 通过条件 |
-| --- | --- | --- |
-| 商家数量 | 本次 intent 的原始报价、seller/agentId 与界面 | 展示 ≤2 家不同商家；目标两家，缺货或无合格结果时如实解释，不凑足两家 |
-| 本次预算 | 原用户需求、解析后的 intent、报价金额/币种 | 每条展示报价 ≤ 用户本次预算（统一最小币种单位）；不回退到覆盖本次预算的历史默认，不承诺含税运费总额 |
-| 地址目的与对象 | accept 的 quoteId→agentId/sessionId、同时间段 activity/receipts、另一商家拒绝读取 | accept 前不放行地址；accept 后若发生地址放行，只能给选定一家且用途为 checkout；blocked/failed/handoff 没有放行也如实保留；公开意图/握手/其他商家都不含地址值 |
-| 尺码和偏好 | 该次 SDK 卡快照及来源、商品 variant 标签、用户可见消息 | 采用适用的卡字段；尺码不匹配/未确认时有说明且不称为适码；不做无来源换码；无适用尺码的商品不套鞋码 |
-| 来源与时间 | 原始 UCP 响应、时间、模式、SHA | 店名/价格/库存取自当次真实响应；fixture 和 Recorded run 明示采集日期，不称实时库存 |
+真实模型六场景使用合成测试输入，不替代手机实机学习与报价排序。手机原话不复制进文档，模型来源与贡献 ID 足以追溯。所有 Sample / fixture / Recorded run 必须显式标注，付款链接不等于付款完成。
 
-| 备选需求编号 | 文件 | 状态 |
-| --- | --- | --- |
-| R1 · 日常走路鞋 | [walking 入口](recorded-needs/README.md#三条素材) | 目录查询支撑素材；完整 A17 Recorded run 待 B，未通过 |
-| R2 · 防水徒步鞋 | [hiking 入口](recorded-needs/README.md#三条素材) | 目录查询支撑素材；完整 A17 Recorded run 待 B，未通过 |
-| R3 · 公路跑鞋 | [running 入口](recorded-needs/README.md#三条素材) | 目录查询支撑素材；完整 A17 Recorded run 待 B，未通过 |
-
-旧 A17 已录日志的实际报价/checkout 仍有效，但不证明通用意图解析或这三条新需求已跑通。旧 A15 文件中的具体尺码属于当时观察值；当前验收按上表，不能把旧失败截图改标成功。
-
-## 历史与支撑证据
-
-- [C14 HTTP 历史结果](C14-http-acceptance.md) / [机器结果](C14-http-results.json)：旧工作台基线 11 项规范 + 1 项支撑检查通过、11 todo，保留历史，不代表当前 A 自动套件状态。
-- [新方向检查与控制台字段截图](C18-direction-change.md)：本次性质断言、泛化字段展示及三条 catalog 素材的范围说明。
-- 控制台：[Sample 身份卡](C09-fixture-card.md)、[HTTP 展示/撤销/reset](C10-console.md)、[SDK 接线](C10b-sdk.md)、[320px 与键盘检查](C16-console-polish.md)。
-- [TAP 库互通](2026-10-17-tap-interop.md)：独立签名互通记录，不代表工作台出站已签名。
-- [双店与 UCP 取证说明](two-storefronts-and-ucp.md) 与 [早期脚手架](scaffold-verification.md) 保留原始上下文，不替代 A15/A16。
-
-P0 = A01–A12、A17、A18、A22；P1 = A13–A16、A19–A21。各执行者提交真实文件、时间、commit、命令和判定理由。Sample 数据明确标 `Sample`，录制回放标 `Recorded run` 并注明数据模式。去掉钥匙、支付 token、完整地址和手机号；保留字段名、方法、状态与必要关联。用户已有 `docs/media/agent-cookie-demo.mp4` 尚未核验，不将其列为通过证据。
-
-## A 线补充（2026-10-17）
-
-| 项目 | 证据说明 | 当前状态 |
-| --- | --- | --- |
-| [Live UCP 冒烟](live-ucp-smoke.md) | 两家真实报价 → accept → handoff；live 下 Sample 地址不发给真实店家 | 未完成：Shopify 主机被网络策略拒绝（CONNECT 403），没有真实报价；Sample 地址规则由单元测试覆盖 |
-| [T8 Sentry tracing + logs](T8-sentry.md) | 每个请求一条 trace、每次 UCP 调用一个子 span、活动与 UCP 日志 | 离线验证通过；sentry.io 被拒，缺 Sentry 后台截图 |
+历史材料：[C14 HTTP](C14-http-acceptance.md)、[控制台初版](C09-fixture-card.md)、[HTTP 操作](C10-console.md)、[窄屏检查](C16-console-polish.md)、[双店 UCP](two-storefronts-and-ucp.md)。旧失败记录保留，不因新版已修而改写。用户已有 docs/media 原片未核验，不作为本索引的通过依据。

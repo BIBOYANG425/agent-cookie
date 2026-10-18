@@ -30,6 +30,19 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
 }
 
 describe('server SDK bridge', () => {
+  it('allows only the existing owner intent-history GET while its SDK read is missing', async () => {
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      expect(String(input)).toBe('http://127.0.0.1:4310/personal/intents');
+      expect(init?.method).toBe('GET');
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      return json({ intents: [] });
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http });
+    expect(JSON.parse((await send('/personal/intents')).text)).toEqual({ intents: [] });
+    expect((await send('/personal/intents', 'POST')).status).toBe(404);
+    expect(http).toHaveBeenCalledOnce();
+  });
+
   it('keeps revocation identifiers typed as strings alongside learning change objects', async () => {
     const sdk: SdkClient = {
       getMe: async () => owner,

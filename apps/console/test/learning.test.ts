@@ -19,6 +19,60 @@ const render = (entries: LearnedEntry[]) => renderToStaticMarkup(createElement(L
 }));
 
 describe('learning boundary', () => {
+  it('preserves and renders actual model provenance without changing candidate status or source count', () => {
+    const models = { gate: 'typesafe/jev-1.14', extractor: 'openai/gpt-oss-120b' };
+    const row = { ...entry, evidence: [{ ...entry.evidence[0], conversationId: 'one-chat', models }] };
+    const state = normalizeLearning({ paused: false, learned: [row] });
+    expect(state.entries).toEqual([row]);
+    expect(countEvidenceSources(state.entries[0].evidence)).toBe(1);
+    const html = render(state.entries);
+    expect(html).toContain('typesafe/jev-1.14 → openai/gpt-oss-120b');
+    expect(html).toContain('候选 · 尚未上卡');
+    expect(html).toContain('1 条贡献 · 1 个来源');
+    expect(html).not.toContain('本地规则');
+  });
+
+  it.each([
+    [undefined, '本地规则'], [{}, '本地规则'],
+    [{ gate: 'typesafe/jev-1.14' }, 'typesafe/jev-1.14'],
+    [{ extractor: 'openai/gpt-oss-120b' }, 'openai/gpt-oss-120b'],
+  ])('renders only the available model IDs for %j', (models, expected) => {
+    const html = render([{ ...entry, evidence: [{ ...entry.evidence[0], ...(models ? { models } : {}) }] }]);
+    expect(html).toContain(`<dt>模型来源</dt><dd>${expected}</dd>`);
+    expect(html).not.toContain(' → ');
+  });
+
+  it('ignores malformed optional model metadata while keeping existing evidence validation strict', () => {
+    const evidence = entry.evidence[0];
+    for (const models of [null, [], 'invented', { gate: '' }, { extractor: 'x'.repeat(101) },
+      { gate: '<script>bad</script>' }, { extractor: 'bad model' }, { unknown: 'untrusted' }]) {
+      const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, models }] }] });
+      expect(state.entries).toEqual([entry]);
+      expect(render(state.entries)).toContain('<dt>模型来源</dt><dd>本地规则</dd>');
+    }
+    const models = { gate: 'typesafe/jev-1.14', extractor: 42, unknown: 'do not display' };
+    const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, models }] }] });
+    expect(state.entries[0].evidence[0].models).toEqual({ gate: 'typesafe/jev-1.14' });
+    expect(render(state.entries)).not.toContain('do not display');
+    expect(() => normalizeLearning({ paused: false, learned: [{ ...entry,
+      evidence: [{ ...evidence, contributionId: undefined, models }] }] })).toThrow('契约');
+  });
+
+  it('does not label live Sample-account evidence as a scripted learning stage', () => {
+    const state = normalizeLearning({ paused: false, learned: [entry], sample: true });
+    const liveHtml = renderToStaticMarkup(createElement(LearningPanel, {
+      state, sample: false, disabled: false, revoke: () => {},
+    }));
+    expect(liveHtml).toContain('上卡状态由工作台返回');
+    expect(liveHtml).not.toContain('预设演示阶段');
+    expect(liveHtml).not.toContain('学习状态演示');
+    const sampleHtml = renderToStaticMarkup(createElement(LearningPanel, {
+      state, sample: true, disabled: false, revoke: () => {},
+    }));
+    expect(sampleHtml).toContain('Sample · 学习状态演示');
+    expect(sampleHtml).toContain('上卡状态来自预设演示阶段');
+  });
+
   it('renders a manual stated contribution without fabricating conversation, snippet or status', () => {
     const state = normalizeLearning({ paused: false, learned: [entry] });
     expect(state.entries).toEqual([entry]);

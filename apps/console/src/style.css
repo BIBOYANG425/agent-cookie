@@ -160,8 +160,6 @@ dd { margin: 0; min-width: 0; }
 .funnel-search td { padding-top: 0; }
 .funnel-search-detail summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #254fd8; }
 .funnel-search-detail p { margin: 0 0 8px; color: #526380; }
-.receipt-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.receipt-fields li { min-width: 0; overflow-wrap: anywhere; }
 .experiment-intro { margin: 16px 28px; font-size: 14px; }
 .experiment-verdict { margin: 16px 28px; padding: 12px 16px; border-radius: 8px; border: 1px solid #dce2ec; background: #f7f9fc; font-size: 14px; }
 .experiment-verdict.insufficient { background: #fdf5e4; border-color: #e8d4a6; color: #5f4510; }
@@ -216,3 +214,6 @@ dd { margin: 0; min-width: 0; }
   .activity-list summary { grid-template-columns: minmax(0, 1fr); }
   .reason-toggle { grid-column: 1; grid-row: auto; }
 }
+.grant-needs { margin-top: .35rem; }
+.grant-needs .small { margin: .3rem 0; }
+.grant-fields .unavailable-field { color: #687078; background: #edf0f2; border: 1px solid #d5dade; }

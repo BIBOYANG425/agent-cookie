@@ -1,28 +1,17 @@
-import type { Field } from '../../../packages/contract/src/types';
 import { stageLabels } from './funnel';
 import type { ActivityEvent } from './model';
 
-// Mirror of packages/contract/src/types.ts `Receipt`, with the additive `amount` (integer cents, lane D's payment
-// authorization), `intentId` and `policyId`. test/experiments.test.ts checks at compile time that it stays identical.
-export interface Receipt {
-  id: string;
-  sessionId: string;
-  agentId: string;
-  fields: Field[];
-  purpose: string;
-  amount?: number;
-  createdAt: string;
-  intentId?: string;
-  policyId?: string;
-}
-/** GET /personal/receipts → { receipts }. Field names, purpose and amount only; a receipt never carries a field value. */
-export interface ReceiptsView { receipts: Receipt[]; sample?: boolean }
+// Display helpers for ReceiptPanel (the receipt type itself is packages/contract/src/types.ts `Receipt`) and the payment
+// labels in the activity log.
 
-/** The bridge allows the endpoint without a query, so the workspace's default page applies: the newest 50. */
+/** The live adapter reads /personal/receipts without a query, so the workspace's default page applies: the newest 50. */
 export const RECEIPT_LIMIT = 50;
 
-const purposeLabels: Record<string, string> = { checkout: '结账地址', payment: '支付授权', tier0: '零接入前缀' };
-/** checkout → 结账地址, payment → 支付授权, tier0 → 零接入前缀, a funnel stage (quoted, accepted) → 阶段 · 报价; else the raw purpose. */
+const purposeLabels: Record<string, string> = { handshake: '首次介绍', checkout: '结账地址', payment: '支付授权', tier0: '零接入前缀' };
+/**
+ * handshake → 首次介绍 (as in the grants panel), checkout → 结账地址, payment → 支付授权, tier0 → 零接入前缀, a funnel stage
+ * (quoted, accepted) → 阶段 · 报价; else the raw purpose. The raw purpose always stays visible.
+ */
 export function purposeLabel(purpose: string): string {
   if (Object.hasOwn(purposeLabels, purpose)) return `${purposeLabels[purpose]}（${purpose}）`;
   if (Object.hasOwn(stageLabels, purpose)) return `阶段 · ${stageLabels[purpose as keyof typeof stageLabels]}（${purpose}）`;
@@ -41,27 +30,6 @@ export function formatCents(cents: number): string {
  */
 export function shortId(id: string): string {
   return id.length > 12 ? `…${id.slice(-8)}` : id;
-}
-
-const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256;
-const name = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 64;
-const date = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
-const malformed = () => new Error('回执响应格式与契约不一致。');
-
-/** Copies only the contract's receipt keys, so nothing else a response carries can reach the page. */
-export function normalizeReceipts(body: unknown): ReceiptsView {
-  if (!object(body) || !Array.isArray(body.receipts)) throw malformed();
-  const receipts = body.receipts.map((row): Receipt => {
-    if (!object(row) || !text(row.id) || !text(row.sessionId) || !text(row.agentId) || !text(row.purpose) || !date(row.createdAt)
-      || !Array.isArray(row.fields) || !row.fields.every(name)
-      || (row.amount !== undefined && !(Number.isSafeInteger(row.amount) && (row.amount as number) >= 0))
-      || (row.intentId !== undefined && !text(row.intentId)) || (row.policyId !== undefined && !text(row.policyId))) throw malformed();
-    return { id: row.id, sessionId: row.sessionId, agentId: row.agentId, fields: [...row.fields] as Field[], purpose: row.purpose,
-      ...(row.amount !== undefined ? { amount: row.amount as number } : {}), createdAt: row.createdAt,
-      ...(row.intentId !== undefined ? { intentId: row.intentId } : {}), ...(row.policyId !== undefined ? { policyId: row.policyId } : {}) };
-  });
-  return { receipts, ...(body.sample === true ? { sample: true } : {}) };
 }
 
 // ---- payment events in the activity log (apps/workspace commerce.ts) ----
@@ -90,22 +58,6 @@ export function activityLabel(event: ActivityEvent): ActivityLabel {
   const label = Object.hasOwn(known.results, event.result) ? known.results[event.result] : known.fallback;
   return { title: `${known.title}（${event.event}）`, result: !label ? event.result : event.result ? `${label}（${event.result}）` : label,
     note: known.note };
-}
-
-/**
- * Sample only: authored receipts, labelled Sample, consistent with the Sample funnel's purposeReleases (two for
- * sample-intent-3, one for sample-intent-2) and the Sample grants' agents and sessions. Field names only.
- */
-export function sampleReceipts(now: number): ReceiptsView {
-  const secondsAgo = (seconds: number) => new Date(now - seconds * 1000).toISOString();
-  return { sample: true, receipts: [
-    { id: 'sample-receipt-3', sessionId: 'sample-session-a', agentId: 'sample-store-a', fields: ['payment_method'], purpose: 'payment',
-      amount: 8999, createdAt: secondsAgo(240), intentId: 'sample-intent-3', policyId: 'sample-policy' },
-    { id: 'sample-receipt-2', sessionId: 'sample-session-a', agentId: 'sample-store-a', fields: ['shipping_address'], purpose: 'checkout',
-      createdAt: secondsAgo(250), intentId: 'sample-intent-3', policyId: 'sample-policy' },
-    { id: 'sample-receipt-1', sessionId: 'sample-session-b', agentId: 'sample-store-b', fields: ['lang', 'shoe_size'], purpose: 'tier0',
-      createdAt: secondsAgo(2400), intentId: 'sample-intent-2', policyId: 'sample-policy' },
-  ] };
 }
 
 /** Sample only: the authorize and reverse rows the workspace would log for sample-intent-3's accept (the store did not take the payment). */

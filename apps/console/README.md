@@ -83,11 +83,11 @@ Added with the commerce-analytics plan (`docs/commerce-analytics-plan.md`). Ever
 | 策略 | `GET /personal/policy`, `POST /personal/policy/shadow`, `PUT /personal/policy` (owner) | The installed field-policy document (id, source: 默认 / 记忆库 / 已安装), per-category auto, purpose and write fields, ranking weights; a candidate textarea with 影子评估 (what past releases would change) and 安装 (a 422 lists every floor violation) |
 | 漏斗 | `GET /owner/funnel?limit=50` | One row per intent: 分组 (holdout arm), introduced, quoted, first-quote ms, accepted, outcome, fields read/granted, receipts, and a collapsible search-filter line; totals labelled as computed from the rows shown |
 | 实验 | `GET /owner/experiments` | Control and treatment arms with n, accepted, rate and the Wilson 95 % interval; 样本不足 below 40 per arm and no comparison; above that, the difference with a Newcombe interval |
-| 回执 | `GET /personal/receipts` | Purpose labels (结账地址, 支付授权, 零接入前缀, 阶段), payment amounts in dollars, shortened intent ids |
-| 授权 | `GET /personal/grants` | Each grant's stage (介绍 / 报价 / 接受 / 结账 / 支付) and shortened policy id |
+| 回执 | `GET /personal/receipts` | One panel (`ReceiptPanel`, also described under C23 below): per receipt the reader, field names, purpose label (首次介绍, 结账地址, 支付授权, 零接入前缀, 阶段 · …, raw purpose kept beside it), the payment amount in dollars from integer cents when present, the shortened intent id, session and receipt id; newest first, with a note when the 50-row default page is full. Rows carry only the contract's receipt keys; a failed or malformed read shows 暂时无法读取 without blocking other panels. Sample receipts come from the console fixture's presentation seed |
+| 授权 | `GET /personal/grants` | Each grant's stage (介绍 / 报价 / 接受 / 结账 / 支付) and shortened policy id, beside the C22 declared-needs line |
 | 活动 | `GET /owner/activity` | `payment.authorize` and `payment.reverse` labelled with their outcome; the `tap=… billto=…` reason shown as logged |
 
-The bridge (`server/workspace.ts`) allows the new routes at exact paths with strict query validation and a 16 KiB body cap, and passes an upstream message to the page only for the two policy write routes' 422 floor violations. The contract's policy module imports `node:crypto`, so the console mirrors `PolicyDocument`, `PolicyView`, `ShadowReport`, `ExperimentReport` and `Receipt` locally (`src/policy.ts`, `src/experiments.ts`, `src/receipts.ts`) with compile-time equality tests against the contract.
+The bridge (`server/workspace.ts`) allows the new routes at exact paths with strict query validation and a 16 KiB body cap, and passes an upstream message to the page only for the two policy write routes' 422 floor violations. The contract's policy module imports `node:crypto`, so the console mirrors `PolicyDocument`, `PolicyView`, `ShadowReport` and `ExperimentReport` locally (`src/policy.ts`, `src/experiments.ts`) with compile-time equality tests against the contract. Receipts need no mirror: `ReceiptPanel` and the live adapter import the contract's `Receipt` type from `packages/contract/src/types.ts`; `src/receipts.ts` holds only the receipt display helpers and the payment activity labels.
 
 ## Verification and remaining checks
 
@@ -97,3 +97,11 @@ The bridge (`server/workspace.ts`) allows the new routes at exact paths with str
 - The console also connected through its actual proxy to A's unmodified `bd9d6e3` workspace on isolated Sample data; grant revoke and demo reset succeeded. The upstream used its own stubs, so this does not prove real memory/UCP integration. Live source-record revoke remains blocked as described above. See [C10 evidence](../../docs/evidence/C10-console.md).
 
 C10b adds server bridge tests for SDK routing, missing-method fallback, failed writes without retries, owner checks, redirects and cross-origin rejection. The earlier C10 browser evidence describes the former manual-key transport; current SDK/environment verification is recorded separately in [C10b evidence](../../docs/evidence/C10b-sdk.md).
+
+## C22 provenance and declared needs
+
+Each learned evidence item displays its actual `models.gate → models.extractor`; one available ID is shown alone, and absent provenance displays “本地规则”. Invalid optional model metadata is ignored without rejecting older core payloads. Model labels never affect authorization or source counts. A live backend's Sample/fixture flag does not make learned records a scripted Sample stage.
+
+The grants view optionally displays the latest `kind=needs_declared` activity object's exact summary next to the merchant, matched by exact actor/agentId. No event means no badge. A provisional `grant.handshake.unavailable: string[]` projection supplies gray field tags. It is never inferred from a field complement. `TODO(contract)` remains until A publishes the owner projection and B preserves `kind`; existing SDK reads remain the only path, with no new endpoint or owner access to merchant handshakes. See docs/requests.md. Fixture support is display verification, not evidence that the backend has declared needs.
+
+C23：身份卡/授权/回执按 FIELDS 与 pref.* 通用显示，保留契约原键。新增本次请求条件面板，仅展示 intent.public，不覆盖卡片。回执走 getReceipts；GET /personal/intents 现有 owner 接口在 SDK 方法未到时走标注 TODO(sdk) 的窄白名单。历史读取失败与成功空结果分开。Sample 默认使用 fixtures/console/generalized.json，截图见 docs/evidence/console/README.md。

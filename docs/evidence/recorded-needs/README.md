@@ -1,4 +1,6 @@
-# 三条备选需求 · 录制素材与缺口
+# 三条备选需求 · 历史 catalog 素材与缺口
+
+2026-10-17 T9更新：本页保留原采集输入/结果与当时接口状态；SDK通用文本入口随后已到。当前三条视频需求及文件交接以[新分镜](../../video-storyboard.md)和[素材清单](../recording-manifest.md)为准，新的外套/背包没有复用本页hiking/running结果。
 
 **三个真实 catalog 查询已录；三条完整 iMessage Recorded run 仍待录。** 不能将本目录说成已经完成的 A17、适码报价或 checkout 证明。
 

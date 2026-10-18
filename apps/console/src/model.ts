@@ -1,3 +1,4 @@
+import type { IntentHistoryEntry, Receipt } from '../../../packages/contract/src/types';
 // Display models keep field keys open for generic rendering; adapters validate wire responses.
 // Card/Contribution/ActivityEvent mirror packages/contract/src/types.ts.
 // GrantView projects the HTTP view from apps/workspace/src/services/sessions.ts.
@@ -17,8 +18,14 @@ export interface GrantView {
   createdAt: string; expiresAt: string; remainingMs: number; revokedAt?: string; status: 'live' | 'expired' | 'revoked';
   /** Optional on the wire: the policy document that issued the grant, and the funnel stage that opened it. */
   policyId?: string; stage?: import('../../../packages/contract/src/analytics').FunnelStage;
+  // TODO(contract): owner-readable handshake projection on the existing grants response.
+  handshake?: { unavailable?: string[] };
 }
-export interface ActivityEvent { id: string; at: string; event: string; actor: string; object: string; result: string; reason: string }
+export interface ActivityEvent {
+  id: string; at: string; event: string; actor: string; object: string; result: string; reason: string;
+  // TODO(contract): needs_declared is optional until A/B publish and preserve the discriminator.
+  kind?: string;
+}
 /** An optional panel's data: a workspace without the endpoint (404/501) or a failed read never blocks the core snapshot. */
 export type Section<T> = { availability: 'ready'; data: T; sample?: boolean }
   | { availability: 'unavailable' | 'error'; message: string };
@@ -29,8 +36,10 @@ export interface ConsoleSnapshot {
   learning?: import('./learning').LearningState;
   policy?: Section<import('./policy').PolicyView>;
   funnel?: Section<import('./funnel').FunnelReport>;
-  receipts?: Section<import('./receipts').ReceiptsView>;
   experiments?: Section<import('./experiments').ExperimentReport>;
+  /** Optional histories: null is a failed or malformed read, distinct from a successful empty list. */
+  receipts?: Receipt[] | null;
+  intents?: IntentHistoryEntry[] | null;
 }
 export interface ConsoleAdapter {
   mode: 'sample' | 'live';
