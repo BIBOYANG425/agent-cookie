@@ -77,6 +77,9 @@ pnpm --filter @agent-cookie/workspace test
   are kept only for `pref.*` whitelist fields with a valid value, quoting the user's own words, and written with the
   extractor's basis: `stated` is on the card at once, observed/inferred need two independent sources (two conversations
   or intents — lane C's rules count them). One record per value per conversation or intent.
+- `evidence.models = { gate, extractor }` (B60): which models let a turn be learned from and produced the value. Kept
+  in SQLite and shown by `GET /personal/learned`; never given to `mergeCard`; written to the memory repo as
+  `gate:` / `extractor:` only once lane C's rules render it (probed at runtime), so a write never fails over it.
 - On an accept, the intent-history record and anything learned are written by the accepting agent, naming the intent
   (`evidence.intentId`), so another of the user's agents can accept what one asked for.
 - `POST /personal/learned/forget {conversationId | intentId}`: revokes everything learned from it at once (one SQLite
