@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DREAMING_DEFAULT_INTERVAL_MS, FIXTURE_FILES, WORKSPACE_PORT } from "@agent-cookie/contract";
+// The Visa Acceptance sandbox: the only host AGENT_COOKIE_PAY=visa may call (production is out of scope).
+import { VISA_ACCEPTANCE_SANDBOX_HOST } from "@agent-cookie/pay";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const WORKSPACE_DIR = resolve(here, "..");
@@ -56,11 +58,28 @@ export interface Config {
    */
   experiment: "off" | "ranking";
   /**
-   * Lane D payment (A21): AGENT_COOKIE_PAY = "off" (default) | "fake". Independent of the jar: payment may be on while
-   * the jar is off. "fake" is @agent-cookie/pay's fakeProvider, the only provider for now (the provider slot is
-   * described in payments.ts).
+   * Lane D payment (A21): AGENT_COOKIE_PAY = "off" (default) | "fake" | "visa". Independent of the jar: payment may be on
+   * while the jar is off. "fake" is @agent-cookie/pay's fakeProvider; "visa" is its Visa Acceptance provider against the
+   * sandbox only (payments.ts). Stripe is not wired.
    */
-  pay: "off" | "fake";
+  pay: "off" | "fake" | "visa";
+  /** AGENT_COOKIE_PAY=visa only: the Visa Acceptance REST credentials and the sandbox host. Never logged or printed. */
+  visa?: { merchantId: string; keyId: string; sharedSecret: string; host: string };
+}
+
+const VISA_VARS = ["VISA_ACCEPTANCE_MERCHANT_ID", "VISA_ACCEPTANCE_KEY_ID", "VISA_ACCEPTANCE_SHARED_SECRET"] as const;
+
+/** Errors name variables, never their values. */
+function visaConfig(env: NodeJS.ProcessEnv): NonNullable<Config["visa"]> {
+  const missing = VISA_VARS.filter((name) => !env[name]);
+  if (missing.length > 0) throw new Error(`AGENT_COOKIE_PAY=visa requires ${missing.join(", ")}`);
+  const host = env.VISA_ACCEPTANCE_HOST || VISA_ACCEPTANCE_SANDBOX_HOST;
+  if (host !== VISA_ACCEPTANCE_SANDBOX_HOST) throw new Error(`VISA_ACCEPTANCE_HOST must be ${VISA_ACCEPTANCE_SANDBOX_HOST} (the Visa Acceptance sandbox; production is out of scope)`);
+  const secret = env.VISA_ACCEPTANCE_SHARED_SECRET!;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(secret) || Buffer.from(secret, "base64").length === 0) {
+    throw new Error("VISA_ACCEPTANCE_SHARED_SECRET must be the base64 shared secret");
+  }
+  return { merchantId: env.VISA_ACCEPTANCE_MERCHANT_ID!, keyId: env.VISA_ACCEPTANCE_KEY_ID!, sharedSecret: secret, host };
 }
 
 function int(v: string | undefined, dflt: number, min: number, max: number): number {
@@ -96,7 +115,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const experiment = env.AGENT_COOKIE_EXPERIMENT || "off";
   if (experiment !== "off" && experiment !== "ranking") throw new Error("AGENT_COOKIE_EXPERIMENT must be off or ranking");
   const pay = env.AGENT_COOKIE_PAY || "off";
-  if (pay !== "off" && pay !== "fake") throw new Error("AGENT_COOKIE_PAY must be off or fake");
+  if (pay !== "off" && pay !== "fake" && pay !== "visa") throw new Error("AGENT_COOKIE_PAY must be off, fake or visa");
+  const visa = pay === "visa" ? visaConfig(env) : undefined;
   return {
     host: "127.0.0.1",
     port,
@@ -120,6 +140,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
     experiment,
     pay,
+    ...(visa ? { visa } : {}),
     learnProvider: learnProvider as Config["learnProvider"],
     ...(learnApiKey ? { learnApiKey } : {}),
     learnMode,

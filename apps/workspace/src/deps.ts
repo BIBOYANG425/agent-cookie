@@ -20,7 +20,7 @@ import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
 import { createLaneD, type LaneDHooks } from "./laneD.js";
-import { createAuthorizePayment, paymentProvider } from "./payments.js";
+import { createPaymentHooks, paymentProvider } from "./payments.js";
 import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
 import { LearningService } from "./services/learning.js";
@@ -43,7 +43,8 @@ export interface Deps {
   delivery: Delivery;
   /**
    * Lane D hooks (empty when AGENT_COOKIE_JAR_KEK / AGENT_COOKIE_UNLOCK_SECRET are not set and AGENT_COOKIE_PAY is off).
-   * `authorizePayment` is set by AGENT_COOKIE_PAY alone (payments.ts), independent of the jar. Mutable for tests.
+   * `authorizePayment` and `reversePayment` are set by AGENT_COOKIE_PAY alone (payments.ts), independent of the jar.
+   * Mutable for tests.
    */
   laneD: LaneDHooks;
   fixtures: Fixtures;
@@ -78,7 +79,10 @@ export interface Deps {
 export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks; learn?: LearnApi;
   /** Tests inject a clock that does not read the system time (Clock.at). */
   clock?: Clock;
-  /** Tests replace the provider AGENT_COOKIE_PAY builds (e.g. fakeProvider({ decline: true })). Payment stays off when AGENT_COOKIE_PAY is. */
+  /**
+   * Tests replace the provider AGENT_COOKIE_PAY builds (e.g. fakeProvider({ decline: true }), or visaProvider with an
+   * injected fetch). Payment stays off when AGENT_COOKIE_PAY is.
+   */
   paymentProvider?: PaymentProvider }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
@@ -105,7 +109,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   // exactly the hooks it built.
   if (!overrides.laneD && config.pay !== "off") {
     const provider = overrides.paymentProvider ?? paymentProvider(config);
-    if (provider) laneD.authorizePayment = createAuthorizePayment(ctx, card, provider);
+    if (provider) Object.assign(laneD, createPaymentHooks(ctx, card, provider));
   }
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);

@@ -2,7 +2,8 @@
 // Black box: HTTP only, against the real wiring (lane C seed, git memory repo, lane D's adapter replaying fixtures/ucp)
 // with AGENT_COOKIE_PAY=fake. Provider slot: Visa (TAP payer-auth today; a Visa payment-authorization sandbox when
 // credentials exist); Stripe not wired; the provider is @agent-cookie/pay's fakeProvider. The recorded complete is
-// INSUFFICIENT_PERMISSIONS, so an authorized accept is still a handoff: an authorization is not an order.
+// INSUFFICIENT_PERMISSIONS, so an authorized accept is still a handoff: an authorization is not an order. The adapter
+// passes the store no payment, so after complete the workspace reverses the authorization: results carry it `reversed`.
 //
 // Over HTTP, "the same authorization a second time" is an accept asked again: the decided quote returns its stored
 // result, so the same authorization comes back and nothing new is authorized or receipted. The refusal itself
@@ -59,7 +60,7 @@ describe("A21 支付单次限额 (AGENT_COOKIE_PAY=fake)", T, () => {
     expect(a.body.status).toBe("handoff");
     expect(a.body.orderId).toBeUndefined();
     expect(a.body.continueUrl).toMatch(/^https:\/\//);
-    expect(a.body.authorization).toMatchObject({ quoteId: quote.id, amount: quote.price, currency: "USD", status: "authorized" });
+    expect(a.body.authorization).toMatchObject({ quoteId: quote.id, amount: quote.price, currency: "USD", status: "reversed" });
     const paid = await paymentReceipts(personal);
     expect(paid).toHaveLength(1);
     expect(paid[0]).toMatchObject({ agentId: ucpAgent(offer.seller), fields: ["payment_method"], purpose: "payment", amount: quote.price,
@@ -76,12 +77,13 @@ describe("A21 支付单次限额 (AGENT_COOKIE_PAY=fake)", T, () => {
     // A new quote from the same store is a new authorization; the first one is never reused for it.
     const next = (await pinnedIntent(personal)).quotes.quotes.find((x: Json) => x.seller === offer.seller);
     const b = await personal.post(`/personal/quotes/${next.id}/accept`);
-    expect(b.body.authorization).toMatchObject({ quoteId: next.id, status: "authorized" });
+    expect(b.body.authorization).toMatchObject({ quoteId: next.id, status: "reversed" });
     expect(b.body.authorization.id).not.toBe(a.body.authorization.id);
     expect(await paymentReceipts(personal)).toHaveLength(2);
 
     const events = ((await owner.get("/owner/activity?limit=500")).body.events as Json[]).filter((e) => e.event === "payment.authorize");
-    expect(events.map((e) => [e.object, e.result, e.reason]).sort()).toEqual([[quote.id, "authorized", "tap=none"], [next.id, "authorized", "tap=none"]].sort());
+    expect(events.map((e) => [e.object, e.result, e.reason]).sort())
+      .toEqual([[quote.id, "authorized", "tap=none billto=shipping_address"], [next.id, "authorized", "tap=none billto=shipping_address"]].sort());
   });
 
   it("金额超 intent.budget 被拒: over the budget (the card's, when the request states none) → blocked OVER_BUDGET, nothing authorized", async () => {
@@ -102,7 +104,7 @@ describe("A21 支付单次限额 (AGENT_COOKIE_PAY=fake)", T, () => {
     expect(await paymentReceipts(personal)).toEqual([]);
     expect((await grants(personal)).filter((g) => g.stage === "payment")).toEqual([]);
     const events = ((await owner.get("/owner/activity?limit=500")).body.events as Json[]).filter((e) => e.event === "payment.authorize");
-    expect(events.map((e) => [e.result, e.reason])).toEqual([["OVER_BUDGET", "tap=none"]]);
+    expect(events.map((e) => [e.result, e.reason])).toEqual([["OVER_BUDGET", "tap=none billto=none"]]);
   });
 
   it("商家拿不到 token: a merchant's purpose=payment read is 403 SCOPE_DENIED; no response or callback carries the token or a provider reference", async () => {
@@ -133,7 +135,7 @@ describe("A21 支付单次限额 (AGENT_COOKIE_PAY=fake)", T, () => {
     const ucpQuote = (await getQuotes(personal, r.body.intentId, 10_000)).quotes.find((x: Json) => x.seller === offer.seller);
     expect(ucpQuote, `no quote from ${offer.seller}`).toBeDefined();
     const paid = await personal.post(`/personal/quotes/${ucpQuote.id}/accept`);
-    expect(paid.body.authorization?.status).toBe("authorized");
+    expect(paid.body.authorization?.status).toBe("reversed");
     texts.push(paid.text, (await personal.get("/personal/receipts")).text, (await personal.get("/personal/grants")).text,
       (await owner.get("/owner/activity?limit=500")).text, (await owner.get("/owner/funnel")).text);
     for (const t of texts) for (const s of SECRETS) expect(t, `a response carries ${s}`).not.toContain(s);

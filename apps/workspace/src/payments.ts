@@ -1,19 +1,27 @@
-// Lane D payment stage (A21; plan §5 "支付：为什么不存卡号"). With AGENT_COOKIE_PAY=fake the workspace authorizes the
+// Lane D payment stage (A21; plan §5 "支付：为什么不存卡号"). With AGENT_COOKIE_PAY=fake|visa the workspace authorizes the
 // price of a quote the user ACCEPTED, on the user's behalf, with the card's payment_method token reference, through
 // @agent-cookie/pay's createPayments. On or off independently of the jar hooks (payment may be on while the jar is off).
 //
-// Provider slot: Visa (TAP payer-auth today; a Visa payment-authorization sandbox when credentials exist); Stripe not
-// wired. The only provider today is @agent-cookie/pay's fakeProvider. The Visa leg that exists is the Trusted Agent
-// Protocol signature lane D's hooks put on requests to merchants (services/delivery.ts); no Visa authorization call
-// exists here.
+// Providers: "fake" is @agent-cookie/pay's fakeProvider; "visa" is its Visa Acceptance (Cybersource) REST provider
+// against the sandbox host only (apitest.cybersource.com), with the card's payment_method holding `tms_<TMS
+// payment-instrument id>`. Its request shapes were written offline and are marked UNVERIFIED in packages/pay/src/visa.ts.
+// Stripe is present in @agent-cookie/pay but not wired. The other Visa leg is the Trusted Agent Protocol signature
+// lane D's hooks put on requests to merchants (services/delivery.ts).
+//
+// A hold the store cannot consume is released: today's UCP adapter passes no payment to complete, so after complete the
+// workspace reverses the authorization (reversePayment) and the result says no hold remains (services/commerce.ts).
+//
+// The provider receives the shipping address as the billing address for the authorization; this is the workspace acting
+// for the user toward its own payment provider, logged by field name (`payment.authorize` reason
+// `billto=shipping_address`), never a merchant release, so it writes no receipt.
 //
 // Hard rules kept: the token reference is read from the card here and goes only to the provider; the provider's
 // reference stays in SQLite (payment_authorizations); merchants see the authorization RESULT (id, amount, status) and
 // never either reference; every authorization writes a receipt with the amount (git first, then SQLite); single use
 // per quote is a UNIQUE row, so it survives a restart. Everything here is deterministic code over stored rows.
-import type { AuthorizePayment, Receipt } from "@agent-cookie/contract";
+import type { AuthorizePayment, Receipt, ReversePayment } from "@agent-cookie/contract";
 import {
-  createPayments, fakeProvider,
+  createPayments, fakeProvider, visaProvider,
   type InternalAuthorization, type PaymentContext, type PaymentProvider, type PaymentReceipt, type PaymentStore,
 } from "@agent-cookie/pay";
 import type { Clock } from "./clock.js";
@@ -27,7 +35,10 @@ import { persistStrict, writeMeta, type Ctx } from "./services/context.js";
 
 /** The configured provider, or undefined when payment is off (AGENT_COOKIE_PAY unset or "off"). */
 export function paymentProvider(config: Config): PaymentProvider | undefined {
-  return config.pay === "fake" ? fakeProvider() : undefined;
+  if (config.pay === "fake") return fakeProvider();
+  // loadConfig already required the three variables and refused any host but the sandbox; visaProvider checks again.
+  if (config.pay === "visa" && config.visa) return visaProvider(config.visa);
+  return undefined;
 }
 
 /** createPayments' store, on SQLite: authorizations and quote reservations survive a restart and are wiped by reset. */
@@ -62,8 +73,8 @@ export function paymentBudgetCents(intent: Pick<IntentRow, "public">, cardBudget
   return parseBudgetCents(intent.public.budget) ?? parseBudgetCents(cardBudget) ?? quotePrice;
 }
 
-/** deps.laneD.authorizePayment: createPayments over the workspace's own rows. */
-export function createAuthorizePayment(ctx: Ctx, card: CardService, provider: PaymentProvider): AuthorizePayment {
+/** deps.laneD.authorizePayment and deps.laneD.reversePayment: createPayments over the workspace's own rows. */
+export function createPaymentHooks(ctx: Ctx, card: CardService, provider: PaymentProvider): { authorizePayment: AuthorizePayment; reversePayment: ReversePayment } {
   const { store, clock } = ctx;
 
   // Everything comes from stored rows; the caller's sessionId/quoteId are only keys. Missing anything → null (404).
@@ -100,6 +111,7 @@ export function createAuthorizePayment(ctx: Ctx, card: CardService, provider: Pa
     store.insertReceipt({ ...receipt, userId: session.userId });
   };
 
-  return createPayments({ provider, getContext, onReceipt, store: new SqlitePaymentStore(store, clock), now: () => clock.now(),
-    newId: () => newId("pa") }).authorizePayment;
+  const payments = createPayments({ provider, getContext, onReceipt, store: new SqlitePaymentStore(store, clock), now: () => clock.now(),
+    newId: () => newId("pa") });
+  return { authorizePayment: payments.authorizePayment, reversePayment: payments.reverseAuthorization };
 }

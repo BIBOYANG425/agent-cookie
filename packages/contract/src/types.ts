@@ -447,11 +447,38 @@ export interface PaymentAuthorization {
   quoteId: string;
   amount: number;
   currency: "USD";
-  status: "authorized" | "declined" | "used";
+  /**
+   * `reversed` (additive): the hold was released at the provider because the store did not take the delegated payment
+   * (today's UCP adapter passes none to complete), so nothing remains held on the user's card.
+   */
+  status: "authorized" | "declined" | "used" | "reversed";
   createdAt: string;
 }
+
+/**
+ * Additive (lane D): the billing address a payment provider may check the authorization against, given by the workspace
+ * from the address it already released for this checkout. Never sent to a merchant; never carries card data.
+ */
+export interface PaymentBillTo {
+  name?: string;
+  line1: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+  email?: string;
+}
+
 export type SignHandshake = (h: Handshake) => Promise<{ sig: string; kid: string }>;
-export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD" }) => Promise<PaymentAuthorization>;
+/** `billTo` is optional and additive: only a provider that checks the address (Visa Acceptance) reads it. */
+export type AuthorizePayment = (a: { sessionId: string; quoteId: string; amount: number; currency: "USD"; billTo?: PaymentBillTo }) => Promise<PaymentAuthorization>;
+/**
+ * Additive (lane D): release an authorization's hold the store did not take. `outcome` says what happened: `reversed`
+ * (the provider confirmed; the authorization's status is `reversed`) or `not_supported` (the provider has no reversal;
+ * the authorization is still `authorized` and its hold may remain until it expires). A provider failure throws
+ * UPSTREAM_ERROR and leaves the authorization `authorized`.
+ */
+export type ReversePayment = (a: { authorizationId: string }) => Promise<{ authorization: PaymentAuthorization; outcome: "reversed" | "not_supported" }>;
 
 // ---- Error codes (plan §5 错误契约) ----
 

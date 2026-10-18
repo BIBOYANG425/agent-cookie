@@ -1,0 +1,85 @@
+{
+  "_provenance": "Written offline from the public Visa Acceptance (Cybersource) REST reference as known; NOT captured from the sandbox (this environment's network policy denies the Visa hosts and no credentials exist). Ids and codes are Sample values. Unverified items: packages/pay/src/visa.ts U2-U5, U7-U9. Settled from the official material: U1 (the signature uses \"(request-target)\", parenthesised, as the official SDKs do) and U6 (a reversal names the RESPONSE's authorizedAmount, currency under orderInformation.amountDetails).",
+  "_input": {
+    "amount": 500,
+    "currency": "USD",
+    "paymentMethodRef": "tms_AB6A54B982A6FCB6E05341588E0A0D5C",
+    "idempotencyKey": "pa_test_0002"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/pts/v2/payments",
+    "body": {
+      "clientReferenceInformation": {
+        "code": "pa_test_0002"
+      },
+      "processingInformation": {
+        "capture": false
+      },
+      "paymentInformation": {
+        "paymentInstrument": {
+          "id": "AB6A54B982A6FCB6E05341588E0A0D5C"
+        }
+      },
+      "orderInformation": {
+        "amountDetails": {
+          "totalAmount": "5.00",
+          "currency": "USD"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "_links": {
+        "authReversal": {
+          "method": "POST",
+          "href": "/pts/v2/payments/7605731245236543104953/reversals"
+        },
+        "self": {
+          "method": "GET",
+          "href": "/pts/v2/payments/7605731245236543104953"
+        },
+        "capture": {
+          "method": "POST",
+          "href": "/pts/v2/payments/7605731245236543104953/captures"
+        }
+      },
+      "clientReferenceInformation": {
+        "code": "pa_test_0002"
+      },
+      "id": "7605731245236543104953",
+      "orderInformation": {
+        "amountDetails": {
+          "authorizedAmount": "5.00",
+          "currency": "USD"
+        }
+      },
+      "paymentAccountInformation": {
+        "card": {
+          "type": "001"
+        }
+      },
+      "paymentInformation": {
+        "tokenizedCard": {
+          "type": "001"
+        },
+        "card": {
+          "type": "001"
+        }
+      },
+      "processorInformation": {
+        "approvalCode": "831000",
+        "responseCode": "00",
+        "avs": {
+          "code": "Y",
+          "codeRaw": "Y"
+        }
+      },
+      "reconciliationId": "Sample000000000001",
+      "status": "AUTHORIZED",
+      "submitTimeUtc": "2026-10-18T04:00:00Z"
+    }
+  }
+}

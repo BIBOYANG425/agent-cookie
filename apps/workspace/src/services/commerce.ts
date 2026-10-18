@@ -2,13 +2,14 @@
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
   DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type ErrorCode, type Field, type PaymentAuthorization, type Quote, type RankStats, type Receipt, type SearchStats,
-  type UcpCheckout, type UcpMessage, type UcpOffer,
+  type AcceptResult, type Agent, type ErrorCode, type Field, type PaymentAuthorization, type PaymentBillTo, type Quote, type RankStats, type Receipt,
+  type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { GrantRow, IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
+import { paymentBudgetCents } from "../payments.js";
 import { parseAddress, parseBudgetCents, parseCount, pickSellers, rankStats, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
 import { armFor } from "./experiments.js";
 import { outcomeRank, SellerStatsService } from "./seller-stats.js";
@@ -29,6 +30,23 @@ const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
  * only path that authorizes a payment today — carries no payer signature. The `payment.authorize` event says so.
  */
 const UCP_PAYER_TAP = "none";
+
+/**
+ * Whether a UCP complete hands the store the delegated payment. UcpApi.complete takes the authorization result, but lane
+ * D's CLI-backed adapter has no place for UCP `payment.instruments` (it sends `payment: {}`), so none is passed and the
+ * store cannot consume the authorization. After complete the workspace therefore reverses it, so no hold is left on the
+ * user's card for a payment nobody will take (`payment.reverse`).
+ */
+const UCP_STORE_TAKES_PAYMENT = false;
+
+/**
+ * The billing address a payment provider may check: the destination this checkout already released. Sending it is the
+ * workspace acting for the user toward its own payment provider, not a release to a merchant, so it writes no receipt;
+ * the `payment.authorize` event records it by field name only (`billto=shipping_address`, or `billto=none`).
+ */
+function billToOf(d: UcpDestination): PaymentBillTo {
+  return { ...(d.name ? { name: d.name } : {}), line1: d.line1, city: d.city, region: d.region, postalCode: d.postalCode, country: d.country };
+}
 
 /** Why the payment stage stopped an accept before anything more reached the store (AcceptResult.message, verbatim). */
 const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
@@ -361,10 +379,18 @@ export class CommerceService {
     // Lane D payment stage (A21): the authorization RESULT once the workspace made one; carried on every result after.
     let authorization: PaymentAuthorization | undefined;
     let paymentGrant: GrantRow | undefined;
-    const done = (r: AcceptResult): AcceptResult => {
+    const done = async (r: AcceptResult): Promise<AcceptResult> => {
+      let res = r;
+      // An authorization still holding funds here was not taken by the store (UCP_STORE_TAKES_PAYMENT): release it and
+      // say so. Only reached after complete, whatever its outcome (ordered, handoff, sold out, upstream failure).
+      if (authorization?.status === "authorized" && !UCP_STORE_TAKES_PAYMENT) {
+        const released = await this.releaseHold(q, authorization, res.status);
+        authorization = released.authorization;
+        res = { ...res, message: [res.message, released.note].filter(Boolean).join(" ") };
+      }
       // Like the checkout grant (decide), the payment stage's grant is withdrawn when the user cannot finish this checkout.
-      if (paymentGrant && r.status !== "ordered" && r.status !== "handoff") this.sessions.withdraw(paymentGrant.id);
-      const out = receipts.length > 0 ? { ...r, receipts } : r;
+      if (paymentGrant && res.status !== "ordered" && res.status !== "handoff") this.sessions.withdraw(paymentGrant.id);
+      const out = receipts.length > 0 ? { ...res, receipts } : res;
       return authorization ? { ...out, authorization } : out;
     };
     // Warnings (low stock, sold-out notices) from any step reach the user verbatim, even when a later step does not
@@ -396,6 +422,22 @@ export class CommerceService {
           ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "The card holds a Sample address, so none was sent. Enter a real address on the merchant's page." }
           : { status: "blocked", quoteId: q.id, code: "MISSING_FIELD", message: "The card holds a Sample address, so none was sent." });
       }
+      // Lane D payment stage (A21): with payment on (AGENT_COOKIE_PAY) and a token reference on the card, the workspace
+      // will authorize the accepted price on the user's behalf. Without the hook or without a token this stage does not
+      // exist. The event names the outcome, the TAP signature, and whether the provider got the address as billTo — by
+      // field name only.
+      const pay = card.payment_method ? this.ctx.laneD.authorizePayment : undefined;
+      const logPayment = (result: string, billToSent: boolean) => this.ctx.log({ event: "payment.authorize", actor: "workspace", object: q.id, result,
+        reason: `tap=${UCP_PAYER_TAP} billto=${billToSent ? "shipping_address" : "none"}` });
+      // The budget first, before the address is read or leaves: a quote the budget already rules out never gets a
+      // destination. Same rule as the authorization itself (payments.ts paymentBudgetCents), which checks it again.
+      if (pay) {
+        const intent = this.ctx.store.intent(q.intentId);
+        if (intent && q.price > paymentBudgetCents(intent, card.budget, q.price)) {
+          logPayment("OVER_BUDGET", false);
+          return done({ status: "blocked", quoteId: q.id, code: "OVER_BUDGET", message: PAYMENT_BLOCKED.OVER_BUDGET });
+        }
+      }
       const read = await this.fields.read(proxy, q.sessionId, ["shipping_address"], "checkout");
       if (read.receipt) receipts.push(read.receipt);
       const address = read.fields.shipping_address;
@@ -404,30 +446,28 @@ export class CommerceService {
           ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "Add the shipping address on the merchant's page to finish." }
           : { status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "No shipping address and no merchant page to finish on." });
       }
-      co = await ucp.setDestination(co, parseAddress(address));
+      const destination = parseAddress(address);
+      co = await ucp.setDestination(co, destination);
       heard(co.messages);
       if (stopped(co.messages, co.status)) {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
-      // Lane D payment stage (A21), after the destination and before complete: with payment on (AGENT_COOKIE_PAY) and a
-      // token reference on the card, the workspace authorizes the accepted price on the user's behalf (payments.ts:
-      // accepted quote, budget, single use). Over budget, already used or declined → nothing more goes to the store.
-      // Without the hook or without a token this step does not exist. The event names the outcome and tap only.
-      const pay = this.ctx.laneD.authorizePayment;
-      if (pay && card.payment_method) {
-        const logPayment = (result: string) =>
-          this.ctx.log({ event: "payment.authorize", actor: "workspace", object: q.id, result, reason: `tap=${UCP_PAYER_TAP}` });
+      // The authorization, after the destination (so the provider can check the billing address against it) and before
+      // complete (payments.ts: accepted quote, budget, single use). Already used or declined → nothing more goes to the store.
+      if (pay) {
         try {
-          authorization = await pay({ sessionId: q.sessionId, quoteId: q.id, amount: q.price, currency: "USD" });
+          authorization = await pay({ sessionId: q.sessionId, quoteId: q.id, amount: q.price, currency: "USD", billTo: billToOf(destination) });
         } catch (err) {
           if (!(err instanceof WorkspaceError)) throw err;
-          logPayment(err.code);
+          // createPayments refuses (NOT_FOUND, SCOPE_DENIED, OVER_BUDGET, AUTHORIZATION_USED) before it calls the
+          // provider; UPSTREAM_ERROR means the provider was called with billTo, whether or not it answered.
+          logPayment(err.code, err.code === "UPSTREAM_ERROR");
           if (err.code === "UPSTREAM_ERROR") {
-            return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The payment provider could not be reached; nothing was ordered." }));
+            return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: this.paymentFailure(q) }));
           }
           return done({ status: "blocked", quoteId: q.id, code: err.code, message: PAYMENT_BLOCKED[err.code] ?? "No payment was authorized; nothing was ordered." });
         }
-        logPayment(authorization.status);
+        logPayment(authorization.status, true);
         if (authorization.status !== "authorized") {
           return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The payment was declined; nothing was ordered." }));
         }
@@ -442,8 +482,9 @@ export class CommerceService {
       }
       try {
         // UcpApi.complete takes an optional authorization result, but lane D's adapter has no place for UCP
-        // `payment.instruments` (it sends `payment: {}`), so none is passed: an authorization is not an order, and the
-        // store's own outcome below is reported as it is (fixture mode: requires_escalation → handoff).
+        // `payment.instruments` (it sends `payment: {}`), so none is passed (UCP_STORE_TAKES_PAYMENT): an authorization
+        // is not an order, the store's own outcome below is reported as it is (fixture mode: requires_escalation →
+        // handoff), and done() then releases the hold.
         co = await ucp.complete(co);
       } catch (err) {
         // The checkout exists with the destination set; the store only refuses to finalize without the buyer.
@@ -464,6 +505,8 @@ export class CommerceService {
           message: [messageText(warnings), publicUpstreamMessage(err.message)].filter(Boolean).join(" "), ...(u ? { continueUrl: u } : {}) });
       }
       if (err instanceof WorkspaceError) return done({ status: "blocked", quoteId: q.id, code: err.code, message: err.message });
+      // An unexpected error still propagates, but never leaves a hold behind.
+      if (authorization?.status === "authorized" && !UCP_STORE_TAKES_PAYMENT) await this.releaseHold(q, authorization, "failed");
       throw err;
     }
     const message = say(co.messages);
@@ -484,6 +527,51 @@ export class CommerceService {
     }
     if (result.status === "ordered" || result.status === "handoff") await this.lastOrder(proxy, q);
     return done(result);
+  }
+
+  /**
+   * What to tell the user when the payment stage failed upstream. No recorded authorization → the provider failed. A
+   * recorded one means the provider authorized but its receipt could not be written, so createPayments undid it:
+   * `reversed` when the provider confirmed, still `authorized` when it could not (the hold may remain). Logged as
+   * `payment.reverse` with the outcome only.
+   */
+  private paymentFailure(q: QuoteRow): string {
+    const recorded = this.ctx.store.paymentAuthorizationForQuote(q.id);
+    if (!recorded) return "The payment provider could not be reached; nothing was ordered.";
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: recorded.status === "reversed" ? "reversed" : "not_reversed" });
+    return recorded.status === "reversed"
+      ? "The payment could not be recorded, so its authorization was reversed; no hold remains on your card and nothing was ordered."
+      : "The payment could not be recorded and its hold could not be released; it may stay on your card until it expires. Nothing was ordered.";
+  }
+
+  /**
+   * Release the hold of an authorization the store did not take (reversePayment), log `payment.reverse` with the outcome
+   * only, and word the line the user is told. Never throws: a failed release is reported as a hold that may remain.
+   */
+  private async releaseHold(q: QuoteRow, authorization: PaymentAuthorization, status: AcceptResult["status"]):
+    Promise<{ authorization: PaymentAuthorization; note: string }> {
+    const reverse = this.ctx.laneD.reversePayment;
+    let current = authorization;
+    let outcome: string;
+    if (!reverse) {
+      outcome = "not_supported";
+    } else {
+      try {
+        const r = await reverse({ authorizationId: authorization.id });
+        current = r.authorization;
+        outcome = r.outcome;
+      } catch (err) {
+        outcome = err instanceof WorkspaceError ? err.code : "error";
+      }
+    }
+    this.ctx.log({ event: "payment.reverse", actor: "workspace", object: q.id, result: outcome });
+    if (current.status !== "reversed") {
+      return { authorization: current, note: "The store did not take the payment authorization and its hold could not be released; it may stay on your card until it expires." };
+    }
+    const why = status === "handoff" ? "The store needs you to pay on its own page, so the payment authorization was reversed"
+      : status === "ordered" ? "The store did not use the payment authorization, so it was reversed"
+        : "The payment authorization was reversed";
+    return { authorization: current, note: `${why}; no hold remains on your card.` };
   }
 
   /** The proxy's own cookie note: what this returning customer ordered last (demo beat 2:05). */

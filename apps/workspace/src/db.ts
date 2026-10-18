@@ -36,7 +36,11 @@ export interface ArmRow { intentId: string; arm: ExperimentArm; createdAt: strin
  * Lane D payment (A21): an authorization with the two references that never leave the workspace — the provider's
  * (capture) and the card's payment_method token reference. Same shape as @agent-cookie/pay's InternalAuthorization.
  */
-export interface PaymentAuthorizationRow extends PaymentAuthorization { providerRef: string; paymentMethodRef: string; agentId: string }
+export interface PaymentAuthorizationRow extends PaymentAuthorization {
+  providerRef: string; paymentMethodRef: string; agentId: string;
+  /** v12: integer cents the provider's response authorized (what a reversal releases); absent on older rows. */
+  authorizedAmount?: number;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -93,8 +97,10 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 10, table: "intents", column: "arm", ddl: "ALTER TABLE intents ADD COLUMN arm TEXT" },
   // v11 (lane D, A21): payment_authorizations is a new TABLE, not a column: SCHEMA's CREATE TABLE IF NOT EXISTS adds it
   // to an older database on open, so there is no ALTER here; the version bump records that the database has it.
+  // v12 (lane D): the amount the provider's response authorized — a reversal must name it, not the requested amount.
+  { version: 12, table: "payment_authorizations", column: "authorized_amount", ddl: "ALTER TABLE payment_authorizations ADD COLUMN authorized_amount INTEGER" },
 ];
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations"] as const;
@@ -166,12 +172,14 @@ function toReceipt(r: Row): ReceiptRow {
   if (r.policy_id) x.policyId = String(r.policy_id);
   return x;
 }
-const PAYMENT_STATUSES: ReadonlyArray<PaymentAuthorization["status"]> = ["authorized", "declined", "used"];
+const PAYMENT_STATUSES: ReadonlyArray<PaymentAuthorization["status"]> = ["authorized", "declined", "used", "reversed"];
 function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
   const status = PAYMENT_STATUSES.find((x) => x === r.status);
   if (!status) return undefined;
-  return { id: String(r.id), sessionId: String(r.session_id), quoteId: String(r.quote_id), amount: Number(r.amount), currency: "USD", status,
-    createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
+  const row: PaymentAuthorizationRow = { id: String(r.id), sessionId: String(r.session_id), quoteId: String(r.quote_id), amount: Number(r.amount), currency: "USD",
+    status, createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
+  if (r.authorized_amount !== null && r.authorized_amount !== undefined) row.authorizedAmount = Number(r.authorized_amount);
+  return row;
 }
 function toNote(r: Row): NoteRow {
   return { agentId: String(r.agent_id), userId: String(r.user_id), key: String(r.key), sessionId: String(r.session_id), value: String(r.value),
@@ -612,11 +620,12 @@ export class Store {
   }
   putPaymentAuthorization(a: PaymentAuthorizationRow): void {
     this.exec(`INSERT INTO payment_authorizations (id, quote_id, session_id, amount, currency, status, provider_ref, payment_method_ref, agent_id,
-      created_at, reserved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, reserved_at, authorized_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET session_id = excluded.session_id, amount = excluded.amount, currency = excluded.currency,
         status = excluded.status, provider_ref = excluded.provider_ref, payment_method_ref = excluded.payment_method_ref,
-        agent_id = excluded.agent_id, created_at = excluded.created_at`,
-      a.id, a.quoteId, a.sessionId, a.amount, a.currency, a.status, a.providerRef, a.paymentMethodRef, a.agentId, a.createdAt, a.createdAt);
+        agent_id = excluded.agent_id, created_at = excluded.created_at, authorized_amount = excluded.authorized_amount`,
+      a.id, a.quoteId, a.sessionId, a.amount, a.currency, a.status, a.providerRef, a.paymentMethodRef, a.agentId, a.createdAt, a.createdAt,
+      a.authorizedAmount ?? null);
   }
   /** A recorded authorization (a bare reservation is not one). */
   paymentAuthorization(id: string): PaymentAuthorizationRow | undefined {

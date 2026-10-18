@@ -1,0 +1,27 @@
+{
+  "_provenance": "Written offline from the public Visa Acceptance (Cybersource) REST reference as known; NOT captured from the sandbox (this environment's network policy denies the Visa hosts and no credentials exist). Ids and codes are Sample values. Unverified items: packages/pay/src/visa.ts U2-U5, U7-U9. Settled from the official material: U1 (the signature uses \"(request-target)\", parenthesised, as the official SDKs do) and U6 (a reversal names the RESPONSE's authorizedAmount, currency under orderInformation.amountDetails).",
+  "response": {
+    "status": 201,
+    "body": {
+      "_links": {
+        "self": {
+          "method": "GET",
+          "href": "/pts/v2/payments/7605731245236543104954"
+        }
+      },
+      "clientReferenceInformation": {
+        "code": "pa_test_0003"
+      },
+      "errorInformation": {
+        "reason": "PROCESSOR_DECLINED",
+        "message": "Decline - General decline of the card. No other information provided by the issuing bank."
+      },
+      "id": "7605731245236543104954",
+      "processorInformation": {
+        "responseCode": "05"
+      },
+      "status": "DECLINED",
+      "submitTimeUtc": "2026-10-18T04:00:01Z"
+    }
+  }
+}

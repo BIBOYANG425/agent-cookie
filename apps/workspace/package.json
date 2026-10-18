@@ -8,7 +8,8 @@
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "smoke:live": "tsx scripts/live-smoke.ts"
+    "smoke:live": "tsx scripts/live-smoke.ts",
+    "smoke:visa": "tsx scripts/visa-smoke.ts"
   },
   "dependencies": {
     "@agent-cookie/auth": "workspace:*",

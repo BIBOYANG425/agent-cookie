@@ -249,6 +249,134 @@ describe("payment authorization", () => {
   });
 });
 
+describe("reversal of a hold nobody took", () => {
+  const input = { sessionId: "s", quoteId: "q", amount: 2_450, currency: "USD" as const };
+
+  it("reverseAuthorization calls the provider once, marks the record reversed, and a reversed authorization can no longer be used", async () => {
+    const payments = setup();
+    const authorized = await payments.authorizePayment(input);
+    const [first, concurrent] = await Promise.all([
+      payments.reverseAuthorization({ authorizationId: authorized.id }),
+      payments.reverseAuthorization({ authorizationId: authorized.id }),
+    ]);
+    expect(first).toEqual({ authorization: { ...authorized, status: "reversed" }, outcome: "reversed" });
+    expect(concurrent).toEqual(first);
+    expect(payments.provider.reverseCalls).toEqual([{ providerRef: "fake_pi_authorization-1", amount: 2_450, currency: "USD" }]);
+    expect(payments.get(authorized.id)?.status).toBe("reversed");
+    // Asking again returns the reversed record without another provider call.
+    expect((await payments.reverseAuthorization({ authorizationId: authorized.id })).outcome).toBe("reversed");
+    expect(payments.provider.reverseCalls).toHaveLength(1);
+    await expectCode(payments.usePayment({ authorizationId: authorized.id, agentId: "merchant-a" }), "AUTHORIZATION_USED");
+    expect(payments.provider.captureCalls).toEqual([]);
+    // The amount receipt written at authorization stays: the release happened; the hold is what was released.
+    expect(payments.receipts).toHaveLength(1);
+    for (const r of [first, payments.get(authorized.id)]) {
+      expect(JSON.stringify(r)).not.toContain("fake_pi_");
+      expect(JSON.stringify(r)).not.toContain("pm_card_visa");
+    }
+  });
+
+  it("a provider without reverse leaves the record authorized and says so; a provider failure leaves it authorized and throws UPSTREAM_ERROR", async () => {
+    const { reverse: _drop, ...withoutReverse } = fakeProvider();
+    const noReverse = setup({ provider: withoutReverse as ReturnType<typeof fakeProvider> });
+    const authorized = await noReverse.authorizePayment(input);
+    expect(await noReverse.reverseAuthorization({ authorizationId: authorized.id }))
+      .toEqual({ authorization: authorized, outcome: "not_supported" });
+    expect(noReverse.get(authorized.id)?.status).toBe("authorized");
+
+    const failing = setup({ provider: fakeProvider({ reverseError: true }) });
+    const held = await failing.authorizePayment(input);
+    const err = await failing.reverseAuthorization({ authorizationId: held.id }).catch((e: unknown) => e as Error & { code: string });
+    expect(err).toMatchObject({ code: "UPSTREAM_ERROR" });
+    expect((err as Error).message).not.toContain("fake reverse failure");
+    expect(failing.get(held.id)?.status).toBe("authorized");
+    expect(failing.provider.reverseCalls).toHaveLength(1);
+  });
+
+  it("refuses what holds nothing reversible: unknown, declined, captured", async () => {
+    const payments = setup();
+    await expectCode(payments.reverseAuthorization({ authorizationId: "missing" }), "NOT_FOUND");
+    const captured = await payments.authorizePayment(input);
+    await payments.usePayment({ authorizationId: captured.id, agentId: "merchant-a" });
+    await expectCode(payments.reverseAuthorization({ authorizationId: captured.id }), "AUTHORIZATION_USED");
+    const declined = setup({ provider: fakeProvider({ decline: true }) });
+    const denied = await declined.authorizePayment(input);
+    await expectCode(declined.reverseAuthorization({ authorizationId: denied.id }), "SCOPE_DENIED");
+    expect(payments.provider.reverseCalls).toEqual([]);
+    expect(declined.provider.reverseCalls).toEqual([]);
+  });
+
+  it("a reversal names the amount the provider's response authorized, not the requested amount", async () => {
+    const base = fakeProvider();
+    const provider = { ...base, authorize: async (i: Parameters<typeof base.authorize>[0]) => ({ ...(await base.authorize(i)), authorizedAmount: 2_000 }) };
+    const payments = setup({ provider: provider as ReturnType<typeof fakeProvider> });
+    const a = await payments.authorizePayment(input);
+    // The public result keeps the requested amount and never shows the internal one.
+    expect(a.amount).toBe(2_450);
+    expect(Object.keys(a)).not.toContain("authorizedAmount");
+    await payments.reverseAuthorization({ authorizationId: a.id });
+    expect(base.reverseCalls).toEqual([{ providerRef: "fake_pi_authorization-1", amount: 2_000, currency: "USD" }]);
+  });
+
+  it("the receipt cannot be written → the hold is reversed once, the record is reversed, the caller gets UPSTREAM_ERROR", async () => {
+    const records = new Map<string, InternalAuthorization>();
+    const reservations = new Set<string>();
+    const store: PaymentStore = {
+      get: (id) => records.get(id),
+      put: (r) => { records.set(r.id, { ...r }); },
+      findByQuote: (quoteId) => [...records.values()].find((r) => r.quoteId === quoteId),
+      reserveQuote: (quoteId) => (reservations.has(quoteId) ? false : (reservations.add(quoteId), true)),
+      releaseQuote: (quoteId) => { reservations.delete(quoteId); },
+    };
+    const run = async (provider: ReturnType<typeof fakeProvider>, id: string) => {
+      const payments = createPayments({
+        provider,
+        getContext: async () => ({ quoteStatus: "accepted", quoteAgentId: "m", sessionAgentId: "m", budget: 5_000, paymentMethodRef: "pm_card_visa" }),
+        onReceipt: async () => { throw new Error("memory repo write failed at /home/user/secret/path"); },
+        store,
+        newId: () => id,
+      });
+      const err = await payments.authorizePayment({ ...input, quoteId: `q-${id}` }).then(
+        (result) => result as unknown as Error & { code?: string },
+        (e: unknown) => e as Error & { code?: string },
+      );
+      return { err, record: records.get(id) };
+    };
+
+    const ok = fakeProvider();
+    const undone = await run(ok, "pa-1");
+    expect(undone.err).toMatchObject({ code: "UPSTREAM_ERROR" });
+    expect(undone.err.message).not.toContain("/home/user");
+    expect(ok.reverseCalls).toEqual([{ providerRef: "fake_pi_pa-1", amount: 2_450, currency: "USD" }]);
+    expect(undone.record?.status).toBe("reversed");
+
+    // The reversal fails too: still UPSTREAM_ERROR, and the record stays authorized so a remaining hold is visible.
+    const failing = fakeProvider({ reverseError: true });
+    const stuck = await run(failing, "pa-2");
+    expect(stuck.err).toMatchObject({ code: "UPSTREAM_ERROR" });
+    expect(failing.reverseCalls).toHaveLength(1);
+    expect(stuck.record?.status).toBe("authorized");
+
+    // A declined result writes no receipt, so nothing is reversed.
+    const declined = fakeProvider({ decline: true });
+    const none = await run(declined, "pa-3");
+    expect(none.err).toMatchObject({ status: "declined" });
+    expect(declined.reverseCalls).toEqual([]);
+  });
+
+  it("capture names the authorized amount (providers like Visa Acceptance need it); billTo reaches the provider only when given", async () => {
+    const calls: unknown[][] = [];
+    const base = fakeProvider();
+    const provider = { ...base, capture: async (...args: [string, number?, "USD"?]) => { calls.push(args); } };
+    const payments = setup({ provider: provider as ReturnType<typeof fakeProvider> });
+    const billTo = { name: "Sample User", line1: "1 Market St", city: "San Francisco", region: "CA", postalCode: "94105", country: "US" };
+    const a = await payments.authorizePayment({ ...input, billTo });
+    expect(base.authorizeCalls[0]).toEqual({ amount: 2_450, currency: "USD", paymentMethodRef: "pm_card_visa", idempotencyKey: "authorization-1", billTo });
+    await payments.usePayment({ authorizationId: a.id, agentId: "merchant-a" });
+    expect(calls).toEqual([["fake_pi_authorization-1", 2_450, "USD"]]);
+  });
+});
+
 describe.skipIf(!process.env.STRIPE_SECRET_KEY)("Stripe integration", () => {
   it("authorizes and captures with pm_card_visa", async () => {
     const payments = createPayments({

@@ -1,0 +1,50 @@
+{
+  "_provenance": "Written offline from the public Visa Acceptance (Cybersource) REST reference as known; NOT captured from the sandbox (this environment's network policy denies the Visa hosts and no credentials exist). Ids and codes are Sample values. Unverified items: packages/pay/src/visa.ts U2-U5, U7-U9. Settled from the official material: U1 (the signature uses \"(request-target)\", parenthesised, as the official SDKs do) and U6 (a reversal names the RESPONSE's authorizedAmount, currency under orderInformation.amountDetails).",
+  "_note": "Shape per the REST authorization-reversal guide (read through search snippets, not run): totalAmount is the authorization RESPONSE's orderInformation.amountDetails.authorizedAmount (authorize-with-billto.json: 124.50), not the requested amount; the currency is under orderInformation.amountDetails; the response is REVERSED with reversalAmountDetails.",
+  "request": {
+    "method": "POST",
+    "path": "/pts/v2/payments/7605731245236543104953/reversals",
+    "body": {
+      "reversalInformation": {
+        "amountDetails": {
+          "totalAmount": "124.50"
+        }
+      },
+      "orderInformation": {
+        "amountDetails": {
+          "currency": "USD"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "_links": {
+        "self": {
+          "method": "GET",
+          "href": "/pts/v2/payments/7605731400006543104956"
+        }
+      },
+      "clientReferenceInformation": {
+        "code": "pa_test_0001"
+      },
+      "id": "7605731400006543104956",
+      "orderInformation": {
+        "amountDetails": {
+          "currency": "USD"
+        }
+      },
+      "processorInformation": {
+        "responseCode": "00"
+      },
+      "reconciliationId": "Sample000000000001",
+      "reversalAmountDetails": {
+        "currency": "USD",
+        "reversedAmount": "124.50"
+      },
+      "status": "REVERSED",
+      "submitTimeUtc": "2026-10-18T04:01:00Z"
+    }
+  }
+}
