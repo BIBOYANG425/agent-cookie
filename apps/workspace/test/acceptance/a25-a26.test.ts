@@ -1,8 +1,8 @@
 // A25 · policy document, A26 · shadow (proposed; docs/commerce-analytics-plan.md Phase 1 — a human adds them to
 // docs/plan.md §2). Black box: HTTP only, against the real wiring (lane C seed, git memory repo, lane D's adapter
-// replaying fixtures/ucp recordings). Lane C's repo does not implement readPolicy/writePolicy yet, so an installed
-// document lives in SQLite (source "installed"); the floor, the ids on grants and receipts, and the shadow diff are
-// what these tests pin down.
+// replaying fixtures/ucp recordings). Lane C's repo implements readPolicy/writePolicy (POLICY.yaml, one commit by the
+// owner), so an installed document reports source "repo"; the floor, the ids on grants and receipts, and the shadow
+// diff are what these tests pin down.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, policyId } from "@agent-cookie/contract";
 import { api, expectError, KEYS, pinnedIntent, receipts, reset, startWorkspace, type Api, type Json, type Workspace } from "./helpers.js";
@@ -66,7 +66,8 @@ describe("A25 策略文档（proposed）", T, () => {
     doc.auto.retail = doc.auto.retail.filter((f) => f !== "deadline");
     const put = await owner.put("/personal/policy", doc);
     expect(put.status).toBe(200);
-    expect(put.body).toMatchObject({ policyId: policyId(doc), source: "installed" });
+    // The real memory repo writes POLICY.yaml first (one commit by the owner), so the source is the repo.
+    expect(put.body).toMatchObject({ policyId: policyId(doc), source: "repo" });
     await pinnedIntent(personal);
     const proxyGrants = ((await personal.get("/personal/grants")).body.grants as Json[]).filter((g) => String(g.agentId).startsWith("ucp:"));
     expect(proxyGrants.length).toBeGreaterThan(0);
