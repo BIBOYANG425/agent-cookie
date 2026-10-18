@@ -264,7 +264,9 @@ describe("what the learner proposes is a parameter, not authority", () => {
     expect(ev.result).toBe("written=4");
     expect(ev.reason).toContain("field=3");
     expect(ev.reason).toContain("value=1");
-    expect(JSON.stringify(await activity(h))).not.toMatch(/merino|leather|diabetic|555/);
+    // no value reaches the activity log (ids and times are left out of the check: a time can end in .555Z)
+    const logged = (await activity(h)).map((e) => [e.event, e.result, e.reason, (e as { object?: string }).object ?? ""].join(" ")).join("\n");
+    expect(logged).not.toMatch(/merino|leather|diabetic|415 555 0100|555 0100/);
   });
 
   it("a value the user revoked is not learned again", async () => {
