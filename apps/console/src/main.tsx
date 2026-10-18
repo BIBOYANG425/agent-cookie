@@ -1,20 +1,24 @@
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
+import consoleSeed from '../../../fixtures/console/generalized.json';
+import { ReceiptPanel } from './ReceiptPanel';
+import { IntentConditionsPanel } from './IntentConditionsPanel';
 import agents from '../../../fixtures/agents.json';
 import learningSeed from '../../../fixtures/learning/console.json';
-import { createLiveAdapter, createSampleAdapter } from './adapters';
+import { createLiveAdapter, createSampleAdapter, type PresentationSeed } from './adapters';
 import { ConsoleController, remainingSeconds } from './controller';
 import { FieldName, fieldName } from './fields';
-import type { ConsoleAdapter } from './model';
+import type { ConsoleAdapter, Contribution } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
+import { GrantNeeds } from './GrantNeeds';
 import './style.css';
 
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
 const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN', { hour12: false });
 const focusCard = () => document.getElementById('card-title')?.focus({ preventScroll: true });
-const createConsoleSample = () => createSampleAdapter(Date.now, undefined, learningSeed as LearningSeed,
-  new URLSearchParams(window.location.search).get('learningStage') ?? undefined);
+const createConsoleSample = () => createSampleAdapter(Date.now, consoleSeed.contributions as Contribution[], learningSeed as LearningSeed,
+  new URLSearchParams(window.location.search).get('learningStage') ?? undefined, consoleSeed.presentation as PresentationSeed);
 
 function Connection({ adapter, change }: { adapter: ConsoleAdapter; change: (next: ConsoleAdapter) => void }) {
   return <details className="connection">
@@ -54,7 +58,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#intent-conditions">本次请求</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -89,6 +93,8 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         revoke={(id) => void controller.revokeContribution(id).then(() => document.getElementById('learned-title')?.focus({ preventScroll: true }))}
         selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
 
+      <IntentConditionsPanel intents={data?.intents} />
+
       <section id="grants" className="panel" aria-labelledby="grants-title">
         <div className="sheet-heading"><h2 id="grants-title">授权</h2><span>到期或撤销后，商家不能继续读取</span></div>
         {!data || data.grants.length === 0 ? <p className="empty">{!data ? '连接后显示授权。' : '目前没有授权。介绍给商家后，相应的字段、用途和期限会显示在这里。'}</p>
@@ -96,13 +102,15 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
             const seconds = remainingSeconds(grant, data.receivedAt, now);
             const status = grant.status === 'revoked' ? '已撤销' : seconds === 0 ? '已过期' : `剩余 ${seconds} 秒`;
             return <article className="grant" key={grant.id}>
-              <div className="grant-title"><div><h3>{grant.agentName}</h3><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
+              <div className="grant-title"><div><h3>{grant.agentName}</h3><GrantNeeds grant={grant} events={data.events} /><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
               <dl><div><dt>允许字段</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map((field) => <li key={field}><FieldName field={field} /></li>)}</ul> : '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div><div><dt>会话</dt><dd>{grant.sessionId}</dd></div><div><dt>到期时间</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
               <button type="button" className="danger" disabled={blocked || grant.status !== 'live' || seconds === 0} aria-label={`撤销 ${grant.agentName} 的授权`} onClick={() => void controller.revokeGrant(grant.id)}>{grant.status === 'revoked' ? '已撤销' : '撤销授权'}</button>
             </article>;
           })}</div>}
         {data && <p className="panel-note">{sample ? 'Sample 倒计时仅用于演示。' : '剩余秒数由工作台返回的时长计算；最终放行以工作台检查为准。'}</p>}
       </section>
+
+      <ReceiptPanel receipts={data?.receipts} />
 
       <section id="activity" className="panel" aria-labelledby="activity-title">
         <div className="sheet-heading"><h2 id="activity-title">活动</h2><span>最新在前 · 展开查看原因</span></div>

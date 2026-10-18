@@ -1,5 +1,7 @@
 # A16 · coding agent 独立接入实录
 
+> 2026-10-17 人的收口裁决：**A16 通过（Claude Code + Devin）**，两次独立实跑已完成。下文保留当时完整 MemoryStore 的范围限制和原始判定，作为历史记录；C11 仍独立 BLOCKED，不以 A16 收口解除。
+
 判定：**两次实跑已完成，有限 preferences / note 接入验证通过；完整 A16 / C11 仍为 P1 BLOCKED**。两者都无法实现契约尚缺的六方法 MemoryStore。没有把局部 HTTP 成功或单元测试称为完整接入。
 
 | 项目 | Claude Desktop Code | Devin |

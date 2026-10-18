@@ -1,13 +1,18 @@
+import type { IntentHistoryEntry, Receipt } from '../../../packages/contract/src/types';
 import fixtureContributions from '../../../fixtures/contributions.json';
 import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
 import { countEvidenceSources, normalizeLearning, normalizeLearningPaused, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
 
+export interface PresentationSeed { receipts: Receipt[]; intents: IntentHistoryEntry[]; grantFields?: string[]; needs?: { agentId: string; object: string; unavailable: string[] }[] }
+
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
 export function createSampleAdapter(now: () => number = Date.now,
   seedContributions: readonly Contribution[] = fixtureContributions as Contribution[],
-  learningSeed: LearningSeed = { paused: false, learned: [] }, initialLearningStage?: string): ConsoleAdapter {
+  learningSeed: LearningSeed = { paused: false, learned: [] }, initialLearningStage?: string,
+  presentationSeed: PresentationSeed = { receipts: [], intents: [] }): ConsoleAdapter {
   const initialContributions = structuredClone([...seedContributions]);
   const initialLearning = structuredClone(learningSeed);
+  const presentation = structuredClone(presentationSeed);
   let contributions: Contribution[] = [];
   let learned: LearnedEntry[] = [];
   let learningPaused = initialLearning.paused;
@@ -28,11 +33,17 @@ export function createSampleAdapter(now: () => number = Date.now,
     const fields = [...new Set(contributions.filter((record) => !record.revokedAt).map((record) => record.field))];
     grants = ['a', 'b'].map((suffix) => ({
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
-      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...fields], purpose: 'handshake',
+      agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...(presentation.grantFields ?? fields)], purpose: 'handshake',
       createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 600000).toISOString(), remainingMs: 600000, status: 'live',
     }));
     events = [];
     addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
+    for (const need of presentation.needs ?? []) {
+      const grant = grants.find((row) => row.agentId === need.agentId);
+      if (grant) grant.handshake = { unavailable: [...need.unavailable] };
+      events.push({ id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), kind: 'needs_declared',
+        event: 'Sample · 商家申请', actor: need.agentId, object: need.object, result: 'Sample', reason: '预设的可选契约投影，不代表真实申请或放行。' });
+    }
   };
   seed();
   if (initialLearningStage && initialLearning.stages?.some((row) => row.id === initialLearningStage)) {
@@ -58,7 +69,7 @@ export function createSampleAdapter(now: () => number = Date.now,
           const remainingMs = Math.max(0, Date.parse(grant.expiresAt) - now());
           const status = grant.revokedAt ? 'revoked' : remainingMs === 0 ? 'expired' : 'live';
           return { ...grant, status, remainingMs: status === 'live' ? remainingMs : 0 } as GrantView;
-        }), learning, events: [...events].reverse(), receivedAt: now() });
+        }), learning, receipts: presentation.receipts, intents: presentation.intents, events: [...events].reverse(), receivedAt: now() });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
@@ -115,6 +126,13 @@ const validGrant = (row: unknown): boolean => object(row) && string(row.id) && s
   && (row.revokedAt === undefined || date(row.revokedAt));
 const validEvent = (row: unknown): boolean => object(row) && date(row.at)
   && ['id', 'event', 'actor', 'object', 'result', 'reason'].every((key) => string(row[key]));
+const validReceipt = (row: unknown): boolean => object(row)
+  && ['id', 'sessionId', 'agentId', 'purpose'].every((key) => string(row[key]))
+  && strings(row.fields) && date(row.createdAt)
+  && (row.amount === undefined || (typeof row.amount === 'number' && Number.isFinite(row.amount)));
+const validIntent = (row: unknown): boolean => object(row) && string(row.id) && string(row.agentId)
+  && date(row.createdAt) && date(row.expiresAt) && object(row.public) && Object.values(row.public).every(string)
+  && ['text', 'query', 'kind'].every((key) => row[key] === undefined || string(row[key]));
 const malformed = () => new Error('工作台响应格式与已核对契约不一致。');
 class RequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -156,20 +174,28 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
     }
   };
+  const optionalRows = async <T>(path: string, key: string, check: (row: unknown) => boolean, signal?: AbortSignal): Promise<T[] | null> => {
+    try {
+      const body = await request(path, 'GET', signal);
+      return object(body) && rows(body[key], check) ? body[key] as T[] : null;
+    } catch { return null; } // Distinguish a failed read from a successful empty history.
+  };
   const acknowledged = (body: unknown): body is Json => object(body) && body.ok === true;
   return {
     mode: 'live',
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
-      const [card, grantBody, activityBody, learned] = await Promise.all([
+      const [card, grantBody, activityBody, learned, receipts, intents] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
         learning(signal),
+        optionalRows<Receipt>('/personal/receipts', 'receipts', validReceipt, signal),
+        optionalRows<IntentHistoryEntry>('/personal/intents', 'intents', validIntent, signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned,
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, receipts, intents,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {

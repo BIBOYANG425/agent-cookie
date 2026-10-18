@@ -17,7 +17,7 @@
 3. 留下付款链接或已下单的真实结果。收到 `continue_url` 仅代表继续结账，不写成已经付款。
 4. 若有售罄 warning 或 `requires_escalation`，录下如实回复和继续链接；不能剪成成功路径。
 5. 经 SDK 的 `getActivity` / `getReceipts` 导出同时间段记录，accept 的 quoteId 对应到 agentId/sessionId；核对 accept 前没有地址放行，之后若有地址放行，仅给该商家且用途为 checkout；失败或交接时未放行也是有效结果，另一家的读取仍拒绝。发布材料隐藏敏感值。
-6. 三条备选逐条独立留证，见 [Recorded run 素材索引](recorded-needs/README.md)。catalog-only 文件不代替手机录屏，不把旧需求视频的输入或报价改成新需求。
+6. 三条备选逐条独立留证，见 [Recorded run 素材清单](recording-manifest.md)。catalog-only 文件不代替手机录屏，不把旧需求视频的输入或报价改成新需求。
 
 ## 执行记录（待填写）
 

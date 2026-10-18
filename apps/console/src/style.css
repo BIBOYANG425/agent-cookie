@@ -162,3 +162,6 @@ dd { margin: 0; min-width: 0; }
   .activity-list summary { grid-template-columns: minmax(0, 1fr); }
   .reason-toggle { grid-column: 1; grid-row: auto; }
 }
+.grant-needs { margin-top: .35rem; }
+.grant-needs .small { margin: .3rem 0; }
+.grant-fields .unavailable-field { color: #687078; background: #edf0f2; border: 1px solid #d5dade; }
