@@ -68,6 +68,8 @@ export class PolicyService {
   purposeFields(category: Category): Field[] { return policyPurposeFields(this.doc, category); }
   purposesFor(category: Category, field: Field): string[] { return policyPurposesFor(this.doc, category, field); }
   canWrite(category: Category, field: Field): boolean { return evaluateWrite(this.doc, category, field); }
+  /** The category's writable fields in document order (GET /assistant/context `writable`). */
+  writeFields(category: Category): Field[] { return [...(this.doc.write[category] ?? [])]; }
 
   /** PUT /personal/policy. 422 with every violation named (sections and field names, never values); nothing changes on 422. */
   async install(actor: string, userId: string, input: unknown): Promise<PolicyView> {

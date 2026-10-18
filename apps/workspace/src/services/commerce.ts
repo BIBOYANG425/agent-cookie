@@ -65,6 +65,15 @@ export type IntentStreamItem = { event: IntentEvent; seq?: number } | { heartbea
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
 export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
 
+/**
+ * Pairwise isolation on the intent routes (bring-your-own-agent): a linked assistant reads quotes and events, and
+ * accepts, only for intents it created; anything else answers the same 404 as an intent that does not exist. The
+ * user's own agents and the owner see every intent of the user.
+ */
+function visibleTo(intent: IntentRow, caller?: AuthedAgent): boolean {
+  return caller?.role !== "assistant" || intent.agentId === caller.agentId;
+}
+
 export function toQuote(q: QuoteRow): Quote {
   const out: Quote = { id: q.id, intentId: q.intentId, agentId: q.agentId, text: q.text, price: q.price, currency: "USD", etaDate: q.etaDate ?? null };
   if (q.etaText !== undefined) out.etaText = q.etaText;
@@ -136,7 +145,8 @@ export class CommerceService {
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
    * grants, quotes and Tier 0 receipts in ONE transaction; only then deliver. A failure anywhere before the commit
-   * leaves no state behind, so a retry with the same Idempotency-Key starts clean.
+   * leaves no state behind, so a retry with the same Idempotency-Key starts clean. `personal` is the agent that asks: a
+   * personal agent or a linked assistant (the route checked its grant); it is stored as the intent's agentId (createdBy).
    */
   async createIntent(personal: AuthedAgent, userId: string, input: IntentInput): Promise<{ intentId: string; expiresAt: string; introduced: number }> {
     for (const [k, v] of Object.entries(input.public)) {
@@ -175,7 +185,8 @@ export class CommerceService {
     }
     for (const agent of store.agents()) {
       // Registered merchants come in through the optional kind hint; UCP stores through the search below.
-      if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
+      // The user's own agents and company assistants act for the user; they are never introduced as merchants.
+      if (agent.category === "personal" || agent.category === "assistant" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
       if (agent.callbackUrl) {
         plans.push(await this.sessions.prepare(userId, agent, intent, "callback"));
       } else if (agent.chatEndpoint) {
@@ -290,9 +301,9 @@ export class CommerceService {
     return { intentId: intent.id, expiresAt: intent.expiresAt, introduced: plans.length };
   }
 
-  async quotes(userId: string, intentId: string, waitMs: number): Promise<{ intentId: string; quotes: Quote[]; complete: boolean }> {
+  async quotes(userId: string, intentId: string, waitMs: number, caller?: AuthedAgent): Promise<{ intentId: string; quotes: Quote[]; complete: boolean }> {
     const intent = this.ctx.store.intent(intentId);
-    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!intent || intent.userId !== userId || !visibleTo(intent, caller)) fail("NOT_FOUND");
     const wait = Math.max(0, Math.min(waitMs, QUOTE_POLL_MAX_MS));
     const expected = new Set(this.ctx.store.intentSessions(intentId).filter((x) => x.channel !== "tier0").map((x) => x.agentId));
     const started = Date.now();
@@ -313,9 +324,9 @@ export class CommerceService {
    * Heartbeat ticks every streamLimits.heartbeatMs; expiry is re-checked at each, at the expiry instant, and when the
    * clock is shifted. It also ends after streamLimits.maxMs, on `signal`, and as soon as a reset starts.
    */
-  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal } = {}): AsyncGenerator<IntentStreamItem> {
+  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal; caller?: AuthedAgent } = {}): AsyncGenerator<IntentStreamItem> {
     const intent = this.ctx.store.intent(intentId);
-    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!intent || intent.userId !== userId || !visibleTo(intent, opts.caller)) fail("NOT_FOUND");
     return this.stream(intent, lastEventId ?? 0, opts.signal);
   }
 
@@ -410,12 +421,14 @@ export class CommerceService {
    * Accept a quote. Concurrent accepts of one quote share one run; a decided quote returns its stored result.
    * Nothing goes upstream unless the intent and the merchant's grant for it are still live. On accept the
    * merchant's grant for this intent widens to shipping_address for purpose "checkout" — the only way a
-   * purpose field is ever released.
+   * purpose field is ever released. A linked assistant accepts only quotes of intents it created (visibleTo); the
+   * merchant side is the same for every caller: the address reaches the merchant at checkout, payment at the payment
+   * stage, each with its receipt, and the result carries field names only.
    */
   async accept(personal: AuthedAgent, userId: string, quoteId: string): Promise<AcceptResult> {
     const q = this.ctx.store.quote(quoteId);
     const intent = q && this.ctx.store.intent(q.intentId);
-    if (!q || !intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!q || !intent || intent.userId !== userId || !visibleTo(intent, personal)) fail("NOT_FOUND");
     const running = this.inflight.get(q.id);
     if (running) return running;
     if (q.result) return q.result;

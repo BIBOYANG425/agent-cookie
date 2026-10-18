@@ -45,6 +45,7 @@ network missing). The request shapes were written offline and have not been run 
   merchant. Callers read the key from `AGENT_COOKIE_KEY`.
 - Without demo/test mode the workspace mints an owner key once and writes it to `data/owner.key` (mode 0600). It never prints keys.
 - Merchants self-register: `POST /agents/register {name, category:"shoe", capabilities, callbackUrl?|chatEndpoint?}` → the key is shown once.
+- Company assistants register the same way with `category:"assistant"` (no `callbackUrl`/`chatEndpoint`); the key opens nothing about the user until the owner approves a consent link.
 - Registering a personal agent needs the owner key, because a personal agent reads the whole card.
 
 ## Seed and data sources
@@ -58,7 +59,7 @@ network missing). The request shapes were written offline and have not been run 
 
 ## Behaviour in one screen
 
-- `GET /me` → `{agentId, category, role}`. Roles: personal, merchant, owner.
+- `GET /me` → `{agentId, category, role}`. Roles: personal, merchant, owner, assistant.
 - `POST /personal/intents {kind:"trail_shoes", public:{budget:"120"}, text}` → UCP catalog through `UcpApi`, filtered to USD, ships to US,
   available, within budget, and a size option matching the effective shoe_size under a strict men's EU↔US table (EU 42 = US 8.5;
   a US 9 is never quoted as EU 42). Pinned rehearsal variants (`fixtures/ucp/pinned.json`) come first when they pass every filter;
@@ -78,6 +79,26 @@ network missing). The request shapes were written offline and have not been run 
 - Notes are per (merchant, user, key), ≤ 2 KB; another merchant and a missing key get the same 404.
 - `POST /demo/reset` (owner key + `AGENT_COOKIE_DEMO=1`): wipes SQLite, reseeds, resets the memory repo; session IDs stay the same.
 - `POST /test/clock {offsetMs}` (`AGENT_COOKIE_TEST=1`): shifts the workspace clock.
+
+## Company assistants (bring-your-own-agent)
+
+An assistant (Manus, Dots, Muse) asks `POST /assistant/link` (201 pending, or 200 with its pending link; `url` =
+`<AGENT_COOKIE_URL>/owner/links/<id>`) and polls `GET /assistant/link/:id` (own link only, else 404). Only the owner decides:
+`GET /owner/links`, `POST /owner/links/:id/approve|decline`; a link is single use and lives 10 minutes (then `expired`; deciding
+it again → 409 `LINK_NOT_PENDING`). Approval derives the assistant's pairwise session like a merchant's and issues one grant:
+the installed `auto.assistant` fields, purpose `assist`, stage `introduced`, 30 days; `POST /personal/grants/:id/revoke` ends it.
+Without a live grant every assistant call below is 403 `SCOPE_DENIED` (never linked), `GRANT_REVOKED` or `GRANT_EXPIRED`.
+
+`GET /assistant/context` returns the card's values for `auto.assistant` fields the grant covers, the rest as `unknown`, and
+`write.assistant` as `writable`; no provenance, and never `shipping_address` or `payment_method` (refused in code whatever the
+document says). A read that serves values writes an `assist` receipt (field names), except when the session's last `assist`
+receipt named the same fields under the same policy less than an hour ago; `assist.context` (counts) is logged every time. With
+its key an assistant also uses `POST /personal/intents` (stored with its agentId = `createdBy`), quotes, events and accept for
+**its own intents only** (anything else is the same 404), and `POST /personal/observations` (Dreaming learns from them as the
+assistant, `stated` written as `observed`, only while linked). The store gets the address at checkout and payment at the payment
+stage exactly as for the user's own agents. `POST /assistant/contributions` is the merchant write path under `write.assistant`
+(the address and token → 403); `GET /assistant/stats` counts its own intents (quoted, accepted, completed = ordered or handoff,
+`questionsSkipped`). Funnel rows carry `createdBy` and `questionsSkipped` (field names summed over the intent's receipts).
 
 ## Learning (B49)
 

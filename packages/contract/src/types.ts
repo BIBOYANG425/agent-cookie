@@ -657,7 +657,9 @@ export interface LinkView {
 /**
  * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.
  * `fields` = auto.assistant fields that have a value; `unknown` = auto.assistant fields without one (ask only when the
- * task needs them); `writable` = write.assistant. Every call writes a receipt (purpose "assist", field names only).
+ * task needs them); `writable` = write.assistant. A call that serves values writes a receipt (purpose "assist", field
+ * names only), except when the session's last assist receipt named the same fields under the same policy less than an
+ * hour ago (a chat reads its context on every message; every receipt is a git commit).
  */
 export interface AssistantContext {
   v: 1;

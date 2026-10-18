@@ -37,6 +37,11 @@ export interface MerchantCounts { sessions: number; returningSessions: number; q
 /** Phase 4 experiment: one intent that carries an arm, with its first accept time if it has one. */
 export interface ArmRow { intentId: string; arm: ExperimentArm; createdAt: string; acceptedAt?: string }
 /**
+ * A consent link (bring-your-own-agent): an assistant asked the owner for a pairwise session. `status` is what was
+ * decided; "expired" is never stored, it is computed against the clock (LinkService). `sessionId` is set on approval.
+ */
+export interface LinkRow { id: string; agentId: string; status: "pending" | "approved" | "declined"; createdAt: string; expiresAt: string; decidedAt?: string; sessionId?: string }
+/**
  * Lane D payment (A21): an authorization with the two references that never leave the workspace — the provider's
  * (capture) and the card's payment_method token reference. Same shape as @agent-cookie/pay's InternalAuthorization.
  */
@@ -82,6 +87,9 @@ CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, 
   body TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scope, key));
 CREATE TABLE IF NOT EXISTS payment_authorizations (id TEXT PRIMARY KEY, quote_id TEXT NOT NULL UNIQUE, session_id TEXT, amount INTEGER,
   currency TEXT, status TEXT NOT NULL, provider_ref TEXT, payment_method_ref TEXT, agent_id TEXT, created_at TEXT, reserved_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+  decided_at TEXT, session_id TEXT);
+CREATE INDEX IF NOT EXISTS links_agent ON links (agent_id, created_at);
 `;
 
 /** Columns added after the first schema, applied to existing databases (CREATE TABLE IF NOT EXISTS never alters). */
@@ -103,11 +111,13 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   // to an older database on open, so there is no ALTER here; the version bump records that the database has it.
   // v12 (lane D): the amount the provider's response authorized — a reversal must name it, not the requested amount.
   { version: 12, table: "payment_authorizations", column: "authorized_amount", ddl: "ALTER TABLE payment_authorizations ADD COLUMN authorized_amount INTEGER" },
+  // v13 (bring-your-own-agent): `links` (consent links of company assistants) is a new TABLE, added by SCHEMA's
+  // CREATE TABLE IF NOT EXISTS like v11; the bump records that the database has it.
 ];
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
-  "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations"] as const;
+  "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations", "links"] as const;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : String(v));
@@ -184,6 +194,14 @@ function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
     status, createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
   if (r.authorized_amount !== null && r.authorized_amount !== undefined) row.authorizedAmount = Number(r.authorized_amount);
   return row;
+}
+const LINK_STATUSES: ReadonlyArray<LinkRow["status"]> = ["pending", "approved", "declined"];
+function toLink(r: Row): LinkRow {
+  const l: LinkRow = { id: String(r.id), agentId: String(r.agent_id), status: LINK_STATUSES.find((x) => x === r.status) ?? "declined",
+    createdAt: String(r.created_at), expiresAt: String(r.expires_at) };
+  if (r.decided_at) l.decidedAt = String(r.decided_at);
+  if (r.session_id) l.sessionId = String(r.session_id);
+  return l;
 }
 function toNote(r: Row): NoteRow {
   return { agentId: String(r.agent_id), userId: String(r.user_id), key: String(r.key), sessionId: String(r.session_id), value: String(r.value),
@@ -432,6 +450,11 @@ export class Store {
     this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at, arm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt, i.arm ?? null);
   }
+  /** The user's intents created by one agent (a personal agent or an assistant), newest first. Assistant stats only. */
+  intentsCreatedBy(userId: string, agentId: string): IntentRow[] {
+    return (this.db.prepare("SELECT * FROM intents WHERE user_id = ? AND agent_id = ? ORDER BY created_at DESC, rowid DESC").all(userId, agentId) as Row[])
+      .map(toIntent);
+  }
   /** Phase 4: the user's intents that carry an arm, oldest first, each with its FIRST accept time (an intent may see two accepts). */
   armRows(userId: string): ArmRow[] {
     const rows = this.db.prepare(`SELECT i.id, i.arm, i.created_at, MIN(q.accepted_at) AS accepted_at FROM intents i
@@ -582,6 +605,11 @@ export class Store {
   insertReceipt(r: ReceiptRow): void {
     this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null);
   }
+  /** The newest receipt of one session for one purpose (assistant context receipt de-duplication). */
+  lastReceipt(sessionId: string, purpose: string): ReceiptRow | undefined {
+    const r = this.db.prepare("SELECT * FROM receipts WHERE session_id = ? AND purpose = ? ORDER BY seq DESC LIMIT 1").get(sessionId, purpose) as Row | undefined;
+    return r && toReceipt(r);
+  }
   /** Every `fields.read` allow (field names, purpose and intent in `reason`), newest first. Policy shadow only. */
   fieldReadEvents(limit: number): ActivityEvent[] {
     const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' ORDER BY id DESC LIMIT ?").all(limit) as Row[];
@@ -643,6 +671,29 @@ export class Store {
   paymentAuthorizationForQuote(quoteId: string): PaymentAuthorizationRow | undefined {
     const r = this.db.prepare("SELECT * FROM payment_authorizations WHERE quote_id = ? AND status <> 'reserved'").get(quoteId) as Row | undefined;
     return r && toPaymentAuthorization(r);
+  }
+
+  // ---- consent links (bring-your-own-agent)
+  insertLink(l: LinkRow): void {
+    this.exec("INSERT INTO links (id, agent_id, status, created_at, expires_at, decided_at, session_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      l.id, l.agentId, l.status, l.createdAt, l.expiresAt, l.decidedAt ?? null, l.sessionId ?? null);
+  }
+  link(id: string): LinkRow | undefined {
+    const r = this.db.prepare("SELECT * FROM links WHERE id = ?").get(id) as Row | undefined;
+    return r && toLink(r);
+  }
+  /** Newest first. */
+  linksForAgent(agentId: string): LinkRow[] {
+    return (this.db.prepare("SELECT * FROM links WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC").all(agentId) as Row[]).map(toLink);
+  }
+  /** Newest first. */
+  links(limit: number): LinkRow[] {
+    return (this.db.prepare("SELECT * FROM links ORDER BY created_at DESC, rowid DESC LIMIT ?").all(limit) as Row[]).map(toLink);
+  }
+  /** Decide a link that is still pending; false when it was already decided (the caller answers LINK_NOT_PENDING). */
+  decideLink(id: string, status: "approved" | "declined", at: string, sessionId?: string): boolean {
+    return this.exec("UPDATE links SET status = ?, decided_at = ?, session_id = ? WHERE id = ? AND status = 'pending'",
+      status, at, sessionId ?? null, id).changes === 1;
   }
 
   // ---- activity

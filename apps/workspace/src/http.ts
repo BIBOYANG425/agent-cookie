@@ -18,6 +18,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   PURPOSE_MISMATCH: "purpose does not match the field's policy",
   NOT_FOUND: "not found",
   IDEMPOTENCY_CONFLICT: "idempotency key reused with a different request",
+  LINK_NOT_PENDING: "link already decided or expired",
   MISSING_FIELD: "missing or invalid request field",
   UPSTREAM_ERROR: "upstream service failed",
   JAR_LOCKED: "jar is locked",

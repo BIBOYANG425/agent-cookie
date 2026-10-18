@@ -1,7 +1,7 @@
 // Funnel report — docs/commerce-analytics-plan.md Phase 0. Joins what the workspace already records (intents,
 // intent_sessions, quotes, grants, receipts, activity) into one row per intent. Counts and ids only: a field VALUE
 // never enters this file. The owner (the user) is the only reader; a merchant never sees another merchant's rows.
-import type { Field, FunnelReport, FunnelRow } from "@agent-cookie/contract";
+import type { Field, FunnelReport, FunnelRow, Receipt } from "@agent-cookie/contract";
 import type { IntentRow } from "../db.js";
 import type { Ctx } from "./context.js";
 
@@ -18,6 +18,14 @@ export function elapsedMs(from: string, to: string): number | undefined {
   const a = Date.parse(from);
   const b = Date.parse(to);
   return Number.isNaN(a) || Number.isNaN(b) ? undefined : Math.max(0, b - a);
+}
+
+/**
+ * Questions the user was not asked (bring-your-own-agent plan §0): the field NAMES served to agents by policy, summed over
+ * an intent's receipts (every purpose: tier0 prefixes, checkout, payment). A count; never a value.
+ */
+export function questionsSkipped(receipts: readonly Pick<Receipt, "fields">[]): number {
+  return receipts.reduce((n, r) => n + r.fields.length, 0);
 }
 
 export class FunnelService {
@@ -46,6 +54,7 @@ export class FunnelService {
       // reason = "<field,field> purpose=<p> intent=<id>" (services/fields.ts); the first token is the field list.
       for (const f of (e.reason.split(" ")[0] ?? "").split(",")) if (f) read.add(f);
     }
+    const receipts = store.receiptsForIntent(i.id);
     const row: FunnelRow = {
       intentId: i.id,
       createdAt: i.createdAt,
@@ -55,7 +64,10 @@ export class FunnelService {
       accepted: chosen !== undefined,
       fieldsGranted: granted.size,
       fieldsRead: read.size,
-      purposeReleases: store.receiptsForIntent(i.id).length,
+      purposeReleases: receipts.length,
+      // Bring-your-own-agent: who asked (a personal agent or a linked assistant), and what nobody had to ask the user.
+      createdBy: i.agentId,
+      questionsSkipped: questionsSkipped(receipts),
     };
     if (firstQuote !== undefined && !Number.isNaN(createdAt)) row.firstQuoteMs = Math.max(0, firstQuote - createdAt);
     if (chosen?.result) row.outcome = chosen.result.status;
