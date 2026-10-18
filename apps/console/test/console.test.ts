@@ -1,6 +1,9 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController, remainingSeconds } from '../src/controller';
+import { GrantsPanel } from '../src/GrantsPanel';
 import type { ConsoleAdapter, ConsoleSnapshot, Contribution } from '../src/model';
 
 const at = Date.parse('2026-10-17T20:00:00.000Z');
@@ -67,6 +70,39 @@ describe('Sample adapter', () => {
   });
 });
 
+describe('grant stage and policy id', () => {
+  it('shows each Sample grant\'s stage and shortened policy id, marking the current document', async () => {
+    const snapshot = await createSampleAdapter(() => at).load();
+    expect(snapshot.grants.every((grant) => grant.stage === 'introduced' && grant.policyId === 'sample-policy')).toBe(true);
+    const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: true, now: at, blocked: false,
+      currentPolicyId: 'sample-policy', revoke: () => {} }));
+    expect(html).toContain('<dt>阶段</dt><dd>介绍（introduced）</dd>');
+    expect(html).toContain('<code title="sample-policy">sample-p…</code> · 当前策略');
+    expect(html.match(/<dt>阶段<\/dt>/gu)).toHaveLength(2);
+  });
+
+  it('renders live grants with any stage, a 12-character id, and old grants without either', async () => {
+    const base = (await createSampleAdapter(() => at).load()).grants[0];
+    const { stage: _s, policyId: _p, ...old } = base;
+    const grants = [{ ...base, id: 'g-pay', stage: 'payment' as const, purpose: 'payment', policyId: '0123456789ab' }, { ...old, id: 'g-old' }];
+    const live = createLiveAdapter(async (path) => path.endsWith('/me') ? json({ role: 'owner' })
+      : path.endsWith('/personal/card') ? json(empty.card) : path.endsWith('/personal/grants') ? json({ grants })
+      : path.endsWith('/owner/activity') ? json({ events: [] }) : json({ error: { code: 'NOT_FOUND' } }, 404), () => at);
+    const snapshot = await live.load();
+    expect(snapshot.grants).toEqual(grants);
+    const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: false, now: at, blocked: false,
+      currentPolicyId: 'ffffffffffff', revoke: () => {} }));
+    expect(html).toContain('<dd>支付（payment）</dd>');
+    expect(html).toContain('<code title="0123456789ab">01234567…</code></dd>');
+    expect(html).not.toContain('当前策略');
+    expect(html.match(/<dd>未记录<\/dd>/gu)).toHaveLength(2);
+    const unknownStage = createLiveAdapter(async (path) => path.endsWith('/me') ? json({ role: 'owner' })
+      : path.endsWith('/personal/grants') ? json({ grants: [{ ...base, stage: 'shipped' }] })
+      : path.endsWith('/personal/card') ? json(empty.card) : json({ events: [] }), () => at);
+    await expect(unknownStage.load()).rejects.toThrow('响应格式');
+  });
+});
+
 describe('live HTTP boundary', () => {
   it('preserves multiple returned fields across the card, candidates, history and grants', async () => {
     const card = {
@@ -105,8 +141,8 @@ describe('live HTTP boundary', () => {
     const live = createLiveAdapter(fetcher, () => at);
     expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
-      '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/personal/card', '/workspace-api/personal/grants',
-      '/workspace-api/personal/learned',
+      '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/owner/funnel?limit=50', '/workspace-api/personal/card',
+      '/workspace-api/personal/grants', '/workspace-api/personal/learned', '/workspace-api/personal/policy',
     ]);
     for (const call of calls) {
       expect(call.options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });

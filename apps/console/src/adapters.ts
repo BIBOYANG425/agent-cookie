@@ -1,6 +1,9 @@
 import fixtureContributions from '../../../fixtures/contributions.json';
-import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView } from './model';
+import { isFunnelStage } from '../../../packages/contract/src/analytics';
+import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView, Section } from './model';
 import { countEvidenceSources, normalizeLearning, normalizeLearningPaused, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
+import { normalizePolicyView, normalizeShadowReport, parseViolations, PolicyViolationError, samplePolicyView } from './policy';
+import { FUNNEL_LIMIT, normalizeFunnelReport, sampleFunnelReport, type FunnelReport } from './funnel';
 
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
 export function createSampleAdapter(now: () => number = Date.now,
@@ -15,6 +18,7 @@ export function createSampleAdapter(now: () => number = Date.now,
   const stage = () => initialLearning.stages?.find((row) => row.id === stageId);
   let grants: GrantView[] = [];
   let events: ActivityEvent[] = [];
+  let funnel: FunnelReport = sampleFunnelReport(now());
   let serial = 0;
   const addEvent = (event: string, object: string, reason: string) => events.push({
     id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), event,
@@ -30,7 +34,9 @@ export function createSampleAdapter(now: () => number = Date.now,
       id: `sample-grant-${suffix}`, sessionId: `sample-session-${suffix}`, agentId: `sample-store-${suffix}`,
       agentName: `Sample · Storefront ${suffix.toUpperCase()}`, fields: [...fields], purpose: 'handshake',
       createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 600000).toISOString(), remainingMs: 600000, status: 'live',
+      policyId: 'sample-policy', stage: 'introduced',
     }));
+    funnel = sampleFunnelReport(now());
     events = [];
     addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
   };
@@ -58,7 +64,9 @@ export function createSampleAdapter(now: () => number = Date.now,
           const remainingMs = Math.max(0, Date.parse(grant.expiresAt) - now());
           const status = grant.revokedAt ? 'revoked' : remainingMs === 0 ? 'expired' : 'live';
           return { ...grant, status, remainingMs: status === 'live' ? remainingMs : 0 } as GrantView;
-        }), learning, events: [...events].reverse(), receivedAt: now() });
+        }), learning, events: [...events].reverse(), receivedAt: now(),
+        policy: { availability: 'ready', data: samplePolicyView(), sample: true },
+        funnel: { availability: 'ready', data: funnel, sample: true } });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
@@ -92,6 +100,9 @@ export function createSampleAdapter(now: () => number = Date.now,
       addEvent('切换 Sample 学习阶段', id, '加载已编写的演示记录，不代表真实提取或购物结果。');
     },
     async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
+    // Sample has no workspace to evaluate against; the floor check and the shadow replay are the workspace's job.
+    async shadowPolicy() { throw new Error('Sample 模式不评估策略：请连接本机工作台，由工作台重放回执和读取记录。'); },
+    async installPolicy() { throw new Error('Sample 模式不安装策略：请连接本机工作台，由工作台按底线核对。'); },
   };
 }
 
@@ -112,7 +123,8 @@ const validGrant = (row: unknown): boolean => object(row) && string(row.id) && s
   && string(row.agentId) && string(row.agentName) && strings(row.fields) && string(row.purpose)
   && date(row.createdAt) && date(row.expiresAt) && typeof row.remainingMs === 'number' && Number.isFinite(row.remainingMs)
   && row.remainingMs >= 0 && ['live', 'expired', 'revoked'].includes(String(row.status))
-  && (row.revokedAt === undefined || date(row.revokedAt));
+  && (row.revokedAt === undefined || date(row.revokedAt))
+  && (row.policyId === undefined || string(row.policyId)) && (row.stage === undefined || isFunnelStage(row.stage));
 const validEvent = (row: unknown): boolean => object(row) && date(row.at)
   && ['id', 'event', 'actor', 'object', 'result', 'reason'].every((key) => string(row[key]));
 const malformed = () => new Error('工作台响应格式与已核对契约不一致。');
@@ -123,7 +135,8 @@ class RequestError extends Error {
 // The same-origin server bridge owns @agent-cookie/sdk and AGENT_COOKIE_KEY.
 // No owner credentials enter browser JavaScript. Missing SDK methods live in server/workspace.ts.
 export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = Date.now): ConsoleAdapter {
-  const request = async (path: string, method: 'GET' | 'POST' | 'PUT', signal?: AbortSignal, body?: unknown): Promise<unknown> => {
+  const request = async (path: string, method: 'GET' | 'POST' | 'PUT', signal?: AbortSignal, body?: unknown,
+    violations = false): Promise<unknown> => {
     let response: Response;
     try {
       const timeout = AbortSignal.timeout(8000);
@@ -142,6 +155,13 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         ? result.error.code : 'REQUEST_FAILED';
       if (code === 'CONSOLE_KEY_MISSING') throw new Error('请在本机控制台服务设置 AGENT_COOKIE_KEY 后重新连接。');
       if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('本机控制台服务需要 owner 钥匙，请核对 AGENT_COOKIE_KEY。');
+      // Policy routes only: the 422 message is policyViolations(...).join("; "), which names sections and field
+      // names, never values (packages/contract/src/policy-document.ts).
+      if (violations && response.status === 422 && code === 'MISSING_FIELD' && object(result) && object(result.error)
+        && string(result.error.message)) {
+        const lines = parseViolations(result.error.message);
+        if (lines.length > 0) throw new PolicyViolationError(lines);
+      }
       // Server messages may contain secrets or field values; show only the error code.
       throw new RequestError(`工作台拒绝请求：${response.status} ${code}`, response.status);
     }
@@ -156,20 +176,32 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
     }
   };
+  const section = async <T>(path: string, normalize: (body: unknown) => T & { sample?: boolean }, name: string,
+    signal?: AbortSignal): Promise<Section<T>> => {
+    try {
+      const data = normalize(await request(path, 'GET', signal));
+      return { availability: 'ready', data, ...(data.sample === true ? { sample: true } : {}) };
+    } catch (error) {
+      if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable',
+        message: `工作台尚未提供${name}接口。其他面板可继续使用。` };
+      return { availability: 'error', message: `暂时无法读取${name}。${error instanceof Error ? error.message : '请稍后重试。'}` };
+    }
+  };
   const acknowledged = (body: unknown): body is Json => object(body) && body.ok === true;
   return {
     mode: 'live',
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
-      const [card, grantBody, activityBody, learned] = await Promise.all([
+      const [card, grantBody, activityBody, learned, policy, funnel] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
-        learning(signal),
+        learning(signal), section('/personal/policy', normalizePolicyView, '策略', signal),
+        section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, '漏斗', signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned,
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, policy, funnel,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {
@@ -188,6 +220,12 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
       // A 0129f08: PUT /personal/learning and its acknowledgement both use { paused }.
       const body = await request('/personal/learning', 'PUT', signal, { paused });
       if (normalizeLearningPaused(body) !== paused) throw new Error('工作台未确认所请求的学习开关状态。');
+    },
+    async shadowPolicy(candidate, signal) {
+      return normalizeShadowReport(await request('/personal/policy/shadow', 'POST', signal, { policy: candidate }, true));
+    },
+    async installPolicy(candidate, signal) {
+      return normalizePolicyView(await request('/personal/policy', 'PUT', signal, candidate, true));
     },
   };
 }
