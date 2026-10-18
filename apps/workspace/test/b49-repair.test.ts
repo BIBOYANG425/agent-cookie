@@ -28,6 +28,7 @@ it('recovers pending forget on restart and keeps suppression without storing the
   expect((await second.put('/personal/learning', KEYS.personal, { paused: false })).status).toBe(200);
   await second.post('/personal/observations', KEYS.personal, { channel: 'test', conversationId: 'after-restart',
     turns: Array.from({ length: 10 }, () => ({ role: 'user', text: 'I always prefer black.', at: new Date().toISOString() })) });
+  await second.deps.learning.flushDue();
   await second.deps.learning.settle();
   expect((await second.get('/personal/learned', KEYS.personal)).body.learned).toEqual([]);
 });
@@ -54,11 +55,12 @@ it('forget then resume cannot restore a forgotten value from a late result or a 
   await h.post('/personal/contributions', KEYS.personal, { field: 'pref.color', value: 'black' });
   const observe = (id: string) => h.post('/personal/observations', KEYS.personal, { channel: 'test', conversationId: id,
     turns: Array.from({ length: 10 }, () => ({ role: 'user', text: 'I always prefer black.', at: new Date().toISOString() })) });
-  await observe('before-forget'); await entered;
+  await observe('before-forget');
+  const processing = h.deps.learning.flushDue(); await entered;
   await h.post('/personal/learning/forget', KEYS.personal, { field: 'pref.color' });
   await h.put('/personal/learning', KEYS.personal, { paused: false });
-  release(); await h.deps.learning.settle();
-  await observe('after-forget'); await h.deps.learning.settle();
+  release(); await processing; await h.deps.learning.settle();
+  await observe('after-forget'); await h.deps.learning.flushDue(); await h.deps.learning.settle();
   expect((await h.get('/personal/learned', KEYS.personal)).body.learned).toEqual([]);
 });
 
@@ -93,6 +95,11 @@ it('keeps a durable projection retry and remains paused when Git fails; never re
   expect(result.body).toMatchObject({ paused: true, projection: 'pending', historyErased: false });
   expect(h.deps.store.contributionsForUser('u_sample').some(c => c.field === 'pref.color')).toBe(false);
   expect((await h.put('/personal/learning', KEYS.personal, { paused: false })).status).toBe(502);
+  const regenerate = vi.spyOn(repo, 'regenerateCard');
+  const dream = await h.post('/owner/dreaming/run', KEYS.owner);
+  expect(dream.body.steps.filter((step: { step: string }) => ['regenerate', 'compact'].includes(step.step)))
+    .toEqual(['regenerate', 'compact'].map(step => ({ step, result: 'skipped', reason: 'forget projection pending' })));
+  expect(regenerate).not.toHaveBeenCalled();
   failing.mockImplementation(real);
   expect(await h.deps.learning.recoverForgets()).toBe(true);
   expect((await repo.listContributions()).some(c => c.field === 'pref.color')).toBe(false);

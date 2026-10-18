@@ -28,16 +28,23 @@ export class CardService {
   }
 
   get(userId: string): Card {
-    // Evidence travels with each contribution: RulesApi.mergeCard counts learned sources per conversation / intent
-    // (lane C, B49). The workspace does no source counting of its own.
+    const card = this.compute(userId, this.ctx.clock.nowIso());
+    this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
+    return card;
+  }
+
+  /**
+   * The card at `now` (Dreaming passes its own explicit time). Evidence travels with each contribution:
+   * RulesApi.mergeCard counts learned sources per conversation / intent (lane C, B49) and applies the age rules; the
+   * workspace does no source counting of its own.
+   */
+  compute(userId: string, now: string): Card {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
-    const merged = this.ctx.rules.mergeCard(all, this.mergeOptions());
+    const merged = this.ctx.rules.mergeCard(all, { now, personalAgentIds: this.ctx.store.personalAgentIds() });
     // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
     const seed = this.ctx.store.seedContributions(userId);
     const sample = merged.card.some((f) => seed.some((c) => c.field === f.field && c.value === f.value && f.sources.includes(c.agentId)));
-    const card: Card = { ...merged, source: sample ? "sample" : "live" };
-    this.ctx.store.saveCard(userId, card, this.ctx.clock.nowIso());
-    return card;
+    return { ...merged, source: sample ? "sample" : "live" };
   }
 
   /** Card values, overlaid with the public values of the intent (budget, deadline… never purpose fields). */

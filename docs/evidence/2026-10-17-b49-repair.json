@@ -144,5 +144,85 @@
     "historical_git_erasure": false,
     "live_demo_runtime": "unchanged"
   },
-  "ci": "pending new head push"
+  "ci": {
+    "head": "a9fe989",
+    "run": 39083850322,
+    "conclusion": "success",
+    "rootPassed": 760,
+    "skipped": 1,
+    "todo": 4
+  },
+  "main_sync": {
+    "base": "468e92d",
+    "six_scenarios": {
+      "mode": "isolated-real-A-C-with-synthetic-extractor",
+      "liveModels": false,
+      "liveChannel": false,
+      "results": [
+        {
+          "name": "explicit_statement_reaches_card",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "basis": [
+              "stated"
+            ]
+          }
+        },
+        {
+          "name": "same_agent_two_conversations",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "evidenceCount": 2,
+            "writerCount": 1
+          }
+        },
+        {
+          "name": "same_agent_two_conversations_after_refresh",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "evidenceCount": 2,
+            "writerCount": 1
+          }
+        },
+        {
+          "name": "pause_resume_discards_late_result",
+          "passed": true,
+          "observed": {
+            "learnedCount": 0,
+            "paused": false
+          }
+        },
+        {
+          "name": "queued_original_never_reaches_disk",
+          "passed": true,
+          "observed": {
+            "rawCanaryOnDisk": false
+          }
+        },
+        {
+          "name": "cross_agent_fixture_accept_preserves_history",
+          "passed": true,
+          "observed": {
+            "acceptStatus": "handoff",
+            "memoryWriteFailures": 0
+          }
+        }
+      ]
+    },
+    "workspace": {
+      "exitCode": 0,
+      "passed": 277,
+      "skipped": 1,
+      "todo": 4
+    },
+    "typecheck": "passed",
+    "consoleBuild": "passed",
+    "acceptanceTypecheck": "passed",
+    "newCi": "pending push",
+    "initialRootFailure": "Dreaming real Git concurrent test exceeded 5s; isolated completed in 5390ms with unchanged assertions; test-specific timeout raised to 30s and workspace rerun passed",
+    "photonSkipped": false
+  }
 }

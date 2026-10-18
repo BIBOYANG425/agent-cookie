@@ -338,6 +338,9 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   });
 
   // ---- owner, demo, test
+  // Dreaming, now (demo and tests; the scheduler runs it every DREAMING_INTERVAL_MS). Counts and field names only.
+  app.post("/owner/dreaming/run", auth, owner, async () => json(await deps.dreaming.run()));
+
   app.get("/owner/activity", auth, owner, (c) => {
     const limit = intParam(c.req.query("limit"), 200, 1000);
     return json({ events: store.activity(limit) });

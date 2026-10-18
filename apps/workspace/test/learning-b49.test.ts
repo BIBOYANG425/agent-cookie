@@ -117,8 +117,9 @@ describe("B49 ③: observed text is held in memory only, bounded", () => {
     const seen: string[][] = [];
     learn.onConversation = (turns) => { seen.push(turns.map((t) => t.text)); return []; };
     const h = await harness({ learn });
-    await observe(h, "long", Array.from({ length: 25 }, (_, i) => turn(`u${i}`))); // full: learned from at once
-    await h.deps.learning.settle();
+    await observe(h, "long", Array.from({ length: 25 }, (_, i) => turn(`u${i}`)));
+    expect(h.deps.learning.queue.get("personal-photon", "long")!.turns.map((t) => t.text)).toEqual(Array.from({ length: 20 }, (_, i) => `u${i + 5}`));
+    await h.deps.learning.flushDue(); // full, so due at once
     expect(seen).toEqual([Array.from({ length: 20 }, (_, i) => `u${i + 5}`)]);
     expect((await activity(h)).find((e) => e.event === "observation.drop" && e.result === "overflow")).toMatchObject({ reason: "turns=5" });
   });

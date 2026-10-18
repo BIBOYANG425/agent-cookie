@@ -1,10 +1,10 @@
 import { createHmac } from "node:crypto";
 // Dynamic memory (2026-10-17, human direction; lane B's LearnApi does the classifying; B49 rulings). Two ways in:
 //   - POST /personal/observations: turns of a conversation. Only the user's own turns are kept, per (personal agent,
-//     conversation), in process memory (observations.ts, bounded; SQLite mirrors only ids, counts and times), until
-//     the conversation has been quiet for OBSERVATION_IDLE_MS or OBSERVATION_BATCH_TURNS turns have arrived; then the
-//     text is taken out of the queue, handed to LearnApi.extractFromConversation, and dropped. Agent/other turns are
-//     never kept or passed on; a replayed messageId is ignored.
+//     conversation), in process memory (observations.ts, bounded; SQLite mirrors only ids, counts and times).
+//     Dreaming (dreaming.ts) takes every conversation that has been quiet for OBSERVATION_IDLE_MS or has
+//     OBSERVATION_BATCH_TURNS turns out of the queue, hands it to LearnApi.extractFromConversation, and drops it —
+//     nothing is learned on arrival. Agent/other turns are never kept or passed on; a replayed messageId is ignored.
 //   - every intent, and every accept (with the chosen quote): LearnApi.extract.
 // What comes back is a list of CANDIDATES. Each one is checked here, deterministically: pref.* fields only (the
 // contract's whitelist), a value that passes the contract's format check (no contact/payment data), a snippet only if
@@ -44,7 +44,7 @@ class LearnerTimeout extends Error {
 
 export class LearningService {
   private pending = new Set<Promise<unknown>>();
-  private inflight = new Map<string, Promise<void>>();
+  private inflight = new Map<string, Promise<number>>();
   /** apply() and forget() run one at a time, so duplicate checks and forgets see every earlier write. */
   private applying: Promise<unknown> = Promise.resolve();
   readonly queue = new ObservationQueue();
@@ -173,19 +173,31 @@ export class LearningService {
     this.ctx.log({ event: "observation.queue", actor: personal.agentId, result: "ok",
       reason: [`turns=${obs.turns.length}`, `user=${obs.turns.filter((t) => t.role === "user").length - unsafe}`,
         unsafe ? `dropped=${unsafe}` : "", r.duplicates ? `duplicates=${r.duplicates}` : ""].filter(Boolean).join(" ") });
-    if (r.batch.turnsSeen >= OBSERVATION_BATCH_TURNS) this.track(this.ctx.hold(() => this.process(r.batch.agentId, r.batch.conversationId)));
+    // Learning happens in Dreaming only: a full conversation waits for the next run (still bounded by the queue).
     return { queued: true };
   }
 
-  /** Process every conversation that has been quiet long enough or is full. */
+  /** Drain due conversations; keep the original void-returning integration interface. */
   async flushDue(): Promise<void> {
-    const idleBefore = () => this.ctx.clock.now() - OBSERVATION_IDLE_MS;
-    for (const b of this.queue.due(idleBefore(), OBSERVATION_BATCH_TURNS)) {
+    await this.flushDueStats();
+  }
+
+  /**
+   * Dreaming step (a): learn from every conversation that, at `nowMs`, has been quiet for OBSERVATION_IDLE_MS or has
+   * OBSERVATION_BATCH_TURNS turns. Returns how many conversations were taken and how many contributions written.
+   */
+  async flushDueStats(nowMs: number = this.ctx.clock.now()): Promise<{ conversations: number; learned: number }> {
+    const idleBefore = nowMs - OBSERVATION_IDLE_MS;
+    let conversations = 0;
+    let learned = 0;
+    for (const b of this.queue.due(idleBefore, OBSERVATION_BATCH_TURNS)) {
       // Re-check: while earlier ones were processed this one may have been taken and started again.
       const now = this.queue.get(b.agentId, b.conversationId);
-      if (!now || (now.lastAt > idleBefore() && now.turnsSeen < OBSERVATION_BATCH_TURNS)) continue;
-      await this.process(b.agentId, b.conversationId);
+      if (!now || (now.lastAt > idleBefore && now.turnsSeen < OBSERVATION_BATCH_TURNS)) continue;
+      conversations++;
+      learned += await this.process(b.agentId, b.conversationId);
     }
+    return { conversations, learned };
   }
 
   /**
@@ -216,11 +228,6 @@ export class LearningService {
   reset(): void {
     this.queue.clear();
     this.forgotten.clear();
-  }
-
-  /** The timer's entry point (deps.ts): one flush, run by `runner` (the reset gate), counted by settle(). */
-  tick(runner: (fn: () => Promise<void>) => Promise<void>): void {
-    this.track(runner(() => this.flushDue()));
   }
 
   /** Everything fired so far has finished (tests, shutdown). Learner calls are bounded by LEARN_TIMEOUT_MS. */
@@ -325,41 +332,42 @@ export class LearningService {
     return Promise.race([p, t]).finally(() => clearTimeout(timer));
   }
 
-  /** One conversation, at most once at a time. The text leaves the queue before LearnApi sees it. */
-  private process(agentId: string, conversationId: string): Promise<void> {
+  /** One conversation, at most once at a time. The text leaves the queue before LearnApi sees it. Returns contributions written. */
+  private process(agentId: string, conversationId: string): Promise<number> {
     const key = `${agentId}\u0000${conversationId}`;
     const running = this.inflight.get(key);
     if (running) return running;
-    if (this.inflight.size >= 4) return Promise.resolve();
+    if (this.inflight.size >= 4) return Promise.resolve(0);
     const run = this.processNow(agentId, conversationId).finally(() => this.inflight.delete(key));
     this.inflight.set(key, run);
     return run;
   }
 
-  private async processNow(agentId: string, conversationId: string): Promise<void> {
+  private async processNow(agentId: string, conversationId: string): Promise<number> {
     const batch = this.queue.take(agentId, conversationId);
-    if (!batch) return;
+    if (!batch) return 0;
     const { turns } = batch;
     const started = this.forgets;
     try {
       this.ctx.store.deleteObservationBatch(agentId, conversationId);
     } catch (err) {
       this.failed(agentId, "conversation", err);
-      return;
+      return 0;
     }
     const epoch = this.epoch(batch.userId);
     const personal = this.ctx.store.agent(agentId);
     if (!personal || personal.category !== "personal" || this.state(batch.userId).paused) {
       this.ctx.log({ event: "learn.conversation", actor: agentId, result: "dropped", reason: personal ? "paused" : "unknown agent" });
-      return;
+      return 0;
     }
-    if (turns.length === 0) return;
+    if (turns.length === 0) return 0;
     try {
       const userTurns = turns.map((t) => ({ role: "user" as const, text: t.text, at: t.at }));
       const candidates = await this.withTimeout(this.learn.extractFromConversation(userTurns, { conversationId, channel: batch.channel }));
-      await this.applySerial({ ...personal, role: "personal" }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch, started);
+      return await this.applySerial({ ...personal, role: "personal" }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch, started);
     } catch (err) {
       this.failed(agentId, "conversation", err);
+      return 0;
     }
   }
 

@@ -70,7 +70,7 @@ describe("observations: only the user's own words are learned from", () => {
     expect(learn.conversationCalls[0]!.context).toEqual({ conversationId: "conv-1", channel: "imessage" });
   });
 
-  it("a conversation is processed once quiet for 5 minutes, or at once when 10 turns have arrived", async () => {
+  it("Dreaming takes a conversation once it has been quiet for 5 minutes or has 10 turns — never earlier, never on arrival", async () => {
     const learn = new FakeLearn();
     const h = await harness({ learn });
     offset = 0;
@@ -82,10 +82,12 @@ describe("observations: only the user's own words are learned from", () => {
     expect(learn.conversationCalls).toHaveLength(1);
 
     await observe(h, "busy", Array.from({ length: 6 }, (_, i) => turn(i % 2 ? "agent" : "user", `t${i}`)));
-    await h.deps.learning.settle();
+    await h.deps.learning.flushDue(); // not quiet, 6 turns: not due
     expect(learn.conversationCalls).toHaveLength(1);
     await observe(h, "busy", Array.from({ length: 4 }, (_, i) => turn("user", `u${i}`))); // 10 turns in all
     await h.deps.learning.settle();
+    expect(learn.conversationCalls).toHaveLength(1); // arrival never processes (learning happens in Dreaming)
+    await h.deps.learning.flushDue(); // still not quiet, but full
     expect(learn.conversationCalls).toHaveLength(2);
     expect(learn.conversationCalls[1]!.turns.map((t) => t.text)).toEqual(["t0", "t2", "t4", "u0", "u1", "u2", "u3"]);
   });
@@ -264,7 +266,9 @@ describe("what the learner proposes is a parameter, not authority", () => {
     expect(ev.result).toBe("written=4");
     expect(ev.reason).toContain("field=3");
     expect(ev.reason).toContain("value=1");
-    expect(JSON.stringify(await activity(h))).not.toMatch(/merino|leather|diabetic|555/);
+    // no value reaches the activity log (ids and times are left out of the check: a time can end in .555Z)
+    const logged = (await activity(h)).map((e) => [e.event, e.result, e.reason, (e as { object?: string }).object ?? ""].join(" ")).join("\n");
+    expect(logged).not.toMatch(/merino|leather|diabetic|415 555 0100|555 0100/);
   });
 
   it("a value the user revoked is not learned again", async () => {
