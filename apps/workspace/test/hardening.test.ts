@@ -1,6 +1,6 @@
 // Regression tests for the #10 review (P1 migration, P1 reset race, P2 note persistence) and SQLITE_BUSY.
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
@@ -45,9 +45,11 @@ describe("P1: an old database upgrades in place", () => {
     expect(cols("contributions")).toContain("origin");
     expect(cols("quotes")).toEqual(expect.arrayContaining(["source", "size_note"]));
     expect(cols("intents")).toContain("query");
-    // v4: learned-contribution evidence, the learning setting and the observation queue
+    // v4: learned-contribution evidence, the learning setting and the observation queue; v5 (B49): the queue keeps
+    // only ids, counts and times — there is no table for conversation text
     expect(cols("contributions")).toContain("evidence");
-    expect(cols("observation_turns")).toEqual(["agent_id", "conversation_id", "seq", "text", "at"]);
+    expect(cols("observation_batches")).toEqual(["agent_id", "conversation_id", "user_id", "channel", "turns_seen", "first_at", "last_at"]);
+    expect(cols("observation_turns")).toEqual([]);
     expect(cols("settings")).toEqual(["user_id", "key", "value"]);
     // v3: UCP store proxies are retail, with no fixed kind
     expect(store.agent("ucp:old.example")).toMatchObject({ category: "retail", capabilities: [] });
@@ -64,6 +66,30 @@ describe("P1: an old database upgrades in place", () => {
       body: JSON.stringify({ kind: "trail_shoes", public: { budget: "120" } }) });
     expect(intent.status).toBe(201);
     await deps.close();
+  });
+});
+
+describe("B49: a v4 database loses its stored conversation text on upgrade", () => {
+  it("drops observation_turns and the batches it belonged to; no byte of the text is left in the file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ws-v4-"));
+    const path = join(dir, "v4.sqlite");
+    const M = "QX7V4QUEUEDTEXT";
+    const v4 = new Store(path);
+    v4.db.exec("CREATE TABLE observation_turns (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL)");
+    v4.db.prepare("INSERT INTO observation_turns VALUES ('personal-photon', 'c', 1, ?, '2026-10-17T00:00:00.000Z')").run(`${M} I like wool`);
+    v4.db.prepare("INSERT INTO observation_batches VALUES ('personal-photon', 'c', 'u_sample', 'imessage', 1, '2026-10-17T00:00:00.000Z', '2026-10-17T00:00:00.000Z')").run();
+    v4.db.pragma("user_version = 4");
+    v4.db.pragma("wal_checkpoint(TRUNCATE)");
+    v4.close();
+    expect(readFileSync(path).includes(Buffer.from(M))).toBe(true);
+
+    const store = new Store(path);
+    expect(store.schemaVersion()).toBe(SCHEMA_VERSION);
+    expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'observation_turns%'").all()).toEqual([]);
+    expect(store.observationBatches()).toEqual([]);
+    expect(store.checkpoint()).toBe(true);
+    store.close();
+    for (const f of [path, `${path}-wal`].filter(existsSync)) expect(readFileSync(f).includes(Buffer.from(M)), f).toBe(false);
   });
 });
 

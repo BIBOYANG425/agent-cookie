@@ -2,7 +2,7 @@
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
   NOTE_MAX_BYTES, WorkspaceError,
-  type Card, type CommitRef, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
+  type Card, type CommitRef, type CompactOptions, type CompactResult, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
   type OpenMemoryRepoOptions, type Receipt, type RulesApi, type WriteMeta,
 } from "@agent-cookie/contract";
 
@@ -12,13 +12,15 @@ export class InMemoryRepo implements MemoryRepo {
   readonly commits: StubCommit[] = [];
   /** appendIntent calls, in order (the real repo is lane C's). */
   readonly intents: IntentRecord[] = [];
+  /** archive/<YYYY-MM>.md, one entry per line (compact). */
+  readonly archive = new Map<string, string[]>();
   private contributions: Contribution[] = [];
   private notes = new Map<string, Note[]>();
   private receipts: Receipt[] = [];
   private card: Card = { card: [], candidates: [], superseded: [] };
   private n = 0;
 
-  constructor(private rules: RulesApi, private seed: Contribution[]) {
+  constructor(private rules: RulesApi, private seed: Contribution[], private userId?: string) {
     this.contributions = structuredClone(seed);
   }
 
@@ -37,6 +39,17 @@ export class InMemoryRepo implements MemoryRepo {
     if (!c || c.revokedAt) return { sha: "" };
     c.revokedAt = revokedAt;
     return this.commit(`revoke ${id}`, meta);
+  }
+  /** B49: every listed revocation and the CARD.md rewrite in ONE commit; nothing known → no commit. */
+  async revokeContributions(ids: readonly string[], revokedAt: string, merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
+    const hit = this.contributions.filter((x) => ids.includes(x.id) && !x.revokedAt);
+    if (hit.length === 0) return { card: structuredClone(this.card), commit: { sha: "" } };
+    for (const c of hit) {
+      c.revokedAt = revokedAt;
+      if (c.evidence) delete c.evidence.snippet;
+    }
+    this.card = this.rules.mergeCard(this.contributions, merge);
+    return { card: structuredClone(this.card), commit: this.commit(`revoke ${hit.length} + regenerate CARD.md`, meta) };
   }
   async regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
     this.card = this.rules.mergeCard(this.contributions, merge);
@@ -60,8 +73,35 @@ export class InMemoryRepo implements MemoryRepo {
     return this.commit(`delete note ${key} by ${agentId}`, meta);
   }
   async appendIntent(record: IntentRecord, meta: WriteMeta): Promise<CommitRef> {
+    // lane C's rules (packages/memory-repo appendIntent): the user's own repo, written by the record's own agent
+    if (this.userId !== undefined && record.userId !== this.userId) throw new WorkspaceError("SCOPE_DENIED");
+    if (meta.author !== record.agentId) throw new WorkspaceError("SCOPE_DENIED");
     this.intents.push(structuredClone(record));
     return this.commit(`intent ${record.id}${record.chosenQuote ? " chosen" : ""} by ${record.agentId}`, meta);
+  }
+  /** MemoryRepo.compact as the contract describes it (lane C implements the real one). */
+  async compact(opts: CompactOptions, meta: WriteMeta): Promise<CompactResult> {
+    const card = this.rules.mergeCard(this.contributions, opts);
+    const older = new Set<string>();
+    const fields = [...new Set(card.superseded.map((x) => x.field))];
+    for (const field of fields) {
+      const list = card.superseded.filter((x) => x.field === field).sort((a, b) => (a.lastSupportedAt < b.lastSupportedAt ? 1 : -1));
+      for (const x of list.slice(opts.keepSuperseded)) older.add(`${field}\u0000${x.value}`);
+    }
+    const moved = this.contributions.filter((c) => !c.revokedAt && older.has(`${c.field}\u0000${c.value}`));
+    if (moved.length === 0) return { archived: 0, archivedIds: [] };
+    const month = opts.now.slice(0, 7);
+    const lines = this.archive.get(month) ?? [];
+    for (const c of moved) lines.push(`${this.rules.renderContribution(c)} [archivedAt: ${opts.now}; from: contributions/${c.agentId}.md]`);
+    this.archive.set(month, lines);
+    const ids = new Set(moved.map((c) => c.id));
+    this.contributions = this.contributions.filter((c) => !ids.has(c.id));
+    const commit = this.commit(`compact: archive ${moved.length} superseded line(s)`, meta);
+    return { archived: moved.length, archivedIds: [...ids], commit: commit.sha };
+  }
+  /** Lines in contributions/ for one field (tests). */
+  linesFor(field: string): Contribution[] {
+    return this.contributions.filter((c) => c.field === field);
   }
   async appendReceipt(r: Receipt, meta: WriteMeta): Promise<CommitRef> {
     this.receipts.push(structuredClone(r));
@@ -83,7 +123,7 @@ export class InMemoryRepo implements MemoryRepo {
 export function stubMemoryRepoApi(seedContributions: () => Contribution[]): MemoryRepoApi {
   return {
     async openMemoryRepo(opts: OpenMemoryRepoOptions): Promise<MemoryRepo> {
-      return new InMemoryRepo(opts.rules, seedContributions());
+      return new InMemoryRepo(opts.rules, seedContributions(), opts.userId);
     },
   };
 }

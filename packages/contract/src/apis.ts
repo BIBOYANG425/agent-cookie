@@ -27,6 +27,9 @@ export interface RulesApi {
    *  - same field+value from ≥2 distinct agentIds with basis≠inferred → card, confidence high
    *  - personal "stated", single source → card, confidence medium
    *  - inferred → never on the card (candidate, reason "inferred"); single non-personal source → candidate "single_source"
+   *  - learned rows (2026-10-17 / B49, rows carrying evidence): sources are counted per conversationId / intentId
+   *    from evidence, not per agent; observed or inferred values need ≥2 independent sources (then medium), a single
+   *    one stays a candidate; the user's own stated row stays the trusted value it always was
    *  - several qualifying values → the newest wins; older qualified values go to `superseded`
    *  - newest value with one source → medium + changedRecently
    *  - lastSupportedAt > 180 days → medium; > 365 days → off the card
@@ -107,6 +110,13 @@ export interface MemoryRepo {
   appendContribution(c: Contribution, meta: WriteMeta): Promise<CommitRef>;
   /** Mark a contribution revoked (the user's own action) in its writer's file. Unknown id → resolves without a commit (`sha: ""`). */
   revokeContribution(id: string, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+  /**
+   * B49 forget: mark every listed contribution revoked (evidence snippets removed, as revokeContribution does) AND
+   * rewrite CARD.md from what is left, in ONE commit by meta.author. Unknown ids are skipped; none known → no commit
+   * (`sha: ""`). Optional until lane C ships it: the workspace falls back to revokeContribution per id and one
+   * regenerateCard (several commits).
+   */
+  revokeContributions?(ids: readonly string[], revokedAt: string, merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }>;
   /** Re-run rules.mergeCard over contributions/*.md and write CARD.md. Returns the card it wrote. */
   regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }>;
   /** Upsert one key in notes/<sessionId>.md (owned by note.agentId). Rejects with WorkspaceError MISSING_FIELD if the file would exceed NOTE_MAX_BYTES. */
@@ -126,6 +136,28 @@ export interface MemoryRepo {
    * workspace skips the call when it is absent.
    */
   appendIntent?(record: IntentRecord, meta: WriteMeta): Promise<CommitRef>;
+  /**
+   * Dreaming's compaction (plan §规模与时间规则 "每字段保留现值 + 最近 3 条 superseded"; additive 2026-10-18, lane C
+   * implements). Merge the repo's contributions with RulesApi.mergeCard at `opts.now` / `opts.personalAgentIds`; per
+   * field, keep the lines of the current value, of every candidate and of the `keepSuperseded` most recent superseded
+   * values (by lastSupportedAt), and MOVE every line of an older superseded value to archive/<YYYY-MM of now>.md: the
+   * same line, followed by ` [archivedAt: <now>; from: contributions/<agentId>.md]`, and removed from contributions/.
+   * One commit for the whole run, author `meta.author` (DREAMING_AUTHOR), the usual trailer; nothing to move → no
+   * commit (`commit` absent, `archived` 0). Revoked lines are history and stay. Returns the archived contribution ids
+   * so the workspace can mirror the archive in SQLite. Optional until lane C ships it: the workspace skips the step.
+   */
+  compact?(opts: CompactOptions, meta: WriteMeta): Promise<CompactResult>;
+}
+
+export interface CompactOptions extends MergeOptions {
+  keepSuperseded: number;
+}
+export interface CompactResult {
+  archived: number;
+  /** Ids of the contributions moved to archive/. */
+  archivedIds: string[];
+  /** The compaction commit's sha; absent when nothing was moved. */
+  commit?: string;
 }
 
 export interface MemoryRepoApi {
@@ -286,6 +318,12 @@ export interface LearnIntentInput {
   chosenQuote?: Quote;
 }
 
+/**
+ * Lane B (@agent-cookie/learn). Candidates are parameters, never authority: the workspace keeps a candidate only if
+ * it is a pref.* whitelist field, its value passes the contract's format check, and it came from the user's own
+ * words; it then writes it as the personal agent with the basis the extractor gave (stated / observed / inferred —
+ * B49: "stated" is not downgraded), and RulesApi.mergeCard decides what reaches the card.
+ */
 export interface LearnApi {
   extract(input: LearnIntentInput): Promise<ContributionCandidate[]>;
   /** Receives ONLY the user's own turns (role "user"), in order; the workspace never passes agent/other turns. */
