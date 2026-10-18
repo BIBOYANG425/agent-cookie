@@ -137,6 +137,8 @@ B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm 
 
 ## 对话旁听学习（Photon 2.0 Beta）
 
+实机五分钟验收时，运行后台的 Mac 要接电、保持开盖。可临时运行 `caffeinate -i -t 900` 防止十五分钟内的自动闲置休眠；它不能阻止合盖休眠，也不改变系统的长期电源设置。休眠/断网期间定时处理无法按时完成，不能把手机收到确认回复当成已经学到。Photon 有限重连耗尽会以 `RECONNECT_FAILED` 退出：恢复网络后先确认旧进程已退出、原 outbox 全部为 `sent`，再用原 `.env`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1` 和原状态文件启动唯一监听；不要删除 cursor/outbox、绕过锁或自动重放旧消息。未知发送结果继续按既有停止规则处理。验收以新消息自然空闲五分钟后的后台贡献和控制台读回为准。
+
 人的最新确认：Photon 团队要求继续使用 `app.beta.photon.codes`。现有 `pho_prj_` 项目、`PHOTON_API_KEY` 和原 iMessage 号码保留，`serve` 的同一个 Socket.IO 收消息循环负责采集，不要求另外登录旧平台或提供 `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`。`spectrum-ts` Cloud 与 Beta 是不同产品；旧 `serve-spectrum` 入口保留供真正的 Cloud 项目使用，不用于这条 Beta 线路。两入口共用原运行锁和状态文件，不能并行启动或另换状态文件绕过锁。不使用 `@spectrum-ts/imessage-local`，不读电脑上的其他聊天。
 
 通道显式开关：本机忽略的 `.env` 中设 `AGENT_COOKIE_LEARNING_BINDING=workspace-v1`，仍运行原 `serve` 命令。后台须先支持学习端点，并显式设 `AGENT_COOKIE_LEARN_PROVIDER=openrouter`、从本地加载 `OPENROUTER_API_KEY`；当前默认 Jev1.14 + gpt-oss120b。仅有模型 key 不会自动启用。启动时读后台暂停状态并保留本机已有暂停，失败则退出并释放锁；正常停止旧监听、确认 outbox 无未知发送结果后才能切换。
