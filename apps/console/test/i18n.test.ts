@@ -12,6 +12,8 @@ import { sampleFunnelReport } from '../src/funnel';
 import { sampleExperimentReport } from '../src/experiments';
 import { ConsoleController } from '../src/controller';
 import { createSampleAdapter } from '../src/adapters';
+import { LinksPanel } from '../src/LinksPanel';
+import { sampleLink, SAMPLE_LINK_ID } from '../src/links';
 
 afterEach(() => { setLocaleOverride(undefined); setCardLanguage('zh'); vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe('console locales', () => {
@@ -67,10 +69,45 @@ describe('console locales', () => {
       createElement(PolicyPanel, {sample:true, disabled:false, shadow:()=>{}, install:()=>{}, state:{availability:'ready',data:samplePolicyView()}}),
       createElement(LearningPanel, {sample:false, disabled:false, revoke:()=>{}, state:{availability:'ready', paused:false,entries:[{field:'pref.color',value:'黑色',status:'candidate',sources:[],evidence:[]}]}})));
     expect(render()).toContain('颜色偏好'); setLocaleOverride('en'); const html = render();
-    for (const text of ['Color preference','First quote (ms)','Control','Insufficient sample','Sample','not real merchants','Install','Learned','pref.color','future.raw','黑色']) expect(html).toContain(text);
+    for (const text of ['Color preference','First quote (ms)','Control','Insufficient sample','Sample','not real merchants','Install','Learned','Company assistant','pref.color','future.raw','黑色']) expect(html).toContain(text);
     expect(html).not.toContain('颜色偏好'); expect(html).not.toContain('首个报价');
     expect(localizeUiText(messages.zh.stageCandidate)).toBe(messages.en.stageCandidate);
     expect(localizeUiText('raw user text')).toBe('raw user text');
     setLocaleOverride('zh'); expect(render()).toContain('颜色偏好');
+  });
+  it('localizes consent labels, actions, dates and warnings while preserving raw assistant names', () => {
+    const link = {...sampleLink(0), agentName:'Sample · 云端助理'};
+    const render = (handled: string[] = []) => renderToStaticMarkup(createElement(LinksPanel, {
+      sample:true, blocked:false, handled, decide:()=>{}, state:{availability:'ready',data:{links:[link]}},
+    }));
+    expect(render()).toContain('1 条待批准，共 1 条。');
+    expect(render()).toContain('批准 Sample · 云端助理 的连接请求');
+    setLocaleOverride('en'); const html = render();
+    for (const text of ['Connection requests','1 pending, 1 total.','Request ID','Requested at','Valid until','Decided at',
+      'Pending approval','Approve connection request from Sample · 云端助理','Decline connection request from Sample · 云端助理',
+      'creates no session or grant','never shipping addresses or payment methods','30-day grant','10 minutes',
+      new Date(0).toLocaleString('en-US', {hour12:false})]) expect(html).toContain(text);
+    expect(html).not.toContain('待批准'); expect(html).not.toContain('批准连接请求');
+    expect(render([link.id])).toContain('Handled'); expect(render([link.id])).not.toContain('</button>');
+    setLocaleOverride('zh'); expect(render([link.id])).toContain('已处理');
+  });
+  it.each(['approve','decline'] as const)('relocalizes %s consent success and already-handled notices without a new action', async decision => {
+    vi.useFakeTimers();
+    const network = vi.spyOn(globalThis, 'fetch');
+    const controller = new ConsoleController(createSampleAdapter(() => 0));
+    controller.start();
+    try {
+      await controller.decideLink(SAMPLE_LINK_ID, decision);
+      expect(controller.getState().notice).toContain(decision === 'approve' ? '批准连接请求完成' : '拒绝连接请求完成');
+      setLocaleOverride('en');
+      expect(controller.getState().notice).toContain(decision === 'approve' ? 'Approve connection request completed.' : 'Decline connection request completed.');
+      await controller.decideLink(SAMPLE_LINK_ID, decision);
+      expect(controller.getState().notice).toContain('This connection request was already handled');
+      expect(controller.getState().notice).toContain('Nothing changed this time.');
+      setLocaleOverride('zh'); expect(controller.getState().notice).toContain('这条连接请求已处理');
+      expect(controller.getState().handledLinks).toEqual([SAMPLE_LINK_ID]);
+      expect(controller.getState().data!.grants.map(grant => grant.agentId)).not.toContain('sample-assistant');
+      expect(network).not.toHaveBeenCalled();
+    } finally { controller.stop(); network.mockRestore(); }
   });
 });

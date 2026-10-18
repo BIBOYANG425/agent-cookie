@@ -27,6 +27,7 @@ import type { CardService } from "./card.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
 import { ObservationQueue, type QueuedConversation } from "./observations.js";
 import { evidenceModels } from "./provenance.js";
+import { assistState } from "./sessions.js";
 
 const PAUSED_KEY = "learning.paused";
 /** Bumped on every pause: a learner answer that started before a pause is dropped even if learning was resumed since. */
@@ -122,7 +123,8 @@ export class LearningService {
     try {
       const repo = this.ctx.repo();
       if (!repo.forgetContributions) throw new Error('Projection unavailable');
-      await repo.forgetContributions(job.ids, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() },
+      const now = this.ctx.clock.nowIso();
+      await repo.forgetContributions(job.ids, { now, personalAgentIds: this.ctx.store.trustedStatedAgentIds(now) },
         writeMeta(this.ctx, actor, { field, ids: job.ids }));
       this.ctx.store.completeForget(userId, field);
       return true;
@@ -274,11 +276,15 @@ export class LearningService {
     }));
   }
 
-  /** GET /personal/learned: pref.* on the card and pref.* candidates the user's own agents produced, with evidence. */
+  /**
+   * GET /personal/learned: pref.* on the card and pref.* candidates the user's own agents (and linked assistants, whose
+   * observed conversations Dreaming learns from too) produced, with evidence.
+   */
   learned(userId: string): LearnedResponse {
     const card = this.card.get(userId);
-    const personal = new Set(this.ctx.store.personalAgentIds());
-    const mine = this.ctx.store.contributionsForUser(userId).filter((c) => !c.revokedAt && isPrefField(c.field) && personal.has(c.agentId));
+    const learners = new Set([...this.ctx.store.personalAgentIds(),
+      ...this.ctx.store.agents().filter((a) => a.category === "assistant").map((a) => a.agentId)]);
+    const mine = this.ctx.store.contributionsForUser(userId).filter((c) => !c.revokedAt && isPrefField(c.field) && learners.has(c.agentId));
     const evidenceFor = (field: string, value: string) => mine.filter((c) => c.field === field && c.value === value)
       .map((c) => ({ contributionId: c.id, agentId: c.agentId, basis: c.basis, createdAt: c.createdAt, ...(c.evidence ?? {}) }));
     const learned: LearnedEntry[] = [];
@@ -287,7 +293,7 @@ export class LearningService {
       const evidence = evidenceFor(field, value);
       // Merchants cannot write pref.* (their attempts are kept as their own inferred records): not "learned".
       if (evidence.length === 0) return;
-      learned.push({ field, value, status, sources: sources.filter((s) => personal.has(s)), evidence });
+      learned.push({ field, value, status, sources: sources.filter((s) => learners.has(s)), evidence });
     };
     for (const f of card.card) add(f.field, f.value, "card", f.sources);
     for (const c of card.candidates) add(c.field, c.value, "candidate", c.sources);
@@ -356,20 +362,30 @@ export class LearningService {
       return 0;
     }
     const epoch = this.epoch(batch.userId);
-    const personal = this.ctx.store.agent(agentId);
-    if (!personal || personal.category !== "personal" || this.state(batch.userId).paused) {
-      this.ctx.log({ event: "learn.conversation", actor: agentId, result: "dropped", reason: personal ? "paused" : "unknown agent" });
+    const writer = this.ctx.store.agent(agentId);
+    // The user's own agents write as themselves. A company assistant writes as itself too, through write.assistant and
+    // only while its consent grant is live (an owner who revoked it is not learned from afterwards).
+    const role = writer?.category === "personal" ? "personal" as const
+      : writer?.category === "assistant" && this.linked(batch.userId, agentId) ? "assistant" as const : undefined;
+    if (!writer || !role || this.state(batch.userId).paused) {
+      this.ctx.log({ event: "learn.conversation", actor: agentId, result: "dropped",
+        reason: !writer ? "unknown agent" : !role ? (writer.category === "assistant" ? "not linked" : "not a learner") : "paused" });
       return 0;
     }
     if (turns.length === 0) return 0;
     try {
       const userTurns = turns.map((t) => ({ role: "user" as const, text: t.text, at: t.at }));
       const candidates = await this.withTimeout(this.learn.extractFromConversation(userTurns, { conversationId, channel: batch.channel }));
-      return await this.applySerial({ ...personal, role: "personal" }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch, started);
+      return await this.applySerial({ ...writer, role }, batch.userId, candidates, { conversationId }, turns.map((t) => t.text), epoch, started);
     } catch (err) {
       this.failed(agentId, "conversation", err);
       return 0;
     }
+  }
+
+  /** A company assistant's consent is live (sessions.ts assistState). */
+  private linked(userId: string, agentId: string): boolean {
+    return !("code" in assistState(this.ctx.store, this.ctx.clock.now(), userId, agentId));
   }
 
   private applySerial(...args: Parameters<LearningService["apply"]>): Promise<number> {
@@ -384,16 +400,19 @@ export class LearningService {
   }
 
   /**
-   * Check each candidate and write the survivors as `personal`. `said` is what the user said: a snippet must quote it
-   * and name the value. Nothing is written if learning was paused since `epoch` (even if resumed again), or the
-   * source was forgotten since `started`. Returns how many were written. CARD.md is regenerated once at the end.
+   * Check each candidate and write the survivors as `personal` (a personal agent, or a linked assistant: then the
+   * extractor's "stated" is written "observed", since only the user's own agents state facts, and the record goes
+   * through write.assistant). `said` is what the user said: a snippet must quote it and name the value. Nothing is
+   * written if learning was paused since `epoch` (even if resumed again), the source was forgotten since `started`, or
+   * an assistant's consent ended. Returns how many were written. CARD.md is regenerated once at the end.
    */
   private async apply(personal: AuthedAgent, userId: string, raw: unknown, source: Source,
     said: readonly string[], epoch: string, started: number): Promise<number> {
-    const live = () => this.stillOn(userId, epoch) && !this.forgottenSince(source, started);
+    const live = () => this.stillOn(userId, epoch) && !this.forgottenSince(source, started)
+      && (personal.role !== "assistant" || this.linked(userId, personal.agentId));
     if (!live()) {
       this.ctx.log({ event: "learn.apply", actor: personal.agentId, object: source.intentId ?? "conversation", result: "dropped",
-        reason: this.stillOn(userId, epoch) ? "forgotten" : "paused" });
+        reason: !this.stillOn(userId, epoch) ? "paused" : this.forgottenSince(source, started) ? "forgotten" : "not linked" });
       return 0;
     }
     // The learner's answer is data: copy it once (no getters re-read later), keep plain candidate objects only.
@@ -421,7 +440,8 @@ export class LearningService {
       // One spelling per value: a later "brooks" joins the existing "Brooks", so sources add up.
       value = existing.find((x) => same(x) && !x.revokedAt)?.value ?? value;
       // B49: the extractor's basis is kept (stated reaches the card on its own); anything unknown is "observed".
-      const basis: Basis = typeof c.basis === "string" && BASES.has(c.basis) ? c.basis : "observed";
+      const extracted: Basis = typeof c.basis === "string" && BASES.has(c.basis) ? c.basis : "observed";
+      const basis: Basis = personal.role !== "personal" && extracted === "stated" ? "observed" : extracted;
       if (existing.some((x) => same(x) && x.revokedAt)) { skip("revoked"); continue; }
       // One record per value per source: the same conversation (or intent) repeating itself is one source, whoever
       // wrote it; a different conversation is new evidence, however recent the last one.

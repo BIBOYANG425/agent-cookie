@@ -68,6 +68,8 @@ export class PolicyService {
   purposeFields(category: Category): Field[] { return policyPurposeFields(this.doc, category); }
   purposesFor(category: Category, field: Field): string[] { return policyPurposesFor(this.doc, category, field); }
   canWrite(category: Category, field: Field): boolean { return evaluateWrite(this.doc, category, field); }
+  /** The category's writable fields in document order (GET /assistant/context `writable`). */
+  writeFields(category: Category): Field[] { return [...(this.doc.write[category] ?? [])]; }
 
   /** PUT /personal/policy. 422 with every violation named (sections and field names, never values); nothing changes on 422. */
   async install(actor: string, userId: string, input: unknown): Promise<PolicyView> {
@@ -119,7 +121,7 @@ export class PolicyService {
     for (const e of this.ctx.store.fieldReadEvents(SHADOW_LIMIT)) {
       const c = categoryOf(e.actor);
       if (!c) continue;
-      // reason = "<field,field> purpose=<p>[ intent=<id>]" (services/fields.ts)
+      // reason = "<field,field> purpose=<p>[ intent=<id>][ receipts=<n> deduped=<0|1>]" (services/fields.ts)
       const fields = (e.reason.split(" ")[0] ?? "").split(",").filter(isField);
       const purpose = /(?:^|\s)purpose=(\S*)/.exec(e.reason)?.[1] || undefined;
       for (const f of fields) compare(e.id, "read", c, f, purpose);

@@ -2,8 +2,8 @@
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import { EventEmitter } from "node:events";
 import {
-  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_STREAM_HEARTBEAT_MS, INTENT_STREAM_MAX_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS,
-  UpstreamError, WorkspaceError,
+  DEFAULT_SELLER_COUNT, FIELDS, GRANT_TTL_MS, INTENT_STREAM_HEARTBEAT_MS, INTENT_STREAM_MAX_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS,
+  UpstreamError, WorkspaceError, policyAutoFields,
   type AcceptResult, type Agent, type ErrorCode, type Field, type IntentEvent, type PaymentAuthorization, type PaymentBillTo, type Quote,
   type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
@@ -21,6 +21,7 @@ import { persistStrict, writeMeta, type Ctx } from "./context.js";
 import type { FieldService } from "./fields.js";
 import type { NoteService } from "./notes.js";
 import type { LearningService } from "./learning.js";
+import { HANDSHAKE_PURPOSE, repeatsRecent, type ReceiptOutcome } from "./receipts.js";
 import type { Introduction, SessionService } from "./sessions.js";
 
 const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
@@ -64,6 +65,15 @@ export type IntentStreamItem = { event: IntentEvent; seq?: number } | { heartbea
 
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
 export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
+
+/**
+ * Pairwise isolation on the intent routes (bring-your-own-agent): a linked assistant reads quotes and events, and
+ * accepts, only for intents it created; anything else answers the same 404 as an intent that does not exist. The
+ * user's own agents and the owner see every intent of the user.
+ */
+function visibleTo(intent: IntentRow, caller?: AuthedAgent): boolean {
+  return caller?.role !== "assistant" || intent.agentId === caller.agentId;
+}
 
 export function toQuote(q: QuoteRow): Quote {
   const out: Quote = { id: q.id, intentId: q.intentId, agentId: q.agentId, text: q.text, price: q.price, currency: "USD", etaDate: q.etaDate ?? null };
@@ -136,7 +146,8 @@ export class CommerceService {
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
    * grants, quotes and Tier 0 receipts in ONE transaction; only then deliver. A failure anywhere before the commit
-   * leaves no state behind, so a retry with the same Idempotency-Key starts clean.
+   * leaves no state behind, so a retry with the same Idempotency-Key starts clean. `personal` is the agent that asks: a
+   * personal agent or a linked assistant (the route checked its grant); it is stored as the intent's agentId (createdBy).
    */
   async createIntent(personal: AuthedAgent, userId: string, input: IntentInput): Promise<{ intentId: string; expiresAt: string; introduced: number }> {
     for (const [k, v] of Object.entries(input.public)) {
@@ -175,7 +186,8 @@ export class CommerceService {
     }
     for (const agent of store.agents()) {
       // Registered merchants come in through the optional kind hint; UCP stores through the search below.
-      if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
+      // The user's own agents and company assistants act for the user; they are never introduced as merchants.
+      if (agent.category === "personal" || agent.category === "assistant" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
       if (agent.callbackUrl) {
         plans.push(await this.sessions.prepare(userId, agent, intent, "callback"));
       } else if (agent.chatEndpoint) {
@@ -197,17 +209,33 @@ export class CommerceService {
     const query = input.query ?? input.text ?? input.kind?.replace(/_/g, " ");
     if (query) {
       const card = this.card.values(userId);
+      // The workspace reads the card here on behalf of the stores it will quote from: the UCP proxy's equivalent of a
+      // merchant reading its handshake's auto fields. `consulted` collects the NAMES of the card values this search
+      // used (a value this request states itself is not a card read); each picked store's session gets one "handshake"
+      // receipt naming them (below). The values never leave the workspace and never enter a log line.
+      // Only the fields this intent's policy document lists in `auto.retail` (every UCP store proxy is a "retail" agent)
+      // are read from the card: a field the owner's installed document leaves out is neither used by the search nor
+      // named in a receipt. A value the request states itself is still used, as before (it is not a card read).
+      const readable = new Set<Field>(policyAutoFields(policyDoc, "retail"));
+      const consulted = new Set<Field>();
+      const fromCard = (f: Field): string | undefined => {
+        if (!readable.has(f)) return undefined;
+        const v = card[f];
+        if (v !== undefined && v !== "") consulted.add(f);
+        return v;
+      };
       const conditions: SearchConditions = { shipsTo: "US", ...(maxPriceCents !== undefined ? { maxPriceCents } : {}) };
-      const preferMaxPriceCents = maxPriceCents === undefined ? parseBudgetCents(card.budget) : undefined;
+      const preferMaxPriceCents = maxPriceCents === undefined ? parseBudgetCents(fromCard("budget")) : undefined;
       if (preferMaxPriceCents !== undefined) conditions.preferMaxPriceCents = preferMaxPriceCents;
-      const size = input.public.size ?? input.public.shoe_size ?? card.shoe_size;
+      const size = input.public.size ?? input.public.shoe_size ?? fromCard("shoe_size");
       if (size) conditions.size = size;
-      if (card.lang) conditions.lang = card.lang;
+      const lang = fromCard("lang");
+      if (lang) conditions.lang = lang;
       // Learned preferences on the card: brand and color rank (this request's own brand/color win); avoid excludes.
       // A learned "avoid" never overrides what the user asks for now: a term this request names is not avoided this time.
       const asked = `${input.text ?? ""} ${input.query ?? ""} ${Object.values(input.public).join(" ")}`.normalize("NFKC").toLowerCase();
-      const prefs = { brand: terms(input.public.brand ?? card["pref.brand"]), color: terms(input.public.color ?? card["pref.color"]),
-        avoid: terms(card["pref.avoid"]).filter((t) => !asked.includes(t)) };
+      const prefs = { brand: terms(input.public.brand ?? fromCard("pref.brand")), color: terms(input.public.color ?? fromCard("pref.color")),
+        avoid: terms(fromCard("pref.avoid")).filter((t) => !asked.includes(t)) };
       if (prefs.brand.length || prefs.color.length || prefs.avoid.length) conditions.prefs = prefs;
       let offers: UcpOffer[] | undefined;
       try {
@@ -243,9 +271,31 @@ export class CommerceService {
           const url = offer.checkoutUrl ?? offer.url;
           if (url) quote.checkoutUrl = url;
           if (sizeNote) quote.sizeNote = sizeNote;
-          plans.push({ ...x, quote, ...(existing ? {} : { newAgent: proxy }) });
+          // One receipt per (proxy session, intent): the card fields this search used for the store, in table order.
+          const used = FIELDS.filter((f) => consulted.has(f));
+          const receipt: Receipt | undefined = used.length === 0 ? undefined : { id: newId("r"), sessionId: x.session.sessionId,
+            agentId: proxy.agentId, intentId: intent.id, fields: used, purpose: HANDSHAKE_PURPOSE, createdAt: clock.nowIso(), policyId };
+          plans.push({ ...x, quote, ...(existing ? {} : { newAgent: proxy }), ...(receipt ? { receipt } : {}) });
         }
       }
+    }
+
+    // UCP proxies' handshake receipts: git first, before anything is committed, so the quotes built from those card
+    // values exist only once their receipts are durable ("no durable receipt, no values"); a failed repo write fails the
+    // request with nothing in SQLite, like every persistStrict write. Same de-duplication rule as a merchant's auto read
+    // (services/receipts.ts); a new intent never repeats an earlier receipt, so in practice each one is written.
+    const ucpReceipts = new Map<Plan, { outcome: ReceiptOutcome; fields: number }>();
+    for (const p of plans) {
+      if (p.channel !== "ucp") continue;
+      const receipt = p.receipt;
+      if (!receipt) { ucpReceipts.set(p, { outcome: "none", fields: 0 }); continue; }
+      if (repeatsRecent(this.ctx, receipt)) {
+        delete p.receipt;
+        ucpReceipts.set(p, { outcome: "deduped", fields: receipt.fields.length });
+        continue;
+      }
+      await persistStrict(this.ctx, "receipt", "workspace", (r) => r.appendReceipt(receipt, writeMeta(this.ctx, "workspace", receipt)));
+      ucpReceipts.set(p, { outcome: "written", fields: receipt.fields.length });
     }
 
     store.tx(() => {
@@ -262,6 +312,12 @@ export class CommerceService {
         this.sessions.commit(p, intent);
         if (p.quote) store.insertQuote(p.quote);
         if (p.receipt) store.insertReceipt({ ...p.receipt, userId });
+        const ucpReceipt = ucpReceipts.get(p);
+        if (ucpReceipt) {
+          // Counts only: how many card fields the search used for this store, and whether the receipt was written.
+          this.ctx.log({ event: "ucp.handshake", actor: "workspace", object: p.session.sessionId, result: ucpReceipt.outcome,
+            reason: `fields=${ucpReceipt.fields} intent=${intent.id}` });
+        }
       }
     });
     // Committed: tell open streams (none can be open yet for a new intent, but the order is the rule).
@@ -290,9 +346,9 @@ export class CommerceService {
     return { intentId: intent.id, expiresAt: intent.expiresAt, introduced: plans.length };
   }
 
-  async quotes(userId: string, intentId: string, waitMs: number): Promise<{ intentId: string; quotes: Quote[]; complete: boolean }> {
+  async quotes(userId: string, intentId: string, waitMs: number, caller?: AuthedAgent): Promise<{ intentId: string; quotes: Quote[]; complete: boolean }> {
     const intent = this.ctx.store.intent(intentId);
-    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!intent || intent.userId !== userId || !visibleTo(intent, caller)) fail("NOT_FOUND");
     const wait = Math.max(0, Math.min(waitMs, QUOTE_POLL_MAX_MS));
     const expected = new Set(this.ctx.store.intentSessions(intentId).filter((x) => x.channel !== "tier0").map((x) => x.agentId));
     const started = Date.now();
@@ -313,9 +369,9 @@ export class CommerceService {
    * Heartbeat ticks every streamLimits.heartbeatMs; expiry is re-checked at each, at the expiry instant, and when the
    * clock is shifted. It also ends after streamLimits.maxMs, on `signal`, and as soon as a reset starts.
    */
-  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal } = {}): AsyncGenerator<IntentStreamItem> {
+  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal; caller?: AuthedAgent } = {}): AsyncGenerator<IntentStreamItem> {
     const intent = this.ctx.store.intent(intentId);
-    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!intent || intent.userId !== userId || !visibleTo(intent, opts.caller)) fail("NOT_FOUND");
     return this.stream(intent, lastEventId ?? 0, opts.signal);
   }
 
@@ -410,12 +466,14 @@ export class CommerceService {
    * Accept a quote. Concurrent accepts of one quote share one run; a decided quote returns its stored result.
    * Nothing goes upstream unless the intent and the merchant's grant for it are still live. On accept the
    * merchant's grant for this intent widens to shipping_address for purpose "checkout" — the only way a
-   * purpose field is ever released.
+   * purpose field is ever released. A linked assistant accepts only quotes of intents it created (visibleTo); the
+   * merchant side is the same for every caller: the address reaches the merchant at checkout, payment at the payment
+   * stage, each with its receipt, and the result carries field names only.
    */
   async accept(personal: AuthedAgent, userId: string, quoteId: string): Promise<AcceptResult> {
     const q = this.ctx.store.quote(quoteId);
     const intent = q && this.ctx.store.intent(q.intentId);
-    if (!q || !intent || intent.userId !== userId) fail("NOT_FOUND");
+    if (!q || !intent || intent.userId !== userId || !visibleTo(intent, personal)) fail("NOT_FOUND");
     const running = this.inflight.get(q.id);
     if (running) return running;
     if (q.result) return q.result;

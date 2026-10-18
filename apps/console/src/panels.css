@@ -9,8 +9,19 @@
 .intent-conditions dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .intent-condition-value { white-space: pre-wrap; }
 .intent-scope { display: inline-block; padding: 1px 7px; border: 1px solid #bdc9de; border-radius: 4px; color: #304c9a; background: #edf1ff; font-size: 12px; }
+/* 连接请求: one record per consent link; actions only on pending ones. */
+.link-list { list-style: none; margin: 0; padding: 0; }
+.link-summary { margin: 16px 28px 0; font-size: 14px; color: #263758; }
+.link-record { padding: 24px 28px; }
+.link-record + .link-record { border-top: 1px solid #e7ebf1; }
+.link-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 8px 16px; }
+.link-heading h3 { margin: 0; }
+.link-status { color: #304c9a; font-size: 12px; }
+.link-status.inactive { color: #667189; }
+.link-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 @media (max-width: 720px) {
-  .receipt-record, .intent-record { padding: 20px; }
+  .receipt-record, .intent-record, .link-record { padding: 20px; }
+  .link-summary { margin: 16px 20px 0; }
 }
 @media (max-width: 380px) {
   .intent-conditions > div { grid-template-columns: 1fr; }

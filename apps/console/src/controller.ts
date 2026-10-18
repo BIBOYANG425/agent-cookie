@@ -1,12 +1,17 @@
 import { t, localizeUiText, subscribeLocale, type MessageKey } from './i18n';
 import type { ConsoleAdapter, ConsoleSnapshot, GrantView } from './model';
+import { LinkNotPendingError, type LinkDecision } from './links';
 import { parseCandidate, PolicyViolationError, type ShadowReport } from './policy';
 /** The last policy-panel action's outcome. Kept apart from notice/error so the next poll does not clear it. */
 export type PolicyResult = { kind: 'invalid'; message: string }
   | { kind: 'shadow'; report: ShadowReport }
   | { kind: 'violations'; action: 'shadow' | 'install'; violations: string[] }
   | { kind: 'installed'; policyId: string };
-interface State { data: ConsoleSnapshot | null; loading: boolean; notice: string; error: string; pending: string; policyResult?: PolicyResult }
+interface State {
+  data: ConsoleSnapshot | null; loading: boolean; notice: string; error: string; pending: string; policyResult?: PolicyResult;
+  /** Links the workspace answered 409 for (already approved, declined or expired): shown as 已处理, with no buttons. */
+  handledLinks: readonly string[];
+}
 const STATUS_KEYS = ['notice', 'error', 'pending'] as const;
 type StatusKey = typeof STATUS_KEYS[number];
 type StateUpdate = Omit<Partial<State>, StatusKey> & Partial<Record<StatusKey, string | (() => string)>>;
@@ -15,7 +20,7 @@ export function remainingSeconds(grant: GrantView, receivedAt: number, now: numb
   return grant.status !== 'live' ? 0 : Math.max(0, Math.ceil((grant.remainingMs - Math.max(0, now - receivedAt)) / 1000));
 }
 export class ConsoleController {
-  private state: State = { data: null, loading: true, notice: '', error: '', pending: '' };
+  private state: State = { data: null, loading: true, notice: '', error: '', pending: '', handledLinks: [] };
   private listeners = new Set<() => void>();
   private interval?: ReturnType<typeof setInterval>;
   private unsubscribeLocale?: () => void;
@@ -74,8 +79,11 @@ export class ConsoleController {
       if (generation === this.generation) this.update({ error: () => t("refreshFailed", message(error)), loading: false });
     } finally { if (generation === this.generation) this.request = undefined; }
   }
-  /** `reload: false` for read-only operations (shadow evaluation) whose answer is shown, not a new snapshot. */
-  private async perform(label: MessageKey, operation: (signal: AbortSignal) => Promise<void>, reload = true) {
+  /**
+   * `reload: false` for read-only operations (shadow evaluation) whose answer is shown, not a new snapshot. An operation
+   * that resolves with a renderer settled without a change (a link already decided): it replaces the notice.
+   */
+  private async perform(label: MessageKey, operation: (signal: AbortSignal) => Promise<void | (() => string)>, reload = true) {
     if (this.state.pending) return;
     this.request?.abort();
     const request = new AbortController();
@@ -84,9 +92,9 @@ export class ConsoleController {
     this.update({ pending: () => t(label), notice: '', error: '' });
     let acknowledged = false;
     try {
-      await operation(request.signal);
+      const settled = await operation(request.signal);
       acknowledged = true;
-      const notice = () => t("completed", this.adapter.mode === 'sample' ? t("sampleThisPageOnly") : t("workspaceConfirmed"), t(label));
+      const notice = typeof settled === 'function' ? settled : () => t("completed", this.adapter.mode === 'sample' ? t("sampleThisPageOnly") : t("workspaceConfirmed"), t(label));
       if (!reload) { if (generation === this.generation) this.update({ notice }); return; }
       const data = await this.adapter.load(request.signal);
       if (generation === this.generation) this.update({ data: this.sorted(data), loading: false, notice });
@@ -130,5 +138,24 @@ export class ConsoleController {
   private policyRejected(action: 'shadow' | 'install', error: unknown) {
     if (error instanceof PolicyViolationError) this.update({ policyResult: { kind: 'violations', action, violations: error.violations } });
   }
-  reset() { return this.perform(this.adapter.mode === 'sample' ? "resetSample" : "resetDemo", (signal) => this.adapter.reset(signal)); }
+  /**
+   * Approve or decline one consent link. The row changes only after the workspace acknowledges and the snapshot reloads;
+   * a 409 (decided elsewhere, or expired) is not a failure: the row is marked 已处理 and the snapshot reloads.
+   */
+  decideLink(id: string, decision: LinkDecision) {
+    return this.perform(decision === 'approve' ? 'linkApproveAction' : 'linkDeclineAction', async (signal) => {
+      try { await this.adapter.decideLink(id, decision, signal); }
+      catch (error) {
+        if (!(error instanceof LinkNotPendingError)) throw error;
+        if (!this.state.handledLinks.includes(id)) this.update({ handledLinks: [...this.state.handledLinks, id] });
+        return () => t('linkAlreadyHandled', this.adapter.mode === 'sample' ? 'Sample · ' : '');
+      }
+    });
+  }
+  reset() {
+    return this.perform(this.adapter.mode === 'sample' ? 'resetSample' : 'resetDemo', async (signal) => {
+      await this.adapter.reset(signal);
+      this.update({ handledLinks: [] });
+    });
+  }
 }

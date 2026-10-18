@@ -16,6 +16,7 @@ import { GrantsPanel } from './GrantsPanel';
 import type { ConsoleAdapter, Contribution } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
+import { LinksPanel } from './LinksPanel';
 import { PolicyPanel } from './PolicyPanel';
 import './style.css';
 
@@ -71,7 +72,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? t("demoAccountCardAndGrantsHeld")
         : t("connectingToTheLocalWorkspaceRevocations", data?.sample ? t("thisIsSampleDataOnThe") : '')}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label={t("consoleNavigation")}><a href="#card">{t("identityCard")}</a><a href="#learned">{t("learned")}</a><a href="#intent-conditions">{t("thisRequest315")}</a><a href="#grants">{t("grants")}</a><a href="#receipts">{t("receipts")}</a><a href="#policy">{t("policy")}</a><a href="#funnel">{t("funnel")}</a><a href="#experiments">{t("experiments")}</a><a href="#activity">{t("activity")}</a></nav>
+      <nav className="section-nav" aria-label={t("consoleNavigation")}><a href="#card">{t("identityCard")}</a><a href="#learned">{t("learned")}</a><a href="#intent-conditions">{t("thisRequest315")}</a><a href="#links">{t("connectionRequests")}</a><a href="#grants">{t("grants")}</a><a href="#receipts">{t("receipts")}</a><a href="#policy">{t("policy")}</a><a href="#funnel">{t("funnel")}</a><a href="#experiments">{t("experiments")}</a><a href="#activity">{t("activity")}</a></nav>
       <div className="sync-line"><span>{data ? t("updatedRefreshesEverySeconds", formatTime(data.receivedAt)) : state.loading ? t("loading") : t("workspaceDataNotLoadedYet")}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>{t("refreshNow")}</button></div>
       {state.pending && <p className="status-message" role="status">{t("working")}{localizeUiText(state.pending)}…</p>}
@@ -107,6 +108,9 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         selectStage={sample ? (id) => void controller.selectLearningStage(id) : undefined} />
 
       <IntentConditionsPanel intents={data?.intents} />
+
+      <LinksPanel state={data?.links} sample={sample} blocked={blocked} handled={state.handledLinks}
+        decide={(id, decision) => void controller.decideLink(id, decision).then(() => document.getElementById('links-title')?.focus({ preventScroll: true }))} />
 
       <GrantsPanel data={data} sample={sample} now={now} blocked={blocked}
         currentPolicyId={data?.policy?.availability === 'ready' ? data.policy.data.policyId : undefined}

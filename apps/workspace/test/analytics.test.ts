@@ -27,9 +27,11 @@ describe("Phase 0 · funnel report (proposed A24)", () => {
       const accept = await h.post(`/personal/quotes/${ucpQuotes[0]!.id}/accept`, KEYS.personal);
       expect(accept.body.status).toBe("handoff");
       // The Sample seed also has a Tier 0 merchant (ACME): one introduction and one `tier0` receipt per intent.
-      const all = (await h.get("/personal/receipts", KEYS.personal)).body.receipts as Array<{ purpose: string; intentId?: string }>;
+      const all = (await h.get("/personal/receipts", KEYS.personal)).body.receipts as Array<{ purpose: string; intentId?: string; fields: string[] }>;
       const tier0 = all.filter((x) => x.purpose === "tier0");
       expect(all.filter((x) => x.purpose === "checkout").length).toBe(1);
+      // Since 2026-10-18 the search's read of the card for each UCP store is receipted too: one `handshake` receipt per picked store.
+      expect(all.filter((x) => x.purpose === "handshake").length).toBe(ucpQuotes.length);
       for (const x of all) expect(x.intentId).toBe(intentId);
 
       const r = await h.get("/owner/funnel", KEYS.owner);
@@ -39,7 +41,7 @@ describe("Phase 0 · funnel report (proposed A24)", () => {
       const row = (r.body.rows as FunnelRow[]).find((x) => x.intentId === intentId)!;
       expect(row).toBeDefined();
       expect(row).toMatchObject({ introduced: ucpQuotes.length + 1 + tier0.length, quoted: ucpQuotes.length + 1, accepted: true, outcome: "handoff",
-        purposeReleases: 1 + tier0.length, source: "fixture" });
+        purposeReleases: 1 + tier0.length + ucpQuotes.length, source: "fixture", questionsSkipped: all.reduce((n, x) => n + x.fields.length, 0) });
       expect(row.firstQuoteMs).toBeGreaterThanOrEqual(0);
       // The checkout read shipping_address under the widened grant: at least one field read, never more than granted.
       expect(row.fieldsRead).toBeGreaterThanOrEqual(1);
@@ -69,7 +71,11 @@ describe("Phase 0 · funnel report (proposed A24)", () => {
     const row = (r.body.rows as FunnelRow[]).find((x) => x.intentId === intentId)!;
     expect(row.accepted).toBe(false);
     expect(row.outcome).toBeUndefined();
-    expect(row.purposeReleases).toBe(0);
+    // Nothing accepted, so nothing released by purpose; the only receipts are the search's handshake reads of the card,
+    // one per picked store, each naming lang and shoe_size (the Sample card has no budget, and this request states none).
+    expect(row.search!.picked).toBeGreaterThanOrEqual(1);
+    expect(row.purposeReleases).toBe(row.search!.picked);
+    expect(row.questionsSkipped).toBe(2 * row.search!.picked);
     expect(row.fieldsRead).toBe(0);
     expect(row.introduced).toBe(row.search?.picked ?? 0);
     if (row.quoted === 0) expect(row.firstQuoteMs).toBeUndefined();

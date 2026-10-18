@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_POLICY, POLICY_TABLE, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
+import { CATEGORIES, DEFAULT_POLICY, POLICY_TABLE, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
 import * as generator from '../scripts/generate-seed.js';
 import {
   POLICY_SEED_HEADER, parsePolicyDocument, parsePolicyYaml, policyYamlOrigin, renderInstalledPolicyYaml, renderPolicyYaml,
@@ -40,6 +40,53 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
     expect(policyId(parsed)).toBe(policyId(DEFAULT_POLICY));
   });
 
+  it('renders and parses the assistant category in all three sections, in CATEGORIES order', () => {
+    expect(CATEGORIES).toEqual(['personal', 'shoe', 'retail', 'assistant']);
+    const text = renderInstalledPolicyYaml(DEFAULT_POLICY, AT);
+    const block = (fields: readonly string[]) => fields.map((field) => `    - ${JSON.stringify(field)}\n`).join('');
+    expect(text).toContain(`\n  assistant:\n${block(DEFAULT_POLICY.auto.assistant)}purpose:\n`);
+    expect(text).toContain('\n  assistant: {}\nwrite:\n');
+    expect(text.endsWith(`\n  assistant:\n${block(DEFAULT_POLICY.write.assistant)}`)).toBe(true);
+    const parsed = parsePolicyDocument(text);
+    for (const section of ['auto', 'purpose', 'write'] as const) expect(Object.keys(parsed[section])).toEqual([...CATEGORIES]);
+    expect(parsed.auto.assistant).toEqual(DEFAULT_POLICY.auto.assistant);
+    expect(parsed.purpose.assistant).toEqual({});
+    expect(parsed.write.assistant).toEqual(DEFAULT_POLICY.write.assistant);
+    // A changed assistant row survives as written, order included.
+    const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    doc.auto.assistant = ['length', 'tone', 'lang', 'pref.color'];
+    doc.write.assistant = ['pref.color', 'shoe_size'];
+    expect(policyViolations(doc)).toEqual([]);
+    const reparsed = parsePolicyDocument(renderInstalledPolicyYaml(doc, AT));
+    expect(JSON.stringify(reparsed)).toBe(JSON.stringify(doc));
+    expect(policyId(reparsed)).toBe(policyId(doc));
+    expect(policyId(reparsed)).not.toBe(policyId(DEFAULT_POLICY));
+  });
+
+  it('reads assistant floor breaks back unchanged, so the workspace refuses them by name', () => {
+    // The codec never repairs: what the file says is what policyViolations sees.
+    const autoAddress = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    autoAddress.auto.assistant = [...autoAddress.auto.assistant, 'shipping_address'];
+    const parsed = parsePolicyDocument(renderInstalledPolicyYaml(autoAddress, AT));
+    expect(parsed.auto.assistant.at(-1)).toBe('shipping_address');
+    expect(policyViolations(parsed)).toEqual(['auto.assistant: shipping_address may never be auto']);
+
+    const purposeToken = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    purposeToken.purpose.assistant = { payment_method: ['payment'] };
+    purposeToken.write.assistant = [...purposeToken.write.assistant, 'shipping_address'];
+    expect(policyViolations(parsePolicyDocument(renderInstalledPolicyYaml(purposeToken, AT)))).toEqual([
+      'write.assistant: an assistant never writes shipping_address',
+      'purpose.assistant.payment_method: an assistant never reads payment_method, whatever the purpose',
+    ]);
+
+    // A three-category file written before the assistant category parses, and is refused rather than filled in.
+    const older = Object.fromEntries((['auto', 'purpose', 'write'] as const).map((section) => [section,
+      Object.fromEntries(Object.entries(DEFAULT_POLICY[section]).filter(([category]) => category !== 'assistant'))]));
+    const olderParsed = parsePolicyDocument(renderPolicyYaml({ v: 1, ...older }, '# Installed field policy · policyId ee12444c81c5 · 2026-10-17T12:05:00.000Z'));
+    expect(Object.keys(olderParsed.auto)).toEqual(['personal', 'shoe', 'retail']);
+    expect(policyViolations(olderParsed)).toEqual(['auto.assistant missing', 'purpose.assistant missing', 'write.assistant missing']);
+  });
+
   it('round-trips a document with ranking integers and reordered field lists', () => {
     const doc = rankedDocument();
     expect(policyViolations(doc)).toEqual([]);
@@ -60,6 +107,8 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
     expect(seed).not.toMatch(/^v:/mu);
     expect(parsePolicyYaml(seed)).toEqual(POLICY_TABLE);
     expect(parsePolicyDocument(seed)).toEqual(DEFAULT_POLICY);
+    expect(JSON.stringify(parsePolicyDocument(seed))).toBe(JSON.stringify(DEFAULT_POLICY));
+    expect(parsePolicyDocument(seed).auto.assistant).toEqual(DEFAULT_POLICY.auto.assistant);
     expect(renderPolicyYaml(parsePolicyYaml(seed))).toBe(seed);
   });
 

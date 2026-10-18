@@ -65,7 +65,7 @@ export class Dreaming {
     };
     if (!user) return { at: now, stats, decayedFields, steps };
     const userId = user.userId;
-    const opts = () => ({ now, personalAgentIds: this.ctx.store.personalAgentIds() });
+    const opts = () => ({ now, personalAgentIds: this.ctx.store.trustedStatedAgentIds(now) });
     const entries = (c: Card) => new Set(c.card.map((f) => `${f.field}\u0000${f.value}`));
     let before: Set<string> | undefined;
     try {
@@ -120,7 +120,7 @@ export class Dreaming {
    */
   private decayedFallback(userId: string, card: Card, now: string): Field[] {
     const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field) && !c.revokedAt).map(withoutModels);
-    const personalAgentIds = this.ctx.store.personalAgentIds();
+    const personalAgentIds = this.ctx.store.trustedStatedAgentIds(now);
     const nowMs = Date.parse(now);
     const at = new Map<string, Card>();
     const cardAt = (iso: string) => {

@@ -13,7 +13,13 @@ export type Basis = "observed" | "stated" | "inferred";
  * proxies (`ucp:<domain>`), whatever they sell. Same policy as "shoe" (policy.ts). "shoe" stays for registered
  * merchants that declared it.
  */
-export type Category = "personal" | "shoe" | "retail";
+export type Category = "personal" | "shoe" | "retail" | "assistant";
+/**
+ * "assistant" (bring-your-own-agent plan): a company-built personal assistant (Manus, Dots, Muse). It acts for the
+ * user (intents, accept, observe) through a pairwise session the OWNER approved via a consent link; it reads values
+ * by policy (auto.assistant), never provenance, never shipping_address or payment_method (the workspace hands those
+ * to the merchant at the stage that needs them). It is not the user's own agent ("personal" reads everything).
+ */
 
 /**
  * category === "personal" ? "personal" : "merchant" for registered agents.
@@ -21,7 +27,7 @@ export type Category = "personal" | "shoe" | "retail";
  * (/demo/reset additionally requires AGENT_COOKIE_DEMO=1). Owner keys are not tied to a category;
  * the fake workspace maps them from fixtures/dev-keys.json, the real one mints them at seed time.
  */
-export type Role = "personal" | "merchant" | "owner";
+export type Role = "personal" | "merchant" | "owner" | "assistant";
 
 /**
  * Learned-preference keys (2026-10-17, human direction "dynamic memory + learning from conversations"). Each is the
@@ -69,7 +75,7 @@ export function isField(x: unknown): x is Field {
 }
 
 export function roleOf(category: Category): Role {
-  return category === "personal" ? "personal" : "merchant";
+  return category === "personal" ? "personal" : category === "assistant" ? "assistant" : "merchant";
 }
 
 export interface Agent {
@@ -490,6 +496,7 @@ export type ErrorCode =
   | "PURPOSE_MISMATCH"       // 403
   | "NOT_FOUND"              // 404 — does not exist, or the caller may not know whether it exists
   | "IDEMPOTENCY_CONFLICT"   // 409
+  | "LINK_NOT_PENDING"       // 409 — approve/decline on a link already decided or expired
   | "MISSING_FIELD"          // 422
   | "UPSTREAM_ERROR"         // 502 — ucp / Photon / payment provider failed
   | "JAR_LOCKED"             // 403 — lane D
@@ -607,6 +614,8 @@ export interface DreamingRun {
 /** Wire shape of every error response. Never includes field names the caller is not allowed to know. */
 export interface ErrorBody {
   error: { code: ErrorCode; message: string };
+  /** Additive (A59, as UpstreamError.toBody sends it): UPSTREAM_ERROR only, the upstream's continue_url when it gave one. */
+  continueUrl?: string;
 }
 
 /** Response of POST /agents/register. The key is shown once; callers keep it in AGENT_COOKIE_KEY, never in chat or commits. */
@@ -615,6 +624,85 @@ export interface Registration {
   key: string;
   category: Category;
   role: Role;
+}
+
+// ---- Consent link (bring-your-own-agent plan §3): how a company assistant gets its pairwise session.
+// The assistant asks for a link; the OWNER approves it (console, CLI, or the hosted gateway after a passkey tap);
+// approval creates the session and its grant (purpose "assist"). Single use, LINK_TTL_MS, never auto-approved.
+export type LinkStatus = "pending" | "approved" | "declined" | "expired";
+export const LINK_STATUSES: readonly LinkStatus[] = ["pending", "approved", "declined", "expired"];
+export const LINK_TTL_MS = 10 * 60_000;
+/** An approved link's grant lasts this long (a consumer links once, not every ten minutes); the owner can revoke it any time. */
+export const ASSISTANT_GRANT_TTL_MS = 30 * 24 * 60 * 60_000;
+/** Owner view (GET /owner/links). */
+export interface Link {
+  id: string;
+  agentId: string;
+  agentName: string;
+  status: LinkStatus;
+  createdAt: string;
+  expiresAt: string;
+  /** When approved or declined. */
+  decidedAt?: string;
+  /** Set on approval: the assistant's pairwise session. */
+  sessionId?: string;
+}
+/** Assistant view (POST /assistant/link, GET /assistant/link/:id): never the owner's data, only the state of its own link. */
+export interface LinkView {
+  id: string;
+  status: LinkStatus;
+  /** Where the owner decides: an ABSOLUTE URL of the workspace resource (`${jar}/owner/links/${id}`); a console or gateway renders it. */
+  url: string;
+  expiresAt: string;
+  /** Present once approved. */
+  sessionId?: string;
+}
+/**
+ * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.
+ * `fields` = auto.assistant fields that have a value; `unknown` = auto.assistant fields without one (ask only when the
+ * task needs them); `writable` = write.assistant. A call that serves values writes a receipt (purpose "assist", field
+ * names only), except when the session's last assist receipt named the same fields under the same policy less than an
+ * hour ago (a chat reads its context on every message; every receipt is a git commit).
+ */
+export interface AssistantContext {
+  v: 1;
+  sessionId: string;
+  policyId: string;
+  fields: Partial<Record<Field, string>>;
+  unknown: Field[];
+  writable: Field[];
+  expiresAt: string;
+}
+
+/**
+ * POST /assistant/contributions body (bring-your-own-agent): a linked assistant records what the user told it.
+ *  - basis "stated": the user said it to this assistant. REQUIRES `evidence` with both fields — `conversationId`
+ *    (opaque, at most 128 bytes, never a phone number or email) and `snippet` (the user's own words, 1–EVIDENCE_SNIPPET_MAX
+ *    characters, no contact or payment data) — else 422 MISSING_FIELD. Stored as "stated" with its evidence. While the
+ *    assistant holds a live assist grant its stated values are trusted like the user's own agents' (a single source puts
+ *    the value on the card, MergeOptions.personalAgentIds); once the grant is revoked or expires they count as one learned
+ *    source and fall back to candidates; a new approved link restores them.
+ *  - "observed" (the default): stored as observed (evidence optional, same checks), a candidate until a second
+ *    independent source agrees.
+ *  - "inferred": the assistant's own record, never on the card.
+ * A field outside write.assistant, or unknown, is kept as the assistant's own inferred record (A11). shipping_address
+ * and payment_method → 403 SCOPE_DENIED whatever the policy says. The response never carries the user's id.
+ */
+export interface AssistantContributionInput {
+  field: Field;
+  value: string;
+  basis?: Basis;
+  evidence?: AssistantEvidence;
+}
+/**
+ * The evidence of an assistant's contribution: both fields required. Named (A59) so the JSON Schema keeps them required;
+ * the same shape as Required<Pick<ContributionEvidence, "conversationId" | "snippet">>.
+ */
+export interface AssistantEvidence {
+  /** Opaque, at most 128 bytes; never a phone number or email. */
+  conversationId: string;
+  /** The user's own words, 1–EVIDENCE_SNIPPET_MAX characters, no contact or payment data. */
+  snippet: string;
 }
 
 /** Response of GET /me: three strings. An owner key reports category "personal" (it acts for the user) and role "owner". */

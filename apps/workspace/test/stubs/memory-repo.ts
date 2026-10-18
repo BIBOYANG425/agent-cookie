@@ -104,6 +104,10 @@ export class InMemoryRepo implements MemoryRepo {
     const commit = this.commit(`compact: archive ${moved.length} superseded line(s)`, meta);
     return { archived: moved.length, archivedIds: [...ids], commit: commit.sha };
   }
+  /** What CARD.md was last regenerated from (tests). */
+  currentCard(): Card {
+    return structuredClone(this.card);
+  }
   /** Lines in contributions/ for one field (tests). */
   linesFor(field: string): Contribution[] {
     return this.contributions.filter((c) => c.field === field);

@@ -336,7 +336,7 @@ describe('live HTTP boundary', () => {
     expect(await live.load()).toMatchObject({ ...empty, card: { ...empty.card, sample: true }, sample: true });
     expect(calls.map((call) => call.path).sort()).toEqual([
       '/workspace-api/me', '/workspace-api/owner/activity', '/workspace-api/owner/experiments', '/workspace-api/owner/funnel?limit=50',
-      '/workspace-api/personal/card', '/workspace-api/personal/grants', '/workspace-api/personal/intents', '/workspace-api/personal/learned',
+      '/workspace-api/owner/links', '/workspace-api/personal/card', '/workspace-api/personal/grants', '/workspace-api/personal/intents', '/workspace-api/personal/learned',
       '/workspace-api/personal/policy', '/workspace-api/personal/receipts',
     ]);
     for (const call of calls) {

@@ -1,5 +1,5 @@
 import { t } from './i18n';
-import type { IntentHistoryEntry, Receipt } from '../../../packages/contract/src/types';
+import type { IntentHistoryEntry, Link, Receipt } from '../../../packages/contract/src/types';
 import fixtureContributions from '../../../fixtures/contributions.json';
 import { isFunnelStage } from '../../../packages/contract/src/analytics';
 import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView, Section } from './model';
@@ -8,6 +8,7 @@ import { normalizePolicyView, normalizeShadowReport, parseViolations, PolicyViol
 import { FUNNEL_LIMIT, normalizeFunnelReport, sampleFunnelReport, type FunnelReport } from './funnel';
 import { normalizeExperimentReport, sampleExperimentReport, type ExperimentReport } from './experiments';
 import { samplePaymentEvents } from './receipts';
+import { decisionLabels, decisionStatus, isDecisionAck, LinkNotPendingError, normalizeLinks, sampleLink } from './links';
 
 export interface PresentationSeed { receipts: Receipt[]; intents: IntentHistoryEntry[]; grantFields?: string[]; needs?: { agentId: string; object: string; unavailable: string[] }[] }
 
@@ -28,6 +29,7 @@ export function createSampleAdapter(now: () => number = Date.now,
   let events: ActivityEvent[] = [];
   let funnel: FunnelReport = sampleFunnelReport(now());
   let experiments: ExperimentReport = sampleExperimentReport(now());
+  let links: Link[] = [];
   let serial = 0;
   const addEvent = (event: string, object: string, reason: string) => events.push({
     id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), event,
@@ -47,6 +49,8 @@ export function createSampleAdapter(now: () => number = Date.now,
     }));
     funnel = sampleFunnelReport(now());
     experiments = sampleExperimentReport(now());
+    // One pending Sample consent link; approving or declining it changes only this page (no session, no grant).
+    links = [sampleLink(now())];
     events = samplePaymentEvents(now(), () => `sample-event-${++serial}`);
     addEvent(t("sampleLoaded"), 'sample-user', t("inMemoryDemoStateOnThis"));
     for (const need of presentation.needs ?? []) {
@@ -57,6 +61,8 @@ export function createSampleAdapter(now: () => number = Date.now,
     }
   };
   seed();
+  // A pending link past its ten minutes reads as expired, as the workspace reports it.
+  const linkNow = (link: Link): Link => link.status === 'pending' && now() >= Date.parse(link.expiresAt) ? { ...link, status: 'expired' } : link;
   if (initialLearningStage && initialLearning.stages?.some((row) => row.id === initialLearningStage)) {
     stageId = initialLearningStage;
     learned = structuredClone(stage()!.learned);
@@ -83,7 +89,8 @@ export function createSampleAdapter(now: () => number = Date.now,
         }), learning, receipts: presentation.receipts, intents: presentation.intents, events: [...events].reverse(), receivedAt: now(),
         policy: { availability: 'ready', data: samplePolicyView(), sample: true },
         funnel: { availability: 'ready', data: funnel, sample: true },
-        experiments: { availability: 'ready', data: experiments, sample: true } });
+        experiments: { availability: 'ready', data: experiments, sample: true },
+        links: { availability: 'ready', data: { links: links.map(linkNow) }, sample: true } });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
@@ -116,7 +123,16 @@ export function createSampleAdapter(now: () => number = Date.now,
       learned = structuredClone(next.learned);
       addEvent(t("switchSampleLearningStage"), id, t("loadedAuthoredDemoRecordsNotA"));
     },
-    async reset() { seed(); addEvent(t("resetSample"), 'sample-user', t("restoreThisPageSSeedSources")); },
+    async decideLink(id, decision) {
+      const index = links.findIndex((row) => row.id === id);
+      if (index === -1) throw new Error(t('linkSampleNotFound'));
+      if (linkNow(links[index]).status !== 'pending') throw new LinkNotPendingError();
+      links[index] = { ...links[index], status: decisionStatus[decision], decidedAt: new Date(now()).toISOString(),
+        ...(decision === 'approve' ? { sessionId: 'sample-session-assistant' } : {}) };
+      addEvent(decisionLabels[decision], id, decision === 'approve'
+        ? t('linkSampleApproved') : t('linkSampleDeclined'));
+    },
+    async reset() { seed(); addEvent(t('resetSample'), 'sample-user', t('restoreThisPageSSeedSources')); },
     // Sample has no workspace to evaluate against; the floor check and the shadow replay are the workspace's job.
     async shadowPolicy() { throw new Error(t("sampleModeDoesNotEvaluatePolicies")); },
     async installPolicy() { throw new Error(t("sampleModeDoesNotInstallPolicies")); },
@@ -233,7 +249,7 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error(t("connectUsingAnOwnerKeyOther"));
-      const [card, grantBody, activityBody, learned, receipts, intents, policy, funnel, experiments] = await Promise.all([
+      const [card, grantBody, activityBody, learned, receipts, intents, policy, funnel, experiments, links] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
         learning(signal),
         optionalRows<Receipt>('/personal/receipts', 'receipts', validReceipt, signal, receiptRow),
@@ -241,11 +257,12 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         section('/personal/policy', normalizePolicyView, t("policy"), signal),
         section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, t("funnel"), signal),
         section('/owner/experiments', normalizeExperimentReport, t("experiments"), signal),
+        section('/owner/links', normalizeLinks, t("connectionRequests"), signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, receipts, intents, policy, funnel, experiments,
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, receipts, intents, policy, funnel, experiments, links,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {
@@ -270,6 +287,16 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     },
     async installPolicy(candidate, signal) {
       return normalizePolicyView(await request('/personal/policy', 'PUT', signal, candidate, true));
+    },
+    async decideLink(id, decision, signal) {
+      // No body: the route and the owner key are the whole request. Success is only the link back in its decided status.
+      let body: unknown;
+      try { body = await request(`/owner/links/${encodeURIComponent(id)}/${decision}`, 'POST', signal); }
+      catch (error) {
+        if (error instanceof RequestError && error.status === 409) throw new LinkNotPendingError();
+        throw error;
+      }
+      if (!isDecisionAck(body, id, decision)) throw malformed();
     },
   };
 }

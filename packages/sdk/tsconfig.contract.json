@@ -1,0 +1,14 @@
+// Declarations of @agent-cookie/contract for the published dist; build.mjs points the SDK's type imports at them.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../contract/src",
+    "outDir": "dist/contract",
+    "declaration": true,
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "../contract/src/**/*.ts"
+  ]
+}

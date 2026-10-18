@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { POLICY_TABLE } from '@agent-cookie/contract';
+import { DEFAULT_POLICY, POLICY_TABLE, policyId } from '@agent-cookie/contract';
 import * as generator from '../scripts/generate-seed.js';
-import { parseContributions } from '../src/index.js';
+import { parseContributions, parsePolicyDocument } from '../src/index.js';
 
 const fixtures = fileURLToPath(new URL('../../../fixtures/', import.meta.url));
 const temporary: string[] = [];
@@ -26,11 +26,22 @@ describe('C21 generated memory seed', () => {
     expect(await readFile(join(output, 'POLICY.yaml'), 'utf8')).toBe(generator.renderPolicyYaml(POLICY_TABLE));
   });
 
-  it('fails when the committed seed policy drifts from this runtime contract, including retail', async () => {
+  it('fails when the committed seed policy drifts from this runtime contract, including retail and assistant', async () => {
     const seed = await readFile(join(fixtures, 'memory/POLICY.yaml'), 'utf8');
     expect(typeof generator.renderPolicyYaml).toBe('function');
     expect(seed).toBe(generator.renderPolicyYaml(POLICY_TABLE));
     expect(seed).toMatch(/^  retail:/mu);
+    // The company-assistant category (bring-your-own-agent plan) sits in all three sections, after retail.
+    expect(seed.match(/^  assistant:/gmu)).toHaveLength(3);
+    expect(seed).toMatch(/^  assistant: \{\}\nwrite:$/mu);
+    expect(seed.indexOf('\n  retail:')).toBeLessThan(seed.indexOf('\n  assistant:'));
+  });
+
+  it('pins the policy id the regenerated seed reads as (DEFAULT_POLICY with the assistant category)', async () => {
+    const seed = await readFile(join(fixtures, 'memory/POLICY.yaml'), 'utf8');
+    // Golden: changes only when the contract's DEFAULT_POLICY (or its canonical form) changes; regenerate the seed then.
+    expect(policyId(DEFAULT_POLICY)).toBe('3526a909e404');
+    expect(policyId(parsePolicyDocument(seed))).toBe('3526a909e404');
   });
 
   it('includes the workspace-derived Sample address in the initial commit without changing the three explicit records', async () => {

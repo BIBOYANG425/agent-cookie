@@ -20,8 +20,8 @@ export interface ShadowReport {
   unchanged: number;
 }
 
-export const POLICY_CATEGORIES: readonly Category[] = ['personal', 'shoe', 'retail'];
-export const categoryLabels: Record<Category, string> = { get personal() { return t("personalAgent"); }, get shoe() { return t("shoeStore"); }, get retail() { return t("retailUcpStore"); } };
+export const POLICY_CATEGORIES: readonly Category[] = ['personal', 'shoe', 'retail', 'assistant'];
+export const categoryLabels: Record<Category, string> = { get assistant() { return t("companyAssistant"); }, get personal() { return t("personalAgent"); }, get shoe() { return t("shoeStore"); }, get retail() { return t("retailUcpStore"); } };
 export const sourceLabels: Record<PolicyView['source'], { label: string; note: string }> = {
   default: { get label() { return t("default"); }, get note() { return t("workspaceBuiltInVFieldTable"); } },
   repo: { get label() { return t("memoryRepository"); }, get note() { return t("fromPolicyYamlInTheMemory"); } },
@@ -38,10 +38,11 @@ const MERCHANT_AUTO = ['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadlin
 export function samplePolicyView(): PolicyView {
   return { policyId: 'sample-policy', source: 'default', policy: {
     v: 1,
-    auto: { personal: [...FIELDS], shoe: [...MERCHANT_AUTO], retail: [...MERCHANT_AUTO, ...PREF_FIELDS] },
+    auto: { personal: [...FIELDS], shoe: [...MERCHANT_AUTO], retail: [...MERCHANT_AUTO, ...PREF_FIELDS],
+      assistant: [...MERCHANT_AUTO, ...PREF_FIELDS] },
     purpose: { personal: {}, shoe: { shipping_address: ['checkout'], payment_method: ['payment'] },
-      retail: { shipping_address: ['checkout'], payment_method: ['payment'] } },
-    write: { personal: [...FIELDS], shoe: ['shoe_size'], retail: ['shoe_size'] },
+      retail: { shipping_address: ['checkout'], payment_method: ['payment'] }, assistant: {} },
+    write: { personal: [...FIELDS], shoe: ['shoe_size'], retail: ['shoe_size'], assistant: ['shoe_size', ...PREF_FIELDS] },
   } };
 }
 

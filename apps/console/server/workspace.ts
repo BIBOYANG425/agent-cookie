@@ -5,15 +5,18 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const upstream = 'http://127.0.0.1:4310';
 const prefix = '/workspace-api';
-type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned';
+type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned'
+  | 'listLinks';
 type RevokeName = 'revokeGrant' | 'revokeContribution';
+/** Owner decisions on a consent link (bring-your-own-agent plan; SDK names per A55). */
+type LinkName = 'approveLink' | 'declineLink';
 export type SdkClient = Partial<Record<ReadName, () => Promise<unknown>>
-  & Record<RevokeName, (id: string) => Promise<unknown>>
+  & Record<RevokeName | LinkName, (id: string) => Promise<unknown>>
   & { setLearning: (input: { enabled: boolean }) => Promise<unknown> }>;
 // TODO(sdk): no installed SDK method covers these yet; they use the contract HTTP endpoints directly (owner key).
 type DirectRoute = { name: 'getPolicy' } | { name: 'getFunnel'; query: string } | { name: 'getExperiments' } | { name: 'installPolicy' }
   | { name: 'shadowPolicy' } | { name: 'intentHistoryHttp' };
-type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: 'setLearning' } | DirectRoute;
+type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: LinkName; id: string } | { name: 'setLearning' } | DirectRoute;
 type ClientFactory = (options: { key: string; fetch: typeof fetch; timeoutMs: number; baseUrl: string; sample?: boolean }) => SdkClient;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -69,7 +72,7 @@ function route(method: string | undefined, path: string): SdkRoute | undefined {
     if (path === '/personal/intents') return { name: 'intentHistoryHttp' };
     const names: Record<string, ReadName> = { '/me': 'getMe', '/personal/card': 'getMyCard',
       '/personal/grants': 'getGrants', '/personal/receipts': 'getReceipts', '/owner/activity': 'getActivity',
-      '/personal/learned': 'getLearned', '/personal/learning': 'getLearning' };
+      '/personal/learned': 'getLearned', '/personal/learning': 'getLearning', '/owner/links': 'listLinks' };
     if (names[path]) return { name: names[path] };
     if (path === '/personal/policy') return { name: 'getPolicy' };
     // GET /owner/experiments takes no query at all: the exact path only, anything else is 404.
@@ -86,11 +89,25 @@ function route(method: string | undefined, path: string): SdkRoute | undefined {
       if (!id || id.length > 256 || /[\x00-\x1f\x7f]/u.test(id)) return undefined;
       return { name: match[1] === 'grants' ? 'revokeGrant' : 'revokeContribution', id };
     }
+    // Consent-link decisions: exactly /owner/links/:id/approve or /decline, one non-empty id segment, nothing after.
+    const link = /^\/owner\/links\/([^/?#]+)\/(approve|decline)$/u.exec(path);
+    if (link) {
+      let id: string;
+      try { id = decodeURIComponent(link[1]); } catch { return undefined; }
+      if (!id || id.length > 256 || /[\x00-\x1f\x7f]/u.test(id)) return undefined;
+      return { name: link[2] === 'approve' ? 'approveLink' : 'declineLink', id };
+    }
   }
   if (method === 'PUT' && path === '/personal/learning') return { name: 'setLearning' };
   if (method === 'PUT' && path === '/personal/policy') return { name: 'installPolicy' };
   if (method === 'POST' && path === '/personal/policy/shadow') return { name: 'shadowPolicy' };
   return undefined;
+}
+
+/** The link decisions take no body: a declared length other than 0, or a chunked body, is refused before anything is sent. */
+function refuseBody(request: IncomingMessage): void {
+  const length = request.headers['content-length'];
+  if (request.headers['transfer-encoding'] !== undefined || (length !== undefined && length !== '0')) throw new BridgeError(400, 'MISSING_FIELD');
 }
 
 async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unknown> {
@@ -158,13 +175,15 @@ export function createWorkspaceBridge(options: {
         redirect: 'manual', credentials: 'omit', cache: 'no-store' });
       const factory = await options.sdk;
       const client = factory?.({ key, fetch: fetcher, timeoutMs: 8000, baseUrl: upstream, sample: options.sample });
-      const direct = async (endpoint: string, method: string, payload?: unknown, violations = false): Promise<unknown> => {
+      const direct = async (endpoint: string, method: string, payload?: unknown, violations = false, bodyless = false): Promise<unknown> => {
         // TODO(sdk): remove only when the corresponding method exists in B's installed package.
         // A bd9d6e3 core HTTP contract; learning routes use A 0129f08. No fallback after an SDK method throws.
+        // `bodyless`: a POST sent with no body and no Content-Type (the consent-link decisions).
+        const sendsBody = ['POST', 'PUT'].includes(method) && !bodyless;
         const result = await fetcher(`${upstream}${endpoint}`, { method,
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json',
-            ...(['POST', 'PUT'].includes(method) ? { 'Content-Type': 'application/json' } : {}) },
-          ...(['POST', 'PUT'].includes(method) ? { body: JSON.stringify(payload ?? {}) } : {}) });
+            ...(sendsBody ? { 'Content-Type': 'application/json' } : {}) },
+          ...(sendsBody ? { body: JSON.stringify(payload ?? {}) } : {}) });
         if (result.status >= 300 && result.status < 400) {
           await result.body?.cancel();
           throw new BridgeError(502, 'UPSTREAM_ERROR');
@@ -200,6 +219,12 @@ export function createWorkspaceBridge(options: {
         body = client?.setLearning ? await client.setLearning({ enabled: !payload.paused }) : await direct(path, request.method!, payload);
       } else if (selected.name === 'revokeGrant' || selected.name === 'revokeContribution') {
         body = client?.[selected.name] ? await client[selected.name]!(selected.id) : await direct(path, request.method!);
+      } else if (selected.name === 'approveLink' || selected.name === 'declineLink') {
+        refuseBody(request);
+        const decision = selected.name === 'approveLink' ? 'approve' : 'decline';
+        // A 409 (LINK_NOT_PENDING: decided elsewhere, or expired) passes through as its status and code only.
+        body = client?.[selected.name] ? await client[selected.name]!(selected.id)
+          : await direct(`/owner/links/${encodeURIComponent(selected.id)}/${decision}`, 'POST', undefined, false, true);
       } else {
         body = client?.[selected.name] ? await client[selected.name]!() : await direct(path, request.method!);
       }
@@ -207,6 +232,8 @@ export function createWorkspaceBridge(options: {
       if (selected.name === 'getActivity' && object(body) && Array.isArray(body.activity)) {
         body = { events: body.activity, ...(body.sample === true ? { sample: true } : {}) };
       }
+      // An SDK listLinks that returns the bare Link[] is wrapped into the HTTP { links } envelope.
+      if (selected.name === 'listLinks' && Array.isArray(body)) body = { links: body };
       if (options.sample && object(body)) body = { ...body, sample: true };
       send(response, 200, body);
     } catch (error) {

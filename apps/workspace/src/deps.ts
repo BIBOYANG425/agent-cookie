@@ -14,6 +14,8 @@ import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
 import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
 import { FunnelService } from "./services/analytics.js";
+import { AssistantService } from "./services/assistant.js";
+import { LinkService } from "./services/links.js";
 import { ExperimentService } from "./services/experiments.js";
 import { MerchantStatsService } from "./services/merchant-stats.js";
 import { CardService } from "./services/card.js";
@@ -61,6 +63,10 @@ export interface Deps {
   merchantStats: MerchantStatsService;
   /** The installed field-policy document (Phase 1): repo → SQLite → DEFAULT_POLICY. */
   policy: PolicyService;
+  /** Consent links of company assistants (bring-your-own-agent): request, owner approve/decline. */
+  links: LinkService;
+  /** A linked assistant's context, contributions and stats. */
+  assistant: AssistantService;
   /** Dynamic memory: observation queue, learning hooks, learned/history views. */
   learning: LearningService;
   /** The periodic job: learn, regenerate, compact, log (dreaming.ts). */
@@ -123,6 +129,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const funnel = new FunnelService(ctx);
   const experiments = new ExperimentService(ctx);
   const merchantStats = new MerchantStatsService(ctx);
+  const links = new LinkService(ctx, sessions, card);
+  const assistant = new AssistantService(ctx, sessions, card);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
@@ -143,7 +151,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
 
   return {
     config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, experiments, merchantStats,
-    policy, learning, gate,
+    policy, links, assistant, learning, gate,
     dreaming, dreamingScheduled: dreamTimer !== undefined,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
@@ -216,7 +224,7 @@ async function reconcileRepo(ctx: Ctx): Promise<void> {
       }
     }
     if (changed) {
-      await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.personalAgentIds() },
+      await repo.regenerateCard({ now: ctx.clock.nowIso(), personalAgentIds: ctx.store.trustedStatedAgentIds(ctx.clock.nowIso()) },
         writeMeta(ctx, "workspace", { regenerate: ctx.clock.nowIso() }));
     }
     if (unreadable > 0) ctx.log({ event: "reconcile", actor: "workspace", result: "skipped", reason: `unreadable=${unreadable}` });

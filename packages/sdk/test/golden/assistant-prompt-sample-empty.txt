@@ -1,0 +1,5 @@
+Agent Cookie: what this person has shared with you, under their own policy.
+Sample data from a demo workspace, not a real person.
+Known: nothing yet.
+Unknown (ask only when the task needs it): lang, shoe_size, budget.
+Never ask for a shipping address or payment details: the workspace hands them to the store at checkout and payment.

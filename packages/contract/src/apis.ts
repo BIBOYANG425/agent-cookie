@@ -18,7 +18,11 @@ import type { PolicyDocument } from "./policy-document.js";
 export interface MergeOptions {
   /** ISO timestamp. Required. */
   now: string;
-  /** agentIds of the user's own agents (category personal). Their "stated" values qualify on a single source. */
+  /**
+   * agentIds whose "stated" values qualify on a single source: the user's own agents (category personal) and, as the
+   * workspace passes it (Store.trustedStatedAgentIds), every company assistant holding a live assist grant at `now`.
+   * Everyone else's stated rows count like learned ones.
+   */
   personalAgentIds: string[];
 }
 

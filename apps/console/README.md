@@ -53,6 +53,8 @@ Both transports reject upstream redirects, omit cookies, disable caching, and ti
 | `getLearning()` | `GET /personal/learning`; `{ paused }` state only | SDK |
 | `getLearned()` | `GET /personal/learned`; A `{ paused, learned }` grouped response | SDK |
 | `setLearning({ enabled: !paused })` | SDK maps to `PUT /personal/learning` with `{ paused }`; acknowledgement must confirm the requested state | SDK; older installations without this method use `TODO(sdk)` HTTP |
+| `listLinks()` | `GET /owner/links`; `{ links }` (the SDK's `{ links, sample }` passes as is; a bare `Link[]` would be wrapped) | SDK when installed; `TODO(sdk)` HTTP until B's owner link methods (A55) are |
+| `approveLink(id)` / `declineLink(id)` | `POST /owner/links/:id/approve` or `/decline`, no body; `Link` back in its decided status; 409 `LINK_NOT_PENDING` | SDK when installed; `TODO(sdk)` HTTP until A55 is |
 
 The UI polls card, grants, activity and the optional learned endpoint; the receipts method is routed for inspection and future UI use. The SDK checklist is appended in [docs/requests.md](../../docs/requests.md).
 
@@ -88,6 +90,12 @@ Added with the commerce-analytics plan (`docs/commerce-analytics-plan.md`). Ever
 | 活动 | `GET /owner/activity` | `payment.authorize` and `payment.reverse` labelled with their outcome; the `tap=… billto=…` reason shown as logged |
 
 The bridge (`server/workspace.ts`) allows the new routes at exact paths with strict query validation and a 16 KiB body cap, and passes an upstream message to the page only for the two policy write routes' 422 floor violations. The contract's policy module imports `node:crypto`, so the console mirrors `PolicyDocument`, `PolicyView`, `ShadowReport` and `ExperimentReport` locally (`src/policy.ts`, `src/experiments.ts`) with compile-time equality tests against the contract. Receipts need no mirror: `ReceiptPanel` and the live adapter import the contract's `Receipt` type from `packages/contract/src/types.ts`; `src/receipts.ts` holds only the receipt display helpers and the payment activity labels.
+
+## 连接请求 panel (bring-your-own-agent, 2026-10-18)
+
+The 连接请求 panel lists `GET /owner/links`: each consent link a company assistant asked for, pending ones first, then newest first, with the assistant's name and agent id, the link id shortened (full id in the title), its status (待批准, 已批准, 已拒绝, 已过期), when it was asked for, when it expires and when it was decided. Pending links get 批准 and 拒绝, which call `POST /owner/links/:id/approve` or `/decline` through the bridge: exact paths only, the owner check first, no request body (one is refused with 400), the id decoded once and re-encoded upstream. A row changes only after the workspace answers with that link in its decided status (an approval also naming the assistant's session) and the snapshot reloads; until then the action is pending and every button is disabled, and any other answer reads 未确认成功. A 409 (the link was decided elsewhere, by the CLI or the gateway, or it expired) is not a failure: the row reads 已处理, loses its buttons and the snapshot reloads. The panel shows names, ids, statuses and times only; approving a link never shows a field value, and the 策略 panel now lists the 公司助理 (`assistant`) category like the others, whose floor keeps `shipping_address` and `payment_method` out of it.
+
+In Sample mode the panel starts with one pending link from `Sample · Assistant` (`sample-assistant`, the Sample agent in `fixtures/agents.json`), asked for at page load with the contract's ten-minute life, after which it reads 已过期. Approving or declining it changes only page state and adds a Sample activity row; it creates no session or grant and sends no request, a second decision reads 已处理, and reset restores the pending link. A workspace without the routes yet shows 工作台尚未提供连接请求接口 in this panel only. Tests: `test/links.test.ts` (Sample, live adapter, controller, panel) and the link cases in `test/workspace.test.ts` (bridge); not browser-verified.
 
 ## Verification and remaining checks
 

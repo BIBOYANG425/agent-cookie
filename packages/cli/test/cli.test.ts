@@ -62,11 +62,13 @@ const funnel = { sample: true, generatedAt: at, rows: [
     search: { offers: 4, droppedAvoid: 0, droppedCurrency: 0, droppedUnavailable: 1, droppedShipsTo: 0, droppedBudget: 0, droppedInvalid: 0,
       eligible: 3, eligibleSellers: 3, picked: 2 } },
 ] };
+// One section per contract category (personal, shoe, retail, assistant): the SDK refuses a document missing one.
 const doc = {
   v: 1,
-  auto: { personal: ['lang', 'tone', 'length', 'shipping_address'], shoe: ['lang', 'tone', 'length', 'shoe_size'], retail: ['lang', 'tone', 'length'] },
-  purpose: { personal: {}, shoe: { shipping_address: ['checkout'] }, retail: { shipping_address: ['checkout'] } },
-  write: { personal: ['lang', 'tone', 'length', 'shipping_address'], shoe: ['shoe_size'], retail: ['shoe_size'] },
+  auto: { personal: ['lang', 'tone', 'length', 'shipping_address'], shoe: ['lang', 'tone', 'length', 'shoe_size'], retail: ['lang', 'tone', 'length'],
+    assistant: ['lang', 'tone', 'length', 'shoe_size'] },
+  purpose: { personal: {}, shoe: { shipping_address: ['checkout'] }, retail: { shipping_address: ['checkout'] }, assistant: {} },
+  write: { personal: ['lang', 'tone', 'length', 'shipping_address'], shoe: ['shoe_size'], retail: ['shoe_size'], assistant: ['shoe_size'] },
 };
 const view = { policy: doc, policyId: '0123456789ab', source: 'default', sample: true };
 const shadow = { candidateId: 'c4ndidate000', currentId: '0123456789ab', unchanged: 7, changed: [
@@ -149,10 +151,10 @@ describe('policy', () => {
     expect(String(h.fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4310/personal/policy');
     const lines = h.output.out.trimEnd().split('\n');
     expect(lines[0]).toBe('Sample · Policy 0123456789ab · source default');
-    expect(lines[1].split(/\s{2,}/)).toEqual(['field', 'personal', 'shoe', 'retail']);
-    expect(lines[2].split(/\s{2,}/)).toEqual(['lang', 'auto w', 'auto', 'auto']);
-    expect(lines[5].split(/\s{2,}/)).toEqual(['shipping_address', 'auto w', 'purpose:checkout', 'purpose:checkout']);
-    expect(lines[6].split(/\s{2,}/)).toEqual(['shoe_size', '-', 'auto w', '- w']);
+    expect(lines[1].split(/\s{2,}/)).toEqual(['field', 'personal', 'shoe', 'retail', 'assistant']);
+    expect(lines[2].split(/\s{2,}/)).toEqual(['lang', 'auto w', 'auto', 'auto', 'auto']);
+    expect(lines[5].split(/\s{2,}/)).toEqual(['shipping_address', 'auto w', 'purpose:checkout', 'purpose:checkout', '-']);
+    expect(lines[6].split(/\s{2,}/)).toEqual(['shoe_size', '-', 'auto w', '- w', 'auto w']);
     expect(lines[7]).toContain('w = writable');
   });
 
@@ -239,5 +241,84 @@ describe('policy', () => {
     const h = owner(() => Response.json(view));
     expect(await runCli(['policy', 'show'], { AGENT_COOKIE_URL: 'http://127.0.0.1:4310' }, h.io)).toBe(1);
     expect(JSON.parse(h.output.err).error.message).toBe('Unable to read the policy. Check local configuration and workspace availability.');
+  });
+});
+
+// ---- consent links (owner key): a company assistant asks, the owner decides
+describe('links', () => {
+  const at = '2026-10-18T09:00:00.000Z';
+  const pendingLink = { id: 'lk_1', agentId: 'ag_muse', agentName: 'Sample Muse', status: 'pending', createdAt: at, expiresAt: '2026-10-18T09:10:00.000Z' };
+  const declinedLink = { id: 'lk_0', agentId: 'ag_dots', agentName: 'Sample Dots', status: 'declined', createdAt: '2026-10-18T08:00:00.000Z',
+    expiresAt: '2026-10-18T08:10:00.000Z', decidedAt: '2026-10-18T08:01:00.000Z' };
+
+  it('lists the commands in help without calling the workspace', async () => {
+    const h = owner(denied);
+    expect(await runCli(['--help'], {}, h.io, h.createClient)).toBe(0);
+    expect(h.output.out).toContain('links');
+    expect(await runCli(['links'], {}, h.io, h.createClient)).toBe(0);
+    expect(h.output.out).toMatch(/list[\s\S]*approve[\s\S]*decline/);
+    expect(h.createClient).not.toHaveBeenCalled();
+  });
+
+  it('lists links as a Sample-labelled table with the decide hint', async () => {
+    const h = owner(() => Response.json({ links: [pendingLink, declinedLink], sample: true }));
+    expect(await runCli(['links', 'list'], {}, h.io, h.createClient)).toBe(0);
+    expect(String(h.fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4310/owner/links');
+    const lines = h.output.out.trimEnd().split('\n');
+    expect(lines[0]).toBe('Sample · Links · 2 links');
+    expect(lines[1].split(/\s{2,}/)).toEqual(['id', 'agent', 'agent id', 'status', 'created', 'expires', 'decided']);
+    expect(lines[2].split(/\s{2,}/)).toEqual(['lk_1', 'Sample Muse', 'ag_muse', 'pending', at, '2026-10-18T09:10:00.000Z', '-']);
+    expect(lines[3].split(/\s{2,}/)).toEqual(['lk_0', 'Sample Dots', 'ag_dots', 'declined', '2026-10-18T08:00:00.000Z',
+      '2026-10-18T08:10:00.000Z', '2026-10-18T08:01:00.000Z']);
+    expect(lines[4]).toBe('Decide a pending link: agent-cookie links approve <id> | links decline <id>');
+    expect(h.printed()).not.toContain(ownerKey);
+  });
+
+  it('prints JSON with --json and says when there are none', async () => {
+    const h = owner(() => Response.json({ links: [declinedLink] }));
+    expect(await runCli(['links', 'list', '--json'], {}, h.io, h.createClient)).toBe(0);
+    expect(JSON.parse(h.output.out)).toEqual({ links: [declinedLink], sample: false });
+    const t = owner(() => Response.json({ links: [] }));
+    expect(await runCli(['links', 'list'], {}, t.io, t.createClient)).toBe(0);
+    expect(t.output.out).toBe('Links · 0 links\nNo links.\n');
+  });
+
+  it('approves and declines one link through the SDK', async () => {
+    const h = owner((url) => Response.json(url.pathname.endsWith('/approve')
+      ? { ...pendingLink, status: 'approved', decidedAt: at, sessionId: 'sess_muse' }
+      : { ...pendingLink, status: 'declined', decidedAt: at }));
+    expect(await runCli(['links', 'approve', 'lk_1'], {}, h.io, h.createClient)).toBe(0);
+    expect(await runCli(['links', 'decline', 'lk_1'], {}, h.io, h.createClient)).toBe(0);
+    expect(h.fetcher.mock.calls.map(([url, init]) => `${init?.method} ${new URL(String(url)).pathname}`))
+      .toEqual(['POST /owner/links/lk_1/approve', 'POST /owner/links/lk_1/decline']);
+    expect(h.output.out).toBe('Approved link lk_1 · Sample Muse (ag_muse) · session sess_muse\nDeclined link lk_1 · Sample Muse (ag_muse)\n');
+    expect(h.output.err).toBe('');
+  });
+
+  it('reports a link that is no longer pending as LINK_NOT_PENDING and exits 1', async () => {
+    const h = owner(() => Response.json({ error: { code: 'LINK_NOT_PENDING', message: 'link already decided or expired' } }, { status: 409 }));
+    expect(await runCli(['links', 'approve', 'lk_1'], {}, h.io, h.createClient)).toBe(1);
+    expect(JSON.parse(h.output.err)).toEqual({ error: { status: 409, code: 'LINK_NOT_PENDING', message: 'The link was already decided or has expired.' } });
+    expect(h.output.out).toBe('');
+  });
+
+  it('passes an owner-only denial through for a personal key', async () => {
+    const h = owner(denied);
+    expect(await runCli(['links', 'list'], {}, h.io, h.createClient)).toBe(1);
+    expect(JSON.parse(h.output.err).error).toMatchObject({ status: 403, code: 'SCOPE_DENIED' });
+  });
+
+  it.each(['..', 'secret token', '.'])('refuses link id %j locally without echoing it', async id => {
+    const h = owner(() => Response.json(pendingLink));
+    expect(await runCli(['links', 'decline', id], {}, h.io, h.createClient)).toBe(1);
+    expect(JSON.parse(h.output.err).error.message).toBe('The link id is invalid.');
+    expect(h.output.err).not.toContain('secret');
+    expect(h.fetcher).not.toHaveBeenCalled();
+  });
+
+  it('refuses a missing id without calling the workspace', async () => {
+    const h = owner(() => Response.json(pendingLink));
+    expect(await runCli(['links', 'approve'], {}, h.io, h.createClient)).toBe(1);
+    expect(h.createClient).not.toHaveBeenCalled();
   });
 });

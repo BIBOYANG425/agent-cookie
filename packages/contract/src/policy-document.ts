@@ -2,7 +2,8 @@
 // evaluates; DEFAULT_POLICY (v1) is exactly the table plan §5 froze, and policy.ts keeps its old signatures as
 // wrappers over it. A document a user installs is validated against the FLOOR below, which no document can lower:
 // style fields ride every handshake, payment_method opens only for purpose "payment", shipping_address only for
-// "checkout", merchants write only shoe_size, and the user's own agents read and write everything.
+// "checkout", merchants write only shoe_size, the user's own agents read and write everything, and a company
+// assistant (category "assistant") never reads or writes shipping_address or payment_method.
 // Purpose "payment" is the workspace's own read of the token on the user's behalf (it also names the stage and the
 // receipts); a merchant read of payment_method is refused whatever the document says, and merchants only ever see the
 // authorization result.
@@ -12,7 +13,7 @@ import type { RankingWeights } from "./analytics.js";
 import type { ReadDecision, ReadMode } from "./policy.js";
 import { FIELDS, isField, PREF_FIELDS, type Category, type Field } from "./types.js";
 
-export const CATEGORIES: readonly Category[] = ["personal", "shoe", "retail"];
+export const CATEGORIES: readonly Category[] = ["personal", "shoe", "retail", "assistant"];
 /** Purpose names are short lower-case tokens ("checkout", "payment"). */
 export const PURPOSE_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 /** Every handshake carries values for these three (A04); no document may take them out of `auto`. */
@@ -52,16 +53,22 @@ export const DEFAULT_POLICY: PolicyDocument = deepFreeze({
     shoe: [...MERCHANT_AUTO],
     // UCP store proxies also read the learned preferences (pref.*) with the handshake (2026-10-17).
     retail: [...MERCHANT_AUTO, ...PREF_FIELDS],
+    // A company assistant (bring-your-own-agent plan): sizes, budget, deadline and the learned preferences as values;
+    // never the address or the payment token (floor), which the workspace hands to the merchant by purpose.
+    assistant: [...MERCHANT_AUTO, ...PREF_FIELDS],
   },
   purpose: {
     personal: {},
     shoe: { shipping_address: ["checkout"], payment_method: ["payment"] },
     retail: { shipping_address: ["checkout"], payment_method: ["payment"] },
+    assistant: {},
   },
   write: {
     personal: [...FIELDS],
     shoe: ["shoe_size"],
     retail: ["shoe_size"],
+    // Assistants write candidates (promoted by the same corroboration rules as merchant writes), never the address or token.
+    assistant: ["shoe_size", ...PREF_FIELDS],
   },
 });
 
@@ -199,6 +206,14 @@ export function policyViolations(input: unknown): string[] {
     if (Array.isArray(pm) && (pm.length !== 1 || pm[0] !== "payment")) out.push(`purpose.${c}.payment_method must be exactly ["payment"]`);
     const sa = (p as Partial<Record<Field, string[]>>)["shipping_address"];
     if (Array.isArray(sa) && (sa.length !== 1 || sa[0] !== "checkout")) out.push(`purpose.${c}.shipping_address must be exactly ["checkout"]`);
+    if (c === "assistant") {
+      // The assistant floor: it orchestrates, the workspace hands sensitive fields to the merchant; it never carries them.
+      for (const f of ["shipping_address", "payment_method"] as const) {
+        if (purposeFields.includes(f)) out.push(`purpose.assistant.${f}: an assistant never reads ${f}, whatever the purpose`);
+        if (w.includes(f)) out.push(`write.assistant: an assistant never writes ${f}`);
+      }
+      continue;
+    }
     for (const f of w) if (f !== "shoe_size") out.push(`write.${c}: merchants may write shoe_size only, not ${f}`);
   }
   return out;

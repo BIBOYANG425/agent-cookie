@@ -45,8 +45,10 @@ describe('policy panel', () => {
       '工作台内置的 v1 字段表', '个人 agent', '鞋店', '零售 · UCP 商店', '<code class="field-key">pref.avoid</code>',
       '<code class="field-key">shipping_address</code> 仅用于 <span><code>checkout</code></span>',
       '<code class="field-key">payment_method</code> 仅用于 <span><code>payment</code></span>', '未设置：按指定商家',
-      'data-label="自动"', 'data-label="按用途"', 'data-label="可写"', 'Sample 模式不评估也不安装']) expect(html).toContain(text);
-    expect(html.match(/<tr>/gu)).toHaveLength(4);
+      'data-label="自动"', 'data-label="按用途"', 'data-label="可写"', 'Sample 模式不评估也不安装',
+      '<th scope="row">公司助理 <code class="field-key">assistant</code></th>']) expect(html).toContain(text);
+    // Header row plus one row per category: personal, shoe, retail, assistant.
+    expect(html.match(/<tr>/gu)).toHaveLength(5);
     expect(html).toMatch(/<button type="button" disabled="">影子评估<\/button>/u);
     expect(html).toMatch(/<button type="button" class="primary" disabled="">安装<\/button>/u);
     expect(html).toContain('<button type="button">填入当前文档</button>');
@@ -54,6 +56,17 @@ describe('policy panel', () => {
     await expect(createSampleAdapter().installPolicy({})).rejects.toThrow('Sample');
     expect(network).not.toHaveBeenCalled();
     network.mockRestore();
+  });
+
+  it('shows the assistant category row like the others: its auto fields, no purpose field, its writes', () => {
+    const html = panel({});
+    const row = html.slice(html.indexOf('<th scope="row">公司助理'), html.indexOf('</tr>', html.indexOf('<th scope="row">公司助理')));
+    const fieldList = (fields: readonly string[]) => `<ul class="policy-fields">${fields.map((field) => `<li><code class="field-key">${field}</code></li>`).join('')}</ul>`;
+    expect(row).toContain(`<td data-label="自动">${fieldList(DEFAULT_POLICY.auto.assistant)}</td>`);
+    expect(row).toContain('<td data-label="按用途"><span class="muted">无</span></td>');
+    expect(row).toContain(`<td data-label="可写">${fieldList(DEFAULT_POLICY.write.assistant)}</td>`);
+    for (const field of ['shipping_address', 'payment_method']) expect(row).not.toContain(field);
+    expect(html.indexOf('零售 · UCP 商店')).toBeLessThan(html.indexOf('公司助理'));
   });
 
   it('labels each source, shows ranking weights when present, and enables actions when live', () => {

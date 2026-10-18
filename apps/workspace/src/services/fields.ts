@@ -1,17 +1,27 @@
-// GET /agent/fields. Policy (readDecision) → purpose grounding → values → receipt. All-or-nothing; denials never
+// GET /agent/fields. Policy (readDecision) → purpose grounding → receipts → values. All-or-nothing; denials never
 // name fields (A05); payment_method is never released here (A21). The declared purpose is a parameter: a purpose field
 // is released only when the user has accepted this merchant's quote under the intent this grant was issued for.
+// Every release is receipted (owner decision 2026-10-18): purpose fields under the declared purpose, auto fields under
+// "handshake" with the de-duplication rule of services/receipts.ts, so a store polling on every message does not
+// commit to git each time.
 import { isField, type Field, type Receipt } from "@agent-cookie/contract";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import type { CardService } from "./card.js";
-import { persistStrict, writeMeta, type Ctx } from "./context.js";
+import type { Ctx } from "./context.js";
+import { HANDSHAKE_PURPOSE, ReceiptWriter } from "./receipts.js";
 import type { SessionService } from "./sessions.js";
 
+/** `receipt`: the purpose release's receipt, for AcceptResult.receipts; the route never sends it to the merchant. */
 export interface FieldRead { sessionId: string; purpose: string; fields: Partial<Record<Field, string>>; receipt?: Receipt }
 
 export class FieldService {
-  constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {}
+  /** Receipt decisions run one at a time, so two reads at once cannot both decide "no recent receipt". */
+  private readonly receipts: ReceiptWriter;
+
+  constructor(private ctx: Ctx, private sessions: SessionService, private card: CardService) {
+    this.receipts = new ReceiptWriter(ctx);
+  }
 
   async read(agent: AuthedAgent, sessionId: string, names: string[], purpose?: string): Promise<FieldRead> {
     const { session, grant, live } = this.sessions.access(agent, sessionId);
@@ -53,19 +63,26 @@ export class FieldService {
     const out: Partial<Record<Field, string>> = {};
     for (const f of fields) if (values[f] !== undefined) out[f] = values[f];
 
+    // "每次放行写回执": no durable receipt, no release. Git first, then SQLite, then the values. Both receipts carry the
+    // intent whose grant authorized the read, so the funnel attributes them (questionsSkipped).
+    const stamp = { sessionId, agentId: agent.agentId, createdAt: this.ctx.clock.nowIso(),
+      ...(source.intentId ? { intentId: source.intentId } : {}), policyId: policy.id() };
     let receipt: Receipt | undefined;
     const released = purposeOnes.filter((f) => out[f] !== undefined);
     if (released.length > 0) {
-      receipt = { id: newId("r"), sessionId, agentId: agent.agentId, fields: released, purpose: purpose!, createdAt: this.ctx.clock.nowIso(),
-        ...(source.intentId ? { intentId: source.intentId } : {}), policyId: policy.id() };
-      // "每次放行写回执": no durable receipt, no release. Git first, then SQLite, then the values.
-      const r0 = receipt;
-      await persistStrict(this.ctx, "receipt", agent.agentId, (r) => r.appendReceipt(r0, writeMeta(this.ctx, "workspace", r0)));
-      this.ctx.store.insertReceipt({ ...receipt, userId: session.userId });
+      receipt = { id: newId("r"), ...stamp, fields: released, purpose: purpose! };
+      await this.receipts.write(receipt, session.userId, agent.agentId, { dedupe: false });
     }
-    // `intent=` attributes the read to the intent whose grant authorized it (funnel: fields read vs granted).
+    // Auto fields are receipted whatever purpose the merchant declared: a declared purpose is a parameter, and naming one
+    // must not take a read of the handshake fields out of the receipts.
+    const autoReleased = autoOnes.filter((f) => out[f] !== undefined);
+    const handshake = await this.receipts.write({ id: newId("r"), ...stamp, fields: autoReleased, purpose: HANDSHAKE_PURPOSE },
+      session.userId, agent.agentId, { dedupe: true });
+    // Every read is logged, receipted or not: field NAMES and counts, never a value. `intent=` attributes the read to the
+    // intent whose grant authorized it (funnel: fields read vs granted); the first token stays the field list.
+    const written = (receipt ? 1 : 0) + (handshake === "written" ? 1 : 0);
     this.ctx.log({ event: "fields.read", actor: agent.agentId, object: sessionId, result: "allow",
-      reason: `${fields.join(",")} purpose=${purpose ?? ""} intent=${source.intentId ?? ""}` });
+      reason: `${fields.join(",")} purpose=${purpose ?? ""} intent=${source.intentId ?? ""} receipts=${written} deduped=${handshake === "deduped" ? 1 : 0}` });
     return { sessionId, purpose: purpose ?? "", fields: out, ...(receipt ? { receipt } : {}) };
   }
 }
