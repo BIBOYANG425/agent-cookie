@@ -33,22 +33,66 @@ Every person gets a **jar** with three objects inside.
 | **Conversation cookie** | Each agent gets its own pairwise session ID and, for a store, its own private note. | Stores get no shared identifier from us, so they cannot link you to each other through Agent Cookie. Switch assistants and the same store still recognizes you. |
 | **Workspace** | Registers and matches agents, checks every read against policy, purpose, stage, expiry and revocation, and writes a receipt. | No model can grant itself access. Authorization is code, not a prompt. |
 
-## Two sides, one jar
+## One jar, every agent, and it learns back
 
-Agent Cookie sits between two kinds of companies that never talk to each other.
+The jar is not a pipe to stores. It is the context layer for every agent in a person's life, and it gets better each time one is used.
 
-- **Assistant companies** (think Manus, Dots, Muse) build personal assistants. They integrate `AssistantClient` and a one-tap consent link. On the first message they get the person's policy-allowed preferences. They never carry the address or the card.
-- **Commerce platforms** (Shopify and its stores) build shopping agents. They are reached by protocol (Shopify UCP today) or through `MerchantClient`. A store sees field names in the handshake, the size with the intent, and the address only at checkout, and only the store whose quote the person accepted.
+- **Agents that act for you** read the card by policy: your own agents (iMessage, Claude Desktop, the CLI) see all of it, an assistant company you linked once sees only what your policy allows. They write back what you told them, with your own words as evidence.
+- **Agents that serve you** (stores today) get field names in the handshake, then values by purpose at the stage that needs them: your size with the request, your address at checkout, and only the one whose quote you accepted. They write back what they observed, and keep their own private note under their own pairwise ID.
+- **You** set the policy, read every receipt, and revoke anything, from the console or the hosted cookie page.
 
 ```mermaid
 flowchart LR
-  A["Assistant company<br/>(Manus · Dots · Muse)"] -- "AssistantClient<br/>+ consent link" --> J
-  P["Your own agent<br/>(iMessage · Claude Desktop)"] -- "SDK · MCP" --> J
-  J["Your jar<br/>card · cookies · receipts"] -- "UCP · MerchantClient" --> S["Stores<br/>(Shopify UCP)"]
-  C["Console / cookie page"] -- "owner" --> J
+  subgraph FOR["Agents that act for you"]
+    direction TB
+    P["Your own agents<br/>iMessage · Claude Desktop · CLI"]
+    A["Assistant companies<br/>Manus · Dots · Muse"]
+  end
+  J(("Your jar<br/>card · cookies<br/>receipts · policy"))
+  subgraph SERVE["Agents that serve you"]
+    direction TB
+    S["Stores<br/>Shopify UCP · MerchantClient"]
+    N["Next: hotels · airlines<br/>hospital intake · banks · landlords"]
+  end
+  U["You<br/>console · cookie page"]
+  P <-->|"context out · what you said back"| J
+  A <-->|"context by policy · your words as evidence"| J
+  J <-->|"names, then values by purpose · observations and its own note"| S
+  J <-.->|"same primitives"| N
+  U <-->|"policy and revoke · receipts"| J
 ```
 
-The jar is the only place that sees both sides of a purchase, so it can answer what neither company can on its own: which assistant brings buyers who convert, which store wins quotes, and how many questions each person skipped. It reports counts only, with the person's consent.
+**The feedback loop, and what keeps it clean.** Every write lands as a contribution with its source, and deterministic rules decide what reaches the card:
+
+| Who writes back | What happens to it |
+| --- | --- |
+| You, through your own agent | On the card at once. The newest thing you said wins. |
+| A linked assistant, with your own words as evidence | On the card while its link is live; back to a candidate if you revoke it. |
+| A store or assistant that observed something | A candidate until a second, independent source agrees. Two records from one conversation are one source. |
+| Any agent's guess (`inferred`) | Kept as that agent's own record. Never on the card. |
+| A store's note about you | Private to that store's pairwise session. Never on the card, never seen by another agent. |
+| An accepted purchase | Feeds preference learning, under the same rules. |
+| Time | Stale values lose confidence and eventually drop off the card. |
+
+So a store cannot write "this person is a VIP" into your profile, and an assistant cannot make a guess stick. The more agents you use, the fewer questions the next one asks, and nobody can poison the card on the way.
+
+The jar is also the only place that sees both sides of a transaction, so it can answer what neither company can on its own: which assistant brings people who convert, which store wins quotes, and how many questions each person skipped. It reports counts only, with the person's consent.
+
+## Across industries
+
+Shopping is the first vertical because it is where agents already transact. The primitives are not shopping-specific: pairwise IDs, a handshake of field names, values released by purpose at a stage, receipts, revoke. Every industry where a stranger agent interviews you before it can help has the same shape. Only shopping is built; the rows below are the next verticals, and each needs its fields, categories and purposes added to the contract first.
+
+| Industry | Agent you meet | Known on its first message | Released only by purpose and stage | What it writes back | Why one ID per agent matters |
+| --- | --- | --- | --- | --- | --- |
+| **Shopping** (built) | Store and shopping agents | Size, budget, deadline, style preferences | Address at `checkout`; payment authorized by the jar at `payment` | Observed size; its own note | Stores cannot join your purchases into one profile |
+| **Hotels** | Booking and front-desk agents | Bed and room preferences, quiet floor, arrival time | Loyalty number at `booking`; passport at `check_in` | Room preferences it observed | The hotel and the airline cannot assemble your itinerary |
+| **Airlines** | Booking and rebooking agents | Seat and meal preference, home airport | Known Traveler number and passport at `booking`; rebooking options at `disruption` | Seat it observed you choose | No cross-carrier travel history keyed to you |
+| **Hospital intake** | Intake and scheduling agents | Language, preferred name, accessibility needs | Allergies, medications and insurance member ID only at `intake`, only to the provider you booked; nothing in the handshake | Nothing to the card by default; the clinic keeps its own note | Your hospital, your pharmacy and your employer can never match records on one identifier |
+| **Banking and insurance** | Onboarding and quote agents | Language, contact preference | A verified-identity assertion at `kyc` instead of the documents; income range at `quote` | That verification passed, not the documents | One verification reused, never one ID across lenders |
+| **Housing** | Rental and leasing agents | Move-in date, budget, pets | References and income proof at `application`, only to the landlord you apply to | Application status | Landlords cannot share a tenant blacklist keyed to you |
+| **Work** | Recruiting and handoff agents | Role, time zone, working preferences | Task context at `handoff`, expiring when the handoff is done | What the next agent needs | A handoff does not become a permanent profile |
+
+Healthcare is the strictest case and the clearest argument for the design. An intake agent should know your language and that you need an interpreter before it says hello. It should never see your allergies until you have booked with that provider and reached intake, and that read should leave a receipt you can see. We make no compliance claim for regulated data; the point is that purpose-bound release, receipts and unjoinable IDs are the primitives such rules ask for.
 
 ## Rules we never bend
 

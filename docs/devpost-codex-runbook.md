@@ -64,6 +64,8 @@ Agent Cookie puts the person's profile in a jar they own and introduces them to 
 - **One ID per agent.** Every agent gets its own pairwise session ID for the same person. The IDs cannot be joined, so there is no global identifier to leak or sell, and a store still recognizes a returning buyer after the person switches assistants.
 - **The person sees and controls everything.** The console and the hosted cookie page show who read which field names for which purpose. The person can revoke any grant, pause learning, or delete their data. Revocation stops future reads; it does not pretend to recall what was already delivered.
 
+- **It learns back without being poisoned.** Agents write back what they learned, and deterministic rules decide what reaches the card. What you said yourself counts at once. What an agent observed stays a candidate until a second, independent source agrees. Guesses never reach the card, and a store's note about you stays private to that store. The more agents you use, the fewer questions the next one asks.
+
 We measure a count we call *questions skipped*: field names served to agents by policy, summed over an intent's receipts. Counts and field names only. An unknown field stays unknown and is asked for when the task needs it.
 
 ## How we built it
@@ -99,6 +101,10 @@ Four coding agents (Claude Code, two Codex sessions and Devin) built it in paral
 ## What we learned
 
 Memory needs a lifecycle, not a database: provenance, expiry, revocation, recovery. Two records from one conversation are still one source. Privacy is why a business says yes and convenience is why a person taps, so the two sides of the pitch are different sentences. And the cookie's 1994 lesson still holds: the design decides whether an identifier can be joined, and policy cannot fix it later.
+
+## Beyond shopping
+
+Shopping is the first vertical because that is where agents already transact. The primitives are not shopping-specific: pairwise IDs, a handshake of field names, values released by purpose at a stage, receipts and revoke. A hotel agent knows your room preferences and gets your passport only at check-in. An airline agent knows your seat preference and gets your Known Traveler number only at booking, and it cannot join your itinerary with the hotel's. A hospital intake agent knows your language and that you need an interpreter before it says hello, sees your allergies and insurance ID only after you book with that provider, and leaves a receipt when it does; your hospital, pharmacy and employer can never match records on one identifier. Banks get a verified-identity assertion instead of your documents. Only shopping is built today; each new industry needs its fields and purposes added to the contract.
 
 ## What's next
 
