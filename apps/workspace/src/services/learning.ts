@@ -20,7 +20,7 @@ import {
   type ForgetLearningResult, type PrefField, type Basis, type ContributionCandidate, type ContributionEvidence, type ForgetRequest, type ForgetResult, type IntentHistoryEntry,
   type IntentRecord, type LearnApi, type LearnedEntry, type LearnedResponse, type LearningState, type Observation, type ObservationAck, type Quote,
 } from "@agent-cookie/contract";
-import type { IntentRow, QuoteRow, StoredContribution } from "../db.js";
+import type { IntentRow, QuoteRow, Store, StoredContribution } from "../db.js";
 import { containsContactOrPayment, prefValueProblem } from "../guards.js";
 import { fail, type AuthedAgent } from "../http.js";
 import type { CardService } from "./card.js";
@@ -39,6 +39,36 @@ const sourceKey = (s: Source) => (s.conversationId !== undefined ? `conversation
 
 /** Collapse width, whitespace and case: "Brooks", " brooks ", "ＢＲＯＯＫＳ" are one value. */
 const norm = (t: string) => t.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * The person's intent and purchase history, newest first, as GET /personal/intents serves it (and, minus the user's
+ * words, GET /assistant/history: services/assistant.ts). One builder for both. `q` matches text, query, kind and
+ * public values. `accepted` is the most recent accepted quote with its merchant's agentId and result status.
+ */
+export function intentHistory(store: Pick<Store, "intentsForUser" | "quotesForIntent">, userId: string,
+  opts: { q?: string | undefined; limit: number }): IntentHistoryEntry[] {
+  const needle = opts.q ? norm(opts.q) : "";
+  const out: IntentHistoryEntry[] = [];
+  for (const i of store.intentsForUser(userId)) {
+    if (out.length >= opts.limit) break;
+    const hay = norm([i.text ?? "", i.query ?? "", i.kind ?? "", ...Object.values(i.public)].join(" \n "));
+    if (needle && !hay.includes(needle)) continue;
+    const e: IntentHistoryEntry = { id: i.id, agentId: i.agentId, public: i.public, createdAt: i.createdAt, expiresAt: i.expiresAt };
+    if (i.text) e.text = i.text;
+    if (i.query) e.query = i.query;
+    if (i.kind) e.kind = i.kind;
+    // The most recent choice, if the user accepted more than one quote for this request.
+    const q = store.quotesForIntent(i.id).filter((x) => x.acceptedAt).sort((a, b) => (a.acceptedAt! < b.acceptedAt! ? 1 : -1))[0];
+    if (q) {
+      e.accepted = { quoteId: q.id, price: q.price, status: q.result?.status ?? q.status };
+      if (q.title) e.accepted.title = q.title;
+      if (q.seller) e.accepted.seller = q.seller;
+      e.accepted.agentId = q.agentId;
+    }
+    out.push(e);
+  }
+  return out;
+}
 
 class LearnerTimeout extends Error {
   override name = "LearnerTimeout";
@@ -302,26 +332,7 @@ export class LearningService {
 
   /** GET /personal/intents?q=: the user's own requests, newest first; `q` matches text, query, kind and public values. */
   history(userId: string, q: string | undefined, limit: number): IntentHistoryEntry[] {
-    const needle = q ? norm(q) : "";
-    const out: IntentHistoryEntry[] = [];
-    for (const i of this.ctx.store.intentsForUser(userId)) {
-      if (out.length >= limit) break;
-      const hay = norm([i.text ?? "", i.query ?? "", i.kind ?? "", ...Object.values(i.public)].join(" \n "));
-      if (needle && !hay.includes(needle)) continue;
-      const e: IntentHistoryEntry = { id: i.id, agentId: i.agentId, public: i.public, createdAt: i.createdAt, expiresAt: i.expiresAt };
-      if (i.text) e.text = i.text;
-      if (i.query) e.query = i.query;
-      if (i.kind) e.kind = i.kind;
-      // The most recent choice, if the user accepted more than one quote for this request.
-      const q = this.ctx.store.quotesForIntent(i.id).filter((x) => x.acceptedAt).sort((a, b) => (a.acceptedAt! < b.acceptedAt! ? 1 : -1))[0];
-      if (q) {
-        e.accepted = { quoteId: q.id, price: q.price, status: q.result?.status ?? q.status };
-        if (q.title) e.accepted.title = q.title;
-        if (q.seller) e.accepted.seller = q.seller;
-      }
-      out.push(e);
-    }
-    return out;
+    return intentHistory(this.ctx.store, userId, { q, limit });
   }
 
   // ---- internals

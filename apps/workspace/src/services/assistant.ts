@@ -6,7 +6,7 @@
 // and payment, with receipts, as it does for the user's own agents; the assistant orchestrates and never carries them.
 import {
   EVIDENCE_SNIPPET_MAX,
-  type AssistantContext, type AssistantContributionInput, type AssistantStats, type Basis, type Field, type Receipt,
+  type AssistantContext, type AssistantContributionInput, type AssistantHistoryResponse, type AssistantStats, type Basis, type Field, type Receipt,
 } from "@agent-cookie/contract";
 import type { StoredContribution } from "../db.js";
 import { containsContactOrPayment, looksLikeContactHandle } from "../guards.js";
@@ -15,6 +15,7 @@ import { newId } from "../ids.js";
 import { questionsSkipped } from "./analytics.js";
 import type { CardService } from "./card.js";
 import type { Ctx } from "./context.js";
+import { intentHistory } from "./learning.js";
 import { RECEIPT_DEDUPE_MS, ReceiptWriter, type ReceiptOutcome } from "./receipts.js";
 import type { SessionService } from "./sessions.js";
 
@@ -37,6 +38,14 @@ export function assistantSafe(fields: readonly Field[]): Field[] {
  * deduplicated or not.
  */
 export const ASSIST_RECEIPT_DEDUPE_MS = RECEIPT_DEDUPE_MS;
+
+/**
+ * The purpose of the receipt an assistant's read of the intent history writes (GET /assistant/history). It names no
+ * field (fields []) and no intent, so it counts toward no FunnelRow and never changes questionsSkipped. De-duplicated
+ * like the context read: none when the newest history receipt of the same session is under the same policy document
+ * and less than RECEIPT_DEDUPE_MS old.
+ */
+export const HISTORY_PURPOSE = "history";
 
 export type AssistantEvidence = NonNullable<AssistantContributionInput["evidence"]>;
 
@@ -97,6 +106,28 @@ export class AssistantService {
       reason: `served=${served.length} unknown=${unknown.length} receipt=${receipt}` });
     return { v: 1, sessionId: session.sessionId, policyId: policy.id(), fields, unknown, writable: assistantSafe(policy.writeFields("assistant")),
       expiresAt: grant.expiresAt };
+  }
+
+  /**
+   * GET /assistant/history: the person's intent and purchase history (every intent, whoever created it), newest first,
+   * as GET /personal/intents builds it, minus the user's own words (`text`, `query`). No card value is added. Needs the
+   * live assist grant, then the INSTALLED document's history.assistant, decided at read time (else 403 SCOPE_DENIED).
+   * Every allowed read is receipted (purpose history, fields []), at most once per session per hour and policy
+   * document; the entries are released only after the receipt resolved. Logged as counts only.
+   */
+  async history(agent: AuthedAgent, userId: string, limit: number): Promise<AssistantHistoryResponse> {
+    const { session } = this.sessions.assistAccess(agent, userId);
+    if (!this.ctx.policy.history("assistant")) {
+      this.ctx.log({ event: "assist.history", actor: agent.agentId, object: session.sessionId, result: "SCOPE_DENIED", reason: `policy=${this.ctx.policy.id()}` });
+      fail("SCOPE_DENIED");
+    }
+    const intents = intentHistory(this.ctx.store, userId, { limit }).map(({ text: _t, query: _q, ...e }) => e);
+    const r: Receipt = { id: newId("r"), sessionId: session.sessionId, agentId: agent.agentId, fields: [], purpose: HISTORY_PURPOSE,
+      createdAt: this.ctx.clock.nowIso(), policyId: this.ctx.policy.id() };
+    const receipt = await this.receipts.write(r, userId, agent.agentId, { dedupe: true, allowEmpty: true });
+    this.ctx.log({ event: "assist.history", actor: agent.agentId, object: session.sessionId, result: "ok",
+      reason: `intents=${intents.length} receipt=${receipt}` });
+    return { intents };
   }
 
   /** "每次放行写回执" with the de-duplication rule above. Git first, then SQLite: no durable receipt, no values. */
