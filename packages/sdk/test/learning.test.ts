@@ -44,3 +44,16 @@ it('forwards opaque message IDs and preserves duplicate acknowledgements',async(
  await expect(c.observe({...input,turns:input.turns.map(t=>({...t,messageId:'x'.repeat(129)}))})).rejects.toThrow();
  expect(f).toHaveBeenCalledTimes(1);
 });
+
+const learnedWithModels=(models:unknown)=>({paused:false,learned:[{field:'pref.color',value:'black',status:'candidate',sources:['personal'],
+ evidence:[{contributionId:'c1',agentId:'personal',basis:'observed',createdAt:'2026-10-17T22:00:00Z',conversationId:'conv1',snippet:'prefer black',models,rawTranscript:'DO NOT RETURN'}]}]});
+it('preserves B60 model provenance while stripping unrecognized raw evidence',async()=>{
+ const models={gate:'typesafe/jev-1.14',extractor:'openai/gpt-oss-120b'};
+ const c=new WorkspaceClient({...config,fetch:async()=>Response.json(learnedWithModels(models))});
+ const result=await c.getLearned();expect(result.learned[0].evidence[0].models).toEqual(models);
+ expect(result.learned[0].evidence[0]).not.toHaveProperty('rawTranscript');
+});
+it.each([null,[],{gate:'x'.repeat(101)},{extractor:'model secret'},{gate:'valid',rawTranscript:'secret'}])('rejects malformed B60 model metadata %#',async models=>{
+ const c=new WorkspaceClient({...config,fetch:async()=>Response.json(learnedWithModels(models))});
+ await expect(c.getLearned()).rejects.toThrow('Invalid learning payload.');
+});

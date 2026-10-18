@@ -135,19 +135,19 @@ Photon `SEND_OUTCOME_UNKNOWN` 属于通道发件状态，不是订单状态。�
 
 B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm install --frozen-lockfile`。根 `pnpm-lock.yaml` 的 `version: link:../sdk` / `link:../../packages/sdk` 是 pnpm 正常生成的本地解析值，不应手动改成 `workspace:*`，也不建立 B 包独立锁文件。
 
-## 对话旁听学习（本地集成已修复，真实通道待验收）
+## 对话旁听学习（Photon 2.0 Beta）
 
-新入口 `node --env-file=.env dist/main.js serve-spectrum` 使用官方 `spectrum-ts` 12.11.0 云 provider 的 `app.messages`，不安装或使用 `@spectrum-ts/imessage-local`。当前线上演示仍是旧 Socket.IO 入口，尚未迁移；两种入口共用同一个运行锁和状态文件，不能同时回复，不能通过换状态文件绕过锁。Spectrum Cloud 的 projectId/projectSecret 与现有 Photon Beta API key 不视为同一种凭据。
+人的最新确认：Photon 团队要求继续使用 `app.beta.photon.codes`。现有 `pho_prj_` 项目、`PHOTON_API_KEY` 和原 iMessage 号码保留，`serve` 的同一个 Socket.IO 收消息循环负责采集，不要求另外登录旧平台或提供 `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`。`spectrum-ts` Cloud 与 Beta 是不同产品；旧 `serve-spectrum` 入口保留供真正的 Cloud 项目使用，不用于这条 Beta 线路。两入口共用原运行锁和状态文件，不能并行启动或另换状态文件绕过锁。不使用 `@spectrum-ts/imessage-local`，不读电脑上的其他聊天。
 
-在修复版后台完成兼容检查后，在本机忽略的环境文件准备 `SPECTRUM_PROJECT_ID`、`SPECTRUM_PROJECT_SECRET`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1`；保留既有 Photon 配置、个人 key、状态文件。C 688754d 的类型/作者身份修复和控制台学习读取、暂停/恢复已通过 B 隔离联调，不等同真实学习通过。启动前先验证 A 的真实学习适配器和新端点，正常停止旧监听，确认无不确定 outbox 后再迁移。这里不提供会删除旧状态的重置步骤，也未自动启动新入口。
+通道显式开关：本机忽略的 `.env` 中设 `AGENT_COOKIE_LEARNING_BINDING=workspace-v1`，仍运行原 `serve` 命令。后台须先支持学习端点，并显式设 `AGENT_COOKIE_LEARN_PROVIDER=openrouter`、从本地加载 `OPENROUTER_API_KEY`；当前默认 Jev1.14 + gpt-oss120b。仅有模型 key 不会自动启用。启动时读后台暂停状态并保留本机已有暂停，失败则退出并释放锁；正常停止旧监听、确认 outbox 无未知发送结果后才能切换。
 
-采集：受信 provider inbound + configured owner + dm + text → adapter.toEvent → 机主/敏感过滤 → 有界内存队列 → SDK Observation。全部群聊保守忽略；DM conversationId稳定，不靠时间切片/进程重启造两份来源。队列最多32个等待项、并发1、TTL30秒、10秒总超时；采集失败不影响回复、不落原文、不重试未知请求。正常已发送消息的持久去重仍保留。修复版契约已支持 messageId，SDK 保留消息标识并读取 duplicate；隔离验证已通过，真实 Spectrum 采集仍未启用。
+采集：同一受信 Beta 事件先验证 API 版本、项目、human 发件人、agent 收件人、原测试号码、direct space 和 plain text，再经 `adapter.toEvent` 归一化 → 机主/敏感过滤 → 非阻塞有界内存队列 → SDK Observation。全部群聊保守忽略；稳定 HMAC conversationId / messageId 不靠时间切片或进程重启制造新来源。队列最多32个等待项、并发1、TTL30秒、10秒超时。5分钟前的历史消息不补学，重复已发送消息不再采集/回复；学习上报失败不影响回复，不将输入正文落盘。原 cursor/outbox 和未知发送停止机制保留，成功发送后删除该条 outbox 的回复正文。暂停/恢复/忘掉命令不成为学习证据。
 
-用户日常偏好不再自动触发购物；新入口的普通聊天回复为确定性确认，不冒充完整聊天模型。购物搜索仍使用原来的工作台逻辑。可试「我一直喜欢黑色衣服」「这件棉质的摸起来更舒服」；前者应直接上卡、后者为候选，隔离 A/C 后台已用合成抽取结果验证这些晋升规则；真实模型与手机学习闭环尚未通过。
+普通偏好聊天使用确定性确认，不冒充完整聊天模型；单有商品名或“平时怎么买”的描述不触发搜索，只有明确请求句才走购物。Beta 购物请求由既有 intent 路径学习，不再同时排一份 Observation，避免同一句被算为两个来源。后台 Dreaming 等对话空闲五分钟后才抽取，默认五分钟调度意味着最长接近十分钟；演示可设 `DREAMING_INTERVAL_MS=30000`，使空闲五分钟后在下一次30秒调度内处理，不用手动 flush 冒充定时。明确陈述可上卡，顺口偏好先显示候选。真实模型六场景已通过；实际 Beta 手机消息已在 2026-10-17 经过空闲五分钟自动处理并显示到控制台，详见 `docs/evidence/2026-10-17-phone-learning-live.md`。该次存在修复前购物误判造成的重复来源，不能把它当成两段独立对话的上卡验收；修复后第二条真实手机消息已验证不会误触发购物或重复来源；自然五分钟后 Jev 门控未通过，未调用抽取器、未写新记录。这条涉及短裤/长裤选择，现白名单缺清晰服装类型语义，已交 A/C；不能把它算成正向候选验收，也不强行映射版型/风格。
 
 - `暂停学习`：立即停本机队列/中止在途观察，再PUT后台 paused=true；失败明确说“后台尚未确认”。
-- `恢复学习`：只在后台明确 paused=false 后恢复本机采集；隔离测试已验证暂停/恢复后的迟到结果被丢弃；真实模型和通道配置就绪前仍不启用新监听。
+- `恢复学习`：只在后台明确 paused=false 后恢复本机采集；隔离测试已验证暂停/恢复后的迟到结果被丢弃；后台确认和本机状态更新后才启用采集。
 - `忘掉 颜色` / `忘掉 黑色`：只匹配后台真实条目，冻结本地采集后，单次调用 `forgetLearning({field})` 再回读；后台事务暂停并删除该字段的当前贡献，Git 投影失败返回 pending 并禁止恢复。成功只确认当前偏好及证据已移除，明确“旧 Git 历史仍保留”，保持暂停；歧义则请用户在控制台选择。不能把revoke说成完全删除。
 - 每日摘要：用户下一次正常交互时，最多附加一次当前有效card状态的结论；不发主动定时短信，不调模型，不含证据原文。暂停时不摘要；读取失败保留正常回复。
 
-可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Spectrum自身telemetry关闭、SDK日志silent，不采集第三方自动正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿Haiku/Jev密钥。
+可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Beta只记录checkpoint与learning_capture的状态/数量；旧Spectrum入口自身telemetry关闭、SDK日志silent。两者均不采集正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿OpenRouter模型密钥。

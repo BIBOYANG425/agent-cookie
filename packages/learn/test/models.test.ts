@@ -45,10 +45,11 @@ it('missing safety decision fails closed, not service fallback',async()=>{
  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({answers:{stable:{type:'noul',noul:1}}})});
  const extract=vi.fn();await createLearner({policy,classify,extract}).learn(turn);expect(extract).not.toHaveBeenCalled();
 });
-it.each(['none','pref.unknown'])('does not extract for an unselected/unknown key %s',async choice=>{
+it.each([['none','unsupported_preference'],['pref.unknown','invalid_gate_response']])('does not extract for an unselected/unknown key %s',async (choice,reason)=>{
  const raw=structuredClone(jev);raw.answers.key.choice=choice;
+ if(choice==='none')raw.answers.key.probabilities.none=1;
  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(raw)});const extract=vi.fn();
- expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('not_stable');expect(extract).not.toHaveBeenCalled();
+ expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe(reason);expect(extract).not.toHaveBeenCalled();
 });
 it('explicit-only still honors the Jev safety gate',async()=>{
  const classify=vi.fn(async()=>({sensitive:true,stable:true,keys:['pref.color']}));const extract=vi.fn();
@@ -78,4 +79,28 @@ it('forbids stated in the wire schema when the local explicit-statement check fa
  await extract({text:'Black is the color I choose for my clothes.',policy,signal:new AbortController().signal});
  const body=JSON.parse(String((mock.mock.calls as unknown as [string,RequestInit][])[0][1].body));
  expect(body.response_format.json_schema.schema.properties.preferences.items.properties.basis.enum).toEqual(['observed','inferred']);
+});
+
+it('carries successful gate and extractor IDs on each workspace evidence, not in the snippet',async()=>{
+ const api=createWorkspaceLearner({extract:createExtractor({apiKey:'test',fetch:mockFetch()})});
+ const rows=await api.extractFromConversation([{role:'user',text:turn.text,at:turn.occurredAt}],{conversationId:'conv-models',channel:'imessage'});
+ expect(rows).toEqual([{field:'pref.color',value:'黑色',basis:'stated',evidence:{snippet:turn.text,conversationId:'conv-models',models:{gate:JEV_MODEL,extractor:DEFAULT_EXTRACTION_MODEL}}}]);
+});
+it('does not claim a Jev gate when its unavailable request fell back to extraction',async()=>{
+ const f=vi.fn(async(url:unknown)=>String(url).includes('/decisions')?Response.json({}, {status:503}):Response.json(completion()));
+ const result=await createLearner({policy,extract:createExtractor({apiKey:'test',fetch:f})}).learn(turn);
+ expect(result.preferences).toEqual([preference]);expect(result.models).toEqual({extractor:DEFAULT_EXTRACTION_MODEL});expect(f).toHaveBeenCalledTimes(2);
+});
+it('does not invent provenance for custom adapters and identifies an explicit native Jev override',async()=>{
+ const extract=async()=>extracted;
+ const custom=await createLearner({policy,extract,classify:async()=>({stable:true,sensitive:false,keys:['pref.color']})}).learn(turn);
+ expect(custom.preferences).toEqual([preference]);expect(custom).not.toHaveProperty('models');
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(jev)});
+ const gated=await createLearner({policy,extract,classify}).learn(turn);
+ expect(gated.models).toEqual({gate:JEV_MODEL});
+});
+it('does not attach provenance to rejected sensitive results',async()=>{
+ const f=vi.fn(async()=>Response.json({answers:{sensitive:{type:'noul',noul:1}}}));
+ const result=await createLearner({policy,extract:createExtractor({apiKey:'test',fetch:f})}).learn(turn);
+ expect(result).toEqual({preferences:[],reason:'sensitive',gate:{outcome:'sensitive',sensitiveScore:1}});expect(f).toHaveBeenCalledTimes(1);
 });
