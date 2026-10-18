@@ -2,7 +2,7 @@ import { t, localizeUiText } from './i18n';
 import { useState } from 'react';
 import type { PolicyResult } from './controller';
 import type { Section } from './model';
-import { categoryLabels, decisionLabels, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
+import { categoryLabels, decisionLabels, historyReadable, POLICY_CATEGORIES, sourceLabels, type PolicyView } from './policy';
 
 const SHOWN_CHANGES = 100;
 
@@ -59,7 +59,7 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
         </dl>
         <table className="policy-table stack-table">
           <caption className="visually-hidden">{t("fieldPolicyPerCategoryAutomaticBy")}</caption>
-          <thead><tr><th scope="col">{t("category")}</th><th scope="col">{t("automaticReadableOnHandshake")}</th><th scope="col">{t("byPurpose")}</th><th scope="col">{t("writable")}</th></tr></thead>
+          <thead><tr><th scope="col">{t("category")}</th><th scope="col">{t("automaticReadableOnHandshake")}</th><th scope="col">{t("byPurpose")}</th><th scope="col">{t("writable")}</th><th scope="col">{t("historyRecords")}</th></tr></thead>
           <tbody>{POLICY_CATEGORIES.map((category) => {
             const purposes = Object.entries(view.policy.purpose[category] ?? {});
             return <tr key={category}>
@@ -69,9 +69,11 @@ export function PolicyPanel({ state, sample, result, disabled, shadow, install }
                 : <ul className="policy-purposes">{purposes.map(([field, list]) => <li key={field}>
                   <code className="field-key">{field}</code>{t("onlyFor")}{(list ?? []).map((name, index) => <span key={name}>{index > 0 ? '、' : ''}<code>{name}</code></span>)}</li>)}</ul>}</td>
               <td data-label={t("writable")}><FieldList fields={view.policy.write[category] ?? []} /></td>
+              <td data-label={t("historyRecords")}>{historyReadable(view.policy, category) ? t("historyReadable") : <span className="muted">{t("historyNotReadable")}</span>}</td>
             </tr>;
           })}</tbody>
         </table>
+        <p className="small muted policy-history-note">{t("historyPolicyNote")}</p>
       </>}
     <div className="policy-candidate">
       <h3>{t("candidatePolicy")}</h3>

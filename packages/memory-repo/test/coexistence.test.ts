@@ -154,6 +154,20 @@ describe('C21 shared memory repository ownership', () => {
     expect(line).toContain('at: 2026-10-18T00%3A30%3A00+08%3A00');
   });
 
+  it('appends a history receipt with no fields (GET /assistant/history) in one commit', async () => {
+    const f = await setup(); const repo = await f.open();
+    const git = repoGit(f.path);
+    const before = Number((await git.raw(['rev-list', '--count', 'HEAD'])).trim());
+    const commit = await repo.appendReceipt({ id: 'r-history-1', sessionId: 'session', agentId: 'sample-assistant', purpose: 'history',
+      fields: [], createdAt: '2026-10-18T09:00:00.000Z' }, meta('workspace'));
+    expect(Number((await git.raw(['rev-list', '--count', 'HEAD'])).trim())).toBe(before + 1);
+    expect(commit.sha).toBe(await git.revparse(['HEAD']));
+    expect((await git.raw(['show', '--name-only', '--format=', 'HEAD'])).trim()).toBe('receipts.md');
+    const line = (await readFile(join(f.path, 'receipts.md'), 'utf8')).trimEnd().split('\n').at(-1)!;
+    expect(line).toBe('- receipt: history [id: r-history-1; sessionId: session; agentId: sample-assistant; fields: ; '
+      + 'at: 2026-10-18T09%3A00%3A00.000Z; added: 2026-10-18; source: receipt/r-history-1]');
+  });
+
   it('preserves open metadata when listing, revoking and reopening a contribution', async () => {
     const f = await setup();
     await writeFile(join(f.seedDir, 'contributions', 'sample-personal.md'),

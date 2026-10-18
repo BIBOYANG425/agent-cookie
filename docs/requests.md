@@ -386,3 +386,13 @@ C 线合入时的原始交接记录（保留全部原文）：
 | BC-i18n | B/C → 各线（负责人已批准跨线）：SDK/MCP 保留原话 text 并传英文 query、显式条件与商家数量，兼容旧 kind；Photon 用确定性双语词典搜通用品并按消息语言回复；控制台随卡片语言并支持持久化中英切换，保留 Sample、未知到货及未确认订单/支付提示；不改工作台或契约，不新增依赖或模型调用。 |
 
 | BC-i18n-CI | B/C → D（2026-10-18）：在最新 main `b1e049a` 独立 worktree 第 12 次复现 auth unlock token 的 bad-MAC 断言偶发失败（test/auth.test.ts:180）；固定替换 base64url 末字符为 x 可能不改变解码字节，请 D 线改成确定翻转 MAC 字节的测试；本 PR 不改 D 线代码。 |
+
+2026-10-18（续六），Phase 4（分支 `claude/phase-4-history-operator`）：历史记录策略类别与运营方漏斗。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A63 | A → 全部 | 契约新增（commit `1cbacb8`，增量）：`PolicyDocument.history?: Partial<Record<Category, boolean>>`（可读此人的意图与购买记录）与底线（shoe/retail 必须为 false 或缺省，personal 若出现必须为 true，assistant 由 owner 决定）；`policyHistory(doc, category)`；`DEFAULT_POLICY.history = { personal: true, assistant: false }`，默认 policyId 由 `3526a909e404` 变为 `1fcaae3c5185`（不含 history 的已安装文档 id 不变）；`POLICY_TABLE` 带 history。OpenAPI 已重新生成。 | 已交付 |
+| A64 | A → B/C | 契约新增端点 `GET /assistant/history?limit=`（默认 50，上限 200）→ `AssistantHistoryResponse { intents: IntentHistoryEntry[] }`（不含 text/query）；仅当安装的策略 `history.assistant` 为 true 时放行，否则 403 SCOPE_DENIED；每次放行写回执（purpose `history`，`fields: []`，每 session 每小时一条），不改 `questionsSkipped`。`IntentHistoryEntry.accepted.agentId` 新增。SDK `AssistantClient.history`（`2c1dc53`）、控制台回执标签「历史记录」（`110fb54`）已接。 | 已交付 |
+| A65 | A → C | POLICY.yaml 编解码支持 `true`/`false`，种子已重生成（`110fb54`），rules 与 memory-repo 测试里的 policyId 已更新。 | 已交付 |
+| A66 | A → 人（记录） | 网关 `GET /operator/funnel` 改为实测（`163e6d7`）：契约 `OperatorFunnel.coverage { live, snapshot, missing }` 新增；`byMerchant` 暂为空（owner 漏斗没有按商家的拆分，见 `apps/gateway/README.md`）。若要按商家汇总，需要在工作台契约里给 `FunnelRow` 增加按商家的计数，待人决定。托管实例用 fixture 回放报价，运营方的报价/接受计数在接入真实商家前属 Sample；`OperatorFunnel` 没有 sample 标记，是否加字段待人决定。 | 待人 |
+| A67 | A → 人 | `docs/plan.md`：§5 字段策略加「历史记录」一列（personal 可读、商家永不、assistant 默认关由 owner 开）与端点 `GET /assistant/history`；§2 若需要可加对应验收行。 | 待人 |

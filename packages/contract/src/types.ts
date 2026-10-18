@@ -326,7 +326,15 @@ export interface IntentHistoryEntry {
   createdAt: string;
   expiresAt: string;
   /** The quote the user accepted for this intent, if any. */
-  accepted?: { quoteId: string; title?: string; seller?: string; price: number; status: string };
+  accepted?: {
+    quoteId: string;
+    title?: string;
+    seller?: string;
+    price: number;
+    status: string;
+    /** The merchant (or UCP store proxy) whose quote was accepted. */
+    agentId?: string;
+  };
 }
 
 /** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */

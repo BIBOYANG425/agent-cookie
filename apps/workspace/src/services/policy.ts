@@ -5,7 +5,7 @@
 // repo first when it can write, then SQLite, then swap — the same order every other user record follows.
 // Deterministic code over data; the document is a parameter the owner supplied, never something a model decided.
 import {
-  DEFAULT_POLICY, evaluateRead, evaluateWrite, isField, policyAutoFields, policyId, policyPurposeFields, policyPurposesFor, policyReadMode,
+  DEFAULT_POLICY, evaluateRead, evaluateWrite, isField, policyAutoFields, policyHistory, policyId, policyPurposeFields, policyPurposesFor, policyReadMode,
   policyViolations,
   type Category, type Field, type PolicyDocument, type PolicyView, type ReadDecision, type ReadMode, type ShadowReport,
 } from "@agent-cookie/contract";
@@ -68,6 +68,8 @@ export class PolicyService {
   purposeFields(category: Category): Field[] { return policyPurposeFields(this.doc, category); }
   purposesFor(category: Category, field: Field): string[] { return policyPurposesFor(this.doc, category, field); }
   canWrite(category: Category, field: Field): boolean { return evaluateWrite(this.doc, category, field); }
+  /** Phase 4: may this category read the person's intent and purchase history (GET /assistant/history)? */
+  history(category: Category): boolean { return policyHistory(this.doc, category); }
   /** The category's writable fields in document order (GET /assistant/context `writable`). */
   writeFields(category: Category): Field[] { return [...(this.doc.write[category] ?? [])]; }
 

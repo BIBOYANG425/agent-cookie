@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CATEGORIES, DEFAULT_POLICY, POLICY_TABLE, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
+import { CATEGORIES, DEFAULT_POLICY, POLICY_TABLE, policyHistory, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
 import * as generator from '../scripts/generate-seed.js';
 import {
   POLICY_SEED_HEADER, parsePolicyDocument, parsePolicyYaml, policyYamlOrigin, renderInstalledPolicyYaml, renderPolicyYaml,
@@ -46,7 +46,7 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
     const block = (fields: readonly string[]) => fields.map((field) => `    - ${JSON.stringify(field)}\n`).join('');
     expect(text).toContain(`\n  assistant:\n${block(DEFAULT_POLICY.auto.assistant)}purpose:\n`);
     expect(text).toContain('\n  assistant: {}\nwrite:\n');
-    expect(text.endsWith(`\n  assistant:\n${block(DEFAULT_POLICY.write.assistant)}`)).toBe(true);
+    expect(text.endsWith(`\n  assistant:\n${block(DEFAULT_POLICY.write.assistant)}history:\n  personal: true\n  assistant: false\n`)).toBe(true);
     const parsed = parsePolicyDocument(text);
     for (const section of ['auto', 'purpose', 'write'] as const) expect(Object.keys(parsed[section])).toEqual([...CATEGORIES]);
     expect(parsed.auto.assistant).toEqual(DEFAULT_POLICY.auto.assistant);
@@ -146,7 +146,13 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
     ['an invalid JSON escape', 'auto:\n  - "\\x41"\n'],
     ['text after a quoted item', 'auto:\n  - "lang" "tone"\n'],
     ['a trailing comment', 'auto: [] # nothing yet\n'],
-    ['a boolean', 'v: true\n'],
+    ['a YAML 1.1 boolean (yes)', 'history:\n  assistant: yes\n'],
+    ['a capitalised boolean (True)', 'history:\n  assistant: True\n'],
+    ['an upper-case boolean (FALSE)', 'history:\n  assistant: FALSE\n'],
+    ['a quoted boolean', 'history:\n  assistant: "true"\n'],
+    ['a boolean with trailing text', 'history:\n  assistant: true!\n'],
+    ['a boolean list item', 'auto:\n  - true\n'],
+    ['a boolean with two spaces', 'history:\n  assistant:  true\n'],
     ['a string scalar', 'v: one\n'],
     ['a quoted scalar value', 'v: "1"\n'],
     ['a float', 'ranking:\n  winRate: 1.5\n'],
@@ -176,7 +182,8 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
   it('the renderer refuses values outside the subset and multi-line headers', () => {
     expect(() => renderPolicyYaml({ v: 1.5 })).toThrow(TypeError);
     expect(() => renderPolicyYaml({ v: -0 })).toThrow(TypeError);
-    expect(() => renderPolicyYaml({ v: true })).toThrow(TypeError);
+    expect(() => renderPolicyYaml({ auto: [true] })).toThrow(TypeError);
+    expect(() => renderPolicyYaml({ v: 1n })).toThrow(TypeError);
     expect(() => renderPolicyYaml({ v: null })).toThrow(TypeError);
     expect(() => renderPolicyYaml({ v: 'one' })).toThrow(TypeError);
     expect(() => renderPolicyYaml({ auto: [1] })).toThrow(TypeError);
@@ -185,5 +192,71 @@ describe('POLICY.yaml codec: one writer, one reader', () => {
     expect(() => renderInstalledPolicyYaml(DEFAULT_POLICY, `${AT}\nv: 2`)).toThrow(TypeError);
     // `undefined` is skipped, as JSON would, so an absent optional section renders like a missing one.
     expect(renderPolicyYaml({ v: 1, ranking: undefined }, '# x')).toBe('# x\nv: 1\n');
+  });
+
+  it('emits and accepts exactly `true` and `false` as scalars, in key order', () => {
+    const text = renderPolicyYaml({ history: { personal: true, assistant: false }, v: 1 }, '# x');
+    expect(text).toBe('# x\nhistory:\n  personal: true\n  assistant: false\nv: 1\n');
+    const parsed = parsePolicyYaml(text);
+    expect(parsed).toEqual({ history: { personal: true, assistant: false }, v: 1 });
+    expect(JSON.stringify(parsed)).toBe('{"history":{"personal":true,"assistant":false},"v":1}');
+    expect(renderPolicyYaml(parsed, '# x')).toBe(text);
+    expect(parsePolicyYaml('a: true\nb: false\n')).toEqual({ a: true, b: false });
+  });
+
+  it('round-trips the default history section: personal true, assistant false', () => {
+    const text = renderInstalledPolicyYaml(DEFAULT_POLICY, AT);
+    expect(text.endsWith('\nhistory:\n  personal: true\n  assistant: false\n')).toBe(true);
+    const parsed = parsePolicyDocument(text);
+    expect(parsed.history).toEqual({ personal: true, assistant: false });
+    expect(policyHistory(parsed, 'personal')).toBe(true);
+    expect(policyHistory(parsed, 'assistant')).toBe(false);
+    expect(policyId(parsed)).toBe('1fcaae3c5185');
+  });
+
+  it('round-trips an installed document with history.assistant true under its own id', () => {
+    const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    doc.history = { personal: true, assistant: true };
+    expect(policyViolations(doc)).toEqual([]);
+    const text = renderInstalledPolicyYaml(doc, AT);
+    expect(text.split('\n', 1)[0]).toBe(`# Installed field policy · policyId ${policyId(doc)} · ${AT}`);
+    expect(text).toContain('\nhistory:\n  personal: true\n  assistant: true\n');
+    const parsed = parsePolicyDocument(text);
+    expect(parsed).toEqual(doc);
+    expect(JSON.stringify(parsed)).toBe(JSON.stringify(doc));
+    expect(policyId(parsed)).toBe(policyId(doc));
+    expect(policyId(parsed)).not.toBe(policyId(DEFAULT_POLICY));
+    expect(policyHistory(parsed, 'assistant')).toBe(true);
+    expect(renderInstalledPolicyYaml(parsed, AT)).toBe(text);
+  });
+
+  it('reads a merchant history switch back unchanged, so the workspace refuses it by name', () => {
+    const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    doc.history = { personal: true, assistant: false, retail: true };
+    const parsed = parsePolicyDocument(renderInstalledPolicyYaml(doc, AT));
+    expect(parsed.history).toEqual({ personal: true, assistant: false, retail: true });
+    expect(policyViolations(parsed)).toEqual(['history.retail: merchants never read history']);
+    expect(policyHistory(parsed, 'retail')).toBe(false);
+  });
+
+  it('parses an older installed document without history: no history key, and it keeps its old id', () => {
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    const text = renderPolicyYaml(older, `# Installed field policy · policyId ${policyId(older)} · 2026-10-17T12:05:00.000Z`);
+    expect(text).not.toMatch(/^history:/mu);
+    const parsed = parsePolicyDocument(text);
+    expect(Object.hasOwn(parsed, 'history')).toBe(false);
+    expect(policyViolations(parsed)).toEqual([]);
+    expect(policyId(parsed)).toBe('3526a909e404');
+    expect(policyHistory(parsed, 'personal')).toBe(true);
+    expect(policyHistory(parsed, 'assistant')).toBe(false);
+  });
+
+  it.each([
+    ['yes', 'history:\n  personal: true\n  assistant: yes\n', 3],
+    ['True', 'v: 1\nhistory:\n  assistant: True\n', 3],
+    ['quoted "false"', 'history:\n  assistant: "false"\n', 2],
+    ['on', 'history:\n  assistant: on\n', 2],
+  ])('names the line of a malformed boolean (%s)', (_, text, line) => {
+    expect(() => parsePolicyYaml(text)).toThrow(new RegExp(`^POLICY\\.yaml line ${line}: "assistant": expected \\[\\], \\{\\}, an integer, true, false`, 'u'));
   });
 });
