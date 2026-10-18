@@ -1,3 +1,4 @@
+import { localeFromMessage } from './i18n.js';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {WorkspaceClient,workspaceConfigFromEnv} from '@agent-cookie/sdk';
@@ -52,7 +53,7 @@ export async function serveSpectrum(env:NodeJS.ProcessEnv){
         const row=store.state.messages[key]??={phase:'processing',route:{messageId:event.messageId,spaceId:event.conversationId,agentId:'spectrum'}};
         if(row.phase==='processing'){
           const conversation=store.state.conversations[event.conversationId]??={};
-          try{row.text=await respondWithLearning(event.text,event.messageId,conversation,workspace,controls);}catch(e){row.text=publicFailure(e);}
+          try{row.text=await respondWithLearning(event.text,event.messageId,conversation,workspace,controls);}catch(e){row.text=publicFailure(e, localeFromMessage(event.text, conversation.cardLang, conversation.locale));}
           row.phase='ready';await store.save();
         }
         row.phase='sending';await store.save();

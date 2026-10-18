@@ -91,7 +91,7 @@ describe('policy actions through the live adapter', () => {
     const before = controller.getState().data;
     await controller.installPolicy(JSON.stringify(broken, null, 2));
     expect(JSON.parse(String(puts[1].body))).toEqual(broken);
-    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: '安装', violations });
+    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: 'install', violations });
     expect(controller.getState().data).toBe(before);
     expect(controller.getState().error).toContain('安装策略未确认成功');
     const html = renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult }));
@@ -150,7 +150,7 @@ describe('policy actions through the live adapter', () => {
     }
     expect(fetcher).not.toHaveBeenCalled();
     await controller.shadowPolicy('{"v":2}');
-    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: '影子评估', violations: policyViolations({ v: 2 }) });
+    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: 'shadow', violations: policyViolations({ v: 2 }) });
     expect(renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult })))
       .toContain('工作台没有做影子评估');
   });

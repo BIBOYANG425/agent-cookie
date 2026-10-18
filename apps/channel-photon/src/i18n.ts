@@ -1,0 +1,63 @@
+import { hasCjk } from './keywords.js';
+export type Locale = 'zh' | 'en';
+const zh = {
+  help: '我可以读取你的身份卡、按你的需求搜索商品、查看读取回执。试试「帮我找件黑色外套，M码，150美元以内」，看到报价后回复「选1」或「选2」。',
+  sample: '[Sample 演示] ', selectFirst: '请先搜索商品，再按已显示的报价编号选择。',
+  handoffLink: '已准备好所选商品的交接链接：\n{0}', handoffMissing: '商家需要继续处理，后台未提供交接链接。',
+  unpaid: '尚未付款，也未确认订单。', demoOnly: '此结果仅供演示。', verify: '请打开链接核实库存、配送和最终金额。',
+  ordered: '后台确认订单：{0}', blocked: '暂时不能继续', failed: '本次操作失败', check: '请检查后台状态。',
+  followUp: '\n后台提供的后续处理链接：{0}\n未确认订单或付款。',
+  card: '身份卡', size: '鞋码', budget: '预算', noFields: '还没有鞋码或预算。', private: '地址和支付资料不会显示在这条短信里。',
+  receipts: '最近的字段读取：\n', noReceipts: '暂无读取回执。', eta: '商家提供的到货日期：{0}', etaUnknown: '到货时间未知',
+  selectTwo: '\n\n回复「选1」或「选2」。', selectOne: '\n\n回复「选1」。', selectMany: '\n\n回复「选1」至「选{0}」。',
+  fixture: '[Sample 录制报价，非实时搜索；录制内容可能不对应本次需求]\n', sampleQuotes: '[Sample 演示报价，非真实库存]\n',
+  noQuotes: '没有找到符合条件的报价。', deadline: '\n目前不能保证你要求的到货时间。',
+  untranslated: '\n未识别到可翻译的商品关键词；已使用你的原话搜索，目录可能无法正确理解。',
+  expired: '这次报价已失效或权限已撤销，请重新搜索商品。', missing: '缺少必要资料或输入不完整，暂时无法继续。',
+  conflict: '本次选择与之前的操作冲突，请重新搜索后选择。', failure: '后台暂时无法完成请求；未确认新的订单或付款。请稍后查看回执再重试。',
+  chat: '收到。日常聊天不会自动变成购物请求；偏好是否学到，以控制台记录为准。',
+  color: '颜色', material: '材质', fit: '版型', brand: '品牌', style: '风格', avoid: '避开', occasion: '场合', sizeSystem: '尺码体系', preference: '偏好',
+  paused: '已暂停学习，后台已确认。已有偏好可在控制台撤销，或回复「忘掉 颜色」。',
+  pausedLocal: '本机已暂停学习；后台尚未确认暂停，请稍后查看控制台。',
+  resumed: '后台已确认恢复学习。只学习你的非敏感稳定偏好，可随时暂停或撤销。', resumeUnknown: '尚未确认恢复学习，本机继续暂停。',
+  ambiguous: '对应多个偏好。请到控制台选择要撤销的项；本机采集已暂停。',
+  noPreference: '没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；本机采集已暂停。',
+  category: '这个类别还有其他偏好。为避免一起删除，请到控制台撤销这一项；若要清空整个类别，请回复「忘掉 {0}」。本机采集已暂停。',
+  projection: '后台已暂停学习并移除当前偏好；记忆文件清理仍在等待完成，暂不能确认删除完成。',
+  forgotten: '已删除当前偏好及其证据，学习保持暂停。旧 Git 历史仍保留，本次没有擦除历史版本。',
+  forgetUnknown: '本机学习已暂停，但后台未确认删除。请到控制台核对；我不会把它说成已删除。',
+  summary: '\n\n今日偏好摘要（当前已确认）：\n', controls: '\n可在控制台查看，回复「忘掉 X」或「暂停学习」。',
+} as const;
+const en: Record<keyof typeof zh, string> = {
+  help: 'I can read your card, search for products you request, and show access receipts. Try “find a black jacket, size M, under $150”, then reply “choose 1” or “choose 2”.',
+  sample: '[Sample demo] ', selectFirst: 'Search for products first, then choose one of the displayed quote numbers.',
+  handoffLink: 'The handoff link for your selected item is ready:\n{0}', handoffMissing: 'The merchant needs to continue; the workspace did not provide a handoff link.',
+  unpaid: 'No payment or order has been confirmed.', demoOnly: 'This result is a demo only.', verify: 'Open the link to verify stock, delivery and the final amount.',
+  ordered: 'The workspace confirmed order: {0}', blocked: 'Cannot continue yet', failed: 'This operation failed', check: 'Please check the workspace status.',
+  followUp: '\nFollow-up link provided by the workspace: {0}\nNo order or payment has been confirmed.',
+  card: 'Identity card', size: 'Shoe size', budget: 'Budget', noFields: 'No shoe size or budget yet.', private: 'Address and payment details are not shown in this message.',
+  receipts: 'Recent field access:\n', noReceipts: 'No access receipts yet.', eta: 'Merchant-provided arrival date: {0}', etaUnknown: 'Arrival date unknown',
+  selectTwo: '\n\nReply “choose 1” or “choose 2”.', selectOne: '\n\nReply “choose 1”.', selectMany: '\n\nReply “choose 1” through “choose {0}”.',
+  fixture: '[Sample recorded quotes, not a live search; recordings may not match this request]\n', sampleQuotes: '[Sample demo quotes, not real inventory]\n',
+  noQuotes: 'No matching quotes found.', deadline: '\nYour requested arrival time cannot currently be guaranteed.',
+  untranslated: '\nNo translatable product keywords were recognized; your original words were used to search and the catalog may misunderstand them.',
+  expired: 'This quote expired or access was revoked. Please search again.', missing: 'Required information or input is missing; cannot continue yet.',
+  conflict: 'This selection conflicts with a previous operation. Please search again before choosing.', failure: 'The workspace cannot complete this request right now; no new order or payment has been confirmed. Check receipts before retrying.',
+  chat: 'Understood. Everyday chat does not automatically become a shopping request; check the console to see whether a preference was learned.',
+  color: 'color', material: 'material', fit: 'fit', brand: 'brand', style: 'style', avoid: 'avoid', occasion: 'occasion', sizeSystem: 'size system', preference: 'preference',
+  paused: 'Learning is paused, confirmed by the workspace. Revoke existing preferences in the console or reply “forget color”.',
+  pausedLocal: 'Learning is paused locally; the workspace has not confirmed yet. Check the console later.',
+  resumed: 'The workspace confirmed learning has resumed. Only non-sensitive stable preferences are learned; you can pause or revoke at any time.', resumeUnknown: 'Resuming has not been confirmed; local learning remains paused.',
+  ambiguous: 'Several preferences match. Choose one in the console; local capture is paused.',
+  noPreference: 'No unambiguous preference found. Use a name shown in the console, e.g. “forget color”; local capture is paused.',
+  category: 'This category has other preferences. Revoke the specific item in the console to avoid deleting them all; to clear the category reply “forget {0}”. Local capture is paused.',
+  projection: 'The workspace paused learning and removed the current preference; memory-file cleanup is still pending, so deletion is not yet confirmed complete.',
+  forgotten: 'The current preference and its evidence were deleted; learning remains paused. Old Git history is retained; historical versions were not erased.',
+  forgetUnknown: 'Local learning is paused, but the workspace has not confirmed deletion. Check the console; I will not claim it was deleted.',
+  summary: '\n\nToday’s preference summary (currently confirmed):\n', controls: '\nView these in the console; reply “forget X” or “pause learning”.',
+};
+export const dictionaries = { zh, en };
+export const localeFromMessage = (text: string, cardLang?: string, fallback: Locale = 'zh'): Locale =>
+  hasCjk(text) ? 'zh' : /[a-z]/i.test(text) ? 'en' : cardLang ? /^zh/i.test(cardLang) ? 'zh' : 'en' : fallback;
+export const translator = (locale: Locale) => (key: keyof typeof zh, ...values: Array<string | number>): string =>
+  dictionaries[locale][key].replace(/\{(\d+)\}/g, (_, index: string) => String(values[Number(index)] ?? ''));

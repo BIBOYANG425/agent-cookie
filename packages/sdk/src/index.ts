@@ -5,7 +5,7 @@ import { forgetBody, forgetResult, type ForgetLearningInput, observationBody, ob
 export * from './learning.js';
 export type { AcceptResult, ActivityEvent, Card, Category, Field, FunnelReport, FunnelRow, FunnelStage, Grant, IntentEvent, PolicyDocument,
   PolicyView, Quote, ReadDecision, Receipt, SearchStats, ShadowReport } from '@agent-cookie/contract';
-export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
+export type FindInput = IntentRequest | (Omit<IntentRequest, 'text'> & { text?: undefined; kind: string });
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
@@ -292,14 +292,15 @@ export class WorkspaceClient {
   }
 
   async createIntent(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<{ intentId: string; sample: boolean }> {
-    // Match A's HTTP byte limits. Do not normalize the user's sentence or invent optional conditions.
+    // Old SDK callers used kind alone; the current workspace always requires text.
+    const intentText = input?.text ?? input?.kind;
     const text = (v: unknown, max: number) => typeof v === 'string' && !!v.trim() && new TextEncoder().encode(v).length <= max;
-    if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
+    if (!input || !text(intentText, 1000) || (input.kind !== undefined && !text(input.kind, 100)) || (input.query !== undefined && !text(input.query, 200))
       || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
         || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
           || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))) throw new Error('Invalid shopping intent.');
-    // Explicit wire shape: arbitrary runtime properties are not identity/authority, nor a legacy kind fallback.
-    const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
+    // Only the published intent fields cross the wire, never identity or authority.
+    const body: IntentRequest = { text: intentText!, ...(input.kind !== undefined ? {kind: input.kind} : {}), ...(input.query !== undefined ? { query: input.query } : {}),
       ...(input.public !== undefined ? { public: input.public } : {}) };
     const payload = await this.#request('/personal/intents', body, idempotencyKey, options);
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
