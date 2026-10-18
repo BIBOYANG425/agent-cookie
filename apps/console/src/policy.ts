@@ -19,8 +19,8 @@ export interface ShadowReport {
   unchanged: number;
 }
 
-export const POLICY_CATEGORIES: readonly Category[] = ['personal', 'shoe', 'retail'];
-export const categoryLabels: Record<Category, string> = { personal: '个人 agent', shoe: '鞋店', retail: '零售 · UCP 商店' };
+export const POLICY_CATEGORIES: readonly Category[] = ['personal', 'shoe', 'retail', 'assistant'];
+export const categoryLabels: Record<Category, string> = { personal: '个人 agent', shoe: '鞋店', retail: '零售 · UCP 商店', assistant: '公司助理' };
 export const sourceLabels: Record<PolicyView['source'], { label: string; note: string }> = {
   default: { label: '默认', note: '工作台内置的 v1 字段表（计划 §5 冻结），还没有安装过其他文档。' },
   repo: { label: '记忆库', note: '来自记忆库里的 POLICY.yaml；从这里安装时也会先写回记忆库。' },
@@ -37,10 +37,11 @@ const MERCHANT_AUTO = ['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadlin
 export function samplePolicyView(): PolicyView {
   return { policyId: 'sample-policy', source: 'default', policy: {
     v: 1,
-    auto: { personal: [...FIELDS], shoe: [...MERCHANT_AUTO], retail: [...MERCHANT_AUTO, ...PREF_FIELDS] },
+    auto: { personal: [...FIELDS], shoe: [...MERCHANT_AUTO], retail: [...MERCHANT_AUTO, ...PREF_FIELDS],
+      assistant: [...MERCHANT_AUTO, ...PREF_FIELDS] },
     purpose: { personal: {}, shoe: { shipping_address: ['checkout'], payment_method: ['payment'] },
-      retail: { shipping_address: ['checkout'], payment_method: ['payment'] } },
-    write: { personal: [...FIELDS], shoe: ['shoe_size'], retail: ['shoe_size'] },
+      retail: { shipping_address: ['checkout'], payment_method: ['payment'] }, assistant: {} },
+    write: { personal: [...FIELDS], shoe: ['shoe_size'], retail: ['shoe_size'], assistant: ['shoe_size', ...PREF_FIELDS] },
   } };
 }
 

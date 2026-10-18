@@ -14,5 +14,9 @@
   "ck_merchant_acme_sample": {
     "agentId": "sample-acme",
     "role": "merchant"
+  },
+  "ck_assistant_sample": {
+    "agentId": "sample-assistant",
+    "role": "assistant"
   }
 }

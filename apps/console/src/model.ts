@@ -37,6 +37,8 @@ export interface ConsoleSnapshot {
   policy?: Section<import('./policy').PolicyView>;
   funnel?: Section<import('./funnel').FunnelReport>;
   experiments?: Section<import('./experiments').ExperimentReport>;
+  /** GET /owner/links: consent links from company assistants, pending and decided. */
+  links?: Section<import('./links').LinkList>;
   /** Optional histories: null is a failed or malformed read, distinct from a successful empty list. */
   receipts?: Receipt[] | null;
   intents?: IntentHistoryEntry[] | null;
@@ -53,4 +55,9 @@ export interface ConsoleAdapter {
   shadowPolicy(candidate: unknown, signal?: AbortSignal): Promise<import('./policy').ShadowReport>;
   /** PUT /personal/policy. A floor violation rejects with PolicyViolationError and nothing changes. */
   installPolicy(candidate: unknown, signal?: AbortSignal): Promise<import('./policy').PolicyView>;
+  /**
+   * POST /owner/links/:id/approve | decline (no body). Resolves only on the workspace's acknowledgement (the link in its
+   * decided status); rejects with LinkNotPendingError when the link was already decided or expired (409).
+   */
+  decideLink(id: string, decision: import('./links').LinkDecision, signal?: AbortSignal): Promise<void>;
 }
