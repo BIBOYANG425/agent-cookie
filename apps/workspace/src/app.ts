@@ -2,11 +2,11 @@
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
 import {
-  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
+  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
-import { containsContactOrPayment } from "./guards.js";
+import { looksLikeContactHandle } from "./guards.js";
 import type { Deps } from "./deps.js";
 import { fail, installErrorHandling, json, optStr, query, readJson, str, type AppEnv } from "./http.js";
 import { hashKey, mintKey, newId } from "./ids.js";
@@ -63,19 +63,22 @@ const ROLES: ReadonlySet<string> = new Set(["user", "agent", "other"]);
 function observationBody(body: Record<string, unknown>): Observation {
   const channel = str(body, "channel", { max: 64 });
   const conversationId = str(body, "conversationId", { max: 128 });
-  // Kept as evidence and shown back to the user: an opaque id, never a chat handle (phone number, email).
-  if (containsContactOrPayment(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
+  // Kept as evidence and shown back to the user: an opaque id (a hash is fine), never a chat handle (phone number, email).
+  if (looksLikeContactHandle(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
   const turns = body.turns;
   if (!Array.isArray(turns) || turns.length === 0 || turns.length > OBSERVATION_MAX_TURNS) {
     fail("MISSING_FIELD", `turns must be 1–${OBSERVATION_MAX_TURNS} items`);
   }
   const out: ObservationTurn[] = turns.map((t: unknown) => {
     if (!t || typeof t !== "object" || Array.isArray(t)) fail("MISSING_FIELD", "invalid turn");
-    const { role, text, at } = t as Record<string, unknown>;
+    const { role, text, at, messageId } = t as Record<string, unknown>;
     if (typeof role !== "string" || !ROLES.has(role)) fail("MISSING_FIELD", "turn role must be user, agent or other");
     if (typeof text !== "string" || [...text].length > OBSERVATION_TURN_MAX_CHARS) fail("MISSING_FIELD", `turn text must be a string of at most ${OBSERVATION_TURN_MAX_CHARS} characters`);
     if (typeof at !== "string" || !Number.isFinite(Date.parse(at))) fail("MISSING_FIELD", "turn at must be an ISO time");
-    return { role: role as ObservationTurn["role"], text, at };
+    if (messageId !== undefined && (typeof messageId !== "string" || messageId.trim() === "" || [...messageId].length > OBSERVATION_MESSAGE_ID_MAX)) {
+      fail("MISSING_FIELD", `turn messageId must be a non-empty string of at most ${OBSERVATION_MESSAGE_ID_MAX} characters`);
+    }
+    return { role: role as ObservationTurn["role"], text, at, ...(messageId !== undefined ? { messageId } : {}) };
   });
   return { channel, conversationId, turns: out };
 }
@@ -238,6 +241,13 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json(deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
   });
   app.get("/personal/learned", auth, personalOrOwner, (c) => json(deps.learning.learned(user())));
+  app.post("/personal/learned/forget", auth, personalOrOwner, async (c) => {
+    const body = await readJson(c);
+    const conversationId = body.conversationId === undefined ? undefined : str(body, "conversationId", { max: 128 });
+    const intentId = body.intentId === undefined ? undefined : str(body, "intentId", { max: 128 });
+    if ((conversationId === undefined) === (intentId === undefined)) fail("MISSING_FIELD", "give exactly one of conversationId, intentId");
+    return json(await deps.learning.forget(c.get("agent").agentId, user(), conversationId !== undefined ? { conversationId } : { intentId: intentId! }));
+  });
 
   app.get("/personal/receipts", auth, personalOrOwner, (c) => {
     const limit = intParam(c.req.query("limit"), 50, 500);

@@ -45,6 +45,27 @@ export function containsContactOrPayment(text: string): boolean {
   return EMAIL.test(t) || PHONE.test(t) || containsCardNumber(t);
 }
 
+/**
+ * A number standing on its own in an id — not glued to letters or digits on either side — with its separators:
+ * "+1 415 555 0100", "tel:415-555-0100", "iMessage;-;+14155550100". Digits inside an opaque token ("83e1…1190461701663b…",
+ * a hash) are part of that token, not a number.
+ */
+const STANDALONE_NUMBER = /(?<![\p{L}\p{N}])\+?\d[\d\s().-]*\d(?![\p{L}\p{N}])/gu;
+
+/**
+ * An id that is a chat handle rather than an opaque id: it holds an email, or a phone or card number standing as its
+ * own segment. Unlike containsContactOrPayment (free text), digit runs inside a hash or other opaque token do not count.
+ */
+export function looksLikeContactHandle(id: string): boolean {
+  const t = id.normalize("NFKC");
+  if (EMAIL.test(t)) return true;
+  for (const m of t.matchAll(STANDALONE_NUMBER)) {
+    const digits = m[0].replace(/\D/g, "");
+    if (digits.length >= 10 || containsCardNumber(m[0])) return true;
+  }
+  return false;
+}
+
 /** A street address ("12 Oak St", "1234 Sample Street", "5 rue …"): not something a preference may hold. */
 const STREET = /\b\d{1,6}\s+(?:[\p{L}.'-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|ln|lane|dr|drive|way|ct|court|pl|place|hwy|highway|apt|suite|rue|straße|strasse)\b/iu;
 export function looksLikeStreetAddress(text: string): boolean {

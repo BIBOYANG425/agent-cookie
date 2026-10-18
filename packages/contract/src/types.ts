@@ -116,6 +116,11 @@ export interface CardField {
   updatedAt: string;
   lastSupportedAt: string;
   changedRecently: boolean;
+  /**
+   * Learned values (B49, lane C fills it): how many independent sources RulesApi.mergeCard counted for this value —
+   * distinct conversations / intents from evidence, not writers. `sources` stays the writers' agentIds.
+   */
+  evidenceSources?: number;
 }
 
 export interface Candidate {
@@ -123,6 +128,8 @@ export interface Candidate {
   value: string;
   sources: string[];
   reason: "single_source" | "inferred";
+  /** As CardField.evidenceSources: independent conversations / intents behind this value (lane C fills it). */
+  evidenceSources?: number;
 }
 
 export interface Session {
@@ -190,16 +197,23 @@ export const DEFAULT_SELLER_COUNT = 2;
 
 /**
  * POST /personal/observations body: turns of a conversation the personal agent took part in or overheard. Only the
- * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival and never stored. Turns
- * are batched per (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once
- * OBSERVATION_BATCH_TURNS turns have arrived; the stored text is deleted once processed. While learning is paused
- * the observation is discarded.
+ * user's own turns are ever learned from; "agent" and "other" turns are dropped on arrival. Turns are batched per
+ * (personal agent, conversationId) and processed after OBSERVATION_IDLE_MS of quiet or once OBSERVATION_BATCH_TURNS
+ * turns have arrived. The text is held in workspace memory only (B49): at most OBSERVATION_MAX_CONVERSATIONS
+ * conversations × OBSERVATION_MAX_QUEUED_TURNS turns, the oldest dropped (and counted in the activity log) past
+ * that; SQLite keeps only the conversationId, turn count and times, and a restart loses what was waiting. While
+ * learning is paused the observation is discarded.
  */
 export interface ObservationTurn {
   role: "user" | "agent" | "other";
   text: string;
   /** ISO time the turn was said. */
   at: string;
+  /**
+   * Opaque id of the message on its channel (B49, optional). A turn whose messageId the same personal agent already
+   * posted within OBSERVATION_MESSAGE_TTL_MS is ignored, so a replay is not a second sighting.
+   */
+  messageId?: string;
 }
 export interface Observation {
   /** e.g. "imessage", "desktop". */
@@ -212,6 +226,34 @@ export const OBSERVATION_IDLE_MS = 5 * 60 * 1000;
 export const OBSERVATION_BATCH_TURNS = 10;
 export const OBSERVATION_MAX_TURNS = 50;
 export const OBSERVATION_TURN_MAX_CHARS = 2000;
+export const OBSERVATION_MESSAGE_ID_MAX = 128;
+/** Bounded in-memory queue (B49): conversations waiting per user, and turns kept per conversation. */
+export const OBSERVATION_MAX_CONVERSATIONS = 50;
+export const OBSERVATION_MAX_QUEUED_TURNS = 20;
+/** How long a messageId is remembered for de-duplication (memory only). */
+export const OBSERVATION_MESSAGE_TTL_MS = 60 * 60 * 1000;
+
+/** POST /personal/observations → 202. `duplicate`: every turn was a replay (messageId already seen); nothing queued. */
+export interface ObservationAck {
+  queued: boolean;
+  paused?: true;
+  duplicate?: true;
+}
+
+/**
+ * POST /personal/learned/forget (B49): forget what was learned from one conversation or one intent. Exactly one of
+ * the two. Every contribution whose evidence names it is revoked in one SQLite transaction and one memory-repo
+ * commit (with CARD.md); a waiting batch of that conversation is dropped, and a learner answer still in flight for
+ * it is discarded when it arrives. A later new message in the same conversation is learned from again.
+ */
+export interface ForgetRequest {
+  conversationId?: string;
+  intentId?: string;
+}
+export interface ForgetResult {
+  revoked: number;
+  contributionIds: string[];
+}
 
 /** GET/PUT /personal/learning. Default `{ paused: false }`. */
 export interface LearningState {
@@ -227,7 +269,9 @@ export interface LearnedEvidence extends ContributionEvidence {
 }
 /**
  * GET /personal/learned: every `pref.*` value on the card ("card") or waiting for a second source ("candidate"),
- * with who contributed it and why. A value reaches the card only with two distinct sources (RulesApi.mergeCard).
+ * with who contributed it and why. RulesApi.mergeCard decides: the user's own statement ("stated") is on the card
+ * at once (medium); an observed or inferred value needs two independent sources — two different conversations or
+ * intents, not two agents.
  */
 export interface LearnedEntry {
   field: PrefField;

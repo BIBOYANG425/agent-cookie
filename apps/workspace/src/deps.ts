@@ -4,7 +4,7 @@ import {
   FIXTURE_FILES, isField, type Contribution, type LearnApi, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi,
 } from "@agent-cookie/contract";
 import { activityLogger, type Log } from "./activity.js";
-import { loadLearn, loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
+import { importLearn, loadLearn, loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
 import type { Config } from "./config.js";
 import { Store } from "./db.js";
@@ -76,7 +76,13 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);
-  const learning = new LearningService(ctx, card, overrides.learn ?? loadLearn());
+  let learnApi = overrides.learn;
+  if (!learnApi) {
+    const loaded = loadLearn(config, config.anthropicApiKey ? await importLearn() : undefined);
+    if (loaded.reason) log({ event: "learn.off", actor: "workspace", result: "off", reason: loaded.reason });
+    learnApi = loaded.api;
+  }
+  const learning = new LearningService(ctx, card, learnApi);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
@@ -97,13 +103,14 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
       clock.setOffset(0);
+      learning.reset();
       store.clearAll();
       const now = clock.nowIso();
       seedStore(store, fixtures, config, now);
       await repo.resetToSeed();
       await reconcileRepo(ctx);
       card.get(fixtures.users[0]!.userId);
-      // Queued conversation text was just deleted: do not leave a copy of it in the WAL.
+      // Deleted rows leave the WAL too.
       store.checkpoint();
       log({ event: "demo.reset", actor: "owner", result: "ok" });
       return now;
