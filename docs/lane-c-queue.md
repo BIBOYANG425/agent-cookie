@@ -47,7 +47,7 @@
 - [x] C23 通用字段、本次 intent 标记与新 fixture 截图：57 tests、TypeScript/build通过；已补 SDK 回执读取及现有 owner intent 历史 GET 过渡，六张新 Sample 截图见 evidence/console/README.md。
 - [x] T9-1 README 定稿：根 README 为启动/范围/环境变量/23项验收入口，docs README 指向它；架构图与 plan 完全一致并注明 ACME 已砍，链接和23行状态核对通过。
 - [x] T9-2 Devpost 中英草稿：英文主稿+完整中文，技术/挑战/计划与证据一致；旧稿入口指向 devpost.md，本地链接核验通过。
-- [ ] T9-3 3–5 分钟视频分镜及三条备选需求。
+- [x] T9-3 4:30 分镜：三条现场需求、每拍台词/画面/兜底文件、ACME删除、needs可跳过、学习缺片诚实短版3:45；时长与现有素材链接已核验，文件名不冒充已录。
 - [ ] T9-4 Recorded run 素材清单与跨线补件请求。
 
 同步说明：已 fast-forward 到 main `35e8b56`，无冲突。B49 的后续真实模型 6/6 已到，旧 1/6 记录仅为历史。C20 暂不勾：新到手机材料记录一次重复来源误晋升与一次 gate 停止；新 gate 未有干净正向手机五分钟学习/报价排序证据。C11 不动。
