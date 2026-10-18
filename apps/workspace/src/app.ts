@@ -346,6 +346,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ key: note.key, value: note.value, updatedAt: note.updatedAt, expiresAt: note.expiresAt });
   });
 
+  // Merchant stats (docs/commerce-analytics-plan.md Phase 5): the caller's own counts, keyed by the agent its key
+  // names; no session id, no field, no value, nothing about any other merchant.
+  app.get("/agent/stats", auth, merchant, (c) => json(deps.merchantStats.forAgent(c.get("agent").agentId)));
+
   // ---- owner, demo, test
   // Dreaming, now (demo and tests; the scheduler runs it every DREAMING_INTERVAL_MS). Counts and field names only.
   app.post("/owner/dreaming/run", auth, owner, async () => json(await deps.dreaming.run()));
@@ -362,6 +366,9 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     if (since !== undefined && Number.isNaN(Date.parse(since))) fail("MISSING_FIELD", "since must be an ISO-8601 timestamp");
     return json(deps.funnel.report(user(), { limit, ...(since !== undefined ? { since: new Date(since).toISOString() } : {}) }));
   });
+
+  // Holdout E1 (Phase 4): per arm n, accepted, rate, Wilson 95 % interval, median ms to accept; from the stored arms.
+  app.get("/owner/experiments", auth, owner, () => json(deps.experiments.report(user())));
 
   if (config.demo) {
     app.post("/demo/reset", auth, owner, async () => json({ ok: true, seededAt: await deps.reset() }));

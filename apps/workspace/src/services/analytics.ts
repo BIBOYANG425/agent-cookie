@@ -5,6 +5,21 @@ import type { Field, FunnelReport, FunnelRow } from "@agent-cookie/contract";
 import type { IntentRow } from "../db.js";
 import type { Ctx } from "./context.js";
 
+/** Median of a list of milliseconds (mean of the two middle values, rounded, for an even count); undefined when empty. */
+export function median(xs: readonly number[]): number | undefined {
+  if (xs.length === 0) return undefined;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+}
+
+/** Milliseconds from `from` to `to` (ISO times), never negative (the test clock can move backwards); undefined if unparsable. */
+export function elapsedMs(from: string, to: string): number | undefined {
+  const a = Date.parse(from);
+  const b = Date.parse(to);
+  return Number.isNaN(a) || Number.isNaN(b) ? undefined : Math.max(0, b - a);
+}
+
 export class FunnelService {
   constructor(private ctx: Ctx) {}
 
@@ -44,6 +59,7 @@ export class FunnelService {
     };
     if (firstQuote !== undefined && !Number.isNaN(createdAt)) row.firstQuoteMs = Math.max(0, firstQuote - createdAt);
     if (chosen?.result) row.outcome = chosen.result.status;
+    if (i.arm) row.arm = i.arm;
     const search = store.searchStatsForIntent(i.id);
     if (search) row.search = search;
     return row;

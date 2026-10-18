@@ -13,6 +13,8 @@ import { Gate } from "./gate.js";
 import { hashKey } from "./ids.js";
 import { ensureOwnerKey, loadFixtures, seedStore, upgradeSeed, type Fixtures } from "./seed.js";
 import { FunnelService } from "./services/analytics.js";
+import { ExperimentService } from "./services/experiments.js";
+import { MerchantStatsService } from "./services/merchant-stats.js";
 import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
@@ -47,6 +49,10 @@ export interface Deps {
   commerce: CommerceService;
   /** Funnel report over existing tables (GET /owner/funnel): counts only. */
   funnel: FunnelService;
+  /** Holdout report from the arms stored on intents (GET /owner/experiments): counts only. */
+  experiments: ExperimentService;
+  /** A merchant's own counts (GET /agent/stats). */
+  merchantStats: MerchantStatsService;
   /** The installed field-policy document (Phase 1): repo → SQLite → DEFAULT_POLICY. */
   policy: PolicyService;
   /** Dynamic memory: observation queue, learning hooks, learned/history views. */
@@ -96,6 +102,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const learning = new LearningService(ctx, card, learner.api);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
   const funnel = new FunnelService(ctx);
+  const experiments = new ExperimentService(ctx);
+  const merchantStats = new MerchantStatsService(ctx);
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
@@ -115,7 +123,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   dreamTimer?.unref();
 
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, policy, learning, gate,
+    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, experiments, merchantStats,
+    policy, learning, gate,
     dreaming, dreamingScheduled: dreamTimer !== undefined,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();

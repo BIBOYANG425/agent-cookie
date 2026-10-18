@@ -7,7 +7,7 @@ import type {
   ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
   Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
-import { isFunnelStage, type SearchStats, type SellerStats } from "@agent-cookie/contract";
+import { isExperimentArm, isFunnelStage, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
 export interface UserRow { userId: string; name: string; secret: string; createdAt: string }
 export interface KeyRow { keyHash: string; agentId: string; role: Role; createdAt: string }
@@ -28,6 +28,10 @@ export type StoredContribution = Omit<Contribution, "field"> & { field: Field | 
  * it waits in process memory (services/observations.ts).
  */
 export interface ObservationBatchRow { agentId: string; conversationId: string; userId: string; channel: string; turnsSeen: number; firstAt: string; lastAt: string }
+/** Phase 5 merchant stats: counts over one agent_id, plus the (intent created, quote created) pairs for the median. */
+export interface MerchantCounts { sessions: number; returningSessions: number; quotes: number; accepted: number; quoteTimes: Array<{ intentAt: string; quoteAt: string }> }
+/** Phase 4 experiment: one intent that carries an arm, with its first accept time if it has one. */
+export interface ArmRow { intentId: string; arm: ExperimentArm; createdAt: string; acceptedAt?: string }
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -40,7 +44,7 @@ CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT, stage TEXT);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
-  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT);
+  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT, arm TEXT);
 CREATE TABLE IF NOT EXISTS intent_sessions (intent_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, channel TEXT NOT NULL,
   PRIMARY KEY (intent_id, session_id));
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL,
@@ -79,8 +83,9 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 8, table: "grants", column: "policy_id", ddl: "ALTER TABLE grants ADD COLUMN policy_id TEXT" },
   { version: 8, table: "receipts", column: "policy_id", ddl: "ALTER TABLE receipts ADD COLUMN policy_id TEXT" },
   { version: 9, table: "grants", column: "stage", ddl: "ALTER TABLE grants ADD COLUMN stage TEXT" },
+  { version: 10, table: "intents", column: "arm", ddl: "ALTER TABLE intents ADD COLUMN arm TEXT" },
 ];
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
@@ -111,6 +116,7 @@ function toIntent(r: Row): IntentRow {
   if (r.kind) i.kind = String(r.kind);
   if (r.text) i.text = String(r.text);
   if (r.query) i.query = String(r.query);
+  if (isExperimentArm(r.arm)) i.arm = r.arm;
   return i;
 }
 function toQuote(r: Row): QuoteRow {
@@ -395,8 +401,22 @@ export class Store {
 
   // ---- intents
   insertIntent(i: IntentRow): void {
-    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt);
+    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at, arm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt, i.arm ?? null);
+  }
+  /** Phase 4: the user's intents that carry an arm, oldest first, each with its FIRST accept time (an intent may see two accepts). */
+  armRows(userId: string): ArmRow[] {
+    const rows = this.db.prepare(`SELECT i.id, i.arm, i.created_at, MIN(q.accepted_at) AS accepted_at FROM intents i
+      LEFT JOIN quotes q ON q.intent_id = i.id AND q.accepted_at IS NOT NULL
+      WHERE i.user_id = ? AND i.arm IS NOT NULL GROUP BY i.id ORDER BY i.created_at, i.rowid`).all(userId) as Row[];
+    const out: ArmRow[] = [];
+    for (const r of rows) {
+      if (!isExperimentArm(r.arm)) continue;
+      const x: ArmRow = { intentId: String(r.id), arm: r.arm, createdAt: String(r.created_at) };
+      if (r.accepted_at) x.acceptedAt = String(r.accepted_at);
+      out.push(x);
+    }
+    return out;
   }
   intent(id: string): IntentRow | undefined {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Row | undefined;
@@ -445,6 +465,22 @@ export class Store {
       FROM quotes WHERE agent_id = ?`).get(agentId, agentId) as Row;
     return { sellerDomain, intents: Number(r.intents), quotes: Number(r.quotes), accepted: Number(r.accepted), ordered: Number(r.ordered),
       handoff: Number(r.handoff), failed: Number(r.failed) };
+  }
+  /**
+   * Phase 5: one merchant's own counts — its sessions, those introduced to more than one intent, its quotes and the
+   * accepted ones, and when each quote came relative to its intent. Every clause is keyed by this agent_id alone.
+   */
+  merchantCounts(agentId: string): MerchantCounts {
+    const r = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM sessions WHERE agent_id = ?) AS sessions,
+        (SELECT COUNT(*) FROM (SELECT x.session_id FROM intent_sessions x JOIN sessions s ON s.session_id = x.session_id
+          WHERE s.agent_id = ? GROUP BY x.session_id HAVING COUNT(*) > 1)) AS returning_sessions,
+        (SELECT COUNT(*) FROM quotes WHERE agent_id = ?) AS quotes,
+        (SELECT COUNT(*) FROM quotes WHERE agent_id = ? AND accepted_at IS NOT NULL) AS accepted`).get(agentId, agentId, agentId, agentId) as Row;
+    const times = this.db.prepare(`SELECT i.created_at AS intent_at, q.created_at AS quote_at FROM quotes q JOIN intents i ON i.id = q.intent_id
+      WHERE q.agent_id = ? ORDER BY q.seq`).all(agentId) as Row[];
+    return { sessions: Number(r.sessions), returningSessions: Number(r.returning_sessions), quotes: Number(r.quotes), accepted: Number(r.accepted),
+      quoteTimes: times.map((t) => ({ intentAt: String(t.intent_at), quoteAt: String(t.quote_at) })) };
   }
   /** Purpose grounding: has the user accepted a quote by this agent, on this session, under this intent? */
   hasAcceptedQuote(intentId: string, sessionId: string, agentId: string): boolean {

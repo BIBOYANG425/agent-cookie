@@ -50,6 +50,11 @@ export interface Config {
   unlockSecret?: string;
   jarPath?: string;
   unlockTtlMs: number;
+  /**
+   * AGENT_COOKIE_EXPERIMENT (docs/commerce-analytics-plan.md §6): "off" (default) or "ranking" = holdout E1. With
+   * "ranking" and non-zero ranking weights installed, each new intent is assigned an arm and only treatment is ranked.
+   */
+  experiment: "off" | "ranking";
 }
 
 function int(v: string | undefined, dflt: number, min: number, max: number): number {
@@ -82,6 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const learnMode = env.AGENT_COOKIE_LEARN_MODE ?? "all";
   if (learnMode !== "all" && learnMode !== "explicit-only") throw new Error("Invalid learning mode");
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
+  const experiment = env.AGENT_COOKIE_EXPERIMENT || "off";
+  if (experiment !== "off" && experiment !== "ranking") throw new Error("AGENT_COOKIE_EXPERIMENT must be off or ranking");
   return {
     host: "127.0.0.1",
     port,
@@ -103,6 +110,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(unlockSecret ? { unlockSecret } : {}),
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
+    experiment,
     learnProvider: learnProvider as Config["learnProvider"],
     ...(learnApiKey ? { learnApiKey } : {}),
     learnMode,

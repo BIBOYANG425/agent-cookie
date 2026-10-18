@@ -44,7 +44,8 @@ describe("P1: an old database upgrades in place", () => {
     const cols = (t: string) => (store.db.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((c) => c.name);
     expect(cols("contributions")).toContain("origin");
     expect(cols("quotes")).toEqual(expect.arrayContaining(["source", "size_note"]));
-    expect(cols("intents")).toContain("query");
+    // v10 (Phase 4): the holdout arm stored with each intent
+    expect(cols("intents")).toEqual(expect.arrayContaining(["query", "arm"]));
     // v4: learned-contribution evidence, the learning setting and the observation queue; v5 (B49): the queue keeps
     // only ids, counts and times — there is no table for conversation text
     expect(cols("contributions")).toContain("evidence");

@@ -50,9 +50,11 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/agent/contributions", caller: "merchant", summary: "Filtered by canWrite; recomputes card" },
   { method: "PUT", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → write own note (≤ 2 KB)" },
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },
+  { method: "GET", path: "/agent/stats", caller: "merchant", summary: "→ MerchantStats: counts over the caller's own sessions only (sessions, returning sessions, quotes, accepted, win rate, median ms to quote); never a session id, a field name or value, or anything about another merchant (docs/commerce-analytics-plan.md Phase 5)" },
 
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)" },
   { method: "GET", path: "/owner/funnel", caller: "owner", summary: "?since=&limit= → FunnelReport: one row per intent, counts only (introduced, quoted, first-quote ms, accepted, outcome, fields granted/read, receipts, search filter stats); never field values (docs/commerce-analytics-plan.md Phase 0)" },
+  { method: "GET", path: "/owner/experiments", caller: "owner", summary: "→ ExperimentReport for E1 (outcome ranking on/off, AGENT_COOKIE_EXPERIMENT=ranking): per arm n, accepted, rate, Wilson 95 % interval, median ms to accept, from the arms stored on the intents; counts only, `sample` unless live (docs/commerce-analytics-plan.md Phase 4)" },
   { method: "POST", path: "/owner/dreaming/run", caller: "owner", summary: "Run Dreaming once now (learn → regenerate → compact → log) → DreamingRun; counts and field names only" },
   { method: "POST", path: "/demo/reset", caller: "owner", gate: "AGENT_COOKIE_DEMO", summary: "Owner key + AGENT_COOKIE_DEMO=1: wipe tables, reseed fixtures, hard-reset the memory repo" },
   { method: "POST", path: "/test/clock", caller: "test", gate: "AGENT_COOKIE_TEST", summary: "{ offsetMs } shifts the server clock; absent otherwise" },

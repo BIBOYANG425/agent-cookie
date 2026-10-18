@@ -9,6 +9,7 @@ import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
 import { parseAddress, parseBudgetCents, parseCount, pickSellers, rankStats, searchStats, terms, type SearchConditions } from "../ucp-filter.js";
+import { armFor } from "./experiments.js";
 import { outcomeRank, SellerStatsService } from "./seller-stats.js";
 import type { CardService } from "./card.js";
 import { overridable } from "./card.js";
@@ -91,6 +92,16 @@ export class CommerceService {
     // One policy document for this whole intent: the Tier 0 receipt and the prefix delivered after it must agree.
     const policyDoc = this.ctx.policy.current();
     const policyId = this.ctx.policy.id();
+    // Phase 3: outcome ranking is on when the installed document carries a non-zero weight.
+    const ranking = policyDoc.ranking;
+    const rankingOn = ranking !== undefined && (ranking.winRate > 0 || ranking.failure > 0);
+    // Phase 4 (E1): with AGENT_COOKIE_EXPERIMENT=ranking and ranking on, the intent gets its arm here, once, from the
+    // user's secret and its own id; it is stored with the intent and never recomputed (an idempotent replay returns
+    // the stored response). Only treatment is ranked. Experiment off or no weights → no arm, today's behaviour.
+    if (rankingOn && this.ctx.config.experiment === "ranking") {
+      const secret = store.user(userId)?.secret;
+      if (secret) intent.arm = armFor(secret, intent.id);
+    }
     for (const agent of store.agents()) {
       // Registered merchants come in through the optional kind hint; UCP stores through the search below.
       if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
@@ -138,9 +149,9 @@ export class CommerceService {
         // Pinned rehearsal variants are a fixture-mode aid only: live search never looks at them.
         const pinned = this.ctx.config.ucpMode === "fixture" ? this.pinned : [];
         // Phase 3: with ranking weights in the installed document, each seller's outcome history becomes a sort
-        // bucket between size and preferences. Off (absent or both weights 0) → today's order, no rank event.
-        const ranking = policyDoc.ranking;
-        if (ranking && (ranking.winRate > 0 || ranking.failure > 0)) {
+        // bucket between size and preferences. Off (absent or both weights 0), or the E1 control arm → today's order,
+        // no rank event.
+        if (ranking && rankingOn && intent.arm !== "control") {
           const history = new SellerStatsService(store).forSellers(offers.map((o) => o.sellerDomain));
           conditions.outcome = Object.fromEntries([...history].map(([d, s]) => [d, outcomeRank(s, ranking)]));
         }

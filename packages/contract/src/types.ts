@@ -3,7 +3,7 @@
 // plan's listing; it never changes a plan-listed shape, it only adds. Changing a plan-listed shape
 // needs two lanes' agreement (CLAUDE.md).
 
-import type { FunnelStage, RankStats, SearchStats } from "./analytics.js";
+import type { ExperimentArm, FunnelStage, RankStats, SearchStats } from "./analytics.js";
 
 export type Basis = "observed" | "stated" | "inferred";
 
@@ -349,6 +349,12 @@ export interface Intent {
   kind: string;
   public: Record<string, string>;
   expiresAt: string;
+  /**
+   * Additive (Phase 4 holdout, analytics.ts ExperimentArm): the arm the intent was assigned at creation, owner-side
+   * only. Never part of what a merchant is sent: the introduce callback builds its intent from id, kind, public and
+   * expiresAt alone.
+   */
+  arm?: ExperimentArm;
 }
 
 /**
