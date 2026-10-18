@@ -1,15 +1,27 @@
-import type { AcceptResult, ActivityEvent, Card, FunnelReport, FunnelRow, Grant, IntentRequest, PolicyDocument, PolicyView, Quote, Receipt,
-  ShadowReport } from '@agent-cookie/contract';
-import { CATEGORIES, isField, isFunnelStage } from '@agent-cookie/contract';
+import type { AcceptResult, ActivityEvent, Card, FunnelReport, FunnelRow, Grant, IntentEvent, IntentRequest, PolicyDocument, PolicyView, Quote,
+  Receipt, ShadowReport } from '@agent-cookie/contract';
+import { CATEGORIES, INTENT_EVENT_TYPES, INTENT_STREAM_HEARTBEAT_MS, isField, isFunnelStage, QUOTE_POLL_MAX_MS } from '@agent-cookie/contract';
 import { forgetBody, forgetResult, type ForgetLearningInput, observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
 export * from './learning.js';
-export type { AcceptResult, ActivityEvent, Card, Category, Field, FunnelReport, FunnelRow, FunnelStage, Grant, PolicyDocument, PolicyView,
-  Quote, ReadDecision, Receipt, SearchStats, ShadowReport } from '@agent-cookie/contract';
+export type { AcceptResult, ActivityEvent, Card, Category, Field, FunnelReport, FunnelRow, FunnelStage, Grant, IntentEvent, PolicyDocument,
+  PolicyView, Quote, ReadDecision, Receipt, SearchStats, ShadowReport } from '@agent-cookie/contract';
 export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
 export interface RequestOptions { signal?: AbortSignal }
+export interface StreamQuotesOptions extends RequestOptions {
+  /** Resume after this SSE id (a previous stream's `lastEventId`): only quotes inserted after it are sent. */
+  lastEventId?: string;
+}
+/**
+ * GET /personal/intents/:id/events as an async iterable of validated IntentEvents, single use. It ends after
+ * `complete` or `expired`, or when the workspace closes the stream; abort throws the SDK's AbortError. It never
+ * reconnects: `lastEventId` (the SSE id of the last quote received) lets a caller resume with a new stream.
+ */
+export interface QuoteStream extends AsyncIterable<IntentEvent> {
+  readonly lastEventId: string | undefined;
+}
 // GET /personal/grants adds these display fields to the contract Grant.
 // Wire shape verified against workspace/services/sessions.ts; policy stays server-side.
 // Optional contract keys pass through for display: `policyId` (document that issued the grant) and `stage`
@@ -95,6 +107,98 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** One offer for `intentId`, as GET …/quotes and the events stream both carry it. */
+function validQuote(q: unknown, intentId: string): q is Quote {
+  return isObject(q) && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
+    && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
+    && (q.etaDate == null || typeof q.etaDate === 'string')
+    && (q.sizeNote === undefined || typeof q.sizeNote === 'string');
+}
+
+/** A non-2xx answer as the public error: a known contract code keeps status and code; anything else stays opaque. */
+function rejection(status: number, payload: unknown, withViolations = false): Error {
+  // A's published errors.ts uses { error: { code, message } }.
+  const code = isObject(payload) && isObject(payload.error) ? payload.error.code : undefined;
+  if (typeof code === 'string' && Object.hasOwn(publicMessages, code)) {
+    // Only the policy routes publish a message worth keeping: the floor violations (names, never values).
+    const violations = withViolations && status === 422 && code === 'MISSING_FIELD'
+      ? violationList(isObject(payload) && isObject(payload.error) ? payload.error.message : undefined) : undefined;
+    return new WorkspaceError(status, code, violations);
+  }
+  return new Error('The workspace rejected the request with an unrecognized error.');
+}
+
+const cancelled = () => new DOMException('The workspace request was cancelled.', 'AbortError');
+const unreachable = () => new Error('The workspace could not be reached or returned an invalid response.');
+const invalidEvent = () => new Error('Invalid quote event.');
+
+/**
+ * Errors from streamQuotes after which find() reads the long-poll instead: the workspace has no events route (404 or
+ * 405, an older workspace), answered something that is not an event stream, or the connection failed or went silent.
+ * The error objects themselves are the public ones every method throws.
+ */
+const streamUnavailable = new WeakSet<Error>();
+const unavailable = (error: Error): Error => { streamUnavailable.add(error); return error; };
+
+/** Longest SSE line accepted (a quote event is a few hundred bytes). */
+const MAX_SSE_LINE = 256 * 1024;
+/** No byte at all for this long (heartbeats come every INTENT_STREAM_HEARTBEAT_MS): the connection is dead. */
+const STREAM_IDLE_MS = 2 * INTENT_STREAM_HEARTBEAT_MS;
+
+interface SseFrame { event: string; data: string; id?: string }
+
+/**
+ * text/event-stream framing (WHATWG HTML §9.2.6): lines end with CRLF, LF or CR; a blank line dispatches; ":" lines
+ * are comments; `data` lines join with "\n"; `event` defaults to "message"; a frame without data is dropped; an
+ * unterminated frame at the end of the stream is discarded.
+ */
+async function* parseSse(chunks: AsyncIterable<string>): AsyncGenerator<SseFrame> {
+  let buffer = '';
+  let data: string[] = [];
+  let event = '';
+  let id: string | undefined;
+  const line = (text: string): SseFrame | undefined => {
+    if (text === '') {
+      const frame = data.length > 0 ? { event: event || 'message', data: data.join('\n'), ...(id !== undefined ? { id } : {}) } : undefined;
+      data = []; event = ''; id = undefined;
+      return frame;
+    }
+    if (text.startsWith(':')) return undefined;
+    const colon = text.indexOf(':');
+    const field = colon < 0 ? text : text.slice(0, colon);
+    const value = colon < 0 ? '' : text.slice(colon + 1).replace(/^ /, '');
+    if (field === 'data') data.push(value);
+    else if (field === 'event') event = value;
+    else if (field === 'id' && !value.includes('\0')) id = value;
+    return undefined;
+  };
+  for await (const chunk of chunks) {
+    buffer += chunk;
+    for (let m = /\r\n|\r|\n/.exec(buffer); m; m = /\r\n|\r|\n/.exec(buffer)) {
+      // A CR as the last character may be the first half of a CRLF split across chunks: wait for the next one.
+      if (m[0] === '\r' && m.index === buffer.length - 1) break;
+      const frame = line(buffer.slice(0, m.index));
+      buffer = buffer.slice(m.index + m[0].length);
+      if (frame) yield frame;
+    }
+    if (buffer.length > MAX_SSE_LINE) throw unreachable();
+  }
+}
+
+/** One SSE frame → a validated IntentEvent for `intentId`; undefined for event types this SDK does not know (additive). */
+function intentEvent(frame: SseFrame, intentId: string): IntentEvent | undefined {
+  if (!(INTENT_EVENT_TYPES as readonly string[]).includes(frame.event)) return undefined;
+  let data: unknown;
+  try { data = JSON.parse(frame.data); } catch { throw invalidEvent(); }
+  if (!isObject(data) || data.type !== frame.event) throw invalidEvent();
+  if (data.type === 'quote') {
+    if (!validQuote(data.quote, intentId) || (frame.id !== undefined && !/^[0-9]{1,20}$/.test(frame.id))) throw invalidEvent();
+    return { type: 'quote', quote: data.quote };
+  }
+  if (data.intentId !== intentId) throw invalidEvent();
+  return { type: data.type as 'complete' | 'expired', intentId };
+}
+
 // B20 provenance is server-owned. A list is Sample if any offer is recorded or seeded.
 function hasSampleSource(payload: Record<string, unknown>): boolean {
   const sampleSource = (value: unknown) => isObject(value) && ['sample', 'fixture'].includes(String(value.source));
@@ -123,7 +227,6 @@ export class WorkspaceClient {
   async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}, method?: 'PUT',
     withViolations = false): Promise<unknown> {
     if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
-    const cancelled = () => new DOMException('The workspace request was cancelled.', 'AbortError');
     if (options.signal?.aborted) throw cancelled();
     let response: Response;
     let payload: unknown;
@@ -148,17 +251,7 @@ export class WorkspaceClient {
       if (options.signal?.aborted) throw cancelled(); // Never expose the caller's arbitrary abort reason.
       throw new Error('The workspace could not be reached or returned an invalid response.');
     }
-    if (!response.ok) {
-      // A's published errors.ts uses { error: { code, message } }.
-      const code = isObject(payload) && isObject(payload.error) ? payload.error.code : undefined;
-      if (typeof code === 'string' && Object.hasOwn(publicMessages, code)) {
-        // Only the policy routes publish a message worth keeping: the floor violations (names, never values).
-        const violations = withViolations && response.status === 422 && code === 'MISSING_FIELD'
-          ? violationList(isObject(payload) && isObject(payload.error) ? payload.error.message : undefined) : undefined;
-        throw new WorkspaceError(response.status, code, violations);
-      }
-      throw new Error('The workspace rejected the request with an unrecognized error.');
-    }
+    if (!response.ok) throw rejection(response.status, payload, withViolations);
     return isObject(payload) && (this.#config.sample || hasSampleSource(payload)) ? { ...payload, sample: true } : payload;
   }
 
@@ -213,20 +306,131 @@ export class WorkspaceClient {
     return { intentId: payload.intentId, sample: payload.sample === true };
   }
 
+  /** The long-poll (up to QUOTE_POLL_MAX_MS): find()'s fallback when the workspace cannot stream. */
   async getQuotes(intentId: string, options?: RequestOptions): Promise<QuoteList> {
     const payload = await this.#request(`/personal/intents/${encodeURIComponent(intentId)}/quotes`, undefined, undefined, options);
-    if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => isObject(q)
-      && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
-      && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
-      && (q.etaDate == null || typeof q.etaDate === 'string')
-      && (q.sizeNote === undefined || typeof q.sizeNote === 'string'))) throw new Error('Invalid quote response.');
+    if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => validQuote(q, intentId))) {
+      throw new Error('Invalid quote response.');
+    }
     return { quotes: payload.quotes as Quote[], sample: payload.sample === true };
   }
 
-  async find(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<FindResult> {
+  /**
+   * Quotes pushed as they arrive (GET /personal/intents/:id/events): existing ones first, then live ones, then
+   * `complete` or `expired`. Each event is validated like getQuotes' offers; a malformed one throws. Non-2xx answers
+   * throw the same errors as every other method. The connection gets the client timeout to answer and is dropped
+   * after STREAM_IDLE_MS without a byte; neither is retried.
+   */
+  streamQuotes(intentId: string, options: StreamQuotesOptions = {}): QuoteStream {
+    if (options.lastEventId !== undefined && !/^[0-9]{1,20}$/.test(options.lastEventId)) throw new Error('Invalid last event ID.');
+    const state: { lastEventId: string | undefined } = { lastEventId: options.lastEventId };
+    const events = this.#events(intentId, options, state);
+    return Object.defineProperty(events, 'lastEventId', { get: () => state.lastEventId, enumerable: true }) as AsyncGenerator<IntentEvent> & QuoteStream;
+  }
+
+  async *#events(intentId: string, options: StreamQuotesOptions, state: { lastEventId: string | undefined }): AsyncGenerator<IntentEvent> {
+    if (options.signal?.aborted) throw cancelled();
+    // Connect and idle timeouts abort through this controller; the caller's signal aborts as cancellation.
+    const local = new AbortController();
+    const signal = AbortSignal.any([local.signal, ...(options.signal ? [options.signal] : [])]);
+    let timer = setTimeout(() => local.abort(), this.#timeoutMs);
+    const idle = () => { clearTimeout(timer); timer = setTimeout(() => local.abort(), STREAM_IDLE_MS); };
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    const stop = () => { void reader?.cancel().catch(() => undefined); };
+    signal.addEventListener('abort', stop, { once: true });
+    /** Why reading stopped, once it did: the caller cancelled, a timeout fired, or the network failed. */
+    const failure = (): Error => (options.signal?.aborted ? cancelled() : unavailable(unreachable()));
+    try {
+      let response: Response;
+      try {
+        response = await this.#fetch(new URL(`/personal/intents/${encodeURIComponent(intentId)}/events`, this.#config.baseUrl), {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream', Authorization: `Bearer ${this.#config.key}`,
+            ...(options.lastEventId !== undefined ? { 'Last-Event-ID': options.lastEventId } : {}) },
+          redirect: 'manual', // Never forward a local credential to a redirect destination.
+          credentials: 'omit',
+          cache: 'no-store',
+          signal,
+        });
+      } catch {
+        throw failure();
+      }
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel().catch(() => undefined);
+        throw unreachable();
+      }
+      if (!response.ok) {
+        let payload: unknown;
+        try { payload = await response.json(); } catch { payload = undefined; }
+        if (options.signal?.aborted) throw cancelled();
+        const error = payload === undefined ? unreachable() : rejection(response.status, payload);
+        throw response.status === 404 || response.status === 405 ? unavailable(error) : error;
+      }
+      if (!/^text\/event-stream\b/i.test(response.headers.get('content-type') ?? '') || !response.body) {
+        await response.body?.cancel().catch(() => undefined);
+        throw unavailable(unreachable());
+      }
+      reader = response.body.getReader();
+      if (signal.aborted) stop();
+      idle();
+      const open = reader;
+      const decoder = new TextDecoder();
+      async function* text(): AsyncGenerator<string> {
+        for (;;) {
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try { chunk = await open.read(); } catch { throw failure(); }
+          if (signal.aborted) throw failure();
+          if (chunk.done) return;
+          idle();
+          yield decoder.decode(chunk.value, { stream: true });
+        }
+      }
+      for await (const frame of parseSse(text())) {
+        const event = intentEvent(frame, intentId);
+        if (!event) continue;
+        if (frame.id !== undefined) state.lastEventId = frame.id;
+        yield event;
+        if (event.type !== 'quote') return;
+      }
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', stop);
+      stop();
+    }
+  }
+
+  /**
+   * Create the intent, then take its quotes from the events stream until `complete`, `expired`, the stream's end or
+   * QUOTE_POLL_MAX_MS, whichever comes first. A workspace that cannot stream (404/405, not an event stream, network
+   * failure) is read through the long-poll instead, exactly as before.
+   */
+  async find(input: FindInput, idempotencyKey: string, options: RequestOptions = {}): Promise<FindResult> {
     const created = await this.createIntent(input, idempotencyKey, options);
-    const quoted = await this.getQuotes(created.intentId, options);
+    if (options.signal?.aborted) throw cancelled();
+    const quoted = await this.#pushedQuotes(created.intentId, options) ?? await this.getQuotes(created.intentId, options);
     return { ...quoted, intentId: created.intentId, sample: created.sample || quoted.sample };
+  }
+
+  /** The quotes the stream delivered, or undefined when find() should read the long-poll instead. */
+  async #pushedQuotes(intentId: string, options: RequestOptions): Promise<QuoteList | undefined> {
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), QUOTE_POLL_MAX_MS);
+    const quotes: Quote[] = [];
+    try {
+      for await (const event of this.streamQuotes(intentId, { signal: AbortSignal.any([deadline.signal, ...(options.signal ? [options.signal] : [])]) })) {
+        if (event.type === 'quote') quotes.push(event.quote);
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw cancelled();
+      // The long-poll re-reads every quote, so a stream that failed midway loses nothing either.
+      if (!deadline.signal.aborted) {
+        if (error instanceof Error && streamUnavailable.has(error)) return undefined;
+        throw error;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+    return { quotes, sample: this.#config.sample === true || hasSampleSource({ quotes }) };
   }
 
   async accept(quoteId: string, idempotencyKey: string, options?: RequestOptions): Promise<CheckoutResult> {

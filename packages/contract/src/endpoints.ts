@@ -25,6 +25,7 @@ export const ENDPOINTS: Endpoint[] = [
 
   { method: "POST", path: "/personal/intents", caller: "personal", idempotent: true, summary: "Store intent, match merchants (registry or UCP), introduce, notify; returns intentId" },
   { method: "GET", path: "/personal/intents/:id/quotes", caller: "personal", summary: "Long-poll quotes, up to 20s" },
+  { method: "GET", path: "/personal/intents/:id/events", caller: "personal", summary: "text/event-stream of IntentEvent (events.ts; owner key too): existing quotes first, then each new quote as it is inserted (SSE id = the quote's seq; Last-Event-ID resumes after it), `complete` when every introduced merchant that can quote has quoted, `expired` when the intent expires; closes after complete/expired or INTENT_STREAM_MAX_MS; ':' heartbeat comments every INTENT_STREAM_HEARTBEAT_MS; never a field value beyond what GET …/quotes returns; the long-poll stays as the fallback (docs/commerce-analytics-plan.md §8)" },
   { method: "POST", path: "/personal/quotes/:id/accept", caller: "personal", idempotent: true, summary: "Accept a quote; notifies the merchant (or runs UCP checkout)" },
   { method: "GET", path: "/personal/card", caller: "personal", summary: "Identity card + candidates" },
   { method: "GET", path: "/personal/receipts", caller: "personal", summary: "Recent sensitive-field read receipts (who, which fields, which purpose)" },

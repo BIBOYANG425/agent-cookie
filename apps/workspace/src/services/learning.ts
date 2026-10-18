@@ -457,7 +457,7 @@ export class LearningService {
 
 /** The quote as the personal agent saw it (no internal fields). */
 function publicQuote(q: QuoteRow): Quote {
-  const { sessionId: _s, status: _st, createdAt: _c, acceptedAt: _a, result: _r, ...quote } = q;
+  const { sessionId: _s, status: _st, createdAt: _c, acceptedAt: _a, result: _r, seq: _q, ...quote } = q;
   return quote;
 }
 

@@ -66,6 +66,9 @@ network missing). The request shapes were written offline and have not been run 
   a quote. Intent `public` values (budget, deadline, shoe_size…) override the card for that intent. Registered merchants with that capability are introduced too
   (`callbackUrl` → `{type:"introduce", sessionId, handshake, intent}`; `chatEndpoint` → Tier 0 text `{session_id, message}` + receipt).
 - `GET /personal/intents/:id/quotes?wait=ms` long-polls up to 20 s. Prices are integer cents; `etaDate` is `null` when unknown.
+- `GET /personal/intents/:id/events` pushes the same quotes as server-sent events (contract `events.ts`): stored quotes
+  first, each new one the moment it is committed (SSE `id` = the quote's seq, `Last-Event-ID` resumes), then `complete`
+  or `expired`; heartbeat comments every 15 s; closed after 60 s and at once on demo reset. The long-poll stays as the fallback.
 - `POST /personal/quotes/:id/accept` → `AcceptResult`. UCP: cart → checkout → read `shipping_address` with purpose `checkout`
   (receipt) → destination → complete. `handoff` with `continueUrl` when the store needs the buyer (requires_escalation, or a
   sign-in-required refusal at complete — the recorded stores answer that way); `ordered` when completed; `failed` (sold out,

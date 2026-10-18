@@ -2,7 +2,7 @@
 
 Shared loopback HTTP client for CLI, MCP and Photon. Domain types come from `@agent-cookie/contract`; the backend owns identity, policy, grants, expiry and card merging.
 
-Implemented: `getMe`, `getMyCard`, `createIntent`, `getQuotes`, `find`, `accept`, `getReceipts`, `getActivity` (owner key only), `getGrants`, `revokeGrant`, `revokeContribution`, `demoReset` (owner key + demo mode). `find` accepts `{text, query?, public?}`. Text preserves the user's original request (1–1000 UTF-8 bytes); optional query is at most 200 bytes. Public conditions follow A's contract. Budget is USD as a string; optional `sizeNote` is preserved verbatim. No category is assumed. Quote prices are integer USD cents. The caller supplies stable idempotency keys for shopping writes (`createIntent/find/accept`). The console mutations use their published POST endpoints without an invented idempotency contract. `accept` preserves the contract's `ordered | handoff | blocked | failed` result, Sample flags and warnings; handoff is not an order or payment, and its link may be absent.
+Implemented: `getMe`, `getMyCard`, `createIntent`, `getQuotes`, `streamQuotes`, `find`, `accept`, `getReceipts`, `getActivity` (owner key only), `getGrants`, `revokeGrant`, `revokeContribution`, `demoReset` (owner key + demo mode). `find` accepts `{text, query?, public?}`. Text preserves the user's original request (1–1000 UTF-8 bytes); optional query is at most 200 bytes. Public conditions follow A's contract. Budget is USD as a string; optional `sizeNote` is preserved verbatim. No category is assumed. Quote prices are integer USD cents. The caller supplies stable idempotency keys for shopping writes (`createIntent/find/accept`). The console mutations use their published POST endpoints without an invented idempotency contract. `accept` preserves the contract's `ordered | handoff | blocked | failed` result, Sample flags and warnings; handoff is not an order or payment, and its link may be absent.
 
 From the repository root with Node 22:
 
@@ -21,7 +21,9 @@ const identity = await workspace.getMe();
 const card = await workspace.getMyCard();
 ```
 
-`AGENT_COOKIE_KEY` is required. `AGENT_COOKIE_URL` defaults to `http://127.0.0.1:4310`; only loopback HTTP origins without paths or embedded credentials are accepted. Each request authenticates anew, omits browser cookies, does not cache cards, does not follow redirects and does not automatically retry. Default timeout is 25 seconds (quotes may long-poll for 20 seconds). Logs do not contain credentials or raw errors.
+`AGENT_COOKIE_KEY` is required. `AGENT_COOKIE_URL` defaults to `http://127.0.0.1:4310`; only loopback HTTP origins without paths or embedded credentials are accepted. Each request authenticates anew, omits browser cookies, does not cache cards, does not follow redirects and does not automatically retry. Default timeout is 25 seconds (quotes may long-poll for 20 seconds).
+
+`find` reads quotes from the events stream (`streamQuotes`, `GET /personal/intents/:id/events`) and returns as soon as `complete` or `expired` arrives, the stream ends, or 20 seconds pass; a workspace that answers 404/405, does not answer with an event stream, or drops the connection is read through the `getQuotes` long-poll instead. `streamQuotes(intentId, { signal?, lastEventId? })` yields validated `IntentEvent`s (malformed events throw), throws the usual `WorkspaceError` on non-2xx, throws `AbortError` on cancellation, never reconnects, and exposes `lastEventId` for a caller that wants to resume. Logs do not contain credentials or raw errors.
 
 ## Console API and cancellation
 

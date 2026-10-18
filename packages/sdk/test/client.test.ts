@@ -139,7 +139,8 @@ it('labels demo data explicitly even when the SQLite backend has no sample prope
   const fetcher=vi.fn<typeof fetch>()
     .mockResolvedValueOnce(Response.json({card:[],candidates:[]}))
     .mockResolvedValueOnce(Response.json({intentId:'i'}))
-    .mockResolvedValueOnce(Response.json({quotes:[]}))
+    // find() reads the events stream first (the long-poll is its fallback): no quotes, then complete.
+    .mockResolvedValueOnce(new Response('event: complete\ndata: {"type":"complete","intentId":"i"}\n\n',{headers:{'content-type':'text/event-stream'}}))
     .mockResolvedValueOnce(Response.json({status:'handoff',quoteId:'q',message:'Merchant notified; no link available.'}))
     .mockResolvedValueOnce(Response.json({receipts:[]}));
   const client=new WorkspaceClient({...configFromEnv,fetch:fetcher});

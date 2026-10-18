@@ -18,7 +18,11 @@ export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId
 export type Channel = "ucp" | "callback" | "tier0";
 export interface IntentSessionRow { intentId: string; sessionId: string; agentId: string; channel: Channel }
 export type QuoteStatus = "open" | "accepted" | AcceptResult["status"];
-export interface QuoteRow extends Quote { sessionId: string; status: QuoteStatus; createdAt: string; acceptedAt?: string; result?: AcceptResult }
+/**
+ * `seq`: the store's monotonic insertion sequence (shared with grants, contributions and receipts), set on every row
+ * read back and by insertQuote. Internal: the events stream sends it as the SSE id; it is never part of a Quote body.
+ */
+export interface QuoteRow extends Quote { sessionId: string; status: QuoteStatus; createdAt: string; acceptedAt?: string; result?: AcceptResult; seq?: number }
 export interface NoteRow extends Note { sessionId: string }
 export interface ReceiptRow extends Receipt { userId: string }
 /** Contributions may carry an unknown field name when a merchant tried to write one (A11: stored inferred, never on the card). */
@@ -137,7 +141,7 @@ function toIntent(r: Row): IntentRow {
 function toQuote(r: Row): QuoteRow {
   const q: QuoteRow = { id: String(r.id), intentId: String(r.intent_id), agentId: String(r.agent_id), sessionId: String(r.session_id),
     text: String(r.text), price: Number(r.price), currency: "USD", etaDate: s(r.eta_date) ?? null, status: r.status as QuoteStatus,
-    createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource };
+    createdAt: String(r.created_at), source: (s(r.source) ?? "live") as DataSource, seq: Number(r.seq) };
   for (const [k, col] of [["etaText", "eta_text"], ["title", "title"], ["seller", "seller"], ["variantId", "variant_id"],
     ["checkoutUrl", "checkout_url"], ["acceptedAt", "accepted_at"], ["sizeNote", "size_note"]] as const) {
     const v = s(r[col]);
@@ -458,11 +462,15 @@ export class Store {
   }
 
   // ---- quotes
-  insertQuote(q: QuoteRow): void {
+  /** Inserts the row and sets `q.seq` to the sequence it was stored under. */
+  insertQuote(q: QuoteRow): number {
+    const seq = this.next();
     this.exec(`INSERT INTO quotes (id, intent_id, agent_id, session_id, text, price, currency, eta_date, eta_text, title, seller, variant_id,
       checkout_url, status, created_at, accepted_at, result, seq, source, size_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, q.id, q.intentId, q.agentId, q.sessionId, q.text, q.price, q.currency, q.etaDate ?? null, q.etaText ?? null, q.title ?? null,
         q.seller ?? null, q.variantId ?? null, q.checkoutUrl ?? null, q.status, q.createdAt, q.acceptedAt ?? null,
-        q.result ? JSON.stringify(q.result) : null, this.next(), q.source ?? "live", q.sizeNote ?? null);
+        q.result ? JSON.stringify(q.result) : null, seq, q.source ?? "live", q.sizeNote ?? null);
+    q.seq = seq;
+    return seq;
   }
   quote(id: string): QuoteRow | undefined {
     const r = this.db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as Row | undefined;

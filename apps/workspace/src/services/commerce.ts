@@ -1,9 +1,11 @@
 // Intents → matching → introductions → quotes → accept. UCP stores are reached through UcpApi via per-domain
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
+import { EventEmitter } from "node:events";
 import {
-  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type ErrorCode, type Field, type PaymentAuthorization, type PaymentBillTo, type Quote, type RankStats, type Receipt,
-  type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
+  DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_STREAM_HEARTBEAT_MS, INTENT_STREAM_MAX_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS,
+  UpstreamError, WorkspaceError,
+  type AcceptResult, type Agent, type ErrorCode, type Field, type IntentEvent, type PaymentAuthorization, type PaymentBillTo, type Quote,
+  type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpDestination, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
 import type { GrantRow, IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
@@ -54,6 +56,12 @@ const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
   AUTHORIZATION_USED: "This offer's payment authorization was already used; nothing more was sent.",
 };
 
+/**
+ * What CommerceService.events yields to the route: an IntentEvent (a quote event carries the quote's store `seq`, the
+ * SSE id), or a heartbeat tick, at which the route writes a ":" comment line.
+ */
+export type IntentStreamItem = { event: IntentEvent; seq?: number } | { heartbeat: true };
+
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
 export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
 
@@ -92,8 +100,38 @@ function messageText(messages: UcpMessage[]): string | undefined {
 }
 
 export class CommerceService {
+  /**
+   * In-process notifications, private to this service: "quote" (the QuoteRow, once its insert is committed) and "end"
+   * (demo reset or shutdown: every open events stream finishes). Nothing here leaves the process.
+   */
+  private readonly emitter = new EventEmitter().setMaxListeners(0);
+
+  /** Events-stream limits; the contract's values (events.ts). Tests shorten them. */
+  readonly streamLimits = { maxMs: INTENT_STREAM_MAX_MS, heartbeatMs: INTENT_STREAM_HEARTBEAT_MS };
+
   constructor(private ctx: Ctx, private card: CardService, private sessions: SessionService, private fields: FieldService, private notes: NoteService,
     private pinned: readonly string[] = [], private learning?: LearningService) {}
+
+  /** Calls `listener` with every quote row committed for `intentId` from now on. Returns the unsubscribe function. */
+  subscribe(intentId: string, listener: (q: QuoteRow) => void): () => void {
+    const own = (q: QuoteRow) => { if (q.intentId === intentId) listener(q); };
+    this.emitter.on("quote", own);
+    return () => { this.emitter.off("quote", own); };
+  }
+
+  /** Ends every open events stream now (the reset gate closing, shutdown). */
+  endStreams(): void {
+    this.emitter.emit("end");
+  }
+
+  /** After the row is committed. A listener can never fail the write that already happened. */
+  private quoted(q: QuoteRow): void {
+    try {
+      this.emitter.emit("quote", q);
+    } catch (err) {
+      console.error("[workspace] quote listener failed:", err);
+    }
+  }
 
   /**
    * Prepare every introduction (UCP search, handshake signing) without writing; commit intent, proxies, sessions,
@@ -226,6 +264,8 @@ export class CommerceService {
         if (p.receipt) store.insertReceipt({ ...p.receipt, userId });
       }
     });
+    // Committed: tell open streams (none can be open yet for a new intent, but the order is the rule).
+    for (const p of plans) if (p.quote) this.quoted(p.quote);
 
     for (const p of plans) {
       if (p.channel === "callback") {
@@ -265,6 +305,84 @@ export class CommerceService {
     }
   }
 
+  /**
+   * GET /personal/intents/:id/events. Ownership is checked here, before anything is streamed (404 otherwise); the
+   * returned generator then yields every stored quote with a seq above `lastEventId` in seq order, then each quote
+   * committed while it runs, then `expired` once the intent's expiresAt passed on the workspace clock, else `complete`
+   * once every expected merchant (the rule of quotes(): every introduction but Tier 0) has a quote, and ends.
+   * Heartbeat ticks every streamLimits.heartbeatMs; expiry is re-checked at each, at the expiry instant, and when the
+   * clock is shifted. It also ends after streamLimits.maxMs, on `signal`, and as soon as a reset starts.
+   */
+  events(userId: string, intentId: string, lastEventId?: number, opts: { signal?: AbortSignal } = {}): AsyncGenerator<IntentStreamItem> {
+    const intent = this.ctx.store.intent(intentId);
+    if (!intent || intent.userId !== userId) fail("NOT_FOUND");
+    return this.stream(intent, lastEventId ?? 0, opts.signal);
+  }
+
+  private async *stream(intent: IntentRow, after: number, signal?: AbortSignal): AsyncGenerator<IntentStreamItem> {
+    const { store, clock } = this.ctx;
+    const { maxMs, heartbeatMs } = this.streamLimits;
+    const expiresAt = Date.parse(intent.expiresAt);
+    const opened = Date.now();
+    let nextBeat = opened + heartbeatMs;
+    const live: QuoteRow[] = [];
+    let ended = false;
+    let wake: (() => void) | undefined;
+    const poke = () => { const w = wake; wake = undefined; w?.(); };
+    const end = () => { ended = true; poke(); };
+    // Subscribe before reading what is stored, so a quote committed in between is not lost; seq drops the duplicate.
+    const unsubscribe = this.subscribe(intent.id, (q) => { live.push(q); poke(); });
+    this.emitter.on("end", end);
+    const offClock = clock.onChange(poke);
+    signal?.addEventListener("abort", end, { once: true });
+    try {
+      const expected = new Set(store.intentSessions(intent.id).filter((x) => x.channel !== "tier0").map((x) => x.agentId));
+      const quotedBy = new Set<string>();
+      let last = after;
+      let pending = store.quotesForIntent(intent.id);
+      for (;;) {
+        if (ended || signal?.aborted || this.ctx.closing() || this.ctx.stale()) return;
+        for (const q of pending) {
+          // Quotes skipped by Last-Event-ID still count towards complete.
+          quotedBy.add(q.agentId);
+          if (q.seq !== undefined && q.seq > last) {
+            last = q.seq;
+            yield { event: { type: "quote", quote: toQuote(q) }, seq: q.seq };
+          }
+        }
+        pending = [];
+        if (expiresAt <= clock.now()) {
+          yield { event: { type: "expired", intentId: intent.id } };
+          return;
+        }
+        if ([...expected].every((a) => quotedBy.has(a))) {
+          yield { event: { type: "complete", intentId: intent.id } };
+          return;
+        }
+        const now = Date.now();
+        if (now - opened >= maxMs) return;
+        if (now >= nextBeat) {
+          nextBeat = now + heartbeatMs;
+          yield { heartbeat: true };
+          continue;
+        }
+        if (live.length === 0 && !ended) {
+          const waitMs = Math.max(0, Math.min(nextBeat - now, opened + maxMs - now, expiresAt - clock.now()));
+          let timer: NodeJS.Timeout | undefined;
+          await new Promise<void>((resolve) => { wake = resolve; timer = setTimeout(resolve, waitMs); });
+          clearTimeout(timer);
+          wake = undefined;
+        }
+        pending = live.splice(0);
+      }
+    } finally {
+      unsubscribe();
+      this.emitter.off("end", end);
+      offClock();
+      signal?.removeEventListener("abort", end);
+    }
+  }
+
   async submitQuote(agent: AuthedAgent, input: { intentId: string; text: string; price: number; etaDate: string | null; etaText?: string; title?: string; checkoutUrl?: string }): Promise<Quote> {
     const intent = this.ctx.store.intent(input.intentId);
     const session = intent && this.ctx.store.sessionFor(intent.userId, agent.agentId);
@@ -280,6 +398,7 @@ export class CommerceService {
     const firstQuote = !this.ctx.store.quotesForIntent(intent.id).some((x) => x.agentId === agent.agentId);
     this.ctx.store.insertQuote(q);
     this.ctx.log({ event: "quote.submit", actor: agent.agentId, object: q.id, result: "ok", reason: intent.id });
+    this.quoted(q);
     // Stage "quoted" (Phase 2), once per merchant per intent: opens the fields the installed document lists for it.
     if (firstQuote) this.sessions.advance(session, intent.id, "quoted", agent.category);
     return toQuote(q);

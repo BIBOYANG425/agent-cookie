@@ -118,6 +118,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   if (!overrides.learn && config.learnProvider === "off") log({ event: "learn.off", actor: "workspace", result: "off", reason: "learning provider off" });
   const learning = new LearningService(ctx, card, learner.api);
   const commerce = new CommerceService(ctx, card, sessions, fields, notes, fixtures.pinnedVariantIds, learning);
+  // Open events streams are not requests in flight (their handler returned): a reset ends them the moment it starts.
+  gate.onClosing(() => commerce.endStreams());
   const funnel = new FunnelService(ctx);
   const experiments = new ExperimentService(ctx);
   const merchantStats = new MerchantStatsService(ctx);
@@ -161,6 +163,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       return now;
     }, config.resetWaitMs),
     async close() {
+      commerce.endStreams();
       if (dreamTimer) clearInterval(dreamTimer);
       await dreaming.settle();
       await learning.settle();

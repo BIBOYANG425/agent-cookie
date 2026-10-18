@@ -1,6 +1,7 @@
 // HTTP surface — packages/contract ENDPOINTS, shapes per docs/plan.md v0.3 §5. Every decision is made in the
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
+import { streamSSE } from "hono/streaming";
 import {
   isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
@@ -55,6 +56,17 @@ function httpsLink(v: string | undefined, name: string): string | undefined {
   const parsed = new URL(u);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) fail("MISSING_FIELD", `${name} must be an https link`);
   return u;
+}
+
+/**
+ * Last-Event-ID (SSE resume, contract events.ts): the decimal quote seq the workspace sent as an event id. Absent or
+ * empty → from the first quote. Anything else is not an id this workspace sent → 422.
+ */
+function lastEventId(v: string | undefined): number | undefined {
+  const t = v?.trim();
+  if (!t) return undefined;
+  if (!/^\d{1,15}$/.test(t)) fail("MISSING_FIELD", "invalid Last-Event-ID");
+  return Number(t);
 }
 
 const ROLES: ReadonlySet<string> = new Set(["user", "agent", "other"]);
@@ -217,6 +229,30 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     const wait = w === undefined ? 20_000 : Number(w);
     if (!Number.isFinite(wait) || wait < 0) fail("MISSING_FIELD", "invalid wait");
     return json(await deps.commerce.quotes(user(), c.req.param("id"), wait));
+  });
+
+  // Push instead of poll (docs/commerce-analytics-plan.md §8; contract events.ts). Ownership is checked before the
+  // stream opens: another user's intent gets the same 404 as every NOT_FOUND and no stream. The handler returns as
+  // soon as the stream starts, so the activity middleware writes one row for the request and nothing per event; and
+  // the stream does not hold the reset gate open: a reset ends it through the gate's onClosing (deps.ts).
+  app.get("/personal/intents/:id/events", auth, personalOrOwner, (c) => {
+    const after = lastEventId(c.req.header("last-event-id"));
+    const abort = new AbortController();
+    const events = deps.commerce.events(user(), c.req.param("id"), after, { signal: abort.signal });
+    return streamSSE(c, async (stream) => {
+      stream.onAbort(() => abort.abort());
+      try {
+        for await (const item of events) {
+          if (stream.aborted) break;
+          if ("heartbeat" in item) await stream.write(": heartbeat\n\n");
+          else await stream.writeSSE({ event: item.event.type, data: JSON.stringify(item.event), ...(item.seq !== undefined ? { id: String(item.seq) } : {}) });
+        }
+      } catch (err) {
+        console.error("[workspace] events stream failed:", err);
+      } finally {
+        abort.abort();
+      }
+    });
   });
 
   app.post("/personal/quotes/:id/accept", auth, personal, idem, async (c) => {

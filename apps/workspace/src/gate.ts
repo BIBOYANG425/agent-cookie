@@ -2,7 +2,8 @@
 // to finish, then bumps the generation BEFORE wiping. Every request runs inside an AsyncLocalStorage context
 // carrying the generation it started in; a request still running after the bump is stale, and the store and
 // memory-repo writes refuse it (deps.ts installs the guard). So nothing from before a reset can be written
-// after it, however long that request takes. Long polls see `closing()` and return early.
+// after it, however long that request takes. Long polls see `closing()` and return early; open event streams are
+// not counted as in flight (their handler has returned) and end through `onClosing`.
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export class Gate {
@@ -11,6 +12,7 @@ export class Gate {
   private closed: Promise<void> | null = null;
   private generation = 0;
   private readonly als = new AsyncLocalStorage<{ generation: number }>();
+  private readonly closingListeners = new Set<() => void>();
 
   /** Run one request inside the current generation. */
   async run<T>(fn: () => Promise<T>): Promise<T> {
@@ -50,10 +52,22 @@ export class Gate {
     return this.closed !== null;
   }
 
+  /**
+   * Called synchronously the moment a reset starts closing the gate, before it waits for requests in flight: work that
+   * outlives its request (an SSE stream) ends here instead of being cut off. Returns the unsubscribe function.
+   */
+  onClosing(listener: () => void): () => void {
+    this.closingListeners.add(listener);
+    return () => { this.closingListeners.delete(listener); };
+  }
+
   async exclusive<T>(fn: () => Promise<T>, maxWaitMs = 10_000): Promise<T> {
     while (this.closed) await this.closed;
     let open!: () => void;
     this.closed = new Promise<void>((r) => { open = r; });
+    for (const l of [...this.closingListeners]) {
+      try { l(); } catch (err) { console.error("[workspace] closing listener failed:", err); }
+    }
     try {
       if (this.active > 0) {
         let timer: NodeJS.Timeout | undefined;

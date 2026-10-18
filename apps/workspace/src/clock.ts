@@ -2,7 +2,17 @@
 // Tests may inject one that does not read the system time at all (`Clock.at(iso)`): it stands still unless moved.
 export class Clock {
   private offsetMs = 0;
+  private readonly listeners = new Set<() => void>();
   constructor(private readonly base: () => number = Date.now) {}
+
+  /** Called after every shift (setOffset, advance): an open events stream re-checks expiry at once. Returns the unsubscribe. */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  private changed(): void {
+    for (const l of [...this.listeners]) l();
+  }
 
   /** A clock frozen at `iso`; move it with setOffset (POST /test/clock) or advance(). */
   static at(iso: string): Clock {
@@ -23,10 +33,12 @@ export class Clock {
   /** Absolute, not cumulative. */
   setOffset(ms: number): void {
     this.offsetMs = ms;
+    this.changed();
   }
   /** Cumulative (tests). */
   advance(ms: number): void {
     this.offsetMs += ms;
+    this.changed();
   }
   offset(): number {
     return this.offsetMs;
