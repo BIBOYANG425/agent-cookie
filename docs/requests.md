@@ -382,3 +382,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
 | BC-i18n | B/C → 各线（负责人已批准跨线）：SDK/MCP 保留原话 text 并传英文 query、显式条件与商家数量，兼容旧 kind；Photon 用确定性双语词典搜通用品并按消息语言回复；控制台随卡片语言并支持持久化中英切换，保留 Sample、未知到货及未确认订单/支付提示；不改工作台或契约，不新增依赖或模型调用。 |
+
+| BC-i18n-CI | B/C → D（2026-10-18）：在最新 main `b1e049a` 独立 worktree 第 12 次复现 auth unlock token 的 bad-MAC 断言偶发失败（test/auth.test.ts:180）；固定替换 base64url 末字符为 x 可能不改变解码字节，请 D 线改成确定翻转 MAC 字节的测试；本 PR 不改 D 线代码。 |

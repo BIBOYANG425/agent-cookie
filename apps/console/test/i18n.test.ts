@@ -110,4 +110,22 @@ describe('console locales', () => {
       expect(network).not.toHaveBeenCalled();
     } finally { controller.stop(); network.mockRestore(); }
   });
+  it.each(['approve','decline'] as const)('relocalizes a pending %s action before its acknowledgement', async decision => {
+    vi.useFakeTimers();
+    const adapter = createSampleAdapter(() => 0);
+    let acknowledge!: () => void;
+    const decide = adapter.decideLink.bind(adapter);
+    adapter.decideLink = async (...args) => { await new Promise<void>(resolve => {acknowledge = resolve;}); await decide(...args); };
+    const controller = new ConsoleController(adapter);
+    controller.start();
+    try {
+      const action = controller.decideLink(SAMPLE_LINK_ID, decision);
+      expect(controller.getState().pending).toBe(decision === 'approve' ? '批准连接请求' : '拒绝连接请求');
+      setLocaleOverride('en');
+      expect(controller.getState().pending).toBe(decision === 'approve' ? 'Approve connection request' : 'Decline connection request');
+      acknowledge(); await action;
+      expect(controller.getState().pending).toBe('');
+      expect(controller.getState().notice).toContain('completed.');
+    } finally { controller.stop(); }
+  });
 });
