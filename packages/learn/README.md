@@ -19,7 +19,7 @@ const learn = createWorkspaceLearner({ extract, telemetry: telemetry.metric,
 - `qwen/qwen3-235b-a22b-2507`
 - `meta-llama/llama-3.3-70b-instruct`
 
-An explicit `createExtractor({apiKey, model})` overrides the env value. Unknown model IDs fail configuration. The latter two are selectable alternatives, not automatic cross-model fallbacks and not yet live-validated. `getExtractorDefaults(extract)` exposes the selected model/classifier identity without credentials. Persisting that identity into the console's learned-item provenance still requires an A/C contract extension; current `ContributionEvidence` only accepts snippet/conversation/intent. Do not stuff a model name into a user-evidence snippet or writer ID.
+An explicit `createExtractor({apiKey, model})` overrides the env value. Unknown model IDs fail configuration. The latter two are selectable alternatives, not automatic cross-model fallbacks and not yet live-validated. `getExtractorDefaults(extract)` exposes the selected model/classifier identity without credentials. The team has agreed on `ContributionEvidence.models?: { gate?, extractor? }`, persisted as `gate:` / `extractor:` and displayed by C. A/C implementation is still pending in this checkout; the existing contract only accepts snippet/conversation/intent. Do not stuff a model name into a user-evidence snippet or writer ID.
 
 ## Jev wire protocol and gate
 
@@ -45,6 +45,8 @@ Gate thresholds are explicit demo policy: stable ≥0.90; sensitive ≤0.10; sel
 ## Extraction, privacy and bounds
 
 Chat completions uses strict `response_format.json_schema`, `additionalProperties:false`, a maximum of five items, bounded values/evidence, and Zod validation. Turns failing the local explicit-statement check also exclude `stated` from the wire schema; candidates remain observed/inferred. A truncated/refused response is rejected. Conclusions must use allowed `pref.*` keys; evidence is an exact substring of that owner's turn and ≤200 Unicode characters. Local validation rejects sensitive values, fabricated evidence, unsupported keys and false `stated` attribution. A/C's whitelist is an upper bound; price-band and recipient fields are excluded under the human's sensitive-topic rule.
+
+答辩说明：模型不能自行把顺口提到的偏好升级成“明确陈述”；本地谓词不认定为明确陈述时，请求的 JSON schema 就只允许 `observed` / `inferred`，让结果先进入候选，返回结果仍须通过本地校验，并按两段独立对话的规则晋升。
 
 Both requests require `zdr:true`, `data_collection:"deny"`, `require_parameters:true` and permit fallback **only between eligible ZDR providers**, with no `only` pin. Extraction sorts eligible providers by latency. A failed provider does not authorize a different model, weaker retention, or synthetic output. The accepted owner text goes to OpenRouter and the selected provider; it must not be copied into jar, logs, traces or evidence files. See [ZDR endpoints](https://openrouter.ai/api/v1/endpoints/zdr), [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs), [routing](https://openrouter.ai/docs/guides/routing/provider-selection).
 

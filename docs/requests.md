@@ -306,3 +306,7 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B60 → A/C/人（模型来源字段）：现ContributionEvidence仅snippet/conversationId/intentId，无模型来源字段。B已提供getExtractorDefaults(extract)的模型/Jev标识并在验收证据记录实际模型，未把模型名塞进用户证据或writer。请A/C约定可持久化的抽取/分类模型provenance字段并在学到的视图展示；B可按正式契约透传。该UI要求尚未完成，不能凭SDK metadata声称控制台已显示。
 
 - B61 → 人/A/C（新B3真实验收）：针对#24后的main996c079，真实Jev1.14+gpt-oss120b六场景首轮4/6，定位为顺口偏好被模型误标stated、现有本地校验拒绝。只收紧wire basis enum（非明确句禁止stated），原5条pass表达式/6场景输入/capture断言不变；复跑6/6+synthetic capture1/1，12个真实请求均200、总$0.000722204，Jev186–231ms、抽取621–932ms。明示上卡、同agent两conversation晋升、暂停代际、原话不落盘、接力历史均通过；证据learning-live.md/.json。尚非手机学习或控制台模型来源验收，A旧协议单测仍需B59修改，UI来源仍需B60。
+
+- B62 → 人/A（手机学习前置核查）：已在真实浏览器确认现有 Agent Cookie/原 iMessage 线属于 Photon 2.0 Beta；本机只找到 Beta 项目/API key，未找到 Spectrum Cloud 项目 ID/secret，旧平台 app.photon.codes 未登录。两套产品鉴权不同，不能把现有 Beta key 当 Spectrum secret。已请机主登录旧平台后检查已有项目，尚未新建或迁移线路；原监听、cursor6775/7条sent、演示DB均保留。本轮无真实模型调用/手机发送，不能算手机学习通过。详见 phone-learning-preflight.md。
+
+- B63 → 人/A/C（B59已接入）：A2696fc8已快进接到B，Jev Decisions→chat双步mock与ZDR/deny/fallback断言3/3通过、workspace typecheck通过，B未修改A测试。README补了中文答辩说明：本地谓词不认明确陈述时，schema只允许observed/inferred，保留候选且继续本地校验；并记录人的B60字段约定models?:{gate?,extractor?}，待A/C落契约和视图。推送后以PR25新CI结果为准。
