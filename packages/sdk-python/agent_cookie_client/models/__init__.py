@@ -10,6 +10,7 @@ from .assistant_context import AssistantContext
 from .assistant_context_fields import AssistantContextFields
 from .assistant_contribution_request import AssistantContributionRequest
 from .assistant_evidence import AssistantEvidence
+from .assistant_history_response import AssistantHistoryResponse
 from .assistant_stats import AssistantStats
 from .basis import Basis
 from .candidate import Candidate
@@ -97,6 +98,7 @@ from .payment_authorization_status import PaymentAuthorizationStatus
 from .personal_contribution_request import PersonalContributionRequest
 from .policy_document import PolicyDocument
 from .policy_document_auto import PolicyDocumentAuto
+from .policy_document_history import PolicyDocumentHistory
 from .policy_document_purpose import PolicyDocumentPurpose
 from .policy_document_purpose_assistant import PolicyDocumentPurposeAssistant
 from .policy_document_purpose_personal import PolicyDocumentPurposePersonal
@@ -144,6 +146,7 @@ __all__ = (
     "AssistantContextFields",
     "AssistantContributionRequest",
     "AssistantEvidence",
+    "AssistantHistoryResponse",
     "AssistantStats",
     "Basis",
     "Candidate",
@@ -231,6 +234,7 @@ __all__ = (
     "PersonalContributionRequest",
     "PolicyDocument",
     "PolicyDocumentAuto",
+    "PolicyDocumentHistory",
     "PolicyDocumentPurpose",
     "PolicyDocumentPurposeAssistant",
     "PolicyDocumentPurposePersonal",

@@ -32,16 +32,19 @@ describe('C21 generated memory seed', () => {
     expect(seed).toBe(generator.renderPolicyYaml(POLICY_TABLE));
     expect(seed).toMatch(/^  retail:/mu);
     // The company-assistant category (bring-your-own-agent plan) sits in all three sections, after retail.
-    expect(seed.match(/^  assistant:/gmu)).toHaveLength(3);
+    expect(seed.match(/^  assistant:$/gmu)).toHaveLength(2);
+    expect(seed.match(/^  assistant:/gmu)).toHaveLength(4);
+    // Phase 4: the history section closes the seed; the assistant switch is off until the owner turns it on.
+    expect(seed.endsWith('\nhistory:\n  personal: true\n  assistant: false\n')).toBe(true);
     expect(seed).toMatch(/^  assistant: \{\}\nwrite:$/mu);
     expect(seed.indexOf('\n  retail:')).toBeLessThan(seed.indexOf('\n  assistant:'));
   });
 
-  it('pins the policy id the regenerated seed reads as (DEFAULT_POLICY with the assistant category)', async () => {
+  it('pins the policy id the regenerated seed reads as (DEFAULT_POLICY with the assistant category and history)', async () => {
     const seed = await readFile(join(fixtures, 'memory/POLICY.yaml'), 'utf8');
     // Golden: changes only when the contract's DEFAULT_POLICY (or its canonical form) changes; regenerate the seed then.
-    expect(policyId(DEFAULT_POLICY)).toBe('3526a909e404');
-    expect(policyId(parsePolicyDocument(seed))).toBe('3526a909e404');
+    expect(policyId(DEFAULT_POLICY)).toBe('1fcaae3c5185');
+    expect(policyId(parsePolicyDocument(seed))).toBe('1fcaae3c5185');
   });
 
   it('includes the workspace-derived Sample address in the initial commit without changing the three explicit records', async () => {

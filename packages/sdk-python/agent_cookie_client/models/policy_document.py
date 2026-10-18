@@ -17,6 +17,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.policy_document_auto import PolicyDocumentAuto
+    from ..models.policy_document_history import PolicyDocumentHistory
     from ..models.policy_document_purpose import PolicyDocumentPurpose
     from ..models.policy_document_write import PolicyDocumentWrite
     from ..models.ranking_weights import RankingWeights
@@ -38,6 +39,9 @@ class PolicyDocument:
             section absent, means today's order: pinned, size, preferences, budget, catalog order. outcomeRank =
             −(round(winRate·winRate) − round(failRate·failure)), so sellers with equal history tie and catalog order still
             breaks the tie.
+        history (PolicyDocumentHistory | Unset): Phase 4, optional: may read the person's intent and purchase history
+            (GET /assistant/history for an assistant). Floor: personal always true, shoe and retail never; assistant is the
+            owner's choice. Absent = personal only.
     """
 
     v: Literal[1]
@@ -45,6 +49,7 @@ class PolicyDocument:
     purpose: PolicyDocumentPurpose
     write: PolicyDocumentWrite
     ranking: RankingWeights | Unset = UNSET
+    history: PolicyDocumentHistory | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -60,6 +65,10 @@ class PolicyDocument:
         if not isinstance(self.ranking, Unset):
             ranking = self.ranking.to_dict()
 
+        history: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.history, Unset):
+            history = self.history.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -72,12 +81,15 @@ class PolicyDocument:
         )
         if ranking is not UNSET:
             field_dict["ranking"] = ranking
+        if history is not UNSET:
+            field_dict["history"] = history
 
         return field_dict
 
     @classmethod
     def from_dict(cls, src_dict: Mapping[str, Any]) -> Self:
         from ..models.policy_document_auto import PolicyDocumentAuto
+        from ..models.policy_document_history import PolicyDocumentHistory
         from ..models.policy_document_purpose import PolicyDocumentPurpose
         from ..models.policy_document_write import PolicyDocumentWrite
         from ..models.ranking_weights import RankingWeights
@@ -100,12 +112,20 @@ class PolicyDocument:
         else:
             ranking = RankingWeights.from_dict(_ranking)
 
+        _history = d.pop("history", UNSET)
+        history: PolicyDocumentHistory | Unset
+        if isinstance(_history, Unset):
+            history = UNSET
+        else:
+            history = PolicyDocumentHistory.from_dict(_history)
+
         policy_document = cls(
             v=v,
             auto=auto,
             purpose=purpose,
             write=write,
             ranking=ranking,
+            history=history,
         )
 
         policy_document.additional_properties = d

@@ -44,7 +44,7 @@ const config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: 'http://127.0.0.1:4310
 const clients = [new WorkspaceClient({ ...config, fetch: refuse }), new AssistantClient({ ...config, fetch: refuse }),
   new MerchantClient({ ...config, fetch: refuse })];
 for (const method of ['find', 'accept', 'listLinks', 'approveLink', 'remember', 'getMyCard', 'mintKey', 'listKeys', 'revokeKey']) if (typeof clients[0][method] !== 'function') throw new Error('WorkspaceClient.' + method);
-for (const method of ['requestLink', 'waitForLink', 'context', 'remember', 'stats', 'find', 'accept', 'observe']) {
+for (const method of ['requestLink', 'waitForLink', 'context', 'remember', 'stats', 'history', 'find', 'accept', 'observe']) {
   if (typeof clients[1][method] !== 'function') throw new Error('AssistantClient.' + method);
 }
 for (const method of ['handshake', 'fields', 'quote', 'contribute', 'getNote', 'setNote', 'stats']) {
@@ -73,7 +73,7 @@ console.log('pack-smoke: imported and constructed WorkspaceClient, AssistantClie
 // Type-checked only, never run: the three quickstarts' calls against the installed declarations.
 const typedConsumer = `import {
   AssistantClient, MerchantClient, WorkspaceClient, assistantPrompt, isWorkspaceError, registerAgent, workspaceConfigFromEnv,
-  type AssistantContributionInput, type Field, type FieldsResult, type JarAccess, type KeyView, type LinkView, type MintedKey,
+  type AssistantContributionInput, type AssistantHistoryResult, type Field, type FieldsResult, type JarAccess, type KeyView, type LinkView, type MintedKey,
   type PersonalContribution, type Registration,
 } from '${pkg.name}';
 export async function flow(): Promise<string> {
@@ -89,6 +89,7 @@ export async function flow(): Promise<string> {
   await assistant.remember(fact);
   await assistant.remember({ field: 'pref.color', value: 'black' }); // basis omitted: observed, the contract default
   const stats = await assistant.stats();
+  const history: AssistantHistoryResult = await assistant.history({ limit: 10 });
   const merchant = new MerchantClient(workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'merchant-key' }));
   const available: Field[] = (await merchant.handshake('session')).available;
   let released: FieldsResult | undefined;
@@ -109,7 +110,7 @@ export async function flow(): Promise<string> {
   const jar: JarAccess | undefined = approved.jar;
   const jarred = jar ? AssistantClient.forJar(jar, { timeoutMs: 10000 }) : undefined;
   const hosted = jarred ? assistantPrompt(await jarred.context()) : '';
-  return assistantPrompt(context) + available.length + String(released) + links.length + stats.questionsSkipped + hosted + keys.length + stated.basis;
+  return assistantPrompt(context) + available.length + String(released) + links.length + stats.questionsSkipped + history.intents.length + hosted + keys.length + stated.basis;
 }
 `;
 

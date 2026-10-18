@@ -124,7 +124,7 @@ Exactly `GATEWAY_ENDPOINTS` (contract). A test checks that the mounted routes an
   instance checks its own keys. Refused with 404 in every spelling (percent-encoding, case, doubled slashes):
   `/owner/*`, `/demo/*`, `/test/*`, `/healthz`, and every route the workspace contract gives to the owner key only
   (`PUT /personal/policy`, `POST /personal/policy/shadow`).
-- **Operator:** `GET /operator/funnel`, `OperatorFunnel` with `measured: false` (Phase 4 reserve, see below).
+- **Operator:** `GET /operator/funnel[?refresh=1]`, `OperatorFunnel` (operator key; see [Operator funnel](#operator-funnel)).
 - **Test:** `POST /test/session { userId? }`, only with `AGENT_COOKIE_TEST=1`.
 
 ## Data layout
@@ -132,7 +132,8 @@ Exactly `GATEWAY_ENDPOINTS` (contract). A test checks that the mounted routes an
 ```
 <dataDir>/
   gateway.secret            # 0600, unless AGENT_COOKIE_GATEWAY_SECRET is set
-  gateway.sqlite            # persons, credentials, agents (key hashes), links (jar key encrypted), sessions (id hashes)
+  gateway.sqlite            # persons, credentials, agents (key hashes), links (jar key encrypted), sessions (id hashes),
+                            # funnel_snapshots (per-intent counts for the operator funnel)
   persons/<userId>/         # 0700: one workspace data directory per person
     owner.key               # 0600, minted by the instance; read into the gateway's memory only
     workspace.sqlite
@@ -142,11 +143,46 @@ Exactly `GATEWAY_ENDPOINTS` (contract). A test checks that the mounted routes an
 `POST /me/delete` deletes the person's gateway rows first (no request can restart the instance after that), then
 SIGTERMs the instance and removes `persons/<userId>/`. Their jar URL answers 404 from then on.
 
+## Operator funnel
+
+`GET /operator/funnel` with `Authorization: Bearer <AGENT_COOKIE_GATEWAY_OPERATOR_KEY>` (401 otherwise, and always
+401 while the key is unset) returns `OperatorFunnel` with `measured: true`: sums across persons, never one person's
+row, never a field value.
+
+- `persons`: every known person. `intents`: their intents (rows of each instance's `GET /owner/funnel`); `quoted`:
+  intents at least one merchant quoted; `accepted`: intents with an accepted quote; `questionsSkipped`: the sum of
+  each row's `questionsSkipped` (0 when a legacy row has none).
+- **Sources, per person**, counted in `coverage { live, snapshot, missing }` (they add up to `persons`):
+  - **live**: the instance is running, so the gateway reads its owner funnel now (`limit=1000`, owner key held here)
+    and stores the result as that person's snapshot.
+  - **snapshot**: the instance is stopped; the counts stored at the last live read or at the last stop are used.
+    Whenever the gateway stops an instance for idle, on request or at shutdown, it first reads the owner funnel
+    (5 s budget, failures logged and ignored) and stores the snapshot. A delete takes none, an unexpected exit
+    cannot.
+  - **missing**: stopped and no snapshot (or a live read failed and there is none): the person contributes nothing
+    to the sums. A missing person is not a zero; `coverage.missing` says how many are not counted.
+  - A live read that fails (the instance cannot start, a non-200 answer, a malformed report, a timeout) falls back to
+    the snapshot, else missing, and logs one line with the user id and a short reason, never a body.
+- `?refresh=1` reads every person live, starting stopped instances on demand (four at a time); they idle-stop later
+  as usual. Any other value of `refresh` is 422 `MISSING_FIELD`.
+- **Snapshots** (`funnel_snapshots`, removed with the person) keep only what the sums need, per intent: the creating
+  agent's instance id, the number of merchants that quoted, whether a quote was accepted, questions skipped. No
+  intent id, no timestamp, no field name. Reports are checked strictly (non-negative integers, a boolean, an id of
+  at most 128 characters); one bad row makes the whole read a failure.
+- **`byAssistant`** groups intents by who created them. An instance agent id that one of the person's approved
+  gateway links maps to (`links.instance_agent_id` → `links.agent_id`) counts under that assistant's GLOBAL id and
+  registered name, summed across persons. Every other creator (the person's own agents, legacy rows without a
+  creator) counts under `{ agentId: "personal", agentName: "The person's own agents" }`. Sorted by `agentId`.
+- **`byMerchant` is always `[]`.** The owner funnel has no per-merchant breakdown: `FunnelRow.quoted` is a count of
+  distinct merchants per intent, not which ones. Splitting it by merchant would mean inventing numbers.
+- **Caveats.** With one person every aggregate equals that person's own numbers (and with one person behind an
+  assistant, that assistant's group does): inherent to an aggregate, accepted. Each instance is read with
+  `limit=1000`, so a person with more than 1000 intents is counted for their newest 1000 only. Hosted instances run
+  `AGENT_COOKIE_UCP=fixture`, so the merchants' quotes behind `quoted` and `accepted` are recorded replays; the
+  intents themselves are real.
+
 ## Not done yet
 
-- **Operator aggregate** (`GET /operator/funnel`) is a Phase 4 reserve. It checks the operator key and returns
-  `measured: false` with the real `persons` count. Every per-instance counter is a placeholder `0` and both lists are
-  empty, because nothing is measured across instances yet.
 - **No email and no recovery of a lost passkey.** A person whose only passkey is gone cannot get back into their jar.
   Synced passkeys (iCloud Keychain, Google Password Manager) are the mitigation for now.
 - One passkey per person: there is no "add another device" flow yet.

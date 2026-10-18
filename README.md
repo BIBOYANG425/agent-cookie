@@ -135,7 +135,9 @@ A33 自己在随机空闲端口起一个测试模式网关和临时数据目录�
 
 **前面的反向代理**（网关只说 127.0.0.1 上的明文 HTTP）必须：终止 TLS，并把 `AGENT_COOKIE_GATEWAY_ORIGIN` 设成那个 `https://` origin（cookie 随之 `Secure` 且带 `__Host-` 前缀）；原样转发 `Origin`（CSRF 和 WebAuthn 都核对它）；把客户端地址追加到 `X-Forwarded-For`（限流取最后一跳）；`/u/*/personal/intents/*/events` 不缓冲（SSE；网关已发 `X-Accel-Buffering: no`，nginx 另设 `proxy_buffering off` 和较长的 `proxy_read_timeout`）；透传 `Authorization`、`Cookie`、`Content-Type`、`Idempotency-Key`、`Last-Event-ID`、`Accept`，请求体放到 1 MiB。
 
-**还没做：** 不发邮件，passkey 丢了也找不回（每人一枚 passkey，没有“添加设备”；同步 passkey 是目前唯一的缓解）。`GET /operator/funnel` 是第 4 阶段的预留：只核对 operator key，`persons` 是真实人数，`measured: false`，其余计数是占位的 0，不是测量值。个人 agent（`personal`）还不能注册进托管 jar，因为那要 owner key；商家能在网关注册，但还没有路由用到商家 key。
+**还没做：** 不发邮件，passkey 丢了也找不回（每人一枚 passkey，没有“添加设备”；同步 passkey 是目前唯一的缓解）。个人 agent（`personal`）还不能注册进托管 jar，因为那要 owner key；商家能在网关注册，但还没有路由用到商家 key。
+
+**运营方漏斗（Phase 4）。** 运营方用 operator key 读 `GET /operator/funnel`，得到跨人汇总的计数（意图、报价、接受、questionsSkipped，按助理分组）：从每个实例的 owner 漏斗实测（运行中的实例实时读，已停的用停机时存下的快照，`?refresh=1` 按需启动），`coverage` 标明多少人来自实时、快照或缺失，缺失的人不计为 0；从不返回单人行或任何字段值。
 
 ### 环境变量与端口
 

@@ -236,6 +236,67 @@ describe('context, remember, stats', () => {
   });
 });
 
+describe('history', () => {
+  const entry = { id: 'i_1', agentId: 'ag_assistant', kind: 'shoes', public: { budget: '150' }, createdAt: later, expiresAt: '2026-10-18T10:00:00.000Z',
+    accepted: { quoteId: 'q_1', title: 'Sample trail shoe', seller: 'Sample Store', price: 11995, status: 'ordered', agentId: 'ag_store' } };
+  const bare = { id: 'i_2', agentId: 'ag_photon', public: {}, createdAt: later, expiresAt: later };
+
+  it('reads the history with and without a limit, labelled Sample by configuration', async () => {
+    const fetcher = replies([{ intents: [entry, bare] }], [{ intents: [] }]);
+    const client = new AssistantClient({ ...config, sample: true, fetch: fetcher });
+    expect(await client.history()).toEqual({ intents: [entry, bare], sample: true });
+    expect(await client.history({ limit: 200 })).toEqual({ intents: [], sample: true });
+    expect(urls(fetcher)).toEqual(['http://127.0.0.1:4310/assistant/history', 'http://127.0.0.1:4310/assistant/history?limit=200']);
+    expect(fetcher.mock.calls[0][1]?.method).toBe('GET');
+  });
+
+  it.each([0, 201, 1.5, -1, Number.NaN, '50'])('refuses limit %s before any request', async limit => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(new AssistantClient({ ...config, fetch: fetcher }).history({ limit: limit as never }))
+      .rejects.toThrow('limit must be an integer between 1 and 200.');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('keeps contract keys only: never the user\'s words, whatever a workspace sent', async () => {
+    const leaky = { ...entry, text: 'secret words: trail shoes for my bad knee', query: 'secret query', userId: 'u_1',
+      accepted: { ...entry.accepted, cardValue: '4111', currency: 'USD' } };
+    const result = await new AssistantClient({ ...config, fetch: replies([{ intents: [leaky], sample: true, total: 9 }]) }).history();
+    expect(result).toEqual({ intents: [entry], sample: true });
+    expect(JSON.stringify(result)).not.toMatch(/secret|u_1|4111/);
+  });
+
+  it.each([
+    {},
+    { intents: 'none' },
+    { intents: Array.from({ length: 201 }, () => bare) },
+    { intents: [{ ...bare, id: '' }] },
+    { intents: [{ ...bare, agentId: 7 }] },
+    { intents: [{ ...bare, createdAt: 'yesterday' }] },
+    { intents: [{ ...bare, expiresAt: undefined }] },
+    { intents: [{ ...bare, kind: 3 }] },
+    { intents: [{ ...bare, public: { budget: 150 } }] },
+    { intents: [{ ...bare, public: ['x'] }] },
+    { intents: [{ ...entry, accepted: { ...entry.accepted, price: -1 } }] },
+    { intents: [{ ...entry, accepted: { ...entry.accepted, price: 1.5 } }] },
+    { intents: [{ ...entry, accepted: { ...entry.accepted, quoteId: undefined } }] },
+    { intents: [{ ...entry, accepted: { ...entry.accepted, status: undefined } }] },
+    { intents: [{ ...entry, accepted: { ...entry.accepted, seller: 5 } }] },
+    { intents: [{ ...entry, accepted: 'yes' }] },
+    { intents: [bare, null] },
+  ])('rejects a malformed history %#', async payload => {
+    await expect(new AssistantClient({ ...config, fetch: replies([JSON.parse(JSON.stringify(payload))]) }).history())
+      .rejects.toThrow('Invalid assistant history response.');
+  });
+
+  it.each([['SCOPE_DENIED', 403], ['GRANT_REVOKED', 403], ['GRANT_EXPIRED', 403]] as const)(
+    'maps %s (history off in the policy, or no live grant) to WorkspaceError', async (code, status) => {
+      const error = await new AssistantClient({ ...config, fetch: replies(denial(code, status)) }).history({ limit: 10 }).catch(e => e);
+      expect(error).toBeInstanceOf(WorkspaceError);
+      expect(error).toMatchObject({ code, status });
+      expect(JSON.stringify(error) + String(error)).not.toMatch(/private detail|sample-assistant-key/);
+    });
+});
+
 describe('acting for the person', () => {
   it('shares the intent, quote, accept and observe implementation with WorkspaceClient', () => {
     for (const method of ['createIntent', 'getQuotes', 'streamQuotes', 'find', 'accept', 'observe', 'getMe'] as const) {

@@ -387,6 +387,16 @@ C 线合入时的原始交接记录（保留全部原文）：
 
 | BC-i18n-CI | B/C → D（2026-10-18）：在最新 main `b1e049a` 独立 worktree 第 12 次复现 auth unlock token 的 bad-MAC 断言偶发失败（test/auth.test.ts:180）；固定替换 base64url 末字符为 x 可能不改变解码字节，请 D 线改成确定翻转 MAC 字节的测试；本 PR 不改 D 线代码。 |
 
+2026-10-18（续六），Phase 4（分支 `claude/phase-4-history-operator`）：历史记录策略类别与运营方漏斗。只追加。
+
+| ID | 发起 → 接收 | 请求与依据 | 状态 |
+| --- | --- | --- | --- |
+| A63 | A → 全部 | 契约新增（commit `1cbacb8`，增量）：`PolicyDocument.history?: Partial<Record<Category, boolean>>`（可读此人的意图与购买记录）与底线（shoe/retail 必须为 false 或缺省，personal 若出现必须为 true，assistant 由 owner 决定）；`policyHistory(doc, category)`；`DEFAULT_POLICY.history = { personal: true, assistant: false }`，默认 policyId 由 `3526a909e404` 变为 `1fcaae3c5185`（不含 history 的已安装文档 id 不变）；`POLICY_TABLE` 带 history。OpenAPI 已重新生成。 | 已交付 |
+| A64 | A → B/C | 契约新增端点 `GET /assistant/history?limit=`（默认 50，上限 200）→ `AssistantHistoryResponse { intents: IntentHistoryEntry[] }`（不含 text/query）；仅当安装的策略 `history.assistant` 为 true 时放行，否则 403 SCOPE_DENIED；每次放行写回执（purpose `history`，`fields: []`，每 session 每小时一条），不改 `questionsSkipped`。`IntentHistoryEntry.accepted.agentId` 新增。SDK `AssistantClient.history`（`2c1dc53`）、控制台回执标签「历史记录」（`110fb54`）已接。 | 已交付 |
+| A65 | A → C | POLICY.yaml 编解码支持 `true`/`false`，种子已重生成（`110fb54`），rules 与 memory-repo 测试里的 policyId 已更新。 | 已交付 |
+| A66 | A → 人（记录） | 网关 `GET /operator/funnel` 改为实测（`163e6d7`）：契约 `OperatorFunnel.coverage { live, snapshot, missing }` 新增；`byMerchant` 暂为空（owner 漏斗没有按商家的拆分，见 `apps/gateway/README.md`）。若要按商家汇总，需要在工作台契约里给 `FunnelRow` 增加按商家的计数，待人决定。托管实例用 fixture 回放报价，运营方的报价/接受计数在接入真实商家前属 Sample；`OperatorFunnel` 没有 sample 标记，是否加字段待人决定。 | 待人 |
+| A67 | A → 人 | `docs/plan.md`：§5 字段策略加「历史记录」一列（personal 可读、商家永不、assistant 默认关由 owner 开）与端点 `GET /assistant/history`；§2 若需要可加对应验收行。 | 待人 |
+
 2026-10-18（续），Phase 5（分支 `claude/phase-5-doors`，PR #34）。只追加。
 
 | ID | 发起 → 接收 | 请求与依据 | 状态 |
@@ -396,3 +406,4 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A72 | B → B（记录） | `packages/mcp` 在运行时无法 import `@agent-cookie/contract`（其入口是 TS 源码），所以 `MCP_HTTP_PORT = 4311` 在 `packages/mcp/src/config.ts` 里复制了一份，测试断言两者相等。可选：SDK 再导出 `MCP_HTTP_PORT`，MCP 改从 SDK 取。 | 待评估 |
 | A73 | A → B | Phase 5 的第三扇门未做：Photon 把手机号映射到人与钥匙（现在仍是单一测试 sender）。需要先决定一个号码对应哪个 jar（本机工作台或网关下的 `/u/<userId>`）。 | 待做 |
 | A74 | A → 人 | Python 包 `agent-cookie`（`packages/sdk-python`，Python ≥ 3.11）未发布到 PyPI；发布由人执行（需要 PyPI 账号与 token，不进仓库）。`pnpm test` 会跑它的 pytest：有 python3 时自动建 `.venv` 并从 PyPI 装依赖，没有 python3 时打印 skipped 并退出 0。 | 待人 |
+| A75 | B → B | Phase 4 合入后，`GET /assistant/history` 已在 `openapi.json` 与生成的 Python 客户端里（`agent_cookie_client.api.assistant.get_assistant_history`），但 Python `AssistantClient.history` 与 MCP 助理工具 `history` 尚未包装：两者都要像 TS `AssistantClient.history` 那样丢掉 `text`/`query`，按 `history.assistant` 策略 403 如实转告，所以留作下一单元，不进 Phase 5。 | 待做 |

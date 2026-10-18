@@ -10,7 +10,7 @@ import type { Category, Field } from "./types.js";
 export type ReadMode = "auto" | "purpose" | "deny";
 
 /** The default document's three sections, for readers that still want the table shape (lane C's seed generator). */
-export const POLICY_TABLE = { auto: DEFAULT_POLICY.auto, purpose: DEFAULT_POLICY.purpose, write: DEFAULT_POLICY.write } as const;
+export const POLICY_TABLE = { auto: DEFAULT_POLICY.auto, purpose: DEFAULT_POLICY.purpose, write: DEFAULT_POLICY.write, history: DEFAULT_POLICY.history } as const;
 
 export function readMode(category: Category, field: Field): ReadMode {
   return policyReadMode(DEFAULT_POLICY, category, field);

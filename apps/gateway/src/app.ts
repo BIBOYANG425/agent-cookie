@@ -28,6 +28,7 @@ import {
   csrfToken, decryptSecret, deriveKeys, encryptSecret, mintKey, newId, newSessionId, safeEqual, sha256Hex, signSession, verifySession,
 } from "./crypto.js";
 import { GatewayStore, type AgentRow, type LinkRow } from "./db.js";
+import { aggregateFunnel, FUNNEL_READ_LIMIT, parseFunnelReport, type FunnelCounts, type FunnelSource } from "./funnel.js";
 import { InstanceError, InstanceManager, USER_ID_RE, type Lease } from "./instances.js";
 import { consentPage, mePage, notFoundPage, signInPage } from "./pages.js";
 import { FORWARD_REQUEST_HEADERS, FORWARD_RESPONSE_HEADERS, refusedInstancePath, releasing } from "./proxy.js";
@@ -43,6 +44,10 @@ const SWEEP_MS = 60_000;
 const JAR_READABLE_MS = LINK_TTL_MS;
 /** Categories a company registers at the gateway: an assistant, or a store's agent. A personal agent lives in a jar. */
 const GATEWAY_CATEGORIES: readonly Category[] = ["assistant", "shoe", "retail"];
+/** One live read of an instance's owner funnel may take this long. */
+const FUNNEL_READ_TIMEOUT_MS = 10_000;
+/** Live reads of the operator funnel run this many persons at a time (refresh=1 may start each instance). */
+const FUNNEL_READ_CONCURRENCY = 4;
 
 export interface RateLimit {
   max: number;
@@ -237,8 +242,35 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
       store.setOwnerKeyHash(userId, ownerKeyHash);
     },
     onStop: (userId) => store.setPort(userId, null),
+    // The operator funnel's snapshot of a stopping instance (idle, requested, shutdown; never a delete).
+    beforeStop: async (userId, fetch, signal) => {
+      const result = await readFunnel(fetch, signal);
+      if (typeof result === "string") log(`operator funnel: snapshot of ${userId} before stop failed (${result})`);
+      else store.putFunnelSnapshot(userId, now(), result);
+    },
     log,
   });
+
+  /** The owner funnel of one running instance as per-row counts, or a short reason it failed (never a body). */
+  async function readFunnel(fetch: Lease["fetch"], signal: AbortSignal): Promise<FunnelCounts[] | string> {
+    let res: Response;
+    try {
+      res = await fetch(`/owner/funnel?limit=${FUNNEL_READ_LIMIT}`, { owner: true, signal });
+    } catch (error) {
+      return signal.aborted ? "timed out" : error instanceof InstanceError ? "instance unavailable" : "instance unreachable";
+    }
+    if (res.status !== 200) {
+      await res.body?.cancel().catch(() => undefined);
+      return `status ${res.status}`;
+    }
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      return signal.aborted ? "timed out" : "malformed report";
+    }
+    return parseFunnelReport(body) ?? "malformed report";
+  }
   const challenges = new Map<string, Challenge>();
   const signInLimiter = new RateLimiter(deps.signInLimit ?? { max: 30, windowMs: 60_000 }, now);
   const registerLimiter = new RateLimiter(deps.registerLimit ?? { max: 30, windowMs: 3_600_000 }, now);
@@ -798,22 +830,57 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
   };
   app.on(["GET", "POST", "PUT"], "/u/:userId/*", proxy);
 
-  // ---- operator (Phase 4 reserve): counts across instances. Not measured yet: `measured: false`, the real persons
-  // count, and placeholder zeros for every per-instance counter until Phase 4 computes them.
-  app.get("/operator/funnel", (c) => {
+  // ---- operator (Phase 4): the funnel across persons. A running instance (or every person with refresh=1, started on
+  // demand) is read live and its counts stored as the person's snapshot; a stopped one counts from its snapshot, or not
+  // at all (coverage.missing). Sums and per-assistant groups only, never a person's row, never a field value.
+  const livePersonFunnel = async (userId: string): Promise<FunnelCounts[] | undefined> => {
+    let lease: Lease;
+    try {
+      lease = await instances.acquire(userId);
+    } catch {
+      log(`operator funnel: live read of ${userId} failed (instance unavailable)`);
+      return undefined;
+    }
+    try {
+      const result = await readFunnel(lease.fetch, AbortSignal.timeout(FUNNEL_READ_TIMEOUT_MS));
+      if (typeof result === "string") {
+        log(`operator funnel: live read of ${userId} failed (${result})`);
+        return undefined;
+      }
+      store.putFunnelSnapshot(userId, now(), result);
+      return result;
+    } finally {
+      lease.release();
+    }
+  };
+
+  app.get("/operator/funnel", async (c) => {
     const key = bearer(c);
     if (!config.operatorKey || !key || !safeEqual(key, config.operatorKey)) fail("AUTH_REQUIRED");
-    return c.json<OperatorFunnel>({
-      generatedAt: iso(now()),
-      measured: false,
-      persons: store.countPersons(),
-      intents: 0,
-      quoted: 0,
-      accepted: 0,
-      questionsSkipped: 0,
-      byAssistant: [],
-      byMerchant: [],
-    });
+    const refreshParam = c.req.query("refresh");
+    if (refreshParam !== undefined && refreshParam !== "1") fail("MISSING_FIELD", "refresh must be 1 when given");
+    const refresh = refreshParam === "1";
+    const ids = store.personIds();
+    const sources: Array<{ userId: string } & FunnelSource> = new Array(ids.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < ids.length) {
+        const i = next++;
+        const userId = ids[i]!;
+        let source: FunnelSource | undefined;
+        if (refresh || instances.isRunning(userId)) {
+          const rows = await livePersonFunnel(userId);
+          if (rows) source = { source: "live", rows };
+        }
+        if (!source) {
+          const snap = store.funnelSnapshot(userId);
+          source = snap ? { source: "snapshot", rows: snap.rows } : { source: "missing" };
+        }
+        sources[i] = { userId, ...source };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(FUNNEL_READ_CONCURRENCY, ids.length) }, worker));
+    return c.json<OperatorFunnel>(aggregateFunnel(sources, store.assistantMapping(), iso(now())));
   });
 
   // ---- test only

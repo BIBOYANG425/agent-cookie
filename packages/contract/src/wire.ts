@@ -196,6 +196,27 @@ export interface FunnelQuery {
   limit?: number;
 }
 
+/** GET /assistant/history. */
+export interface AssistantHistoryQuery {
+  /**
+   * @asType integer
+   * @minimum 1
+   * @maximum 200
+   * @default 50
+   */
+  limit?: number;
+}
+
+/**
+ * Response of GET /assistant/history, newest first. Entries are the intent history as GET /personal/intents serves it
+ * MINUS the user's own words: `text` and `query` are never sent to an assistant. Each entry carries id, agentId (who
+ * created it), kind, public, createdAt, expiresAt and accepted (incl. the merchant's agentId and status). No card
+ * field values.
+ */
+export interface AssistantHistoryResponse {
+  intents: IntentHistoryEntry[];
+}
+
 /** GET /.well-known/agent-cookie-jwks.json (lane D). */
 export interface JwksQuery {
   /** An existing session; without one (or with an unknown one) the key set is empty. */

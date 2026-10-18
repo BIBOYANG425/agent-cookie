@@ -22,8 +22,8 @@ export * from './assistant.js';
 export * from './merchant.js';
 export * from './prompt.js';
 export { ASSISTANT_GRANT_TTL_MS, FIELDS, LINK_TTL_MS } from '@agent-cookie/contract';
-export type { AcceptResult, ActivityEvent, AssistantContext, AssistantStats, Basis, Card, Category, ErrorCode, Field, FunnelReport, FunnelRow,
-  FunnelStage, Grant, Handshake, Contribution, IntentEvent, JarAccess, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
+export type { AcceptResult, ActivityEvent, AssistantContext, AssistantHistoryQuery, AssistantHistoryResponse, AssistantStats, Basis, Card, Category, ErrorCode, Field, FunnelReport, FunnelRow,
+  FunnelStage, Grant, Handshake, Contribution, IntentEvent, IntentHistoryEntry, JarAccess, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
   Receipt, Registration, Role, SearchStats, ShadowReport } from '@agent-cookie/contract';
 
 // GET /personal/grants adds these display fields to the contract Grant.
@@ -288,12 +288,16 @@ function validPolicyDocument(v: unknown): v is PolicyDocument {
   const byCategory = (section: unknown, ok: (x: unknown) => boolean) => isObject(section)
     && Object.keys(section).length === CATEGORIES.length && CATEGORIES.every(c => Object.hasOwn(section, c) && ok(section[c]));
   const ranking = isObject(v) ? v.ranking : undefined;
-  return isObject(v) && v.v === 1 && Object.keys(v).every(k => ['v', 'auto', 'purpose', 'write', 'ranking'].includes(k))
+  const history = isObject(v) ? v.history : undefined;
+  return isObject(v) && v.v === 1 && Object.keys(v).every(k => ['v', 'auto', 'purpose', 'write', 'ranking', 'history'].includes(k))
     && byCategory(v.auto, fieldList) && byCategory(v.write, fieldList)
     && byCategory(v.purpose, p => isObject(p) && Object.entries(p).every(([f, list]) => isField(f)
       && strings(list) && list.length > 0 && list.every(validId)))
     && (ranking === undefined || (isObject(ranking) && Object.keys(ranking).length === 2
-      && ['winRate', 'failure'].every(k => count(ranking[k]) && (ranking[k] as number) <= 100)));
+      && ['winRate', 'failure'].every(k => count(ranking[k]) && (ranking[k] as number) <= 100)))
+    // Phase 4: optional history section, a partial category → boolean map (the workspace enforces its floor).
+    && (history === undefined || (isObject(history)
+      && Object.entries(history).every(([c, on]) => (CATEGORIES as readonly string[]).includes(c) && typeof on === 'boolean')));
 }
 function policyView(payload: unknown): PolicyResult {
   if (!isObject(payload) || !validPolicyDocument(payload.policy) || !validId(payload.policyId)

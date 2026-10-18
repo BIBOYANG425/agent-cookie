@@ -1118,6 +1118,84 @@
         "x-agent-cookie-caller": "assistant"
       }
     },
+    "/assistant/history": {
+      "get": {
+        "operationId": "getAssistantHistory",
+        "tags": [
+          "assistant"
+        ],
+        "description": "?limit= (default 50, max 200) → AssistantHistoryResponse { intents }: the person's intent and purchase history, newest first, each with its outcome (accepted quote's agentId and status) and its public summary; never the user's words (text, query) and never a card field value. Allowed only while the installed policy's history.assistant is true, else 403 SCOPE_DENIED; needs the live assist grant (SCOPE_DENIED / GRANT_REVOKED / GRANT_EXPIRED as for context). Every allowed read writes a receipt (purpose history, fields []), at most one per session per hour; questionsSkipped is unchanged by it\n\n**Key role:** `assistant`.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: AssistantHistoryResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error: AUTH_REQUIRED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "AUTH_REQUIRED"
+            ]
+          },
+          "403": {
+            "description": "Error: SCOPE_DENIED, GRANT_EXPIRED, GRANT_REVOKED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "x-agent-cookie-error-codes": [
+              "SCOPE_DENIED",
+              "GRANT_EXPIRED",
+              "GRANT_REVOKED"
+            ]
+          },
+          "default": {
+            "description": "Any other failure, including 500 (code UPSTREAM_ERROR, message \"internal error\"). Every error is an ErrorBody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "x-agent-cookie-caller": "assistant"
+      }
+    },
     "/assistant/link": {
       "post": {
         "operationId": "postAssistantLink",
@@ -4573,6 +4651,21 @@
         ],
         "description": "The evidence of an assistant's contribution: both fields required. Named (A59) so the JSON Schema keeps them required; the same shape as Required<Pick<ContributionEvidence, \"conversationId\" | \"snippet\">>."
       },
+      "AssistantHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "intents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntentHistoryEntry"
+            }
+          }
+        },
+        "required": [
+          "intents"
+        ],
+        "description": "Response of GET /assistant/history, newest first. Entries are the intent history as GET /personal/intents serves it MINUS the user's own words: `text` and `query` are never sent to an assistant. Each entry carries id, agentId (who created it), kind, public, createdAt, expiresAt and accepted (incl. the merchant's agentId and status). No card field values."
+      },
       "AssistantStats": {
         "type": "object",
         "properties": {
@@ -5667,6 +5760,10 @@
               },
               "status": {
                 "type": "string"
+              },
+              "agentId": {
+                "type": "string",
+                "description": "The merchant (or UCP store proxy) whose quote was accepted."
               }
             },
             "required": [
@@ -6865,6 +6962,24 @@
           "ranking": {
             "$ref": "#/components/schemas/RankingWeights",
             "description": "Phase 3, optional: outcome-aware seller ranking weights. Absent = catalog order after size and preferences."
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "personal": {
+                "type": "boolean"
+              },
+              "shoe": {
+                "type": "boolean"
+              },
+              "retail": {
+                "type": "boolean"
+              },
+              "assistant": {
+                "type": "boolean"
+              }
+            },
+            "description": "Phase 4, optional: may read the person's intent and purchase history (GET /assistant/history for an assistant). Floor: personal always true, shoe and retail never; assistant is the owner's choice. Absent = personal only."
           }
         },
         "required": [

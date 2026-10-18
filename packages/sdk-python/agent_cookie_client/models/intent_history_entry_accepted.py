@@ -21,6 +21,7 @@ class IntentHistoryEntryAccepted:
         status (str):
         title (str | Unset):
         seller (str | Unset):
+        agent_id (str | Unset): The merchant (or UCP store proxy) whose quote was accepted.
     """
 
     quote_id: str
@@ -28,6 +29,7 @@ class IntentHistoryEntryAccepted:
     status: str
     title: str | Unset = UNSET
     seller: str | Unset = UNSET
+    agent_id: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,6 +42,8 @@ class IntentHistoryEntryAccepted:
         title = self.title
 
         seller = self.seller
+
+        agent_id = self.agent_id
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -54,6 +58,8 @@ class IntentHistoryEntryAccepted:
             field_dict["title"] = title
         if seller is not UNSET:
             field_dict["seller"] = seller
+        if agent_id is not UNSET:
+            field_dict["agentId"] = agent_id
 
         return field_dict
 
@@ -70,12 +76,15 @@ class IntentHistoryEntryAccepted:
 
         seller = d.pop("seller", UNSET)
 
+        agent_id = d.pop("agentId", UNSET)
+
         intent_history_entry_accepted = cls(
             quote_id=quote_id,
             price=price,
             status=status,
             title=title,
             seller=seller,
+            agent_id=agent_id,
         )
 
         intent_history_entry_accepted.additional_properties = d
