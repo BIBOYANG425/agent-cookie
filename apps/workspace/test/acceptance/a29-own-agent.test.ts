@@ -4,8 +4,7 @@
 // using ONLY @agent-cookie/sdk (the built dist), reads the card back with the two preferences it wrote; the owner's list
 // shows the key without the key; after revocation the agent's next SDK call rejects 401 AUTH_REQUIRED, and what it
 // wrote stays on the owner's card.
-// The SDK's WorkspaceClient has no method for POST /personal/contributions (only revoke), so the two writes are plain
-// HTTP with the minted key; every read the agent does goes through the SDK.
+// The owner's side (mint, list, revoke) is plain HTTP with the owner key; everything the agent does is the SDK.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,10 +48,9 @@ describe("A29 · the owner mints a key for their own agent, the agent knows them
     const agent = new WorkspaceClient({ baseUrl: ws.url, key });
     expect(await agent.getMe()).toEqual({ agentId: "my-laptop-agent", category: "personal", role: "personal" });
 
-    // The agent writes two things the person said (no SDK method for this route: plain HTTP with its key).
-    const mine = api(ws.url, key);
-    expect((await mine.post("/personal/contributions", { field: "pref.brand", value: "Hoka" })).status).toBe(201);
-    expect((await mine.post("/personal/contributions", { field: "shoe_size", value: "42" })).status).toBe(201);
+    // The agent writes two things the person said, with the SDK (stored as stated: the person's own agent)…
+    expect(await agent.remember({ field: "pref.brand", value: "Hoka" })).toMatchObject({ field: "pref.brand", basis: "stated" });
+    expect(await agent.remember({ field: "shoe_size", value: "42" })).toMatchObject({ field: "shoe_size", basis: "stated" });
 
     // …and reads them back through the SDK.
     const card = await agent.getMyCard() as Json;
