@@ -177,6 +177,35 @@ describe('server SDK bridge', () => {
     expect(http).toHaveBeenCalledTimes(4);
   });
 
+  it('reads /owner/experiments over HTTP with the server key at its exact path only, refusing any query', async () => {
+    const upstream: string[] = [];
+    const report = { experiment: 'ranking', arms: { control: { n: 0, accepted: 0, rate: 0, wilson95: [0, 1] },
+      treatment: { n: 0, accepted: 0, rate: 0, wilson95: [0, 1] } }, sample: false, generatedAt: '2026-10-17T20:00:00.000Z' };
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      upstream.push(`${init?.method} ${String(input)}`);
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${key}`);
+      expect(init?.body).toBeUndefined();
+      expect(init?.redirect).toBe('manual');
+      return json(report);
+    });
+    const send = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => owner })), fetcher: http, sample: true });
+    const ok = await send('/owner/experiments');
+    expect(ok.status).toBe(200);
+    expect(JSON.parse(ok.text)).toEqual({ ...report, sample: true });
+    expect(ok.text).not.toContain(key);
+    for (const path of ['/owner/experiments?', '/owner/experiments?x=1', '/owner/experiments?limit=50', '/owner/experiments?since=2026-10-17',
+      '/owner/experiments/', '/owner/experiments/ranking', '/owner/experiments%3Fx=1', '/owner/Experiments']) {
+      expect((await send(path)).status).toBe(404);
+    }
+    for (const method of ['POST', 'PUT', 'DELETE']) expect((await send('/owner/experiments', method, {}, {})).status).toBe(404);
+    expect(upstream).toEqual(['GET http://127.0.0.1:4310/owner/experiments']);
+    const missingKey = await start({ key: () => undefined, sdk: Promise.resolve(undefined), fetcher: http });
+    expect(await missingKey('/owner/experiments')).toEqual({ status: 503, text: '{"error":{"code":"CONSOLE_KEY_MISSING"}}' });
+    const personal = await start({ key: () => key, sdk: Promise.resolve(() => ({ getMe: async () => ({ ...owner, role: 'personal' }) })), fetcher: http });
+    expect((await personal('/owner/experiments')).status).toBe(403);
+    expect(http).toHaveBeenCalledTimes(1);
+  });
+
   it('forwards policy installs and shadow runs as JSON, passing 422 floor violations but no other server message', async () => {
     const document = { v: 1, auto: { shoe: ['lang'] } };
     const violations = 'auto.personal missing; auto.retail missing';

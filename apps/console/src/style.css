@@ -160,6 +160,12 @@ dd { margin: 0; min-width: 0; }
 .funnel-search td { padding-top: 0; }
 .funnel-search-detail summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #254fd8; }
 .funnel-search-detail p { margin: 0 0 8px; color: #526380; }
+.receipt-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.receipt-fields li { min-width: 0; overflow-wrap: anywhere; }
+.experiment-intro { margin: 16px 28px; font-size: 14px; }
+.experiment-verdict { margin: 16px 28px; padding: 12px 16px; border-radius: 8px; border: 1px solid #dce2ec; background: #f7f9fc; font-size: 14px; }
+.experiment-verdict.insufficient { background: #fdf5e4; border-color: #e8d4a6; color: #5f4510; }
+.experiment-arm-note { display: block; font-size: 12px; font-weight: 400; color: #667189; }
 .page-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #667189; font-size: 12px; margin-top: 28px; }
 @media (max-width: 720px) {
   .masthead { padding: 20px; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
@@ -195,7 +201,7 @@ dd { margin: 0; min-width: 0; }
   .stack-table .num { text-align: left; }
   .policy-table tbody th { width: auto; }
   .funnel-table tbody tr:first-child { border-bottom: 0; padding-bottom: 0; }
-  .policy-meta, .funnel-totals { margin: 16px 20px; }
+  .policy-meta, .funnel-totals, .experiment-intro, .experiment-verdict { margin: 16px 20px; }
   .policy-candidate { padding: 20px; }
 }
 @media (max-width: 380px) {

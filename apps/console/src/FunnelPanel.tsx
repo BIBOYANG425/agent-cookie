@@ -1,8 +1,9 @@
 import type { Section } from './model';
+import { armLabels } from './experiments';
 import { conversionText, FUNNEL_LIMIT, funnelTotals, outcomeLabels, searchBuckets, sourceLabels, type FunnelReport, type FunnelRow } from './funnel';
 
 const time = (at: string) => new Date(at).toLocaleString('zh-CN', { hour12: false });
-const COLUMNS = ['时间', '介绍', '报价', '首个报价(ms)', '接受', '结果', '字段(读/授)', '回执'] as const;
+const COLUMNS = ['时间', '分组', '介绍', '报价', '首个报价(ms)', '接受', '结果', '字段(读/授)', '回执'] as const;
 
 function outcome(row: FunnelRow): string {
   if (row.outcome) return `${outcomeLabels[row.outcome]}（${row.outcome}）`;
@@ -42,6 +43,7 @@ export function FunnelPanel({ state, sample }: { state?: Section<FunnelReport>; 
             <tr>
               <th scope="row" data-label="时间"><span><time dateTime={row.createdAt}>{time(row.createdAt)}</time>
                 <span className="funnel-intent"><code>{row.intentId}</code> · {sourceLabels[row.source]}</span></span></th>
+              <td data-label="分组">{row.arm ? armLabels[row.arm] : '—'}</td>
               <td data-label="介绍" className="num">{row.introduced}</td>
               <td data-label="报价" className="num">{row.quoted}</td>
               <td data-label="首个报价(ms)" className="num">{row.firstQuoteMs === undefined ? '—' : Math.round(row.firstQuoteMs)}</td>
@@ -53,7 +55,8 @@ export function FunnelPanel({ state, sample }: { state?: Section<FunnelReport>; 
             <tr className="funnel-search"><td colSpan={COLUMNS.length}><SearchLine row={row} /></td></tr>
           </tbody>)}
         </table>
-        <p className="panel-note">{labelled ? 'Sample 数据，不代表真实商家或用户。' : '工作台只返回计数和 ID，不含任何字段值。'}
+        <p className="panel-note">分组是意图创建时分到的实验组（对照 / 处理，见实验面板）；— 表示创建时没有实验在运行，这个意图不属于任何一组。
+          {labelled ? 'Sample 数据，不代表真实商家或用户。' : '工作台只返回计数和 ID，不含任何字段值。'}
           报告生成于 <time dateTime={report.generatedAt}>{time(report.generatedAt)}</time>。</p>
       </>}
   </section>;

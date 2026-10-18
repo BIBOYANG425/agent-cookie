@@ -2,8 +2,10 @@ import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from '
 import { createRoot } from 'react-dom/client';
 import agents from '../../../fixtures/agents.json';
 import learningSeed from '../../../fixtures/learning/console.json';
+import { ActivityPanel } from './ActivityPanel';
 import { createLiveAdapter, createSampleAdapter } from './adapters';
 import { ConsoleController } from './controller';
+import { ExperimentPanel } from './ExperimentPanel';
 import { FieldName, fieldName } from './fields';
 import { FunnelPanel } from './FunnelPanel';
 import { GrantsPanel } from './GrantsPanel';
@@ -11,6 +13,7 @@ import type { ConsoleAdapter } from './model';
 import type { LearningSeed } from './learning';
 import { LearningPanel, LearningToggle } from './LearningPanel';
 import { PolicyPanel } from './PolicyPanel';
+import { ReceiptsPanel } from './ReceiptsPanel';
 import './style.css';
 
 const basis: Record<string, string> = { stated: '用户陈述', observed: '观察记录', inferred: '推测' };
@@ -57,7 +60,7 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         ? '这是本页内存中的演示账户、身份卡与授权。所有操作只改变 Sample，不会请求真实服务。'
         : `${data?.sample ? '这是工作台上的 Sample 数据。' : ''}正在连接本机工作台。撤销将立即提交；重置仅在工作台开启演示模式时可用。`}</p></aside>
       <Connection adapter={adapter} change={change} />
-      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#activity">活动</a></nav>
+      <nav className="section-nav" aria-label="控制台导航"><a href="#card">身份卡</a><a href="#learned">学到的</a><a href="#grants">授权</a><a href="#receipts">回执</a><a href="#policy">策略</a><a href="#funnel">漏斗</a><a href="#experiments">实验</a><a href="#activity">活动</a></nav>
       <div className="sync-line"><span>{data ? `最近更新 ${formatTime(data.receivedAt)} · 每 2 秒刷新` : state.loading ? '正在读取…' : '尚未读取工作台数据'}</span>
         <button type="button" className="text-button" disabled={!!state.pending} onClick={() => void controller.refresh()}>立即刷新</button></div>
       {state.pending && <p className="status-message" role="status">正在{state.pending}…</p>}
@@ -96,19 +99,16 @@ function Dashboard({ adapter, change }: { adapter: ConsoleAdapter; change: (next
         currentPolicyId={data?.policy?.availability === 'ready' ? data.policy.data.policyId : undefined}
         revoke={(id) => void controller.revokeGrant(id)} />
 
+      <ReceiptsPanel state={data?.receipts} sample={sample} />
+
       <PolicyPanel state={data?.policy} sample={sample} result={state.policyResult} disabled={blocked}
         shadow={(text) => void controller.shadowPolicy(text)} install={(text) => void controller.installPolicy(text)} />
 
       <FunnelPanel state={data?.funnel} sample={sample} />
 
-      <section id="activity" className="panel" aria-labelledby="activity-title">
-        <div className="sheet-heading"><h2 id="activity-title">活动</h2><span>最新在前 · 展开查看原因</span></div>
-        {!data || data.events.length === 0 ? <p className="empty">{!data ? '连接后显示活动。' : '还没有活动记录。发生读取或修改后，这里会显示结果和原因。'}</p>
-          : <ol className="activity-list">{data.events.map((event) => <li key={event.id}><details>
-            <summary><div><time dateTime={event.at}>{formatTime(event.at)}</time><h3>{event.event}</h3></div><span className="activity-result">{event.result}</span><span className="reason-toggle">查看原因</span></summary>
-            <div className="activity-detail"><dl><div><dt>执行者</dt><dd>{event.actor}</dd></div><div><dt>对象</dt><dd>{event.object || '无'}</dd></div><div><dt>原因</dt><dd>{event.reason || '没有额外原因说明。'}</dd></div></dl></div>
-          </details></li>)}</ol>}
-      </section>
+      <ExperimentPanel state={data?.experiments} sample={sample} />
+
+      <ActivityPanel data={data} />
       <footer className="page-footer"><span>{sample ? 'Sample 数据 · 不代表真实用户' : '本机工作台 · 钥匙由本机服务保管'}</span><span>身份信息由 agent 记录，工作台按规则合并。</span></footer>
     </main>
   </>;

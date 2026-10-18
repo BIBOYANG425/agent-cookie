@@ -29,6 +29,8 @@ export interface ConsoleSnapshot {
   learning?: import('./learning').LearningState;
   policy?: Section<import('./policy').PolicyView>;
   funnel?: Section<import('./funnel').FunnelReport>;
+  receipts?: Section<import('./receipts').ReceiptsView>;
+  experiments?: Section<import('./experiments').ExperimentReport>;
 }
 export interface ConsoleAdapter {
   mode: 'sample' | 'live';

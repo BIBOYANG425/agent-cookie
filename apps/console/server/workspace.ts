@@ -11,7 +11,8 @@ export type SdkClient = Partial<Record<ReadName, () => Promise<unknown>>
   & Record<RevokeName, (id: string) => Promise<unknown>>
   & { setLearning: (input: { enabled: boolean }) => Promise<unknown> }>;
 // TODO(sdk): no installed SDK method covers these yet; they use the contract HTTP endpoints directly (owner key).
-type DirectRoute = { name: 'getPolicy' } | { name: 'getFunnel'; query: string } | { name: 'installPolicy' } | { name: 'shadowPolicy' };
+type DirectRoute = { name: 'getPolicy' } | { name: 'getFunnel'; query: string } | { name: 'getExperiments' } | { name: 'installPolicy' }
+  | { name: 'shadowPolicy' };
 type SdkRoute = { name: ReadName } | { name: RevokeName; id: string } | { name: 'setLearning' } | DirectRoute;
 type ClientFactory = (options: { key: string; fetch: typeof fetch; timeoutMs: number; baseUrl: string; sample?: boolean }) => SdkClient;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -69,6 +70,8 @@ function route(method: string | undefined, path: string): SdkRoute | undefined {
       '/personal/learned': 'getLearned', '/personal/learning': 'getLearning' };
     if (names[path]) return { name: names[path] };
     if (path === '/personal/policy') return { name: 'getPolicy' };
+    // GET /owner/experiments takes no query at all: the exact path only, anything else is 404.
+    if (path === '/owner/experiments') return { name: 'getExperiments' };
     const query = funnelQuery(path);
     if (query !== undefined) return { name: 'getFunnel', query };
   }
@@ -186,6 +189,7 @@ export function createWorkspaceBridge(options: {
       if (selected.name === 'getMe') body = me;
       else if (selected.name === 'getPolicy') body = await direct('/personal/policy', 'GET');
       else if (selected.name === 'getFunnel') body = await direct(`/owner/funnel${selected.query}`, 'GET');
+      else if (selected.name === 'getExperiments') body = await direct('/owner/experiments', 'GET');
       else if (selected.name === 'installPolicy') body = await direct('/personal/policy', 'PUT', await readPolicyBody(request, false), true);
       else if (selected.name === 'shadowPolicy') body = await direct('/personal/policy/shadow', 'POST', await readPolicyBody(request, true), true);
       else if (selected.name === 'setLearning') {

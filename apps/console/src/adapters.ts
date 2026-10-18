@@ -4,6 +4,8 @@ import type { ActivityEvent, Card, ConsoleAdapter, Contribution, GrantView, Sect
 import { countEvidenceSources, normalizeLearning, normalizeLearningPaused, type LearnedEntry, type LearningSeed, type LearningState } from './learning';
 import { normalizePolicyView, normalizeShadowReport, parseViolations, PolicyViolationError, samplePolicyView } from './policy';
 import { FUNNEL_LIMIT, normalizeFunnelReport, sampleFunnelReport, type FunnelReport } from './funnel';
+import { normalizeExperimentReport, sampleExperimentReport, type ExperimentReport } from './experiments';
+import { normalizeReceipts, samplePaymentEvents, sampleReceipts, type ReceiptsView } from './receipts';
 
 // Scripted Sample states, not a replacement for rules.mergeCard. No network or keys.
 export function createSampleAdapter(now: () => number = Date.now,
@@ -19,6 +21,8 @@ export function createSampleAdapter(now: () => number = Date.now,
   let grants: GrantView[] = [];
   let events: ActivityEvent[] = [];
   let funnel: FunnelReport = sampleFunnelReport(now());
+  let receipts: ReceiptsView = sampleReceipts(now());
+  let experiments: ExperimentReport = sampleExperimentReport(now());
   let serial = 0;
   const addEvent = (event: string, object: string, reason: string) => events.push({
     id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), event,
@@ -37,7 +41,9 @@ export function createSampleAdapter(now: () => number = Date.now,
       policyId: 'sample-policy', stage: 'introduced',
     }));
     funnel = sampleFunnelReport(now());
-    events = [];
+    receipts = sampleReceipts(now());
+    experiments = sampleExperimentReport(now());
+    events = samplePaymentEvents(now(), () => `sample-event-${++serial}`);
     addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
   };
   seed();
@@ -66,7 +72,9 @@ export function createSampleAdapter(now: () => number = Date.now,
           return { ...grant, status, remainingMs: status === 'live' ? remainingMs : 0 } as GrantView;
         }), learning, events: [...events].reverse(), receivedAt: now(),
         policy: { availability: 'ready', data: samplePolicyView(), sample: true },
-        funnel: { availability: 'ready', data: funnel, sample: true } });
+        funnel: { availability: 'ready', data: funnel, sample: true },
+        receipts: { availability: 'ready', data: receipts, sample: true },
+        experiments: { availability: 'ready', data: experiments, sample: true } });
     },
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
@@ -193,15 +201,17 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async load(signal) {
       const me = await request('/me', 'GET', signal);
       if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
-      const [card, grantBody, activityBody, learned, policy, funnel] = await Promise.all([
+      const [card, grantBody, activityBody, learned, policy, funnel, receipts, experiments] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
         learning(signal), section('/personal/policy', normalizePolicyView, '策略', signal),
         section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, '漏斗', signal),
+        section('/personal/receipts', normalizeReceipts, '回执', signal),
+        section('/owner/experiments', normalizeExperimentReport, '实验', signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
       return { card, contributions: null, grants: grantBody.grants as GrantView[],
-        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, policy, funnel,
+        events: activityBody.events as ActivityEvent[], receivedAt: now(), learning: learned, policy, funnel, receipts, experiments,
         ...(object(card) && card.sample === true ? { sample: true } : {}) };
     },
     async revokeContribution(id, signal) {

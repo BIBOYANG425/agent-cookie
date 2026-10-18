@@ -1,5 +1,6 @@
 import type { FunnelReport, FunnelRow, FunnelStage, SearchStats } from '../../../packages/contract/src/analytics';
 import type { AcceptResult, DataSource } from '../../../packages/contract/src/types';
+import { isExperimentArm, type ExperimentArm } from './experiments';
 
 export type { FunnelReport, FunnelRow, SearchStats };
 
@@ -36,7 +37,8 @@ export function normalizeFunnelReport(body: unknown): FunnelReport {
       || typeof row.accepted !== 'boolean'
       || (row.firstQuoteMs !== undefined && !(typeof row.firstQuoteMs === 'number' && Number.isFinite(row.firstQuoteMs) && row.firstQuoteMs >= 0))
       || (row.outcome !== undefined && !Object.hasOwn(outcomeLabels, String(row.outcome)))
-      || (row.search !== undefined && !(object(row.search) && SEARCH_KEYS.every((key) => count((row.search as Record<string, unknown>)[key]))))) {
+      || (row.search !== undefined && !(object(row.search) && SEARCH_KEYS.every((key) => count((row.search as Record<string, unknown>)[key]))))
+      || (row.arm !== undefined && !isExperimentArm(row.arm))) {
       throw malformed();
     }
     const search = row.search as Record<string, number> | undefined;
@@ -45,7 +47,8 @@ export function normalizeFunnelReport(body: unknown): FunnelReport {
       ...(row.firstQuoteMs !== undefined ? { firstQuoteMs: row.firstQuoteMs as number } : {}),
       accepted: row.accepted, ...(row.outcome !== undefined ? { outcome: row.outcome as AcceptResult['status'] } : {}),
       fieldsGranted: row.fieldsGranted as number, fieldsRead: row.fieldsRead as number, purposeReleases: row.purposeReleases as number,
-      ...(search ? { search: Object.fromEntries(SEARCH_KEYS.map((key) => [key, search[key]])) as unknown as SearchStats } : {}) };
+      ...(search ? { search: Object.fromEntries(SEARCH_KEYS.map((key) => [key, search[key]])) as unknown as SearchStats } : {}),
+      ...(row.arm !== undefined ? { arm: row.arm as ExperimentArm } : {}) };
   });
   return { rows, sample: body.sample, generatedAt: body.generatedAt };
 }
@@ -66,19 +69,22 @@ export function conversionText(totals: FunnelTotals): string {
   return `${totals.accepted}/${totals.intents}（${Math.round((totals.accepted / totals.intents) * 100)}%）`;
 }
 
-/** Sample only: authored rows, labelled Sample; not measured from any merchant. Bucket counts add up to `offers`. */
+/**
+ * Sample only: authored rows, labelled Sample; not measured from any merchant. Bucket counts add up to `offers`. The arms
+ * match sampleExperimentReport (src/experiments.ts).
+ */
 export function sampleFunnelReport(now: number): FunnelReport {
   const minutesAgo = (minutes: number) => new Date(now - minutes * 60000).toISOString();
   return { sample: true, generatedAt: new Date(now).toISOString(), rows: [
     { intentId: 'sample-intent-3', createdAt: minutesAgo(5), source: 'sample', introduced: 3, quoted: 2, firstQuoteMs: 1840,
       accepted: true, outcome: 'ordered', fieldsGranted: 6, fieldsRead: 4, purposeReleases: 2,
       search: { offers: 12, droppedAvoid: 2, droppedCurrency: 1, droppedUnavailable: 1, droppedShipsTo: 2, droppedBudget: 1,
-        droppedInvalid: 0, eligible: 5, eligibleSellers: 4, picked: 3 } },
+        droppedInvalid: 0, eligible: 5, eligibleSellers: 4, picked: 3 }, arm: 'treatment' },
     { intentId: 'sample-intent-2', createdAt: minutesAgo(40), source: 'sample', introduced: 3, quoted: 1, firstQuoteMs: 2650,
       accepted: true, outcome: 'handoff', fieldsGranted: 6, fieldsRead: 3, purposeReleases: 1,
       search: { offers: 8, droppedAvoid: 0, droppedCurrency: 0, droppedUnavailable: 2, droppedShipsTo: 1, droppedBudget: 2,
-        droppedInvalid: 0, eligible: 3, eligibleSellers: 3, picked: 3 } },
+        droppedInvalid: 0, eligible: 3, eligibleSellers: 3, picked: 3 }, arm: 'control' },
     { intentId: 'sample-intent-1', createdAt: minutesAgo(120), source: 'sample', introduced: 2, quoted: 0, accepted: false,
-      fieldsGranted: 6, fieldsRead: 0, purposeReleases: 0 },
+      fieldsGranted: 6, fieldsRead: 0, purposeReleases: 0, arm: 'control' },
   ] };
 }
