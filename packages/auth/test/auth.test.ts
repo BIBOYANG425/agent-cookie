@@ -177,8 +177,11 @@ describe("unlock tokens", () => {
       () => verifyUnlockToken(secret, token, { now: () => now, seenNonces }),
       "AUTH_REQUIRED",
     );
+    const [payloadPart, macPart] = token.split(".");
+    const badMac = Buffer.from(macPart!, "base64url");
+    badMac[0] = badMac[0]! ^ 1;
     expectLaneError(
-      () => verifyUnlockToken(secret, `${token.slice(0, -1)}x`, {
+      () => verifyUnlockToken(secret, `${payloadPart}.${badMac.toString("base64url")}`, {
         now: () => now,
         seenNonces: new Set(),
       }),

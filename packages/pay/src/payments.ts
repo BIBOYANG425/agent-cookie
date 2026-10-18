@@ -70,6 +70,9 @@ export function createPayments({
   reverseAuthorization: ReversePayment;
   get: (id: string) => PaymentAuthorization | undefined;
 } {
+  if (provider.simulated) {
+    throw new LaneError("SCOPE_DENIED", "Visa Acceptance simulator: workspace provenance contract not wired");
+  }
   const authorizePayment: AuthorizePayment = async ({ sessionId, quoteId, amount, currency, billTo }) => {
     const context = await getContext({ sessionId, quoteId });
     if (!context) throw new LaneError("NOT_FOUND");

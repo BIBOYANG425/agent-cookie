@@ -1,0 +1,339 @@
+{
+  "provenance": "recorded-replay",
+  "source": "local-simulated-merchant",
+  "simulated": true,
+  "_note": "Sample/test-only. Captured over real loopback HTTP by checkout-http.test.ts; listener origin replaced with https://merchant.example. Not real UCP/Visa acceptance.",
+  "exchanges": [
+    {
+      "method": "GET",
+      "path": "/.well-known/ucp",
+      "status": 200,
+      "response": {
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          },
+          "services": {
+            "dev.ucp.shopping": [
+              {
+                "version": "2026-08-25",
+                "transport": "rest",
+                "endpoint": "https://merchant.example/ucp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/ucp/checkout-sessions/SampleCheckout",
+      "status": 200,
+      "response": {
+        "id": "SampleCheckout",
+        "status": "ready_for_complete",
+        "currency": "USD",
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          }
+        },
+        "line_items": [
+          {
+            "id": "SampleLine",
+            "item": {
+              "id": "SampleProduct"
+            },
+            "quantity": 1
+          }
+        ],
+        "buyer": {
+          "first_name": "Sample",
+          "email": "sample@example.com"
+        },
+        "fulfillment": {
+          "methods": [
+            {
+              "id": "SampleShipping",
+              "type": "shipping",
+              "line_item_ids": [
+                "SampleLine"
+              ]
+            }
+          ]
+        },
+        "totals": [
+          {
+            "type": "total",
+            "amount": 100
+          }
+        ],
+        "discounts": {
+          "codes": [
+            {
+              "code": "SampleDiscount"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/ucp/checkout-sessions/SampleCheckout",
+      "status": 200,
+      "response": {
+        "id": "SampleCheckout",
+        "status": "ready_for_complete",
+        "currency": "USD",
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          }
+        },
+        "line_items": [
+          {
+            "id": "SampleLine",
+            "item": {
+              "id": "SampleProduct"
+            },
+            "quantity": 1
+          }
+        ],
+        "buyer": {
+          "first_name": "Sample",
+          "email": "sample@example.com"
+        },
+        "fulfillment": {
+          "methods": [
+            {
+              "type": "shipping",
+              "id": "SampleShipping",
+              "line_item_ids": [
+                "SampleLine"
+              ],
+              "destinations": [
+                {
+                  "street_address": "Sample Street",
+                  "address_locality": "Sample City",
+                  "address_region": "CA",
+                  "postal_code": "00000",
+                  "address_country": "US"
+                }
+              ]
+            }
+          ]
+        },
+        "totals": [
+          {
+            "type": "total",
+            "amount": 100
+          }
+        ],
+        "discounts": {
+          "codes": [
+            {
+              "code": "SampleDiscount"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/ucp",
+      "status": 200,
+      "response": {
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          },
+          "services": {
+            "dev.ucp.shopping": [
+              {
+                "version": "2026-08-25",
+                "transport": "rest",
+                "endpoint": "https://merchant.example/ucp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/ucp/checkout-sessions/SampleCheckout",
+      "status": 200,
+      "response": {
+        "id": "SampleCheckout",
+        "status": "ready_for_complete",
+        "currency": "USD",
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          }
+        },
+        "line_items": [
+          {
+            "id": "SampleLine",
+            "item": {
+              "id": "SampleProduct"
+            },
+            "quantity": 1
+          }
+        ],
+        "buyer": {
+          "first_name": "Sample",
+          "email": "sample@example.com"
+        },
+        "fulfillment": {
+          "methods": [
+            {
+              "type": "shipping",
+              "id": "SampleShipping",
+              "line_item_ids": [
+                "SampleLine"
+              ],
+              "destinations": [
+                {
+                  "street_address": "Sample Street",
+                  "address_locality": "Sample City",
+                  "address_region": "CA",
+                  "postal_code": "00000",
+                  "address_country": "US"
+                }
+              ]
+            }
+          ]
+        },
+        "totals": [
+          {
+            "type": "total",
+            "amount": 100
+          }
+        ],
+        "discounts": {
+          "codes": [
+            {
+              "code": "SampleDiscount"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/ucp/checkout-sessions/SampleCheckout/complete",
+      "status": 200,
+      "response": {
+        "id": "SampleCheckout",
+        "status": "completed",
+        "currency": "USD",
+        "ucp": {
+          "version": "2026-08-25",
+          "payment_handlers": {
+            "example.authorization-reference": [
+              {
+                "id": "SampleHandler",
+                "version": "2026-08-25"
+              }
+            ]
+          }
+        },
+        "line_items": [
+          {
+            "id": "SampleLine",
+            "item": {
+              "id": "SampleProduct"
+            },
+            "quantity": 1
+          }
+        ],
+        "buyer": {
+          "first_name": "Sample",
+          "email": "sample@example.com"
+        },
+        "fulfillment": {
+          "methods": [
+            {
+              "type": "shipping",
+              "id": "SampleShipping",
+              "line_item_ids": [
+                "SampleLine"
+              ],
+              "destinations": [
+                {
+                  "street_address": "Sample Street",
+                  "address_locality": "Sample City",
+                  "address_region": "CA",
+                  "postal_code": "00000",
+                  "address_country": "US"
+                }
+              ]
+            }
+          ]
+        },
+        "totals": [
+          {
+            "type": "total",
+            "amount": 100
+          }
+        ],
+        "discounts": {
+          "codes": [
+            {
+              "code": "SampleDiscount"
+            }
+          ]
+        },
+        "order": {
+          "id": "SampleOrder"
+        },
+        "payment": {
+          "instruments": [
+            {
+              "id": "SampleAuthorization",
+              "handler_id": "SampleHandler",
+              "type": "SampleAuthorization",
+              "selected": true
+            }
+          ]
+        },
+        "messages": [
+          {
+            "content": "SampleSensitiveMerchantText"
+          }
+        ]
+      }
+    }
+  ]
+}
