@@ -1,0 +1,926 @@
+{
+  "at": "2026-10-18T02:14:58.560Z",
+  "scope": "B-only gate redesign; synthetic inputs, real models, isolated acceptance storage; no real phone replay",
+  "baseline": {
+    "sourceHead": "10a2c9b",
+    "syntheticCase": "garment-stated",
+    "calls": 1,
+    "status": 200,
+    "elapsedMs": 377,
+    "cost": 0.000023184,
+    "stable": 0.98,
+    "sensitive": 0.11,
+    "key": "pref.style",
+    "keyConfidence": 0.58,
+    "keyProbability": 0.63,
+    "decision": "sensitive"
+  },
+  "interim": {
+    "firstGateMatrix": {
+      "at": "2026-10-18T02:11:33.271Z",
+      "mode": "live-models-synthetic-inputs",
+      "accessBlocked": false,
+      "passed": 12,
+      "total": 12,
+      "executed": 12,
+      "cost": 0.00128426,
+      "scenarios": [
+        {
+          "id": "garment-stated",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.97,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 339,
+              "cost": 0.000036162
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 385,
+              "cost": 0.00026785
+            }
+          ],
+          "elapsedMs": 733
+        },
+        {
+          "id": "garment-incidental",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.95,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "observed"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 192,
+              "cost": 0.000036288
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 414,
+              "cost": 0.00027085
+            }
+          ],
+          "elapsedMs": 610
+        },
+        {
+          "id": "sleeve-design",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.98,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 281,
+              "cost": 0.000036078
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 309,
+              "cost": 0.0002611
+            }
+          ],
+          "elapsedMs": 593
+        },
+        {
+          "id": "loose-fit",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.98,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.fit"
+          },
+          "fields": [
+            {
+              "key": "pref.fit",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 201,
+              "cost": 0.000035994
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 307,
+              "cost": 0.00026795
+            }
+          ],
+          "elapsedMs": 510
+        },
+        {
+          "id": "unsupported-hobby",
+          "pass": true,
+          "reason": "unsupported_preference",
+          "gate": {
+            "outcome": "unsupported_preference",
+            "stableScore": 0.96,
+            "sensitiveScore": 0.02,
+            "keyConfidence": 1,
+            "keyProbability": 1
+          },
+          "fields": [],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 227,
+              "cost": 0.00003612
+            }
+          ],
+          "elapsedMs": 228
+        },
+        {
+          "id": "temporary-shopping",
+          "pass": true,
+          "reason": "not_stable",
+          "gate": {
+            "outcome": "not_stable",
+            "stableScore": 0.03,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 0.97,
+            "keyProbability": 0.97,
+            "selectedKey": "pref.style"
+          },
+          "fields": [],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 178,
+              "cost": 0.000035868
+            }
+          ],
+          "elapsedMs": 179
+        },
+        {
+          "id": "sensitive-0",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-1",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-2",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-3",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-4",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "other-group-speaker",
+          "pass": true,
+          "reason": "ineligible",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        }
+      ]
+    },
+    "firstSixScenarioRegression": {
+      "captureAcceptance": {
+        "passed": true,
+        "exitCode": 0
+      },
+      "mode": "isolated-real-A-C-with-live-Jev-and-extractor",
+      "liveModels": true,
+      "models": {
+        "classifier": "typesafe/jev-1.14",
+        "extractor": "openai/gpt-oss-120b"
+      },
+      "liveChannel": false,
+      "results": [
+        {
+          "name": "explicit_statement_reaches_card",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "basis": [
+              "stated"
+            ],
+            "elapsedMs": 1536,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 401,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.0000357,
+                "stable": 0.98,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 258,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.0002366,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 1,
+            "extractionCalls": 1
+          }
+        },
+        {
+          "name": "same_agent_two_conversations",
+          "passed": false,
+          "observed": {
+            "status": "absent",
+            "evidenceCount": 0,
+            "writerCount": 0,
+            "elapsedMs": 733,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 217,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000035868,
+                "stable": 0.77,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 225,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000035868,
+                "stable": 0.81,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              }
+            ],
+            "jevCalls": 2,
+            "extractionCalls": 0
+          }
+        },
+        {
+          "name": "same_agent_two_conversations_after_refresh",
+          "passed": false,
+          "observed": {
+            "status": "absent",
+            "evidenceCount": 0,
+            "writerCount": 0,
+            "elapsedMs": 705,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 204,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000035868,
+                "stable": 0.83,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 182,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000035868,
+                "stable": 0.79,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              }
+            ],
+            "jevCalls": 2,
+            "extractionCalls": 0
+          }
+        },
+        {
+          "name": "pause_resume_discards_late_result",
+          "passed": true,
+          "observed": {
+            "learnedCount": 0,
+            "paused": false,
+            "elapsedMs": 1501,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 202,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.0000357,
+                "stable": 0.98,
+                "sensitive": 0.02,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 997,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.0002366,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 1,
+            "extractionCalls": 1
+          }
+        },
+        {
+          "name": "queued_original_never_reaches_disk",
+          "passed": true,
+          "observed": {
+            "rawCanaryOnDisk": false,
+            "elapsedMs": 298,
+            "modelCalls": [],
+            "jevCalls": 0,
+            "extractionCalls": 0
+          }
+        },
+        {
+          "name": "cross_agent_fixture_accept_preserves_history",
+          "passed": true,
+          "observed": {
+            "acceptStatus": "handoff",
+            "memoryWriteFailures": 0,
+            "elapsedMs": 1374,
+            "modelCalls": [],
+            "jevCalls": 0,
+            "extractionCalls": 0
+          }
+        }
+      ]
+    },
+    "explanation": "Initial prompt demanded enduring proof; incidental English yielded stable 0.77–0.83 and blocked two scenarios. Revised question asks for a general preference signal, retaining thresholds and original assertions."
+  },
+  "final": {
+    "matrix": {
+      "at": "2026-10-18T02:13:49.257Z",
+      "mode": "live-models-synthetic-inputs",
+      "accessBlocked": false,
+      "passed": 12,
+      "total": 12,
+      "executed": 12,
+      "cost": 0.001299632,
+      "scenarios": [
+        {
+          "id": "garment-stated",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.99,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 337,
+              "cost": 0.000038724
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 331,
+              "cost": 0.00026785
+            }
+          ],
+          "elapsedMs": 677
+        },
+        {
+          "id": "garment-incidental",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.99,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "observed"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 176,
+              "cost": 0.00003885
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 370,
+              "cost": 0.00027085
+            }
+          ],
+          "elapsedMs": 549
+        },
+        {
+          "id": "sleeve-design",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.99,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.style"
+          },
+          "fields": [
+            {
+              "key": "pref.style",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 175,
+              "cost": 0.00003864
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 677,
+              "cost": 0.0002611
+            }
+          ],
+          "elapsedMs": 856
+        },
+        {
+          "id": "loose-fit",
+          "pass": true,
+          "reason": "learned",
+          "gate": {
+            "outcome": "allow",
+            "stableScore": 0.99,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1,
+            "selectedKey": "pref.fit"
+          },
+          "fields": [
+            {
+              "key": "pref.fit",
+              "basis": "stated"
+            }
+          ],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 184,
+              "cost": 0.000038556
+            },
+            {
+              "stage": "extractor",
+              "status": 200,
+              "model": "openai/gpt-oss-120b",
+              "elapsedMs": 303,
+              "cost": 0.00026795
+            }
+          ],
+          "elapsedMs": 489
+        },
+        {
+          "id": "unsupported-hobby",
+          "pass": true,
+          "reason": "unsupported_preference",
+          "gate": {
+            "outcome": "unsupported_preference",
+            "stableScore": 0.99,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 1,
+            "keyProbability": 1
+          },
+          "fields": [],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 184,
+              "cost": 0.000038682
+            }
+          ],
+          "elapsedMs": 185
+        },
+        {
+          "id": "temporary-shopping",
+          "pass": true,
+          "reason": "not_stable",
+          "gate": {
+            "outcome": "not_stable",
+            "stableScore": 0.02,
+            "sensitiveScore": 0.03,
+            "keyConfidence": 0.95,
+            "keyProbability": 0.96,
+            "selectedKey": "pref.style"
+          },
+          "fields": [],
+          "calls": [
+            {
+              "stage": "gate",
+              "status": 200,
+              "model": "typesafe/jev-1.14",
+              "elapsedMs": 219,
+              "cost": 0.00003843
+            }
+          ],
+          "elapsedMs": 219
+        },
+        {
+          "id": "sensitive-0",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-1",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-2",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-3",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "sensitive-4",
+          "pass": true,
+          "reason": "sensitive",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        },
+        {
+          "id": "other-group-speaker",
+          "pass": true,
+          "reason": "ineligible",
+          "fields": [],
+          "calls": [],
+          "elapsedMs": 0
+        }
+      ]
+    },
+    "sixScenarioRegression": {
+      "captureAcceptance": {
+        "passed": true,
+        "exitCode": 0
+      },
+      "mode": "isolated-real-A-C-with-live-Jev-and-extractor",
+      "liveModels": true,
+      "models": {
+        "classifier": "typesafe/jev-1.14",
+        "extractor": "openai/gpt-oss-120b"
+      },
+      "liveChannel": false,
+      "results": [
+        {
+          "name": "explicit_statement_reaches_card",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "basis": [
+              "stated"
+            ],
+            "elapsedMs": 1441,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 276,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000038262,
+                "stable": 0.99,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 272,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.0002366,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 1,
+            "extractionCalls": 1
+          }
+        },
+        {
+          "name": "same_agent_two_conversations",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "evidenceCount": 2,
+            "writerCount": 1,
+            "elapsedMs": 2635,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 189,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.00003843,
+                "stable": 0.97,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 510,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.00028615,
+                "finishReason": "stop"
+              },
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 232,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.00003843,
+                "stable": 0.98,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 281,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.00028615,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 2,
+            "extractionCalls": 2
+          }
+        },
+        {
+          "name": "same_agent_two_conversations_after_refresh",
+          "passed": true,
+          "observed": {
+            "status": "card",
+            "evidenceCount": 2,
+            "writerCount": 1,
+            "elapsedMs": 2369,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 190,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.00003843,
+                "stable": 0.97,
+                "sensitive": 0.02,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 307,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.00028615,
+                "finishReason": "stop"
+              },
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 170,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.00003843,
+                "stable": 0.98,
+                "sensitive": 0.03,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 311,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.00028615,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 2,
+            "extractionCalls": 2
+          }
+        },
+        {
+          "name": "pause_resume_discards_late_result",
+          "passed": true,
+          "observed": {
+            "learnedCount": 0,
+            "paused": false,
+            "elapsedMs": 897,
+            "modelCalls": [
+              {
+                "model": "typesafe/jev-1.14",
+                "status": 200,
+                "elapsedMs": 262,
+                "reportedModel": "typesafe/jev-1.14-20261014",
+                "provider": "TypeSafe",
+                "cost": 0.000038262,
+                "stable": 0.99,
+                "sensitive": 0.02,
+                "key": "pref.color"
+              },
+              {
+                "model": "openai/gpt-oss-120b",
+                "status": 200,
+                "elapsedMs": 350,
+                "reportedModel": "openai/gpt-oss-120b",
+                "provider": "Cerebras",
+                "cost": 0.0002366,
+                "finishReason": "stop"
+              }
+            ],
+            "jevCalls": 1,
+            "extractionCalls": 1
+          }
+        },
+        {
+          "name": "queued_original_never_reaches_disk",
+          "passed": true,
+          "observed": {
+            "rawCanaryOnDisk": false,
+            "elapsedMs": 305,
+            "modelCalls": [],
+            "jevCalls": 0,
+            "extractionCalls": 0
+          }
+        },
+        {
+          "name": "cross_agent_fixture_accept_preserves_history",
+          "passed": true,
+          "observed": {
+            "acceptStatus": "handoff",
+            "memoryWriteFailures": 0,
+            "elapsedMs": 1372,
+            "modelCalls": [],
+            "jevCalls": 0,
+            "extractionCalls": 0
+          }
+        }
+      ]
+    }
+  },
+  "verification": {
+    "learnTests": 78,
+    "sdkWorkspaceIntegrationTests": 3,
+    "rootTypecheck": "passed",
+    "gateTypecheck": "passed",
+    "acceptanceScriptSha256": "649ef231c6b9c544d785ea59438d1676f53081f03de79423bcd9654c1ec6a27f",
+    "acceptanceAssertionsModified": false,
+    "livePhoneReplayed": false,
+    "runtimeRestarted": false
+  },
+  "costThisInvestigation": 0.005143192
+}

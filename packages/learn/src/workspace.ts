@@ -2,10 +2,12 @@ import {PREF_FIELDS,type LearnApi,type ContributionCandidate,type ObservationTur
 import {createLearner,filterTurn,characters,type PreferencePolicy} from './index.js';
 
 const descriptions:Record<string,string>={
-  'pref.brand':'Preferred product brands','pref.color':'Preferred clothing colors',
-  'pref.material':'Preferred product materials','pref.style':'Preferred visual style',
-  'pref.fit':'Preferred clothing fit','pref.avoid':'Product materials or brands to avoid',
-  'pref.occasion':'General product use such as sports or formal wear',
+  'pref.brand':'Preferred product brand names', 'pref.color':'Preferred clothing colors, such as black or blue',
+  'pref.material':'Preferred product fabrics or materials, such as cotton or wool',
+  'pref.style':'Preferred clothing style, design or garment length: minimalist or casual styles, shorts rather than long trousers, sleeveless rather than long sleeves. Preserve that comparison; do not invent an occasion or a loose/tight fit.',
+  'pref.fit':'Preferred looseness or tightness of clothing: loose, relaxed, slim or fitted. Garment length or design belongs to style.',
+  'pref.avoid':'Explicit hard exclusions of product brands or materials. A comparative liking for one design over another is style, not a hard exclusion.',
+  'pref.occasion':'General intended product use, such as sports or formal wear; only when stated, not guessed from a garment',
   'pref.size_system':'Preferred size notation such as EU or US',
 };
 // A's list is an upper bound. Financial price_band and recipient relationships
@@ -30,7 +32,7 @@ export function createWorkspaceLearner(options:Omit<Parameters<typeof createLear
     // concatenated batch. Each evidence snippet remains bound to that turn.
     for(const turn of own){
       const result=await learner.learn({...base,text:turn.text,occurredAt:turn.at});
-      if(result.reason==='sensitive')return []; // do not retain earlier results from a sensitive batch
+      if(result.reason==='sensitive'||result.reason==='invalid_gate_response')return []; // unknown safety cannot retain earlier results
       rows.push(...result.preferences.filter(p=>turn.text.includes(p.evidence)).map(p=>({field:p.key,value:p.value,basis:p.basis,
         evidence:{snippet:p.evidence,...(intentId?{intentId}:{conversationId}),...(result.models?{models:{...result.models}}:{})}})));
     }

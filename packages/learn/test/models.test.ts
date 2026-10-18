@@ -45,10 +45,11 @@ it('missing safety decision fails closed, not service fallback',async()=>{
  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({answers:{stable:{type:'noul',noul:1}}})});
  const extract=vi.fn();await createLearner({policy,classify,extract}).learn(turn);expect(extract).not.toHaveBeenCalled();
 });
-it.each(['none','pref.unknown'])('does not extract for an unselected/unknown key %s',async choice=>{
+it.each([['none','unsupported_preference'],['pref.unknown','invalid_gate_response']])('does not extract for an unselected/unknown key %s',async (choice,reason)=>{
  const raw=structuredClone(jev);raw.answers.key.choice=choice;
+ if(choice==='none')raw.answers.key.probabilities.none=1;
  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(raw)});const extract=vi.fn();
- expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('not_stable');expect(extract).not.toHaveBeenCalled();
+ expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe(reason);expect(extract).not.toHaveBeenCalled();
 });
 it('explicit-only still honors the Jev safety gate',async()=>{
  const classify=vi.fn(async()=>({sensitive:true,stable:true,keys:['pref.color']}));const extract=vi.fn();
@@ -101,5 +102,5 @@ it('does not invent provenance for custom adapters and identifies an explicit na
 it('does not attach provenance to rejected sensitive results',async()=>{
  const f=vi.fn(async()=>Response.json({answers:{sensitive:{type:'noul',noul:1}}}));
  const result=await createLearner({policy,extract:createExtractor({apiKey:'test',fetch:f})}).learn(turn);
- expect(result).toEqual({preferences:[],reason:'sensitive'});expect(f).toHaveBeenCalledTimes(1);
+ expect(result).toEqual({preferences:[],reason:'sensitive',gate:{outcome:'sensitive',sensitiveScore:1}});expect(f).toHaveBeenCalledTimes(1);
 });

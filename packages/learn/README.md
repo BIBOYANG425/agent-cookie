@@ -42,6 +42,29 @@ The real response has `model`, `provider`, `answers`, `usage`, `id`; each noul a
 
 Gate thresholds are explicit demo policy: stable ≥0.90; sensitive ≤0.10; selected whitelisted key confidence and selected probability both ≥0.90. Anything above the sensitive threshold, including uncertainty, is a hard stop. Missing/malformed safety is also a stop, parsed before the other answers. The extracted schema's key enum is narrowed to the selected key. A negative/uncertain decision never falls back. Only unavailable Jev (transport/non-2xx/timeout) permits extraction after the local rules; the extractor independently checks sensitivity too. These probabilities are not calibrated safety guarantees. Sensitive local-filter tests and malformed/positive Jev safety tests assert zero extractor calls.
 
+### Gate design and garment preferences
+
+`stable` asks whether the turn contains a **general preference signal worth extracting**, including an incidental habitual choice. It does not ask whether the preference has already been proved permanent. Promotion is separate: locally explicit assertions may be `stated`; incidental evidence stays `observed`/`inferred` until A/C's independent-source rule permits promotion. One temporary shopping request is not such a signal.
+
+The existing contract has a free-text `pref.style` field. B's former description, “visual style,” was unnecessarily narrow. Its extraction criteria now cover clothing style/design/silhouette/garment length, including shorts versus long trousers and sleeveless versus long sleeves. `pref.fit` means looseness/tightness; `pref.occasion` requires an expressed use rather than a guessed one. A softer comparison must not become a hard `pref.avoid` exclusion. Unsupported dimensions, such as a puzzle hobby, still select `none`; no new contract field or inferred persona is created.
+
+`evaluateGate` makes the following deterministic decisions in order, with the original thresholds preserved:
+
+| Check | Result | Extractor |
+|---|---|---|
+| Missing/malformed safety, including malformed JSON or oversized successful response | `invalid_safety` | Never |
+| Sensitivity >0.10 | `uncertain_safety` or `sensitive` | Never |
+| Missing/malformed remaining decisions | `invalid_gate_response` | Never |
+| Preference-signal probability <0.90 | `not_stable` or `uncertain_stability` | Never |
+| Unknown key/missing selected probability | `invalid_gate_response` | Never |
+| Key confidence or probability <0.90 | `uncertain_key` | Never |
+| Confident `none` | `unsupported_preference` | Never |
+| All checks pass for a whitelisted key | `allow` | Once, narrowed to that key |
+
+The safety question distinguishes ordinary clothing choices from content that actually discusses health, beliefs, finances, relationships or whereabouts. Mixed sensitive content still stops; we did not lower the sensitivity threshold to get clothing examples through. Uncertainty is an abstention, not permission to fall back. Only service unavailability uses the existing locally filtered extraction fallback. A malformed custom classifier response also stops rather than entering that fallback.
+
+The package-local `LearnResult.gate` contains only a finite outcome, probabilities and a whitelisted field name. It contains no text, evidence, values, identity or credentials; it is not added to the jar/SDK contract, not persisted, and not sent through OTel. The normal `reason` now distinguishes unsupported preferences, uncertain decisions and malformed gate output from a genuinely temporary request. `models` continues to describe only adapters that actually ran successfully. A batch drops earlier candidate results when a later turn has a sensitive or invalid gate decision.
+
 ## Extraction, privacy and bounds
 
 Chat completions uses strict `response_format.json_schema`, `additionalProperties:false`, a maximum of five items, bounded values/evidence, and Zod validation. Turns failing the local explicit-statement check also exclude `stated` from the wire schema; candidates remain observed/inferred. A truncated/refused response is rejected. Conclusions must use allowed `pref.*` keys; evidence is an exact substring of that owner's turn and ≤200 Unicode characters. Local validation rejects sensitive values, fabricated evidence, unsupported keys and false `stated` attribution. A/C's whitelist is an upper bound; price-band and recipient fields are excluded under the human's sensitive-topic rule.
@@ -61,6 +84,10 @@ Put `OPENROUTER_API_KEY` in local ignored `.env.openrouter`, owner-only permissi
 ```sh
 pnpm --filter @agent-cookie/learn build
 node packages/learn/scripts/check-openrouter.mjs --offline
+# Gate decision matrix: synthetic protocol fixtures, no paid requests.
+node packages/learn/scripts/check-gate.mjs --offline
+# Real gate + extraction on synthetic examples only; no workspace/card/phone writes.
+node --env-file=.env.openrouter packages/learn/scripts/check-gate.mjs
 # Real synthetic statement: one Jev request + one gated extraction, no workspace writes.
 node --env-file=.env.openrouter packages/learn/scripts/check-openrouter.mjs
 # Six scenarios; real temporary SQLite/Git, synthetic user inputs, real model adapters.

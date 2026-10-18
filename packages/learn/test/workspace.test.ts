@@ -18,3 +18,8 @@ it('does not learn merchant quote descriptions or financial fields',async()=>{
  expect(await learn.extract({intentId:'i',public:{},query:'black',chosenQuote:{text} as any})).toEqual([]);
  expect(extract).not.toHaveBeenCalled();expect(DEFAULT_LEARNING_POLICY).not.toHaveProperty('pref.price_band');expect(DEFAULT_LEARNING_POLICY).not.toHaveProperty('pref.recipient');
 });
+it('discards earlier batch results if a later classifier answer lacks a valid safety decision',async()=>{
+ const classify=vi.fn().mockResolvedValueOnce({stable:true,sensitive:false,keys:['pref.color']}).mockResolvedValueOnce({stable:true,keys:['pref.color']});
+ const learn=createWorkspaceLearner({extract:async()=>output,classify});const at=new Date().toISOString();
+ expect(await learn.extractFromConversation([{role:'user',text,at},{role:'user',text,at}],{conversationId:'c',channel:'imessage'})).toEqual([]);
+});

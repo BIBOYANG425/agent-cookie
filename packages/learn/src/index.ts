@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getExtractorDefaults, getClassifierModel } from './models.js';
 import type { EvidenceModels } from '@agent-cookie/contract';
+import {gateDecisionSchema,type GateDecision} from './gate.js';
 
 export type LearningSource = 'photon' | 'mcp' | 'claude-code';
 export interface LearningTurn {
@@ -9,10 +10,10 @@ export interface LearningTurn {
 }
 export type PreferencePolicy = Readonly<Record<string, { description: string; maxLength?: number }>>;
 export interface ExtractedPreference { key: string; value: string; evidence: string; basis: 'stated' | 'observed' | 'inferred' }
-export interface Classification { stable: boolean; sensitive: boolean; keys: string[] }
+export interface Classification { stable: boolean; sensitive: boolean; keys: string[]; gate?: GateDecision }
 export type ModelInput = { text: string; policy: PreferencePolicy; signal: AbortSignal };
-export type LearningReason = 'learned' | 'ineligible' | 'sensitive' | 'untrusted_text' | 'not_stable' | 'disabled' | 'invalid_output' | 'unavailable';
-export interface LearnResult { preferences: ExtractedPreference[]; reason: LearningReason; models?: EvidenceModels }
+export type LearningReason = 'learned' | 'ineligible' | 'sensitive' | 'untrusted_text' | 'not_stable' | 'unsupported_preference' | 'uncertain_gate' | 'invalid_gate_response' | 'disabled' | 'invalid_output' | 'unavailable';
+export interface LearnResult { preferences: ExtractedPreference[]; reason: LearningReason; models?: EvidenceModels; gate?: GateDecision }
 export type LearningMetric = { stage: 'filter' | 'classify' | 'extract'; status: 'ok' | 'dropped' | 'unavailable'; count: number; durationMs: number };
 export type Telemetry = (metric: LearningMetric) => void;
 export const characters = (s: string) => Array.from(s).length;
@@ -43,7 +44,7 @@ export const extractionOutputSchema = z.object({
     evidence: z.string().min(1).refine(v => characters(v) <= 200), basis: z.enum(['stated','observed','inferred']),
   }).strict()).max(5),
 }).strict();
-const classificationSchema = z.object({ stable: z.boolean(), sensitive: z.boolean(), keys: z.array(z.string()).max(20) }).strict();
+const classificationSchema = z.object({ stable: z.boolean(), sensitive: z.boolean(), keys: z.array(z.string()).max(20),gate:gateDecisionSchema.optional() }).strict();
 
 /** Deadline wins even if an injected adapter ignores AbortSignal. Late results are discarded. */
 export async function bounded<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number, parent?: AbortSignal): Promise<T> {
@@ -89,22 +90,36 @@ export function createLearner(options: {
         ?? (options.mode === 'explicit-only' && !explicitStatement(turn.text) ? 'not_stable' : undefined);
       metric({stage:'filter',status:reject ? 'dropped':'ok',count:0,durationMs:performance.now()-start});
       if (reject) return {preferences:[],reason:reject};
+      let assessment:GateDecision|undefined;
       try {
-        return await bounded(async signal => {
+        const result:LearnResult = await bounded(async signal => {
           let selected = policy;
           let gate: string | undefined;
           if (classify) {
+            let rawClassification:unknown;
+            let gateAvailable=false;
             try {
-              const c = classificationSchema.parse(await bounded(s => classify({text:turn.text,policy,signal:s}), Math.min(1500,timeoutMs), signal));
-              metric({stage:'classify',status:'ok',count:0,durationMs:performance.now()-start});
-              if (c.sensitive || !c.stable) return {preferences:[],reason:c.sensitive?'sensitive':'not_stable'};
-              selected = Object.fromEntries(Object.entries(policy).filter(([key]) => c.keys.includes(key)));
-              if (!Object.keys(selected).length) return {preferences:[],reason:'not_stable'};
-              gate = getClassifierModel(classify);
+              rawClassification=await bounded(s => classify({text:turn.text,policy,signal:s}), Math.min(1500,timeoutMs), signal);
+              gateAvailable=true;
             } catch {
-              // Unavailable Jev falls back to extraction; a successful negative verdict never does.
+              // Only an unavailable service can fall back, never a negative or malformed answer.
               metric({stage:'classify',status:'unavailable',count:0,durationMs:performance.now()-start});
               if (signal.aborted) return {preferences:[],reason:'unavailable'};
+            }
+            if(gateAvailable){
+              const parsedClassification=classificationSchema.safeParse(rawClassification);
+              if(!parsedClassification.success)return {preferences:[],reason:'invalid_gate_response'};
+              const c=parsedClassification.data;
+              assessment=c.gate;
+              metric({stage:'classify',status:'ok',count:0,durationMs:performance.now()-start});
+              if(c.sensitive)return {preferences:[],reason:'sensitive'};
+              if(c.gate?.outcome==='invalid_gate_response')return {preferences:[],reason:'invalid_gate_response'};
+              if(c.gate?.outcome==='uncertain_stability'||c.gate?.outcome==='uncertain_key')return {preferences:[],reason:'uncertain_gate'};
+              if(!c.stable)return {preferences:[],reason:'not_stable'};
+              selected = Object.fromEntries(Object.entries(policy).filter(([key]) => c.keys.includes(key)));
+              if (!Object.keys(selected).length) return {preferences:[],reason:'unsupported_preference'};
+              if(c.gate&&c.gate.outcome!=='allow')return {preferences:[],reason:'invalid_gate_response'};
+              gate = getClassifierModel(classify);
             }
           }
           const raw = await options.extract({text:turn.text,policy:selected,signal});
@@ -128,6 +143,7 @@ export function createLearner(options: {
           return {preferences,reason:preferences.length?'learned':'invalid_output',
             ...(preferences.length && Object.keys(models).length ? {models} : {})};
         }, timeoutMs, control.signal);
+        return {...result,...(assessment?{gate:assessment}:{})};
       } catch {
         metric({stage:'extract',status:'unavailable',count:0,durationMs:performance.now()-start});
         return {preferences:[],reason:'unavailable'};
@@ -135,6 +151,8 @@ export function createLearner(options: {
     },
   };
 }
+
+export type {GateDecision} from './gate.js';
 
 export { createExtractor, createHaikuExtractor, createJevClassifier, getExtractorDefaults, DEFAULT_EXTRACTION_MODEL, EXTRACTION_MODELS, JEV_MODEL, HAIKU_MODEL, OPENROUTER_HAIKU_MODEL } from "./models.js";
 export { createLearningTelemetry, type PipelineMetric } from './telemetry.js';
