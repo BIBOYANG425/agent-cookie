@@ -262,6 +262,15 @@ export function createApp(deps: Deps): Hono<AppEnv> {
 
   app.get("/personal/grants", auth, personalOrOwner, (c) => json({ grants: deps.sessions.list(user()) }));
 
+  // Phase 1 (docs/commerce-analytics-plan.md): the installed field-policy document. The user's agents read it; only the
+  // owner installs or shadows one. A document that fails the floor → 422 naming every violation, nothing changes.
+  app.get("/personal/policy", auth, personalOrOwner, () => json(deps.policy.view()));
+  app.put("/personal/policy", auth, owner, async (c) => json(await deps.policy.install(c.get("agent").agentId, user(), await readJson(c))));
+  app.post("/personal/policy/shadow", auth, owner, async (c) => {
+    const body = await readJson(c);
+    return json(deps.policy.shadow(user(), (body as { policy?: unknown }).policy));
+  });
+
   app.post("/personal/grants/:id/revoke", auth, personalOrOwner, (c) => {
     const { revokedAt } = deps.sessions.revoke(c.get("agent").agentId, user(), c.req.param("id"));
     return json({ ok: true, revokedAt });

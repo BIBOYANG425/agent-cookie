@@ -87,6 +87,9 @@ export class CommerceService {
 
     interface Plan extends Introduction { newAgent?: Agent; quote?: QuoteRow; receipt?: Receipt; values?: Partial<Record<Field, string>> }
     const plans: Plan[] = [];
+    // One policy document for this whole intent: the Tier 0 receipt and the prefix delivered after it must agree.
+    const policyDoc = this.ctx.policy.current();
+    const policyId = this.ctx.policy.id();
     for (const agent of store.agents()) {
       // Registered merchants come in through the optional kind hint; UCP stores through the search below.
       if (agent.category === "personal" || agent.domain || !input.kind || !agent.capabilities.includes(input.kind)) continue;
@@ -97,7 +100,7 @@ export class CommerceService {
         const values = this.card.values(userId, intent);
         // Every Tier 0 delivery discloses auto values: the receipt is committed before the attempt.
         const receipt: Receipt = { id: newId("r"), sessionId: x.session.sessionId, agentId: agent.agentId, intentId: intent.id,
-          fields: this.ctx.delivery.tier0Fields(agent, x.handshake, values), purpose: "tier0", createdAt: clock.nowIso() };
+          fields: this.ctx.delivery.tier0Fields(agent, x.handshake, values, policyDoc), purpose: "tier0", createdAt: clock.nowIso(), policyId };
         plans.push({ ...x, receipt, values });
       }
     }
@@ -183,7 +186,7 @@ export class CommerceService {
           this.ctx.log({ event: "tier0.deliver", actor: "workspace", object: p.agent.agentId, result: "skipped", reason: "receipt not durable" });
           continue;
         }
-        void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text);
+        void this.ctx.delivery.tier0(p.agent, p.handshake, p.values ?? {}, intent.text, policyDoc);
       }
     }
     // Intent history + learning (fire and forget; a learning failure is only logged).

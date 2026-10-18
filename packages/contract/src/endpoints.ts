@@ -40,6 +40,10 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/personal/learned", caller: "personal", summary: "→ LearnedResponse: pref.* values on the card or waiting as candidates, with sources and evidence (owner key too)" },
   { method: "POST", path: "/personal/learned/forget", caller: "personal", summary: "ForgetRequest { conversationId | intentId } → ForgetResult: revoke everything learned from it in one transaction and one commit, drop its waiting turns (owner key too)" },
 
+  { method: "GET", path: "/personal/policy", caller: "personal", summary: "→ PolicyView: the installed field-policy document, its id and source (owner key too). Phase 1" },
+  { method: "PUT", path: "/personal/policy", caller: "owner", summary: "PolicyDocument → PolicyView; 422 MISSING_FIELD listing policyViolations (the floor) and nothing changes; repo first (writePolicy when present), then SQLite, then the live document. Phase 1" },
+  { method: "POST", path: "/personal/policy/shadow", caller: "owner", summary: "{ policy } → ShadowReport: every past receipt and logged field read re-evaluated under the candidate; ids, field names and codes only. Phase 1" },
+
   { method: "GET", path: "/agent/handshake", caller: "merchant", summary: "?sessionId= → Handshake (field names only)" },
   { method: "GET", path: "/agent/fields", caller: "merchant", summary: "?sessionId=&fields=a,b&purpose= → 200 values | 403 SCOPE_DENIED (incl. names outside the field table, A13) | 403 PURPOSE_MISMATCH; purpose releases write a receipt" },
   { method: "POST", path: "/agent/quotes", caller: "merchant", idempotent: true, summary: "Submit a quote for an intent; not introduced → 404, own grant expired/revoked → 403 GRANT_EXPIRED/GRANT_REVOKED (A13)" },

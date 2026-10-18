@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS keys (key_hash TEXT PRIMARY KEY, agent_id TEXT NOT NU
 CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL,
   UNIQUE (user_id, agent_id));
 CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, intent_id TEXT, fields TEXT NOT NULL, purpose TEXT NOT NULL,
-  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL);
+  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
   text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT);
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS notes (agent_id TEXT NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, session_id TEXT NOT NULL, value TEXT NOT NULL,
   updated_at TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY (agent_id, user_id, key));
 CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, fields TEXT NOT NULL,
-  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL, intent_id TEXT);
+  purpose TEXT NOT NULL, amount INTEGER, created_at TEXT NOT NULL, seq INTEGER NOT NULL, intent_id TEXT, policy_id TEXT);
 CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, event TEXT NOT NULL, actor TEXT NOT NULL,
   object TEXT NOT NULL, result TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, status INTEGER NOT NULL,
@@ -76,8 +76,10 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 6, table: "activity", column: "kind", ddl: "ALTER TABLE activity ADD COLUMN kind TEXT" },
   { version: 6, table: "activity", column: "stats", ddl: "ALTER TABLE activity ADD COLUMN stats TEXT" },
   { version: 7, table: "receipts", column: "intent_id", ddl: "ALTER TABLE receipts ADD COLUMN intent_id TEXT" },
+  { version: 8, table: "grants", column: "policy_id", ddl: "ALTER TABLE grants ADD COLUMN policy_id TEXT" },
+  { version: 8, table: "receipts", column: "policy_id", ddl: "ALTER TABLE receipts ADD COLUMN policy_id TEXT" },
 ];
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
@@ -98,6 +100,7 @@ function toGrant(r: Row): GrantRow {
     purpose: String(r.purpose), expiresAt: String(r.expires_at), createdAt: String(r.created_at) };
   if (r.revoked_at) g.revokedAt = String(r.revoked_at);
   if (r.intent_id) g.intentId = String(r.intent_id);
+  if (r.policy_id) g.policyId = String(r.policy_id);
   return g;
 }
 function toIntent(r: Row): IntentRow {
@@ -143,6 +146,7 @@ function toReceipt(r: Row): ReceiptRow {
     fields: JSON.parse(String(r.fields)) as Field[], purpose: String(r.purpose), createdAt: String(r.created_at) };
   if (r.amount !== null && r.amount !== undefined) x.amount = Number(r.amount);
   if (r.intent_id) x.intentId = String(r.intent_id);
+  if (r.policy_id) x.policyId = String(r.policy_id);
   return x;
 }
 function toNote(r: Row): NoteRow {
@@ -358,9 +362,9 @@ export class Store {
 
   // ---- grants
   insertGrant(g: GrantRow): void {
-    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
-      g.expiresAt, g.revokedAt ?? null, this.next());
+    this.exec(`INSERT INTO grants (id, session_id, intent_id, fields, purpose, created_at, expires_at, revoked_at, seq, policy_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, g.id, g.sessionId, g.intentId ?? null, JSON.stringify(g.fields), g.purpose, g.createdAt,
+      g.expiresAt, g.revokedAt ?? null, this.next(), g.policyId ?? null);
   }
   grant(id: string): GrantRow | undefined {
     const r = this.db.prepare("SELECT * FROM grants WHERE id = ?").get(id) as Row | undefined;
@@ -493,7 +497,12 @@ export class Store {
 
   // ---- receipts
   insertReceipt(r: ReceiptRow): void {
-    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null);
+    this.exec(`INSERT INTO receipts (id, user_id, session_id, agent_id, fields, purpose, amount, created_at, seq, intent_id, policy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.id, r.userId, r.sessionId, r.agentId, JSON.stringify(r.fields), r.purpose, r.amount ?? null, r.createdAt, this.next(), r.intentId ?? null, r.policyId ?? null);
+  }
+  /** Every `fields.read` allow (field names, purpose and intent in `reason`), newest first. Policy shadow only. */
+  fieldReadEvents(limit: number): ActivityEvent[] {
+    const rows = this.db.prepare("SELECT * FROM activity WHERE event = 'fields.read' AND result = 'allow' ORDER BY id DESC LIMIT ?").all(limit) as Row[];
+    return rows.map(toActivity);
   }
   receiptsForUser(userId: string, limit: number): ReceiptRow[] {
     return (this.db.prepare("SELECT * FROM receipts WHERE user_id = ? ORDER BY seq DESC LIMIT ?").all(userId, limit) as Row[]).map(toReceipt);

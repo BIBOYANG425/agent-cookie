@@ -1,7 +1,7 @@
 // Identity card: contributions → RulesApi.mergeCard. Recomputed on every read so time rules (180/365 days)
 // follow the workspace clock; cached in SQLite and written through to CARD.md.
 import {
-  allowedBases, canWrite, isField, isPrefField, purposeFields,
+  allowedBases, isField, isPrefField, purposeFields,
   type Basis, type Card, type Contribution, type ContributionEvidence, type Field, type MergeOptions,
 } from "@agent-cookie/contract";
 import type { IntentRow, StoredContribution } from "../db.js";
@@ -87,7 +87,7 @@ export class CardService {
     let basis: Basis = input.basis;
     if (agent.role === "personal") {
       if (!isField(input.field)) fail("MISSING_FIELD", "unknown field");
-    } else if (!isField(input.field) || !canWrite(agent.category, input.field) || !(allowedBases(agent.category) as readonly Basis[]).includes(basis)) {
+    } else if (!isField(input.field) || !this.ctx.policy.canWrite(agent.category, input.field) || !(allowedBases(agent.category) as readonly Basis[]).includes(basis)) {
       basis = "inferred";
     }
     const c: StoredContribution = { id: newId("c"), userId, agentId: agent.agentId, field: input.field, value: input.value, basis, createdAt: this.ctx.clock.nowIso() };

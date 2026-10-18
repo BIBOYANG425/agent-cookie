@@ -25,6 +25,7 @@ import { Dreaming } from "./dreaming.js";
 import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
 import { NoteService } from "./services/notes.js";
+import { PolicyService } from "./services/policy.js";
 import { SessionService } from "./services/sessions.js";
 
 export interface Deps {
@@ -46,6 +47,8 @@ export interface Deps {
   commerce: CommerceService;
   /** Funnel report over existing tables (GET /owner/funnel): counts only. */
   funnel: FunnelService;
+  /** The installed field-policy document (Phase 1): repo → SQLite → DEFAULT_POLICY. */
+  policy: PolicyService;
   /** Dynamic memory: observation queue, learning hooks, learned/history views. */
   learning: LearningService;
   /** The periodic job: learn, regenerate, compact, log (dreaming.ts). */
@@ -81,8 +84,9 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const laneD: LaneDHooks = overrides.laneD ?? createLaneD(config, clock);
   const delivery = new Delivery({ timeoutMs: config.callbackTimeoutMs, attempts: config.callbackRetries }, log, laneD);
   // Services call UCP through the Sentry wrapper (a span per call); deps.ucp stays the raw adapter for tests.
+  const policy = new PolicyService({ stale: () => gate.stale(), repo: () => repo, log, clock, store });
   const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), hold: (fn) => gate.hold(fn), config, store, clock, rules,
-    ucp: tracedUcp(ucp, config.ucpMode), repo: () => repo, log, delivery, laneD };
+    ucp: tracedUcp(ucp, config.ucpMode), repo: () => repo, log, delivery, laneD, policy };
   const card = new CardService(ctx);
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
@@ -95,6 +99,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
 
   if (!store.firstUser()) seedStore(store, fixtures, config, clock.nowIso());
   else upgradeSeed(store, fixtures, config, clock.nowIso());
+  // The installed field policy, before anything is served: repo → SQLite → DEFAULT_POLICY.
+  await policy.load(fixtures.users[0]!.userId);
   if (await learning.recoverForgets()) await reconcileRepo(ctx);
   // Sample keys are public: outside demo/test mode they must not open anything, even if a file DB kept them.
   if (!config.demo && !config.test) {
@@ -109,7 +115,7 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   dreamTimer?.unref();
 
   return {
-    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, learning, gate,
+    config, store, clock, rules, ucp, repo, log, delivery, laneD, fixtures, card, sessions, fields, notes, commerce, funnel, policy, learning, gate,
     dreaming, dreamingScheduled: dreamTimer !== undefined,
     reset: () => gate.exclusive(async () => {
       await delivery.settle();
@@ -119,6 +125,8 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
       const now = clock.nowIso();
       seedStore(store, fixtures, config, now);
       await repo.resetToSeed();
+      // settings were wiped with the tables and the repo is back at its seed: the policy returns to repo/default.
+      await policy.load(fixtures.users[0]!.userId);
       await reconcileRepo(ctx);
       card.get(fixtures.users[0]!.userId);
       // Deleted rows leave the WAL too.

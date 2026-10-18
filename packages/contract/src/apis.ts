@@ -9,6 +9,7 @@
 import type {
   Agent, Basis, Card, Contribution, ContributionEvidence, ContributionRevocationTarget, IntentRecord, Note, ObservationTurn, Quote, Receipt,
 } from "./types.js";
+import type { PolicyDocument } from "./policy-document.js";
 
 // ---------------------------------------------------------------------------------------------------------
 // RulesApi — pure functions, no IO, no clock, no model.
@@ -133,6 +134,13 @@ export interface MemoryRepo {
   deleteNote(sessionId: string, agentId: string, key: string, meta: WriteMeta): Promise<CommitRef>;
   /** Append one line to receipts.md. */
   appendReceipt(r: Receipt, meta: WriteMeta): Promise<CommitRef>;
+  /**
+   * Phase 1 (docs/commerce-analytics-plan.md; lane C implements, optional until shipped): the user's installed field
+   * policy, POLICY.yaml. `readPolicy` returns undefined when the file is the generated seed or absent; `writePolicy`
+   * replaces it in one commit (author = the owner). The workspace falls back to SQLite + DEFAULT_POLICY without them.
+   */
+  readPolicy?(): Promise<PolicyDocument | undefined>;
+  writePolicy?(doc: PolicyDocument, meta: WriteMeta): Promise<CommitRef>;
   /** Hard reset to the `fixtures-seed` commit and remove untracked files (POST /demo/reset). */
   resetToSeed(): Promise<void>;
   /** Every contribution in contributions/*.md, for rebuilds and exports. */

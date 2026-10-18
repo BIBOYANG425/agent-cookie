@@ -1,7 +1,7 @@
 // Sessions and grants. One pairwise session per (user, merchantKey) — stable across resets and personal agents
 // (A03, A22). A new 10-minute grant per introduction; every merchant read checks it against the server clock.
 import {
-  autoFields, GRANT_TTL_MS, merchantKeyFor, purposeFields,
+  GRANT_TTL_MS, merchantKeyFor,
   type Agent, type Field, type Handshake, type Session,
 } from "@agent-cookie/contract";
 import type { Channel, GrantRow, IntentRow } from "../db.js";
@@ -15,6 +15,8 @@ export interface Introduction { agent: Agent; channel: Channel; session: Session
 export interface GrantView {
   id: string; sessionId: string; agentId: string; agentName: string; fields: Field[]; purpose: string;
   createdAt: string; expiresAt: string; remainingMs: number; revokedAt?: string; status: "live" | "expired" | "revoked";
+  /** Phase 1: the policy document the grant was issued under. */
+  policyId?: string;
 }
 
 const STYLE: Field[] = ["lang", "tone", "length"];
@@ -34,8 +36,8 @@ export class SessionService {
     const existing = store.session(sessionId);
     if (existing && (existing.agentId !== agent.agentId || existing.userId !== userId)) throw new Error("session id collision between merchants");
     const session: Session = existing ?? { sessionId, userId, agentId: agent.agentId, createdAt: clock.nowIso() };
-    const grant: GrantRow = { id: newId("g"), sessionId, intentId: intent.id, fields: autoFields(agent.category), purpose: "handshake",
-      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS) };
+    const grant: GrantRow = { id: newId("g"), sessionId, intentId: intent.id, fields: this.ctx.policy.autoFields(agent.category), purpose: "handshake",
+      createdAt: clock.nowIso(), expiresAt: clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id() };
     const handshake = await this.handshake(session, grant, agent, intent);
     return { agent, channel, session, grant, handshake };
   }
@@ -71,7 +73,7 @@ export class SessionService {
    */
   widen(session: Session, intentId: string, fields: Field[], purpose: string): GrantRow {
     const grant: GrantRow = { id: newId("g"), sessionId: session.sessionId, intentId, fields, purpose,
-      createdAt: this.ctx.clock.nowIso(), expiresAt: this.ctx.clock.isoIn(GRANT_TTL_MS) };
+      createdAt: this.ctx.clock.nowIso(), expiresAt: this.ctx.clock.isoIn(GRANT_TTL_MS), policyId: this.ctx.policy.id() };
     this.ctx.store.insertGrant(grant);
     this.ctx.log({ event: "grant.widen", actor: "workspace", object: session.sessionId, result: "ok", reason: `${fields.join(",")} purpose=${purpose}` });
     return grant;
@@ -85,7 +87,7 @@ export class SessionService {
   async handshake(session: Session, grant: GrantRow, agent: Agent, intent?: IntentRow): Promise<Handshake> {
     const values = this.card.values(session.userId, intent ?? grant.intentId);
     const has = (f: Field) => STYLE.includes(f) || (values[f] !== undefined && values[f] !== "");
-    const available = [...autoFields(agent.category), ...purposeFields(agent.category)]
+    const available = [...this.ctx.policy.autoFields(agent.category), ...this.ctx.policy.purposeFields(agent.category)]
       .filter((f, i, all) => all.indexOf(f) === i && has(f) && f !== "payment_method");
     const h: Handshake = { v: 1, sessionId: session.sessionId, jar: this.ctx.config.jarUrl, lang: values.lang ?? "", tone: values.tone ?? "",
       length: values.length ?? "", available, expiresAt: grant.expiresAt };
@@ -117,6 +119,7 @@ export class SessionService {
         fields: g.fields, purpose: g.purpose, createdAt: g.createdAt, expiresAt: g.expiresAt,
         remainingMs: status === "live" ? exp - now : 0, status };
       if (g.revokedAt) v.revokedAt = g.revokedAt;
+      if (g.policyId) v.policyId = g.policyId;
       return v;
     });
   }

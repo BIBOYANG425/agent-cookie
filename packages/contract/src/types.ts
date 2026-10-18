@@ -162,6 +162,8 @@ export interface Grant {
   purpose: string;
   expiresAt: string;
   revokedAt?: string;
+  /** Additive (Phase 1): id of the policy document the grant was issued under (policy-document.ts policyId). */
+  policyId?: string;
 }
 
 /**
@@ -415,6 +417,8 @@ export interface Receipt {
   createdAt: string;
   /** Additive (Phase 0): the intent whose grant authorized the release; absent on legacy rows. Funnel attribution only. */
   intentId?: string;
+  /** Additive (Phase 1): id of the policy document that allowed this release (policy-document.ts policyId). */
+  policyId?: string;
 }
 
 // ---- Lane D (P1). Lane A only reserves the types and signatures; lane D implements. ----
