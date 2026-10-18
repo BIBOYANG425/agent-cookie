@@ -33,7 +33,7 @@ Every person gets a **jar** holding three things: an **identity card** that agen
 
 $$\text{session}(\text{you}, \text{agent}) = \operatorname{HMAC\text{-}SHA256}\big(\text{secret}_{\text{you}},\ \text{agent}\big)$$
 
-The same store recognizes you even after you switch assistants. Two stores can never join their IDs into one profile of you.
+The same store sees the same session even after you switch assistants. Two stores never receive a shared identifier from us, so they cannot join their IDs into one profile of you.
 
 **It learns back, without being poisoned.** Agents write back what they learned, and deterministic rules decide what reaches your card:
 
@@ -50,12 +50,12 @@ These are field names served by policy, never values. An unknown field stays unk
 
 **You stay in control.** The console and the hosted cookie page show who read which field, for what purpose, until when. You can revoke any grant, pause learning or delete everything.
 
-### The demo, in four beats
+### The demo
 
-1. In iMessage you type *"Find me trail running shoes under $120."* Two stores quote. You pick one. Only that store gets your address, at checkout.
-2. A brand-new assistant asks to connect, and you approve once. Its first message already knows your size and favorite brand, and it asks you nothing.
-3. The receipts show the assistant read your preferences and only the chosen store read your address. The assistant never touched it.
-4. You revoke the assistant, and its next read is refused.
+1. **On your phone.** In iMessage you type *"Find me trail running shoes under $120."* Your assistant reads the context it is allowed to use, two live stores quote, you pick one, and you get the store's checkout link.
+2. **Switch assistants.** Claude Desktop reads the same card through MCP and already knows your usual size. It returns live offers in English.
+3. **A company assistant you never used.** Muse asks to connect, and you approve once in the console. Its first context read already says English, concise, size 42, Brooks, because a different assistant, Dots, learned the brand. It contains no address and no payment method. In a fixture checkout, only the store you chose receives the address, and only at checkout.
+4. **You stay in charge.** The receipts show who read which field and why. You revoke Muse, and its next read is refused with `GRANT_REVOKED`.
 
 ## How we built it
 
@@ -63,7 +63,7 @@ These are field names served by policy, never values. An unknown field stays unk
 - **The workspace.** Hono and SQLite hold hot state, and a Git-backed memory repository holds durable state. Authorization, merging, expiry and stage transitions are plain deterministic code. **No model output is ever an input to an authorization decision.**
 - **One integration surface.** `@agent-cookie/sdk`, published on npm (`npm i @agent-cookie/sdk`), offers `AssistantClient`, `MerchantClient` and `WorkspaceClient`. A Python client is generated from the OpenAPI document, and an MCP server serves Claude Desktop.
 - **Hosted jars.** A gateway runs one real workspace process per person behind a passkey. It renders the consent page and the cookie page, and a jar's owner key never leaves it.
-- **Channels.** The person's own agent lives in iMessage on Photon. There is also Claude Desktop through MCP and a React console.
+- **Channels.** The person's own assistant is HANA, a conversational agent in iMessage over Photon, connected to the jar through our SDK. Claude Desktop connects through MCP. A React console in English shows everything.
 - **Commerce and payments.** Shopify UCP handles catalog, cart and checkout. Visa Trusted Agent Protocol signatures use per-session keys. A Visa Acceptance provider is matched byte for byte against Visa's official SDK, and a simulator verifies requests with Visa's own code.
 - **Learning.** It is opt-in. A local filter runs first, then a `typesafe/jev-1.14` gate, then `gpt-oss-120b` extraction, then the same merge rules as every other write.
 - **Memory format.** The jar uses Cognition's Agent Memory Repo format, and the unmodified stock skill reads and writes it.
@@ -73,6 +73,8 @@ Four coding agents built it in parallel: Claude Code, two Codex sessions and Dev
 ## Challenges we ran into
 
 - **Zero-code store integration didn't survive contact.** A text prefix couldn't make a store's own protocol use your size, so we kept the two honest paths: the store's protocol and our SDK.
+- **One conversation is one source.** A single chat produced a message, a shopping request and a selection, and an early version counted them as independent evidence and promoted a preference too soon. We now carry conversation provenance through the whole flow, so only a different conversation can confirm a preference.
+- **A reply is not a delivery.** A generated reply does not prove the phone received it, so we check Photon's delivery records, not just the model's output.
 - **Recorded inventory isn't live inventory.** Every quote carries its source, and the UI labels Sample, recorded and live separately.
 - **No Visa sandbox.** We verified against Visa's SDK offline and built a simulator on Visa's own code. We claim no live payment.
 - **Learning, regeneration and forgetting run concurrently.** Serialized writes and recoverable Git projections stop a late model result from bringing back something you deleted.
@@ -80,9 +82,12 @@ Four coding agents built it in parallel: Claude Code, two Codex sessions and Dev
 
 ## Accomplishments that we're proud of
 
-- **Assistant churn works end to end over HTTP.** Assistant A learns your preferences. Assistant B knows them on its first read. The store gets your address only at checkout, and no assistant ever sees a payment method.
-- **Hosted jars with passkeys work.** Two people get two isolated jars. Cross-jar keys and owner routes are refused.
-- **A real iMessage round trip worked:** request, two quotes, a choice and a handoff, with exactly one address receipt, to the chosen store.
+- **A real phone flow.** On a real Photon iMessage line, HANA returned live offers and delivered the merchant's checkout link after a selection.
+- **Learning that waits for you.** A natural phone conversation produced a preference candidate after the five-minute quiet window, counted as one source, with no manual trigger.
+- **A real assistant switch.** Claude Desktop, through actual MCP calls, read the same card and returned two live offers in English.
+- **A company assistant, end to end.** Consent in the console, inherited context on the first read, the same merchant sessions as the previous assistant, address released only to the chosen store in a fixture checkout, and refusal after revocation.
+- **Hosted jars with passkeys.** Two people get two isolated jars; cross-jar keys and owner routes are refused.
+- **Shipped to npm.** `@agent-cookie/sdk` is published and installs with one command.
 - **Cognition's unmodified memory skill** reads and writes the same repository as the workspace.
 - **The whole monorepo test suite is green.**
 
@@ -112,4 +117,9 @@ Only shopping is built today. Each new industry needs its fields and purposes ad
 
 ## Honest scope
 
-The workspace, policy, receipts, SDK, gateway and iMessage transport are real and tested. The person in the demo is **Sample** data. Store responses were recorded from real Shopify stores and are replayed. **No payment was completed.** Checkout ends in a merchant handoff link.
+- **Sample data.** The person in the demo is Sample data and is labelled everywhere.
+- **Live versus recorded stores.** The phone and Claude Desktop searches hit live stores. The company-assistant scenario uses recorded store responses.
+- **The address.** The live phone handoff did not release an address. Address release is shown only in the fixture checkout.
+- **No payment.** No purchase or payment was completed. Checkout ends in a merchant link.
+- **Correlation.** Pairwise IDs mean no single identifier follows you across agents. They cannot stop recipients from correlating other information you choose to share.
+- **Revocation.** It stops future reads. It cannot recall what was already delivered.
