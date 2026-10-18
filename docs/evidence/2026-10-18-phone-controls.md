@@ -13,13 +13,19 @@
 - B phone controls, capture and Beta integration: 34 tests passed.
 - There is no new workspace, contract, rules, memory-repo, SDK, learn or phone runtime source change in the main-to-B merge. Existing phone/backend state remains intact.
 
-## Real phone steps — pending user input
+## Real phone pause — verified
 
-1. User sends **暂停学习**. Require matching new phone processing, backend `paused:true`, local capture paused, and console paused state. Existing fit/color preferences must remain.
-2. Only after step1 readback, user sends **忘掉 版型**. The current target is the single `pref.fit=loose` candidate. Require the actual forget result, disappearance from current learned/card/candidates, preserved unrelated color, and learning remaining paused. Do not claim old Git history was erased (`historyErased:false`).
+At **00:32:32.197 PDT**, the user's **暂停学习** command produced `learning.set` event17342 (`result:paused`) and `PUT /personal/learning` event17343 (HTTP200). The user confirmed receipt of “已暂停学习，后台已确认”. Readback at00:32:47 found backend `paused:true`, local capture `paused:true`, and all prior learned rows/evidence unchanged. The console switch was on and the learning section said “学习已暂停。已有记录仍保留”. Channel cursor advanced to12746, twelve sent outbox records. The control command did not create a learning observation or contribution.
 
-The first phone instruction has been issued. Neither real pause nor real forget is marked passed yet. No API mutation has been performed on the user's behalf to simulate either command.
+## Remaining real phone steps — pending user input
+
+1. User sends the same ordinary fit-preference sentence while paused. Verify the new message is handled, but dropped before the observation queue; do not infer this behavior solely from the paused switch. This request has been issued; no new phone message was observed through00:34:57 PDT.
+2. After that readback, user sends **忘掉 版型**. The current target is the single `pref.fit=loose` candidate. Require the actual forget result, disappearance from current learned/card/candidates, preserved unrelated color, and learning remaining paused. Do not claim old Git history was erased (`historyErased:false`).
+
+Paused-input suppression and real phone forget are not marked passed yet. No API mutation has been performed on the user's behalf to simulate either command. [Machine-readable evidence](2026-10-18-phone-controls.json) distinguishes completed and pending steps.
 
 UI limitation retained for C: legacy rows without `models` currently render “本地规则”; missing metadata alone does not prove that an old record came from local rules. This does not affect the new fit row, whose two actual model IDs are present.
 
 ![Updated connected console showing actual model provenance](2026-10-18-phone-controls-ui-ready.png)
+
+![Phone pause reflected in the console with existing preferences retained](2026-10-18-phone-controls-paused.png)

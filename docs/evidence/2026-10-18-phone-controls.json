@@ -1,0 +1,81 @@
+{
+  "result": "pause-confirmed-forget-pending",
+  "integration": {
+    "main": "18188fd",
+    "mergeCommit": "2b2598c",
+    "evidenceCommitBeforePhoneCommands": "ea72fae",
+    "consoleTestsPassed": 57,
+    "phoneFocusedTestsPassed": 34,
+    "consoleTypecheck": "passed",
+    "consoleBuild": "passed"
+  },
+  "baseline": {
+    "at": "2026-10-18T07:30:41.082Z",
+    "paused": false,
+    "contributionIds": [
+      "c_2tgkeby2",
+      "c_0ggs1r0w",
+      "c_q1zxy8tw"
+    ],
+    "channel": {
+      "cursor": 12523,
+      "messageCount": 11,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": false,
+        "lastSummaryDay": "2026-10-18"
+      }
+    }
+  },
+  "pause": {
+    "checkedAt": "2026-10-18T07:32:47.037Z",
+    "backendPaused": true,
+    "localCapturePaused": true,
+    "allPreferencesPreserved": true,
+    "commandBecameLearningObservation": false,
+    "userConfirmedExpectedReply": true,
+    "events": [
+      {
+        "id": "17343",
+        "at": "2026-10-18T07:32:32.197Z",
+        "event": "PUT /personal/learning",
+        "actor": "sample-personal-photon",
+        "object": "",
+        "result": "200",
+        "reason": ""
+      },
+      {
+        "id": "17342",
+        "at": "2026-10-18T07:32:32.197Z",
+        "event": "learning.set",
+        "actor": "sample-personal-photon",
+        "object": "",
+        "result": "paused",
+        "reason": ""
+      }
+    ],
+    "channel": {
+      "cursor": 12746,
+      "messageCount": 12,
+      "phases": [
+        "sent"
+      ],
+      "learning": {
+        "paused": true,
+        "lastSummaryDay": "2026-10-18"
+      }
+    }
+  },
+  "pausedInput": {
+    "result": "pending-user-message"
+  },
+  "forget": {
+    "result": "pending"
+  },
+  "screenshots": {
+    "2026-10-18-phone-controls-ui-ready.png": "bf98631241e27cc9bde8ca1bcb8e912888a731922b4f72f646bbbd2f0b2dd8e8",
+    "2026-10-18-phone-controls-paused.png": "5bc81e046a32e33af47a8ec1a43af60c36634409583b9d1c000612018bcc2ac8"
+  }
+}
