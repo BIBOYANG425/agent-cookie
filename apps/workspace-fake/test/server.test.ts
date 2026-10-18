@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { createFakeWorkspace } from '../src/server.js';
 import { sampleFixtures } from '../src/sample-seed.js';
-import { DEFAULT_POLICY, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
+import { DEFAULT_POLICY, GRANT_TTL_MS, policyId, policyViolations, type PolicyDocument } from '@agent-cookie/contract';
 import { WorkspaceClient, WorkspaceError } from '../../../packages/sdk/src/index.js';
 
 const servers: ReturnType<typeof createFakeWorkspace>[] = [];
@@ -170,5 +170,72 @@ describe('Sample policy document and funnel',()=>{
     await owner.setPolicy(stricter());
     expect((await call('/demo/reset','sample-owner-key',{})).status).toBe(200);
     expect((await client.getPolicy()).source).toBe('default');
+  });
+});
+
+// The fake must answer in the real workspace's wire shapes (apps/workspace/src/app.ts, services/sessions.ts), so these go
+// through the real SDK's validators: a drift on either side fails here instead of in lanes B/C against the fake.
+describe('Workspace wire shapes through the SDK',()=>{
+  const start=Date.parse('2026-10-17T20:00:00Z');
+  const at=(ms:number)=>new Date(start+ms).toISOString();
+
+  it('lists grants as GrantView with agent names, createdAt, remainingMs and a live/expired/revoked status',async()=>{
+    const {client,advance}=await setup();
+    await client.find({text:'trail shoes',public:{budget:'120'}},'shape-grants');
+    advance(1000);
+    const live=await client.getGrants();
+    expect(live.sample).toBe(true);
+    expect(live.grants.map(g=>g.agentName).sort()).toEqual(['Sample Shoe A','Sample Shoe B']);
+    for (const g of live.grants) {
+      expect(g).toMatchObject({status:'live',purpose:'auto',createdAt:at(0),expiresAt:at(GRANT_TTL_MS),remainingMs:GRANT_TTL_MS-1000,
+        policyId:policyId(DEFAULT_POLICY),stage:'introduced'});
+      expect(g).not.toHaveProperty('revokedAt');
+    }
+    const [a,b]=live.grants;
+    advance(1000);
+    const revoked=await client.revokeGrant(a.id);
+    expect(revoked).toEqual({ok:true,revokedAt:at(2000),sample:true});
+    advance(1000);
+    expect(await client.revokeGrant(a.id)).toEqual(revoked);
+    const after=(await client.getGrants()).grants;
+    expect(after.find(g=>g.id===a.id)).toMatchObject({status:'revoked',remainingMs:0,revokedAt:at(2000)});
+    expect(after.find(g=>g.id===b.id)).toMatchObject({status:'live',remainingMs:GRANT_TTL_MS-3000});
+    advance(GRANT_TTL_MS);
+    const expired=(await client.getGrants()).grants;
+    expect(expired.find(g=>g.id===a.id)).toMatchObject({status:'revoked',remainingMs:0});
+    expect(expired.find(g=>g.id===b.id)).toMatchObject({status:'expired',remainingMs:0});
+    expect(expired.find(g=>g.id===b.id)).not.toHaveProperty('revokedAt');
+    await expect(client.revokeGrant('no-such-grant')).rejects.toMatchObject({status:404,code:'NOT_FOUND'});
+  });
+
+  it('revokes a contribution with { ok, card } and keeps the merged card without it until reset',async()=>{
+    const {call,client,owner}=await setup();
+    const shoe='sample-contribution-3';
+    expect((await client.getMyCard() as {card:{field:string}[]}).card.some(f=>f.field==='shoe_size')).toBe(true);
+    expect((await call(`/personal/contributions/${shoe}/revoke`,'sample-shoe-a-key',{})).data.error.code).toBe('SCOPE_DENIED');
+    expect((await call(`/personal/contributions/${shoe}/revoke`,'sample-other-key',{})).data.error.code).toBe('NOT_FOUND');
+    const result=await client.revokeContribution(shoe);
+    expect(result).toMatchObject({ok:true,sample:true});
+    expect([...result.card.card,...result.card.candidates].some(f=>f.field==='shoe_size')).toBe(false);
+    expect(result.card.card.find(f=>f.field==='lang')?.value).toBe('zh');
+    expect((await client.revokeContribution(shoe)).card).toEqual(result.card);
+    expect((await call('/personal/card')).data.card).toEqual(result.card.card);
+    // The owner key may revoke too, as in the workspace.
+    const byOwner=await owner.revokeContribution('sample-contribution-0');
+    expect(byOwner.card.card.some(f=>f.field==='lang')).toBe(false);
+    await expect(client.revokeContribution('no-such-contribution')).rejects.toMatchObject({status:404,code:'NOT_FOUND'});
+    await owner.demoReset();
+    expect((await call('/personal/card')).data.card.find((f:any)=>f.field==='shoe_size').value).toBe('42');
+  });
+
+  it('resets with { ok, seededAt } for the owner in demo mode only',async()=>{
+    const {client,owner,advance}=await setup();
+    await client.find({text:'trail shoes',public:{budget:'120'}},'shape-reset');
+    advance(5000);
+    await expect(client.demoReset()).rejects.toMatchObject({status:403,code:'SCOPE_DENIED'});
+    expect(await owner.demoReset()).toEqual({ok:true,seededAt:at(5000),sample:true});
+    expect((await client.getGrants()).grants).toEqual([]);
+    const {owner:offline}=await setup(false);
+    await expect(offline.demoReset()).rejects.toMatchObject({status:404,code:'NOT_FOUND'});
   });
 });

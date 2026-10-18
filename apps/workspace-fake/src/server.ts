@@ -12,7 +12,9 @@ import { SAMPLE_FUNNEL_ROWS, SAMPLE_RELEASE_HISTORY, shadowReport, type ReleaseR
 
 interface Options { demo?: boolean; now?: () => number; onActivity?: (event: ActivityEvent) => void }
 interface StoredIntent { intent: IntentRequest & { id: string; userId: string; expiresAt: string; public: Record<string,string> }; quotes: Quote[] }
-interface StoredSession { session: Session; grant: Grant; intentId: string }
+interface StoredSession { session: Session; grant: Grant; grantCreatedAt: string; intentId: string }
+/** The workspace's GrantView (apps/workspace/src/services/sessions.ts): the grant plus display fields and a clock-derived status. */
+type GrantView = Grant & { agentId: string; agentName: string; createdAt: string; remainingMs: number; status: 'live' | 'expired' | 'revoked' };
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const reject = (code: ConstructorParameters<typeof WorkspaceError>[0]): never => { throw new WorkspaceError(code); };
 const allowed = (key: FixtureKey, ...roles: string[]) => { if (!roles.includes(key.role)) reject('SCOPE_DENIED'); };
@@ -83,6 +85,15 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
     if (found.grant.revokedAt) return reject('GRANT_REVOKED');
     if (Date.parse(found.grant.expiresAt) <= now()) return reject('GRANT_EXPIRED');
     return found;
+  };
+  const grantView = ({ session, grant, grantCreatedAt }: StoredSession): GrantView => {
+    const at = now(); const exp = Date.parse(grant.expiresAt);
+    const status: GrantView['status'] = grant.revokedAt ? 'revoked' : exp <= at ? 'expired' : 'live';
+    return { id: grant.id, sessionId: grant.sessionId, agentId: session.agentId,
+      agentName: fixtures.agents.find(a => a.agentId === session.agentId)?.name ?? session.agentId,
+      fields: grant.fields, purpose: grant.purpose, createdAt: grantCreatedAt, expiresAt: grant.expiresAt,
+      remainingMs: status === 'live' ? exp - at : 0, ...(grant.revokedAt ? { revokedAt: grant.revokedAt } : {}), status,
+      ...(grant.policyId ? { policyId: grant.policyId } : {}), ...(grant.stage ? { stage: grant.stage } : {}) };
   };
   const receipt = (s: StoredSession, fields: Field[], purpose: string): Receipt => {
     const entry = { id: randomUUID(), sessionId: s.session.sessionId, agentId: s.session.agentId, fields, purpose, createdAt: iso(),
@@ -172,7 +183,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
             const doc = policyFor(user.userId);
             const grant: Grant = { id: randomUUID(), sessionId, fields: policyAutoFields(doc, agent.category), purpose: 'auto', expiresAt: intent.expiresAt,
               policyId: policyId(doc), stage: 'introduced' };
-            sessions.set(sessionId, { session, grant, intentId: intent.id });
+            sessions.set(sessionId, { session, grant, grantCreatedAt: session.createdAt, intentId: intent.id });
             const quote = eligible.find(q => q.agentId === agent.agentId)!;
             quotes.push({ ...quote, id: randomUUID(), intentId: intent.id });
           }
@@ -207,11 +218,17 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
       } else if (req.method === 'GET' && path === '/personal/receipts') {
         allowed(key, 'personal'); result = { receipts: receipts.filter(r => r.userId === key.userId).map(({userId: _, ...r}) => r), sample: true };
       } else if (req.method === 'GET' && path === '/personal/grants') {
-        allowed(key, 'personal'); result = { grants: [...sessions.values()].filter(s => s.session.userId === key.userId).map(s => ({ ...s.grant, agentId: s.session.agentId })), sample: true };
+        allowed(key, 'personal'); result = { grants: [...sessions.values()].filter(s => s.session.userId === key.userId).map(grantView), sample: true };
       } else if (req.method === 'POST' && /^\/personal\/grants\/[^/]+\/revoke$/.test(path)) {
         allowed(key, 'personal'); const id = decodeURIComponent(path.split('/')[3]);
         const found = [...sessions.values()].find(s => s.grant.id === id && s.session.userId === key.userId);
-        if (!found) return reject('NOT_FOUND'); found.grant.revokedAt = iso(); result = { revoked: true, sample: true };
+        // Like the workspace: a second revoke keeps and returns the first revokedAt.
+        if (!found) return reject('NOT_FOUND'); found.grant.revokedAt ??= iso(); result = { ok: true, revokedAt: found.grant.revokedAt, sample: true };
+      } else if (req.method === 'POST' && /^\/personal\/contributions\/[^/]+\/revoke$/.test(path)) {
+        // Like the workspace: personal or owner key, the user's own contribution only, answered with the re-merged card.
+        allowed(key, 'personal', 'owner'); const id = decodeURIComponent(path.split('/')[3]);
+        const found = fixtures.contributions.find(c => c.id === id && c.userId === key.userId);
+        if (!found) return reject('NOT_FOUND'); found.revokedAt ??= iso(); result = { ok: true, card: cardFor(key.userId), sample: true };
       } else if (req.method === 'GET' && path === '/personal/policy') {
         allowed(key, 'personal', 'owner'); result = { ...policyView(key.userId), sample: true };
       } else if (req.method === 'PUT' && path === '/personal/policy') {
@@ -238,7 +255,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         allowed(key, 'owner'); if (!options.demo) reject('NOT_FOUND');
         fixtures = structuredClone(seed); intents.clear(); sessions.clear(); accepted.clear(); receipts.length = 0; activity.length = 0; writes.clear();
         policies.clear();
-        result = { reset: true, sample: true };
+        result = { ok: true, seededAt: iso(), sample: true };
       } else return reject('NOT_FOUND');
       audit(actor, req.method ?? 'GET', path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id'), 'ok');
       reply(200, result);
