@@ -2,7 +2,7 @@
 // in arrays so the workspace's write-through calls are exercised, and resetToSeed restores the seed.
 import {
   NOTE_MAX_BYTES, WorkspaceError,
-  type Card, type CommitRef, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
+  type Card, type CommitRef, type CompactOptions, type CompactResult, type Contribution, type IntentRecord, type MemoryRepo, type MemoryRepoApi, type MergeOptions, type Note,
   type OpenMemoryRepoOptions, type Receipt, type RulesApi, type WriteMeta,
 } from "@agent-cookie/contract";
 
@@ -12,6 +12,8 @@ export class InMemoryRepo implements MemoryRepo {
   readonly commits: StubCommit[] = [];
   /** appendIntent calls, in order (the real repo is lane C's). */
   readonly intents: IntentRecord[] = [];
+  /** archive/<YYYY-MM>.md, one entry per line (compact). */
+  readonly archive = new Map<string, string[]>();
   private contributions: Contribution[] = [];
   private notes = new Map<string, Note[]>();
   private receipts: Receipt[] = [];
@@ -76,6 +78,30 @@ export class InMemoryRepo implements MemoryRepo {
     if (meta.author !== record.agentId) throw new WorkspaceError("SCOPE_DENIED");
     this.intents.push(structuredClone(record));
     return this.commit(`intent ${record.id}${record.chosenQuote ? " chosen" : ""} by ${record.agentId}`, meta);
+  }
+  /** MemoryRepo.compact as the contract describes it (lane C implements the real one). */
+  async compact(opts: CompactOptions, meta: WriteMeta): Promise<CompactResult> {
+    const card = this.rules.mergeCard(this.contributions, opts);
+    const older = new Set<string>();
+    const fields = [...new Set(card.superseded.map((x) => x.field))];
+    for (const field of fields) {
+      const list = card.superseded.filter((x) => x.field === field).sort((a, b) => (a.lastSupportedAt < b.lastSupportedAt ? 1 : -1));
+      for (const x of list.slice(opts.keepSuperseded)) older.add(`${field}\u0000${x.value}`);
+    }
+    const moved = this.contributions.filter((c) => !c.revokedAt && older.has(`${c.field}\u0000${c.value}`));
+    if (moved.length === 0) return { archived: 0, archivedIds: [] };
+    const month = opts.now.slice(0, 7);
+    const lines = this.archive.get(month) ?? [];
+    for (const c of moved) lines.push(`${this.rules.renderContribution(c)} [archivedAt: ${opts.now}; from: contributions/${c.agentId}.md]`);
+    this.archive.set(month, lines);
+    const ids = new Set(moved.map((c) => c.id));
+    this.contributions = this.contributions.filter((c) => !ids.has(c.id));
+    const commit = this.commit(`compact: archive ${moved.length} superseded line(s)`, meta);
+    return { archived: moved.length, archivedIds: [...ids], commit: commit.sha };
+  }
+  /** Lines in contributions/ for one field (tests). */
+  linesFor(field: string): Contribution[] {
+    return this.contributions.filter((c) => c.field === field);
   }
   async appendReceipt(r: Receipt, meta: WriteMeta): Promise<CommitRef> {
     this.receipts.push(structuredClone(r));

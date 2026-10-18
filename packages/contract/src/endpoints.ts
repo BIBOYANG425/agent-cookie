@@ -33,7 +33,7 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/personal/grants", caller: "personal", summary: "Current grants: agent, fields, purpose, remaining time; no values" },
   { method: "POST", path: "/personal/contributions/:id/revoke", caller: "personal", summary: "Revoke one contribution and recompute the card" },
   { method: "GET", path: "/personal/intents", caller: "personal", summary: "?q=&limit= → { intents: IntentHistoryEntry[] }, the user's own intent history, newest first (owner key too)" },
-  { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 ObservationAck { queued }: user turns are held in memory per conversation and learned from later; never blocks; discarded while learning is paused; replayed messageIds ignored" },
+  { method: "POST", path: "/personal/observations", caller: "personal", summary: "Observation → 202 ObservationAck { queued }: user turns are held in memory per conversation and learned from by Dreaming; never blocks; discarded while learning is paused; replayed messageIds ignored" },
   { method: "GET", path: "/personal/learning", caller: "personal", summary: "→ LearningState { paused } (owner key too)" },
   { method: "PUT", path: "/personal/learning", caller: "personal", summary: "{ paused } → LearningState; pausing also discards conversations waiting in the queue (owner key too)" },
   { method: "GET", path: "/personal/learned", caller: "personal", summary: "→ LearnedResponse: pref.* values on the card or waiting as candidates, with sources and evidence (owner key too)" },
@@ -47,6 +47,7 @@ export const ENDPOINTS: Endpoint[] = [
   { method: "GET", path: "/agent/notes/:key", caller: "merchant", summary: "?sessionId= → read own note; anyone else gets 404" },
 
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)" },
+  { method: "POST", path: "/owner/dreaming/run", caller: "owner", summary: "Run Dreaming once now (learn → regenerate → compact → log) → DreamingRun; counts and field names only" },
   { method: "POST", path: "/demo/reset", caller: "owner", gate: "AGENT_COOKIE_DEMO", summary: "Owner key + AGENT_COOKIE_DEMO=1: wipe tables, reseed fixtures, hard-reset the memory repo" },
   { method: "POST", path: "/test/clock", caller: "test", gate: "AGENT_COOKIE_TEST", summary: "{ offsetMs } shifts the server clock; absent otherwise" },
 

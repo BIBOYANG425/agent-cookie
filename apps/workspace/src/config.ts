@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FIXTURE_FILES, WORKSPACE_PORT } from "@agent-cookie/contract";
+import { DREAMING_DEFAULT_INTERVAL_MS, FIXTURE_FILES, WORKSPACE_PORT } from "@agent-cookie/contract";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const WORKSPACE_DIR = resolve(here, "..");
@@ -32,8 +32,8 @@ export interface Config {
   resetWaitMs: number;
   /** SQLite busy_timeout: wait for another connection's write lock instead of failing with SQLITE_BUSY. */
   sqliteBusyTimeoutMs: number;
-  /** How often quiet observed conversations are checked for learning (LEARN_TICK_MS). */
-  learnTickMs: number;
+  /** Dreaming's period (DREAMING_INTERVAL_MS; 0 = never scheduled, POST /owner/dreaming/run still works). */
+  dreamingIntervalMs: number;
   /** A LearnApi call that takes longer is abandoned and logged as failed (LEARN_TIMEOUT_MS). */
   learnTimeoutMs: number;
   /** Lane B's Haiku extractor key (ANTHROPIC_API_KEY). Unset → nothing is learned (never synthetic results). Never logged. */
@@ -96,7 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(unlockSecret ? { unlockSecret } : {}),
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
-    learnTickMs: int(env.LEARN_TICK_MS, 30_000, 1000, 3_600_000),
+    dreamingIntervalMs: env.DREAMING_INTERVAL_MS === "0" ? 0 : int(env.DREAMING_INTERVAL_MS, DREAMING_DEFAULT_INTERVAL_MS, 1000, 86_400_000),
     learnTimeoutMs: int(env.LEARN_TIMEOUT_MS, 30_000, 50, 600_000),
     ...(env.ANTHROPIC_API_KEY?.trim() ? { anthropicApiKey: env.ANTHROPIC_API_KEY.trim() } : {}),
     learnMode: env.AGENT_COOKIE_LEARN_MODE === "explicit-only" ? "explicit-only" : "all",

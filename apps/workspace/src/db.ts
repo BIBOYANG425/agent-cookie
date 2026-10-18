@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL,
   status TEXT NOT NULL, created_at TEXT NOT NULL, accepted_at TEXT, result TEXT, seq INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'live',
   size_note TEXT);
 CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL,
-  basis TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, origin TEXT NOT NULL DEFAULT 'live', evidence TEXT);
+  basis TEXT NOT NULL, created_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, origin TEXT NOT NULL DEFAULT 'live', evidence TEXT,
+  archived_at TEXT);
 CREATE TABLE IF NOT EXISTS settings (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key));
 CREATE TABLE IF NOT EXISTS observation_batches (agent_id TEXT NOT NULL, conversation_id TEXT NOT NULL, user_id TEXT NOT NULL, channel TEXT NOT NULL,
   turns_seen INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (agent_id, conversation_id));
@@ -70,8 +71,11 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 3, table: "intents", column: "query", ddl: "ALTER TABLE intents ADD COLUMN query TEXT" },
   { version: 3, table: "quotes", column: "size_note", ddl: "ALTER TABLE quotes ADD COLUMN size_note TEXT" },
   { version: 4, table: "contributions", column: "evidence", ddl: "ALTER TABLE contributions ADD COLUMN evidence TEXT" },
+  { version: 6, table: "contributions", column: "archived_at", ddl: "ALTER TABLE contributions ADD COLUMN archived_at TEXT" },
+  { version: 6, table: "activity", column: "kind", ddl: "ALTER TABLE activity ADD COLUMN kind TEXT" },
+  { version: 6, table: "activity", column: "stats", ddl: "ALTER TABLE activity ADD COLUMN stats TEXT" },
 ];
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
   "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
@@ -422,14 +426,22 @@ export class Store {
   }
   /** Non-revoked Sample seed contributions of the user (card provenance, B20). */
   seedContributions(userId: string): StoredContribution[] {
-    return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? AND origin = 'seed' AND revoked_at IS NULL ORDER BY seq").all(userId) as Row[]).map(toContribution);
+    return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? AND origin = 'seed' AND revoked_at IS NULL AND archived_at IS NULL ORDER BY seq")
+      .all(userId) as Row[]).map(toContribution);
   }
   contribution(id: string): StoredContribution | undefined {
     const r = this.db.prepare("SELECT * FROM contributions WHERE id = ?").get(id) as Row | undefined;
     return r && toContribution(r);
   }
+  /** The user's contributions, minus what Dreaming archived (they live in the memory repo's archive/ only). */
   contributionsForUser(userId: string): StoredContribution[] {
-    return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? ORDER BY seq").all(userId) as Row[]).map(toContribution);
+    return (this.db.prepare("SELECT * FROM contributions WHERE user_id = ? AND archived_at IS NULL ORDER BY seq").all(userId) as Row[]).map(toContribution);
+  }
+  /** Mirror a compaction: these contributions moved to the memory repo's archive/. */
+  markArchived(ids: readonly string[], at: string): number {
+    let n = 0;
+    this.tx(() => { for (const id of ids) n += this.exec("UPDATE contributions SET archived_at = ? WHERE id = ? AND archived_at IS NULL", at, id).changes; });
+    return n;
   }
   revokeContribution(id: string, at: string): void {
     // The evidence (the user's words) goes with it: a revoked value needs no reason to be kept.
@@ -471,12 +483,17 @@ export class Store {
 
   // ---- activity
   insertActivity(e: Omit<ActivityEvent, "id">): void {
-    this.exec("INSERT INTO activity (at, event, actor, object, result, reason) VALUES (?, ?, ?, ?, ?, ?)", e.at, e.event, e.actor, e.object, e.result, e.reason);
+    this.exec("INSERT INTO activity (at, event, actor, object, result, reason, kind, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", e.at, e.event, e.actor,
+      e.object, e.result, e.reason, e.kind ?? null, e.stats ? JSON.stringify(e.stats) : null);
   }
   activity(limit: number): ActivityEvent[] {
-    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((r) => ({
-      id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object), result: String(r.result),
-      reason: String(r.reason) }));
+    return (this.db.prepare("SELECT * FROM activity ORDER BY id DESC LIMIT ?").all(limit) as Row[]).map((r) => {
+      const e: ActivityEvent = { id: String(r.id), at: String(r.at), event: String(r.event), actor: String(r.actor), object: String(r.object),
+        result: String(r.result), reason: String(r.reason) };
+      if (r.kind === "dreaming") e.kind = "dreaming";
+      if (r.stats) e.stats = JSON.parse(String(r.stats)) as NonNullable<ActivityEvent["stats"]>;
+      return e;
+    });
   }
 
   // ---- idempotency
