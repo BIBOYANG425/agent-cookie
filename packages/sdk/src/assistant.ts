@@ -1,15 +1,19 @@
 // A company assistant (Manus, Dots, Muse): it asks the owner for a consent link, then acts for the person through
 // the pairwise session the owner approved. It reads values by policy (auto.assistant), never provenance, and never
 // shipping_address or payment_method: the workspace hands those to the store at checkout and payment.
-import type { AssistantContext, AssistantStats, Field, LinkView } from '@agent-cookie/contract';
+import type { AssistantContext, AssistantStats, Field, JarAccess, LinkView } from '@agent-cookie/contract';
 import { LINK_TTL_MS } from '@agent-cookie/contract';
-import { ActingClient, cancelled, count, fieldName, isObject, resourceId, validDate, validId, type RequestOptions } from './core.js';
+import {
+  ActingClient, cancelled, count, fieldName, isObject, jarAccess, resourceId, validDate, validId, type ClientOptions, type RequestOptions,
+} from './core.js';
 import { contributionBody, contributionResult, type AssistantContributionInput, type ContributionResult } from './contributions.js';
 import { linkView } from './links.js';
 
 export type { AgentContribution, AssistantContributionInput, ContributionEvidenceInput, ContributionInput, ContributionResult } from './contributions.js';
 export type AssistantContextResult = AssistantContext & { sample: boolean };
 export type AssistantStatsResult = AssistantStats & { sample: boolean };
+/** AssistantClient.forJar's options: a client's options without the URL and key, which come from the jar. */
+export type JarClientOptions = Omit<ClientOptions, 'baseUrl' | 'key'>;
 
 export interface WaitForLinkOptions {
   /** Time between polls of GET /assistant/link/:id: 100–60000 ms, default 2000. */
@@ -50,14 +54,35 @@ const fieldNames = (v: unknown): v is string[] => Array.isArray(v) && v.length <
  * approves a link, context() and the intent methods answer 403 SCOPE_DENIED; once the owner revokes the grant or it
  * lapses, GRANT_REVOKED / GRANT_EXPIRED. The intent, quote, accept and observe methods are WorkspaceClient's, scoped
  * by the workspace to intents this assistant created: anyone else's intent is the same 404 NOT_FOUND as none.
+ *
+ * With the hosted gateway there are two clients and two keys. The gateway-level client (`baseUrl` the gateway, the
+ * global key from registering there) is used only for requestLink, link and waitForLink. The approved link's `jar`
+ * gives the jar-bound client (`AssistantClient.forJar(link.jar)`: that person's instance and this assistant's key in
+ * it), used for everything else. Neither key works in the other place.
  */
 export class AssistantClient extends ActingClient {
+  /**
+   * The client for one person's jar under the hosted gateway, from the approved LinkView's `jar`: bound to `jar.url`
+   * (their instance, e.g. `https://jar.example/u/usr_abc`) with `jar.key` (this assistant's key there). Use it for
+   * context, find/accept, remember, stats and observe; keep the gateway-level client for requestLink, link and
+   * waitForLink. `options` takes everything a client takes except the URL and key. A malformed jar is refused before
+   * any request with "Invalid jar access.", which names neither the URL nor the key. Independent of WorkspaceClient.
+   */
+  static forJar(jar: JarAccess, options: JarClientOptions = {}): AssistantClient {
+    const access = jarAccess(jar);
+    if (!access) throw new Error('Invalid jar access.');
+    return new AssistantClient({ ...options, baseUrl: access.url, key: access.key });
+  }
+
   /** POST /assistant/link: ask the owner for a session. Show `url` to the person; a second call while one is pending returns it. */
   async requestLink(options?: RequestOptions): Promise<LinkView> {
     return linkView(await this.request('/assistant/link', { ...options, body: {} }));
   }
 
-  /** GET /assistant/link/:id: this assistant's own link (anyone else's is 404); `sessionId` once approved. */
+  /**
+   * GET /assistant/link/:id: this assistant's own link (anyone else's is 404); `sessionId` once approved, and through
+   * the hosted gateway `jar` (validated; until the link expires) for AssistantClient.forJar.
+   */
   async link(linkId: string, options?: RequestOptions): Promise<LinkView> {
     const view = linkView(await this.request(`/assistant/link/${resourceId(linkId)}`, options));
     if (view.id !== linkId) throw new Error('Invalid link response.');
@@ -65,9 +90,9 @@ export class AssistantClient extends ActingClient {
   }
 
   /**
-   * Polls link(id) until the owner approves (resolves the approved LinkView) or rejects with LinkNotApprovedError
-   * (`declined`, `expired`, `timeout`). A failed poll rejects with that call's error and is not retried; the link is
-   * unchanged, so calling waitForLink again resumes. Abort rejects with an AbortError.
+   * Polls link(id) until the owner approves (resolves the approved LinkView, with `jar` when a gateway issued one) or
+   * rejects with LinkNotApprovedError (`declined`, `expired`, `timeout`). A failed poll rejects with that call's error
+   * and is not retried; the link is unchanged, so calling waitForLink again resumes. Abort rejects with an AbortError.
    */
   async waitForLink(linkId: string, options: WaitForLinkOptions = {}): Promise<LinkView> {
     const intervalMs = options.intervalMs ?? 2_000;

@@ -4,7 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, roleOf, WorkspaceError,
-  type Basis, type Category, type Observation, type ObservationTurn, type Registration,
+  type Basis, type Category, type HealthResponse, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
 import { looksLikeContactHandle } from "./guards.js";
@@ -114,6 +114,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   const { store, clock, config } = deps;
   const app = new Hono<AppEnv>();
   installErrorHandling(app);
+
+  // Liveness for a supervisor (the gateway): no key, no data, and ahead of every middleware below, so a probe neither
+  // waits on a reset, nor opens a trace, nor writes an activity row.
+  app.get("/healthz", () => json({ ok: true, seed: config.seed } satisfies HealthResponse));
 
   // Sentry tracing (no-op without SENTRY_DSN): one transaction per request, named by route template, never by path.
   app.use("*", async (c, next) => {

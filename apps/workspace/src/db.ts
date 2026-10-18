@@ -412,6 +412,11 @@ export class Store {
   hasOwnerKey(): boolean {
     return this.db.prepare("SELECT 1 FROM keys WHERE role = 'owner' LIMIT 1").get() !== undefined;
   }
+  /** The owner key rows (hashes only): a blank instance's POST /demo/reset keeps its minted owner key. */
+  ownerKeys(): KeyRow[] {
+    return (this.db.prepare("SELECT * FROM keys WHERE role = 'owner' ORDER BY rowid").all() as Row[])
+      .map((r) => ({ keyHash: String(r.key_hash), agentId: String(r.agent_id), role: r.role as Role, createdAt: String(r.created_at) }));
+  }
 
   // ---- sessions
   /** Idempotent per sessionId. Returns the stored row (which may predate this call). */
@@ -569,6 +574,10 @@ export class Store {
   }
   markSeed(id: string): void {
     this.exec("UPDATE contributions SET origin = 'seed' WHERE id = ?", id);
+  }
+  /** Whether any contribution, revoked or not, came from the Sample seed (a blank instance refuses such a database). */
+  hasSeedContribution(): boolean {
+    return this.db.prepare("SELECT 1 FROM contributions WHERE origin = 'seed' LIMIT 1").get() !== undefined;
   }
   /** Non-revoked Sample seed contributions of the user (card provenance, B20). */
   seedContributions(userId: string): StoredContribution[] {

@@ -190,7 +190,7 @@ describe('registerAgent', () => {
     expect(String(fetcher.mock.calls[0][0])).toBe('https://jar.example.com/agents/register');
   });
 
-  it.each(['http://workspace.example', 'http://127.0.0.1:4310/api', 'https://user:secret@jar.example.com', 'https://jar.example.com/u/42'])(
+  it.each(['http://workspace.example', 'http://127.0.0.1:4310/api/', 'https://user:secret@jar.example.com', 'https://jar.example.com/u/42?k=1'])(
     'refuses workspace URL %s before sending', async target => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(registerAgent(target, { name: 'Muse', category: 'assistant' }, { fetch: fetcher })).rejects.toThrow('AGENT_COOKIE_URL');
