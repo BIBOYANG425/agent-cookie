@@ -59,12 +59,14 @@ it('persists send uncertainty before send and will not resend automatically',asy
 });
 it('stores cursor/outbox privately and rejects wrong-account reuse or concurrent processes',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'agent-cookie-state-'));cleanup.push(()=>rm(directory,{recursive:true,force:true}));
-  const path=join(directory,'state.json');const store=await openState(path,'sample-binding');
+  const path=join(directory,'state.json');const store=await openState(path,'sample-binding',11);
+  expect(store.state.cursor).toBe(11);
   await expect(openState(path,'sample-binding')).rejects.toMatchObject({code:'CHANNEL_ALREADY_LOCKED'});
   store.state.cursor=17;await store.save();expect((await stat(path)).mode & 0o777).toBe(0o600);await store.close();
   expect(JSON.parse(await readFile(path,'utf8')).cursor).toBe(17);
   await expect(openState(path,'another-binding')).rejects.toMatchObject({code:'STATE_BINDING_MISMATCH'});
-  const reopened=await openState(path,'sample-binding');expect(reopened.state.cursor).toBe(17);await reopened.close();
+  const reopened=await openState(path,'sample-binding',999);expect(reopened.state.cursor).toBe(17);await reopened.close();
+  await expect(openState(path,'sample-binding',-1)).rejects.toMatchObject({code:'INVALID_INITIAL_CURSOR'});
 });
 
 it.each(['ordered','handoff','blocked','failed'] as const)('renders actual %s outcomes without inventing a link or losing a failure handoff',async status=>{

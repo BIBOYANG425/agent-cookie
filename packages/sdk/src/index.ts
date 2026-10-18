@@ -1,8 +1,9 @@
+export * from './hana.js';
 import type { AcceptResult, ActivityEvent, Card, Grant, IntentRequest, Quote, Receipt } from '@agent-cookie/contract';
 import { forgetBody, forgetResult, type ForgetLearningInput, observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
 export * from './learning.js';
 export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
-export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
+export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'> & { conversationId?: string };
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
@@ -184,12 +185,14 @@ export class WorkspaceClient {
     // Match A's HTTP byte limits. Do not normalize the user's sentence or invent optional conditions.
     const text = (v: unknown, max: number) => typeof v === 'string' && !!v.trim() && new TextEncoder().encode(v).length <= max;
     if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
+      || (input.conversationId !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(input.conversationId))
       || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
         || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
           || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))) throw new Error('Invalid shopping intent.');
     // Explicit wire shape: arbitrary runtime properties are not identity/authority, nor a legacy kind fallback.
     const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
-      ...(input.public !== undefined ? { public: input.public } : {}) };
+      ...(input.public !== undefined ? { public: input.public } : {}),
+      ...(input.conversationId !== undefined ? { conversationId: input.conversationId } : {}) };
     const payload = await this.#request('/personal/intents', body, idempotencyKey, options);
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
     return { intentId: payload.intentId, sample: payload.sample === true };

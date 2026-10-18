@@ -3,13 +3,15 @@
 Owner: B / Cyrus. Deadline: 2026-10-18 06:00 PDT. If step 5 is incomplete, retain/revert channel-photon and stop HANA work. Full wall-clock rehearsal and edited 4:30 film are measured separately (human confirmed).
 
 - [x] 0: Source + isolated PostgreSQL/DefaultExporter tracing, two read-only Photon subscribers; see 00-tracing.md. Search tool was called but Gemini returned 404; not a successful search/reply.
-- [ ] 1a: SDK trusted SHA256 conversation/operation helpers, optional conversationId forwarding, shared unambiguous preference-field resolver; focused wire tests.
-- [ ] 1b: HANA six-tool plugin, structured renderers, opaque model results + trusted final-message side channel; fake-workspace HTTP tests and injection golden.
-- [ ] 1c: HANA trusted inbound GUID context and durable inbox/job dedup; real PostgreSQL replay/retry assertions.
+- [x] 1a: SDK trusted SHA256 conversation/operation helpers, optional conversationId forwarding, shared unambiguous preference-field resolver; focused wire tests.
+- [x] 1b: HANA six-tool plugin, structured renderers, opaque model results + trusted final-message side channel; fake-workspace HTTP tests and injection golden.
+- [x] 1c: HANA trusted inbound GUID context and durable inbox/job dedup; real PostgreSQL replay/retry assertions.
 - [ ] 2: Photon explicit listen-only mode with separate cursor/state, same conversation hash, no reply/intent/command path. A contract must correlate intent and observation; test one evidence source after A delivery.
 - [ ] 3: Demo timing bypass including typing simulation; unchanged character/memory, separate demo config and DB, snapshot and safe isolated reset, allowlist.
 - [ ] 4: Five deliberate failures on isolated state, truthful fixed responses, delivery records/screenshots where available.
 - [ ] 5: Three actual full rehearsals and independent C/Devin reproduction. No fabricated deliveries, model traces, merchant note reads, or live inventory.
+
+01:25 update: Steps2/3 implementation and isolated checks prepared, but live cutover/env freeze not accepted. Step2 opt-in shared-source assertion is red on current A (2 sources instead of1). Step4 has local tests, no real-phone screenshots. See02-plugin-verification.md for boundaries. No HANA key or new contract has arrived; original phone retained.
 
 ## Interfaces and trust
 

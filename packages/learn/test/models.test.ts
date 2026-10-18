@@ -37,6 +37,17 @@ it('falls back on service unavailability only after local filters',async()=>{
  expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('learned');expect(extract).toHaveBeenCalledTimes(1);
  extract.mockClear();await createLearner({policy,classify,extract}).learn({...turn,text:'I have asthma and prefer black.'});expect(extract).not.toHaveBeenCalled();
 });
+it('unavailable Jev allows explicit statements only and cannot promote incidental/inferred text',async()=>{
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({},{status:503})});
+ const extract=vi.fn().mockResolvedValue(extracted);
+ const learner=createLearner({policy,classify,extract});
+ const incidental={...turn,text:'Black is the color I choose for my clothes.'};
+ expect(await learner.learn(incidental)).toMatchObject({reason:'unavailable',preferences:[]});
+ expect(extract).not.toHaveBeenCalled();
+ extract.mockResolvedValue({...extracted,preferences:[{...preference,basis:'observed'}]});
+ expect((await learner.learn(turn)).preferences).toEqual([]);
+ expect(extract).toHaveBeenCalledTimes(1);
+});
 it.each([0.11,0.5,0.98])('sensitive or uncertain Jev probability %s cannot fall back even with malformed other answers',async probability=>{
  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({answers:{sensitive:{type:'noul',noul:probability},key:'bad'}})});
  const extract=vi.fn();expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('sensitive');expect(extract).not.toHaveBeenCalled();

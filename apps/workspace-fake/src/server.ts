@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import {
-  autoFields, canRead, isField, merchantKeyFor, readDecision,
+  autoFields, canRead, isPrefField, isField, merchantKeyFor, readDecision,
   GRANT_TTL_MS, WorkspaceError, type AcceptResult, type ActivityEvent, type Field,
   type Grant, type Handshake, type IntentRequest, type Quote, type Receipt, type Session,
 } from '@agent-cookie/contract';
@@ -42,6 +42,7 @@ async function bodyOf(req: IncomingMessage): Promise<Record<string, unknown>> {
 export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
   const seed = validateFixtures(input); const now = options.now ?? Date.now;
   let fixtures = structuredClone(seed);
+  const paused=new Map<string,boolean>();
   const intents = new Map<string, StoredIntent>();
   const sessions = new Map<string, StoredSession>();
   const accepted = new Map<string, AcceptResult & { sample: true }>();
@@ -80,13 +81,13 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
       if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin');
         res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Idempotency-Key');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
       }
       if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
       const url = new URL(req.url ?? '/', 'http://127.0.0.1:4310'); path = url.pathname;
       const key = fixtures.keys.find(k => req.headers.authorization === `Bearer ${k.key}`);
       if (!key) return reject('AUTH_REQUIRED'); actor = key.agentId;
-      const body = req.method === 'POST' ? await bodyOf(req) : {};
+      const body = ['POST','PUT'].includes(req.method??'') ? await bodyOf(req) : {};
       const idempotent = async (action: () => unknown): Promise<unknown> => {
         const supplied = req.headers['idempotency-key'];
         if (typeof supplied !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(supplied)) return reject('MISSING_FIELD');
@@ -100,6 +101,20 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         result = { agentId: key.agentId, category: key.category, role: key.role, sample: true };
       } else if (req.method === 'GET' && path === '/personal/card') {
         allowed(key, 'personal'); result = { ...cardFor(key.userId), sample: true };
+      } else if (req.method === 'GET' && path === '/personal/learning') {
+        allowed(key,'personal');result={paused:paused.get(key.userId)??false};
+      } else if (req.method === 'PUT' && path === '/personal/learning') {
+        allowed(key,'personal');if(typeof body.paused!=='boolean'||Object.keys(body).length!==1)reject('MISSING_FIELD');
+        paused.set(key.userId,body.paused as boolean);result={paused:body.paused};
+      } else if (req.method === 'GET' && path === '/personal/learned') {
+        allowed(key,'personal');result={paused:paused.get(key.userId)??false,learned:fixtures.contributions
+          .filter(c=>c.userId===key.userId&&isPrefField(c.field)).map(c=>({field:c.field,value:c.value,status:'candidate',sources:[c.agentId],
+            evidence:[{contributionId:c.id,agentId:c.agentId,basis:c.basis,createdAt:c.createdAt}]}))};
+      } else if (req.method === 'POST' && path === '/personal/learning/forget') {
+        allowed(key,'personal');if(!isPrefField(body.field)||Object.keys(body).length!==1)reject('MISSING_FIELD');
+        paused.set(key.userId,true);const old=fixtures.contributions.length;
+        fixtures.contributions=fixtures.contributions.filter(c=>c.userId!==key.userId||c.field!==body.field);
+        result={field:body.field,paused:true,removed:old-fixtures.contributions.length,projection:'complete',historyErased:false};
       } else if (req.method === 'GET' && path === '/agent/handshake') {
         allowed(key, 'merchant'); const s = sessionFor(key, url.searchParams.get('sessionId') ?? '');
         const values = valuesFor(key.userId);
@@ -191,7 +206,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
         allowed(key, 'owner'); result = { activity, sample: true };
       } else if (req.method === 'POST' && path === '/demo/reset') {
         allowed(key, 'owner'); if (!options.demo) reject('NOT_FOUND');
-        fixtures = structuredClone(seed); intents.clear(); sessions.clear(); accepted.clear(); receipts.length = 0; activity.length = 0; writes.clear();
+        fixtures = structuredClone(seed); intents.clear(); sessions.clear(); accepted.clear(); paused.clear(); receipts.length = 0; activity.length = 0; writes.clear();
         result = { reset: true, sample: true };
       } else return reject('NOT_FOUND');
       audit(actor, req.method ?? 'GET', path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id'), 'ok');

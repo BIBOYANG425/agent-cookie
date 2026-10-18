@@ -1,0 +1,145 @@
+{
+  "at": "2026-10-18T08:10:16.257Z",
+  "scope": "Live OpenRouter/HANA generation + Sample HTTP tool results; no phone or real merchant checkout",
+  "modelCalls": [
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 7216,
+      "finishReason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 14622,
+        "completion_tokens": 383,
+        "total_tokens": 15005,
+        "cost": 0.000510281,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 80,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.000510281,
+          "upstream_inference_prompt_cost": 0.00043866,
+          "upstream_inference_completions_cost": 7.1621e-05
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 400,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 1994,
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 15085,
+        "completion_tokens": 32,
+        "total_tokens": 15117,
+        "cost": 0.000458534,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 80,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.000458534,
+          "upstream_inference_prompt_cost": 0.00045255,
+          "upstream_inference_completions_cost": 5.984e-06
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 12087,
+      "finishReason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 14731,
+        "completion_tokens": 193,
+        "total_tokens": 14924,
+        "cost": 0.00047667,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 48,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.00047667,
+          "upstream_inference_prompt_cost": 0.00044193,
+          "upstream_inference_completions_cost": 3.474e-05
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 144,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "status": 200,
+      "elapsedMs": 2530,
+      "finishReason": "stop",
+      "usage": {
+        "prompt_tokens": 14938,
+        "completion_tokens": 19,
+        "total_tokens": 14957,
+        "cost": 0.00045027,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 48,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0.00045027,
+          "upstream_inference_prompt_cost": 0.00044742,
+          "upstream_inference_completions_cost": 2.85e-06
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "merchantTextInPrompt": false
+    }
+  ],
+  "turns": [
+    {
+      "index": 0,
+      "elapsedMs": 9497,
+      "replyCount": 4,
+      "structuredReply": true,
+      "status": "two_sample_offers",
+      "passed": true
+    },
+    {
+      "index": 1,
+      "elapsedMs": 14733,
+      "replyCount": 2,
+      "structuredReply": true,
+      "status": "handoff",
+      "passed": true
+    }
+  ],
+  "merchantTitleAbsentFromFutureHistory": true
+}

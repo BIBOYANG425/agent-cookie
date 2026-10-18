@@ -1,0 +1,54 @@
+{
+  "at": "2026-10-18T08:19:02.675Z",
+  "scope": "Synthetic inputs; real pg-boss and temporary SQLite; no model, phone or live commerce",
+  "checks": [
+    {
+      "name": "same_GUID_real_pg_retry",
+      "passed": true,
+      "job": {
+        "id": "0b664d9a-a22d-47b9-afee-594849efd957",
+        "state": "completed",
+        "retry_count": 1
+      },
+      "sqliteCounts": {
+        "intents": {
+          "n": 1
+        },
+        "intent_sessions": {
+          "n": 2
+        },
+        "idempotency": {
+          "n": 2
+        }
+      },
+      "acceptedQuotes": 1,
+      "checkoutReceipts": 1,
+      "activityEvents": [
+        "POST /personal/quotes/:id/accept",
+        "GET /personal/intents/:id/quotes",
+        "POST /personal/intents",
+        "POST /personal/quotes/:id/accept",
+        "quote.result",
+        "note.write",
+        "fields.read",
+        "grant.widen",
+        "quote.accept",
+        "GET /personal/intents/:id/quotes",
+        "POST /personal/intents",
+        "introduce",
+        "ucp.proxy",
+        "introduce",
+        "ucp.proxy",
+        "ucp.search",
+        "intent.create"
+      ]
+    },
+    {
+      "name": "disconnected_demo_transport_not_success",
+      "passed": true,
+      "stateBeforeCancel": "retry",
+      "failureRecords": 1,
+      "realPhoton": false
+    }
+  ]
+}

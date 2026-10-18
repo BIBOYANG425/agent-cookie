@@ -157,3 +157,12 @@ B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm 
 - 每日摘要：用户下一次正常交互时，最多附加一次当前有效card状态的结论；不发主动定时短信，不调模型，不含证据原文。暂停时不摘要；读取失败保留正常回复。
 
 可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Beta只记录checkpoint与learning_capture的状态/数量；旧Spectrum入口自身telemetry关闭、SDK日志silent。两者均不采集正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿OpenRouter模型密钥。
+# HANA 旁听模式（尚未切到真实线路）
+
+`AGENT_COOKIE_CHANNEL_MODE=listen-only` 只旁听已经验证为机主本人直聊的入站消息，不回复、不创建 intent、不处理暂停/恢复/忘掉命令，也不发送每日摘要。命令由 HANA 的六工具插件执行；旁听每次重新读取工作台学习状态，暂停时不入队。失败时关闭本轮采集，不影响 HANA 回复。
+
+必须设置独立的 `AGENT_COOKIE_CHANNEL_STATE`（例如 `.runtime/hana-observer-state.json`），不可使用原 personal agent 的 state 文件。`AGENT_COOKIE_CHANNEL_START_SEQ` 仅初始化新文件，取停下原 agent 时的已核对 cursor；已有 cursor 永远不被覆盖。HANA 另持自己的 cursor，同一项目的两个订阅者已实测可独立接收。只有 HANA 可以发送。
+
+conversationId 与 HANA 共用 `@agent-cookie/sdk/hana-identifiers` 的 SHA256(chatId) 前16位。它不是按五分钟切换的会话号：同一手机线程之后再说一遍仍属同一来源，不应晋升。A 的 IntentRequest 同源接线未到件前禁止切流，因为 find+observe 仍会错误产生两来源。
+
+操作步骤、独立复现和回滚见 `docs/hana-demo.md`。原个人 agent 的配置、学习暂停状态及 cursor/outbox 保持不变。

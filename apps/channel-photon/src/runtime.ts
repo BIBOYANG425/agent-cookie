@@ -37,17 +37,22 @@ export function matchMessage(event: unknown, config: PhotonConfig, startedAt: nu
 }
 
 export async function handleDelivery(event: unknown, state: ChannelState, config: PhotonConfig, workspace: AgentWorkspace,
-  save: () => Promise<void>, send: (route: ReplyRoute, text: string, key: string) => Promise<string>,learning?:DeliveryLearning) {
+  save: () => Promise<void>, send: (route: ReplyRoute, text: string, key: string) => Promise<string>,learning?:DeliveryLearning,mode:'personal'|'listen-only'='personal') {
   const incoming = matchMessage(event,config,state.startedAt,Date.now()); if (!incoming) return;
   const key = incoming.messageId;
   let pending = state.messages[key];
-  if (pending?.phase === 'sent') return;
+  if (pending?.phase === 'sent'||pending?.phase==='observed') return;
   if (pending?.phase === 'sending') throw new ChannelFailure('SEND_OUTCOME_UNKNOWN');
   if (!pending) {
     // Bound on-disk data. Fail closed; never discard deduplication records silently.
     if (Object.keys(state.messages).length >= 2000) throw new ChannelFailure('STATE_CAPACITY');
     const {text:_,occurredAt:__, ...route} = incoming;
     pending = state.messages[key] = {phase:'processing',route}; await save();
+  }
+  if(mode==='listen-only'){
+    if(!learning)throw new ChannelFailure('LEARNING_REQUIRED');
+    try{learning.capture(incoming);}catch{/* best effort; never reply */}
+    pending.phase='observed';await save();return;
   }
   if (pending.phase === 'processing') {
     try{learning?.capture(incoming);}catch{/* Learning failure must never break the reply path. */}
@@ -64,19 +69,24 @@ export async function handleDelivery(event: unknown, state: ChannelState, config
 }
 
 export async function serve(env: NodeJS.ProcessEnv) {
+  const mode=env.AGENT_COOKIE_CHANNEL_MODE??'personal';
+  if(!['personal','listen-only'].includes(mode))throw new ChannelFailure('INVALID_CHANNEL_MODE');
+  if(mode==='listen-only'&&!env.AGENT_COOKIE_CHANNEL_STATE)throw new ChannelFailure('SEPARATE_OBSERVER_STATE_REQUIRED');
   const config = readConfig(env), workspaceConfig = workspaceConfigFromEnv(env);
   const learningEnabled=env.AGENT_COOKIE_LEARNING_BINDING==='workspace-v1';
   if(env.AGENT_COOKIE_LEARNING_BINDING&&!learningEnabled)throw new ChannelFailure('INVALID_LEARNING_BINDING');
+  if(mode==='listen-only'&&!learningEnabled)throw new ChannelFailure('LEARNING_REQUIRED');
   const workspace = new WorkspaceClient({...workspaceConfig,...(learningEnabled?{learning:true}:{})});
   if ((await workspace.getMe()).role !== 'personal') throw new ChannelFailure('PERSONAL_KEY_REQUIRED');
-  const binding = createHash('sha256').update(JSON.stringify([config.projectId,config.testSender,config.agentHandle,workspaceConfig])).digest('hex');
-  const store = await openState(resolve(env.AGENT_COOKIE_CHANNEL_STATE ?? '.runtime/channel-state.json'),binding);
+  const binding = createHash('sha256').update(JSON.stringify([config.projectId,config.testSender,config.agentHandle,workspaceConfig,...(mode==='listen-only'?[mode]:[])])).digest('hex');
+  const store = await openState(resolve(env.AGENT_COOKIE_CHANNEL_STATE ?? '.runtime/channel-state.json'),binding,
+    Number(env.AGENT_COOKIE_CHANNEL_START_SEQ??'0'));
   let learning:(DeliveryLearning&{pause():void;close():Promise<void>})|undefined;
   try{
     if(learningEnabled){
       const {createBetaLearning}=await import('./beta-learning.js');
       learning=await createBetaLearning({workspace,state:store.state,save:store.save,ownerHandle:config.testSender,
-        identifierSalt:createHash('sha256').update(workspaceConfig.key).digest('hex'),
+        listenOnly:mode==='listen-only',identifierSalt:createHash('sha256').update(workspaceConfig.key).digest('hex'),
         endpoint:env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT,
         metric:(status,depth)=>console.log(JSON.stringify({event:'learning_capture',status,depth}))});
     }
@@ -100,7 +110,7 @@ export async function serve(env: NodeJS.ProcessEnv) {
   socket.on('connect',()=>{
     socket.timeout(10000).emit('subscribe',{startSeq:store.state.cursor,apiVersion:API_VERSION},(error: unknown,result: unknown)=>{
       if(error || !object(result) || result.ok !== true) return stop('SUBSCRIBE_FAILED');
-      console.log(JSON.stringify({event:'channel_ready',version:'photon-beta',learning:learningEnabled}));
+      console.log(JSON.stringify({event:'channel_ready',version:'photon-beta',learning:learningEnabled,mode}));
     });
   });
   socket.on('disconnect',()=>{epoch++;});
@@ -111,7 +121,7 @@ export async function serve(env: NodeJS.ProcessEnv) {
     if (++pending > 128) {pending--;stop('QUEUE_CAPACITY');return;}
     queue=queue.then(async()=>{
       if (closed || generation !== epoch || seq <= store.state.cursor) return;
-      await handleDelivery(event,store.state,config,workspace,store.save,send,learning);
+      await handleDelivery(event,store.state,config,workspace,store.save,send,learning,mode as 'personal'|'listen-only');
       store.state.cursor=seq; await store.save();
       // Log metadata only. Never phone numbers, text, card values, keys or raw Photon errors.
       console.log(JSON.stringify({event:'checkpoint',seq}));

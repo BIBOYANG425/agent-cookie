@@ -1,0 +1,14 @@
+{
+  "scope": "Temporary A SQLite/C Git with synthetic extractor; no real phone or model",
+  "passed": false,
+  "status": "card",
+  "evidenceCount": 2,
+  "evidenceSourceKinds": [
+    "intent",
+    "conversation"
+  ],
+  "requiredEvidenceSourceCount": 1,
+  "requiredStatus": "candidate",
+  "assertionChanged": false,
+  "blockedOn": "B77 IntentRequest.conversationId through persistence and learning source"
+}

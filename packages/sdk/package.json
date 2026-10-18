@@ -25,6 +25,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./hana-identifiers": {
+      "types": "./dist/hana-identifiers.d.ts",
+      "import": "./dist/hana-identifiers.js"
     }
   }
 }
