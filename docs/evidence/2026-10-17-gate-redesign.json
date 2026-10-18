@@ -7,7 +7,7 @@
     "calls": 1,
     "status": 200,
     "elapsedMs": 377,
-    "cost": 0.000023184,
+    "cost": 2.3184e-05,
     "stable": 0.98,
     "sensitive": 0.11,
     "key": "pref.style",
@@ -49,7 +49,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 339,
-              "cost": 0.000036162
+              "cost": 3.6162e-05
             },
             {
               "stage": "extractor",
@@ -85,7 +85,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 192,
-              "cost": 0.000036288
+              "cost": 3.6288e-05
             },
             {
               "stage": "extractor",
@@ -121,7 +121,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 281,
-              "cost": 0.000036078
+              "cost": 3.6078e-05
             },
             {
               "stage": "extractor",
@@ -157,7 +157,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 201,
-              "cost": 0.000035994
+              "cost": 3.5994e-05
             },
             {
               "stage": "extractor",
@@ -187,7 +187,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 227,
-              "cost": 0.00003612
+              "cost": 3.612e-05
             }
           ],
           "elapsedMs": 228
@@ -211,7 +211,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 178,
-              "cost": 0.000035868
+              "cost": 3.5868e-05
             }
           ],
           "elapsedMs": 179
@@ -295,7 +295,7 @@
                 "elapsedMs": 401,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.0000357,
+                "cost": 3.57e-05,
                 "stable": 0.98,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -329,7 +329,7 @@
                 "elapsedMs": 217,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000035868,
+                "cost": 3.5868e-05,
                 "stable": 0.77,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -340,7 +340,7 @@
                 "elapsedMs": 225,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000035868,
+                "cost": 3.5868e-05,
                 "stable": 0.81,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -365,7 +365,7 @@
                 "elapsedMs": 204,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000035868,
+                "cost": 3.5868e-05,
                 "stable": 0.83,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -376,7 +376,7 @@
                 "elapsedMs": 182,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000035868,
+                "cost": 3.5868e-05,
                 "stable": 0.79,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -400,7 +400,7 @@
                 "elapsedMs": 202,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.0000357,
+                "cost": 3.57e-05,
                 "stable": 0.98,
                 "sensitive": 0.02,
                 "key": "pref.color"
@@ -480,7 +480,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 337,
-              "cost": 0.000038724
+              "cost": 3.8724e-05
             },
             {
               "stage": "extractor",
@@ -516,7 +516,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 176,
-              "cost": 0.00003885
+              "cost": 3.885e-05
             },
             {
               "stage": "extractor",
@@ -552,7 +552,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 175,
-              "cost": 0.00003864
+              "cost": 3.864e-05
             },
             {
               "stage": "extractor",
@@ -588,7 +588,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 184,
-              "cost": 0.000038556
+              "cost": 3.8556e-05
             },
             {
               "stage": "extractor",
@@ -618,7 +618,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 184,
-              "cost": 0.000038682
+              "cost": 3.8682e-05
             }
           ],
           "elapsedMs": 185
@@ -642,7 +642,7 @@
               "status": 200,
               "model": "typesafe/jev-1.14",
               "elapsedMs": 219,
-              "cost": 0.00003843
+              "cost": 3.843e-05
             }
           ],
           "elapsedMs": 219
@@ -726,7 +726,7 @@
                 "elapsedMs": 276,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000038262,
+                "cost": 3.8262e-05,
                 "stable": 0.99,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -760,7 +760,7 @@
                 "elapsedMs": 189,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.00003843,
+                "cost": 3.843e-05,
                 "stable": 0.97,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -780,7 +780,7 @@
                 "elapsedMs": 232,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.00003843,
+                "cost": 3.843e-05,
                 "stable": 0.98,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -814,7 +814,7 @@
                 "elapsedMs": 190,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.00003843,
+                "cost": 3.843e-05,
                 "stable": 0.97,
                 "sensitive": 0.02,
                 "key": "pref.color"
@@ -834,7 +834,7 @@
                 "elapsedMs": 170,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.00003843,
+                "cost": 3.843e-05,
                 "stable": 0.98,
                 "sensitive": 0.03,
                 "key": "pref.color"
@@ -867,7 +867,7 @@
                 "elapsedMs": 262,
                 "reportedModel": "typesafe/jev-1.14-20261014",
                 "provider": "TypeSafe",
-                "cost": 0.000038262,
+                "cost": 3.8262e-05,
                 "stable": 0.99,
                 "sensitive": 0.02,
                 "key": "pref.color"
@@ -920,7 +920,19 @@
     "acceptanceScriptSha256": "649ef231c6b9c544d785ea59438d1676f53081f03de79423bcd9654c1ec6a27f",
     "acceptanceAssertionsModified": false,
     "livePhoneReplayed": false,
-    "runtimeRestarted": false
+    "runtimeRestarted": true
   },
-  "costThisInvestigation": 0.005143192
+  "costThisInvestigation": 0.005143192,
+  "runtimeCutover": {
+    "at": "2026-10-18T02:16:56.844Z",
+    "head": "05a5d8f",
+    "learnedRows": 1,
+    "evidenceCount": 2,
+    "paused": false,
+    "cursor": 8515,
+    "messageCount": 9,
+    "allMessagesSent": true,
+    "learnedUnchanged": true,
+    "channelStateUnchanged": true
+  }
 }
