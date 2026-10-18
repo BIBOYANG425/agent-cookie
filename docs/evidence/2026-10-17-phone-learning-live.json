@@ -1,0 +1,163 @@
+{
+  "kind": "real-phone-live-model-partial-acceptance",
+  "phoneVersion": "Photon 2.0 Beta",
+  "runtimeInputCommit": "3911219",
+  "routingFixCommit": "6e30ae6",
+  "mainMerged": "82b6864",
+  "manualFlush": false,
+  "clockAdvance": false,
+  "dreamingIntervalMs": 30000,
+  "requiredIdleMs": 300000,
+  "queueEvent": {
+    "id": "11289",
+    "at": "2026-10-18T01:47:21.157Z",
+    "event": "observation.queue",
+    "actor": "sample-personal-photon",
+    "result": "ok",
+    "reason": "turns=1 user=1"
+  },
+  "conversationApplyEvent": {
+    "id": "11830",
+    "at": "2026-10-18T01:52:40.366Z",
+    "event": "learn.apply",
+    "actor": "sample-personal-photon",
+    "object": "conversation",
+    "result": "written=1",
+    "reason": "fields=pref.color"
+  },
+  "elapsedQueueToApplyMs": 319209,
+  "afterIdle": {
+    "at": "2026-10-18T01:52:46.390Z",
+    "learned": {
+      "paused": false,
+      "learned": [
+        {
+          "field": "pref.color",
+          "value": "black, white, gray",
+          "status": "card",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "c_2tgkeby2",
+              "agentId": "sample-personal-photon",
+              "basis": "observed",
+              "createdAt": "2026-10-18T01:47:22.776Z",
+              "intentId": "i_94fg3s6y"
+            },
+            {
+              "contributionId": "c_0ggs1r0w",
+              "agentId": "sample-personal-photon",
+              "basis": "observed",
+              "createdAt": "2026-10-18T01:52:39.786Z",
+              "conversationId": "a58c525a79a86d89f6644b098b95818c0b24b6583fc15051cf72a7b1771e6d9e"
+            }
+          ]
+        }
+      ]
+    },
+    "activity": [
+      {
+        "id": "11831",
+        "at": "2026-10-18T01:52:40.632Z",
+        "event": "dreaming",
+        "actor": "dreaming",
+        "object": "",
+        "result": "ok",
+        "reason": "skipped=compact"
+      },
+      {
+        "id": "11830",
+        "at": "2026-10-18T01:52:40.366Z",
+        "event": "learn.apply",
+        "actor": "sample-personal-photon",
+        "object": "conversation",
+        "result": "written=1",
+        "reason": "fields=pref.color"
+      },
+      {
+        "id": "11828",
+        "at": "2026-10-18T01:52:08.729Z",
+        "event": "dreaming",
+        "actor": "dreaming",
+        "object": "",
+        "result": "ok",
+        "reason": "skipped=compact"
+      },
+      {
+        "id": "11760",
+        "at": "2026-10-18T01:51:38.729Z",
+        "event": "dreaming",
+        "actor": "dreaming",
+        "object": "",
+        "result": "ok",
+        "reason": "skipped=compact"
+      },
+      {
+        "id": "11638",
+        "at": "2026-10-18T01:51:08.704Z",
+        "event": "dreaming",
+        "actor": "dreaming",
+        "object": "",
+        "result": "ok",
+        "reason": "skipped=compact"
+      }
+    ]
+  },
+  "modelMetadata": {
+    "source": "Read-only OpenRouter rendered Logs table",
+    "rows": [
+      {
+        "minuteLocal": "2026-10-17 18:52 PDT",
+        "model": "typesafe/jev-1.14",
+        "provider": "TypeSafe",
+        "inputTokens": 544,
+        "outputTokens": 127,
+        "displayedCostUsd": 2.28e-05,
+        "routingOverheadSeconds": 0.16,
+        "timeToFirstTokenSeconds": 0.06
+      },
+      {
+        "minuteLocal": "2026-10-17 18:52 PDT",
+        "model": "openai/gpt-oss-120b",
+        "provider": "Baseten",
+        "inputTokens": 445,
+        "outputTokens": 147,
+        "displayedCostUsd": 0.000118,
+        "routingOverheadSeconds": 0.14,
+        "timeToFirstTokenSeconds": 0.6,
+        "finishReason": "stop"
+      }
+    ],
+    "costsRoundedByUI": true,
+    "httpStatusNotExposedInThisTable": true,
+    "earlierMisroutedIntentAlsoCalledBothModels": true
+  },
+  "channelState": {
+    "cursor": 8427,
+    "messageCount": 8,
+    "allSent": true,
+    "singleListener": true,
+    "backendRestartedDuringWait": false
+  },
+  "acceptance": {
+    "authenticatedPhoneCapture": true,
+    "automaticFiveMinuteProcessing": true,
+    "realModelsObserved": true,
+    "consoleMatchesBackend": true,
+    "cleanSingleSourceCandidateRun": false,
+    "independentTwoConversationPromotion": false
+  },
+  "limitations": [
+    "The same real message was first misrouted as a shopping intent; its immediate contribution and the later observation contribution incorrectly promoted the value. This is not two independent conversations.",
+    "6e30ae6 fixes future casual routing and prevents Beta shopping messages from being captured a second time. Focused regression passed, but no second real phone message was requested.",
+    "Existing erroneous intent and contribution remain unchanged. No reset, revocation, or history rewrite was performed.",
+    "C live fixture UI still calls learned state a preset Sample stage; backend data and source IDs are real. B60 model provenance is not yet displayed.",
+    "No new raw-conversation-at-rest claim: the erroneous shopping route created an intent. The observation path itself uses the already-tested in-memory queue."
+  ],
+  "screenshot": {
+    "path": "docs/evidence/2026-10-17-phone-learning-console.png",
+    "sha256": "662417d9a7623a0072743bc0f15d0d28fe65f4d3a5cbd8e923a2a1781274a74c"
+  }
+}

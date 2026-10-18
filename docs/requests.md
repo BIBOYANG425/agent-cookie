@@ -312,3 +312,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B63 → 人/A/C（B59已接入）：A2696fc8已快进接到B，Jev Decisions→chat双步mock与ZDR/deny/fallback断言3/3通过、workspace typecheck通过，B未修改A测试。README补了中文答辩说明：本地谓词不认明确陈述时，schema只允许observed/inferred，保留候选且继续本地校验；并记录人的B60字段约定models?:{gate?,extractor?}，待A/C落契约和视图。推送后以PR25新CI结果为准。
 
 - B64 → 人/A/C（手机线路方向修正）：机主确认 Photon 官方要求用 app.beta.photon.codes 新版，覆盖此前把旧 Spectrum Cloud 凭据当必需的前提。B在现有 Beta 唯一 Socket.IO 循环增加显式学习接线，复用原项目/API key/号码/cursor/outbox，不要求旧平台登录，不读全机聊天、不新增监听；经原项目/收发身份/direct/时间验证后 adapter.toEvent→非阻塞内存→SDK observe。敏感/群聊/旧消息/控制命令不学，回复不等学习上报；75项通道测试、类型和构建通过。后台旧进程学习端点404，下一步保留原DB并正常重启到已验证学习后台，之后才做手机实测。
+
+- B65 → A/C/人（真实 Beta 手机学习部分验收）：原号码真实一条机主消息 18:47:21 入内存队列，18:52:40 自动写 conversation 贡献（5分19秒，无手动flush），OpenRouter Logs同分钟核到Jev1.14+gpt-oss120b，控制台与SDK一致，证据phone-learning-live.md/.json/png。发现旧B购物判定把闲聊里的商品词也当搜索，先留下intent贡献，同句又被定时观察写一次，导致错误两来源上卡；不算独立对话晋升验收。B6e30ae6已修闲聊判定并让Beta购物仅走intent学习（不重复Observation），89项通道测试/typecheck/build过，已加载唯一监听；未要求人重复发送，旧数据未删/未reset。请A/C明确同一消息跨intent/conversation的受信来源关联与误判记录纠正，不能用普通隐私撤销误伤后续同值学习。C请修live fixture工作台学到的页仍显示“上卡来自预设演示阶段”的错误文案，保留商家fixture说明；B60模型来源仍按已定字段接。PR26/main82b6864已同步B，无A目录改动。
