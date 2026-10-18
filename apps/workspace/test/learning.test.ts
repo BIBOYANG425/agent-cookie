@@ -3,6 +3,7 @@
 // text never reaches the database files (memory only); paused discards; a learned pref reaches the card with the
 // user's statement or two independent sources (conversations / intents); a new card field shows up in the next
 // handshake; learning never breaks the request that triggered it.
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import Database from "better-sqlite3";
 import { tmpdir } from "node:os";
@@ -465,8 +466,19 @@ describe("review fixes", () => {
 
   it("PRIV6: a conversationId that is a phone number or email is refused", async () => {
     const h = await harness();
-    for (const conversationId of ["+1 415 555 0100", "someone@example.com"]) {
-      expect((await observe(h, conversationId, [turn("user", "hi")])).status).toBe(422);
+    for (const conversationId of ["+1 415 555 0100", "someone@example.com", "4155550100", "tel:415-555-0100", "iMessage;-;+14155550100",
+      "dm 415 555 0100", "chat_4155550100", "+４１５５５５０１００", "iMessage;-;someone@example.com", "card 4111 1111 1111 1111"]) {
+      expect((await observe(h, conversationId, [turn("user", "hi")])).status, conversationId).toBe(422);
+    }
+  });
+
+  it("PRIV6 (B49 integration): an opaque hash is accepted even when digits inside it look like a phone number", async () => {
+    const h = await harness();
+    // lane B's hashed DM id that the old check refused (13 digits in a row inside the hash)
+    const ids = ["83e1df2216e24e62d22b4341b27344da51933a33778be5aa1190461701663bae", "conv-7f3a", "sample-dm", "c1"];
+    for (let i = 0; i < 300; i++) ids.push(createHash("sha256").update(`conversation ${i}`).digest("hex"));
+    for (const conversationId of ids) {
+      expect((await observe(h, conversationId, [turn("user", "hi")])).status, conversationId).toBe(202);
     }
   });
 

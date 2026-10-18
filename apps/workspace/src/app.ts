@@ -6,7 +6,7 @@ import {
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
-import { containsContactOrPayment } from "./guards.js";
+import { looksLikeContactHandle } from "./guards.js";
 import type { Deps } from "./deps.js";
 import { fail, installErrorHandling, json, optStr, query, readJson, str, type AppEnv } from "./http.js";
 import { hashKey, mintKey, newId } from "./ids.js";
@@ -63,8 +63,8 @@ const ROLES: ReadonlySet<string> = new Set(["user", "agent", "other"]);
 function observationBody(body: Record<string, unknown>): Observation {
   const channel = str(body, "channel", { max: 64 });
   const conversationId = str(body, "conversationId", { max: 128 });
-  // Kept as evidence and shown back to the user: an opaque id, never a chat handle (phone number, email).
-  if (containsContactOrPayment(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
+  // Kept as evidence and shown back to the user: an opaque id (a hash is fine), never a chat handle (phone number, email).
+  if (looksLikeContactHandle(conversationId)) fail("MISSING_FIELD", "conversationId must be opaque, not a phone number or email");
   const turns = body.turns;
   if (!Array.isArray(turns) || turns.length === 0 || turns.length > OBSERVATION_MAX_TURNS) {
     fail("MISSING_FIELD", `turns must be 1–${OBSERVATION_MAX_TURNS} items`);
