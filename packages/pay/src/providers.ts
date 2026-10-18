@@ -13,7 +13,12 @@ export interface PaymentAuthorizeInput {
 }
 
 export interface PaymentProvider {
+  /** Simulation provenance; never a claim that Visa's servers accepted a request. */
+  label?: "Visa Acceptance simulator";
+  simulated?: true;
   authorize(input: PaymentAuthorizeInput): Promise<{
+    label?: "Visa Acceptance simulator";
+    simulated?: true;
     providerRef: string;
     status: "authorized" | "declined";
     /** A provider's decline reason CODE only (never its message text); internal, never shown to a merchant. */

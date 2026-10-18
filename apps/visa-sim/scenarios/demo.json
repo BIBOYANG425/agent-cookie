@@ -1,0 +1,11 @@
+{
+  "_provenance": "SIMULATED scripted outcomes; not captured from Visa. Instrument identifiers are Sample tokens, never card numbers.",
+  "instruments": {
+    "SampleAuthorizeInstrument": ["authorize", "authorize"],
+    "SampleDeclineInstrument": ["decline"],
+    "SamplePartialInstrument": ["partial"],
+    "SampleReviewInstrument": ["review"],
+    "SampleInvalidInstrument": ["invalid"],
+    "SampleTimeoutInstrument": ["timeout"]
+  }
+}

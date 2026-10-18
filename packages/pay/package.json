@@ -8,14 +8,17 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke:visa-simulator": "tsx scripts/visa-simulator-smoke.ts"
   },
   "dependencies": {
     "@agent-cookie/contract": "workspace:*",
     "stripe": "^17.0.0"
   },
   "devDependencies": {
+    "@agent-cookie/visa-sim": "workspace:*",
     "@types/node": "^22.7.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   }

@@ -1,5 +1,19 @@
 # `@agent-cookie/pay`
 
+## Local Visa Acceptance simulator (D1)
+
+The deterministic loopback simulator in [`apps/visa-sim`](../../apps/visa-sim/README.md) uses the installed, exact-pinned official `cybersource-rest-client@0.0.84` SDK to verify Digest/Signature and construct response models. This proves that the provider sends the bytes Visa's SDK signs and handles the scripted documented response categories (authorization, decline, partial, review, invalid request, capture, reversal, and timeout before authorization). It does **not** prove that Visa's servers accept those requests, exhaustively cover every documented response, complete an order, or charge a real card. A timeout after a real provider created a hold remains ambiguous and requires reconciliation (U9). Visa Intelligent Commerce is not simulated; no production use is claimed.
+
+```sh
+pnpm --filter @agent-cookie/pay smoke:visa-simulator
+pnpm --filter @agent-cookie/visa-sim test
+pnpm --filter @agent-cookie/pay test
+```
+
+`visaProvider` still refuses all non-sandbox targets unless `VISA_ACCEPTANCE_SIMULATOR=1`; then only the exact origin `http://127.0.0.1:<port>` is additionally allowed (no hostname, path, credentials, query, fragment, redirects or other interface). The signature Host is the loopback authority including port. Both the provider and its raw authorization result carry `label: "Visa Acceptance simulator", simulated: true` on this path. Sandbox behavior and existing signature goldens are unchanged; Stripe remains unwired.
+
+**Not workspace-ready:** shared `PaymentAuthorization`/receipt types cannot yet preserve that provenance. `createPayments` therefore refuses simulator providers rather than emitting an unlabelled public result. D1-label / D1-workspace in `docs/requests.md` request the lane-A contract, persistence, console, A21, workspace `smoke:visa --simulator` and CI wiring. The package smoke above is a provider-level substitute, not evidence that those requested workspace checks ran. After A lands the contract and propagation, D removes this safety gate and verifies the workspace path.
+
 Payment authorization, single-use capture and reversal for an accepted quote. The package keeps the payment-provider reference private and returns only the public authorization result (`id`, amount, currency, status). `payment_method` is only a provider token reference; no card number goes anywhere.
 
 - `createPayments({ provider, getContext, onReceipt, store })` → `authorizePayment` (accepted quote, budget, one authorization per quote, amount receipt; if the receipt cannot be written the hold is reversed, best effort, and the call fails with `UPSTREAM_ERROR`, so no authorization stands without its receipt), `usePayment` (single capture), `reverseAuthorization` (releases the hold of an authorization nobody took: calls `provider.reverse` once and marks the record `reversed`; a provider without `reverse` leaves it `authorized` and answers `not_supported`; a provider failure leaves it `authorized` and throws `UPSTREAM_ERROR`).

@@ -83,12 +83,15 @@ export interface VisaAcceptanceCredentials {
   keyId: string;
   /** The REST shared secret, base64; its decoded bytes are the HMAC-SHA256 key. */
   sharedSecret: string;
-  /** Only the sandbox host is accepted. */
+  /** Sandbox hostname, or http://127.0.0.1:<port> only with VISA_ACCEPTANCE_SIMULATOR=1. */
   host?: string;
 }
 
 export interface VisaDebugEntry {
+  label?: "Visa Acceptance simulator";
+  simulated?: true;
   method: "GET" | "POST";
+  /** Route template only; provider ids are redacted. */
   path: string;
   /** Signature and v-c-merchant-id redacted. */
   headers: Record<string, string>;
@@ -118,9 +121,15 @@ const KNOWN_STATUSES = new Set(["AUTHORIZED_PENDING_REVIEW", "AUTHORIZED_RISK_DE
 
 /** Refuses anything but the Visa Acceptance sandbox host. The value is not repeated in the error. */
 export function assertSandboxHost(host: string): void {
-  if (host !== VISA_ACCEPTANCE_SANDBOX_HOST) {
+  if (host !== VISA_ACCEPTANCE_SANDBOX_HOST && !simulatorHost(host)) {
     throw new Error(`Visa Acceptance: only the sandbox host ${VISA_ACCEPTANCE_SANDBOX_HOST} is allowed (production is out of scope)`);
   }
+}
+
+function simulatorHost(host: string): boolean {
+  if (process.env.VISA_ACCEPTANCE_SIMULATOR !== "1" || !/^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(host)) return false;
+  const port = Number(host.slice(host.lastIndexOf(":") + 1));
+  return port <= 65535;
 }
 
 /** The lines the signature covers, joined with "\n" (digest only on requests with a body). */
@@ -233,14 +242,20 @@ export function visaCents(value: unknown): number | undefined {
 }
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
-const upstream = (what: string, httpStatus?: number, providerStatus?: unknown): LaneError => {
+const upstream = (what: string, httpStatus?: number, providerStatus?: unknown, label = "Visa Acceptance"): LaneError => {
   const named = typeof providerStatus === "string" && KNOWN_STATUSES.has(providerStatus) ? `, status ${providerStatus}` : "";
-  return new LaneError("UPSTREAM_ERROR", `Visa Acceptance ${what} failed${httpStatus !== undefined ? ` (HTTP ${httpStatus}${named})` : ""}`);
+  return new LaneError("UPSTREAM_ERROR", `${label} ${what} failed${httpStatus !== undefined ? ` (HTTP ${httpStatus}${named})` : ""}`);
 };
 
 export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   const host = options.host ?? VISA_ACCEPTANCE_SANDBOX_HOST;
   assertSandboxHost(host);
+  const simulated = simulatorHost(host);
+  const origin = simulated ? host : `https://${host}`;
+  const authority = new URL(origin).host;
+  const provenance = simulated ? { label: "Visa Acceptance simulator" as const, simulated: true as const } : {};
+  const label = provenance.label ?? "Visa Acceptance";
+  const failure = (what: string, status?: number, providerStatus?: unknown) => upstream(what, status, providerStatus, label);
   if (!MERCHANT_ID.test(options.merchantId)) throw new Error("Visa Acceptance: merchantId is missing or malformed");
   if (!KEY_ID.test(options.keyId)) throw new Error("Visa Acceptance: keyId is missing or malformed");
   if (!BASE64.test(options.sharedSecret) || Buffer.from(options.sharedSecret, "base64").length === 0) {
@@ -254,19 +269,20 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   /** One signed request. Returns the HTTP status and the parsed body (undefined when it is not a JSON object). */
   async function send(what: string, path: string, payload: Record<string, unknown>): Promise<{ status: number; body?: Record<string, unknown> }> {
     const text = JSON.stringify(payload);
-    const headers = { ...visaSignedHeaders({ host, merchantId, keyId, sharedSecret, method: "POST", path, body: text, date: now().toUTCString() }),
+    const headers = { ...visaSignedHeaders({ host: authority, merchantId, keyId, sharedSecret, method: "POST", path, body: text, date: now().toUTCString() }),
       "Content-Type": "application/json", Accept: "application/hal+json" }; // U3, as the SDK sends them
-    options.debug?.({ method: "POST", path, headers: redactVisaHeaders(headers) });
+    const logPath = path.replace(/(\/pts\/v2\/payments\/)[A-Za-z0-9]+\//, "$1[redacted]/");
+    options.debug?.({ ...provenance, method: "POST", path: logPath, headers: redactVisaHeaders(headers) });
     let res: Response;
     let raw: string;
     try {
-      res = await doFetch(`https://${host}${path}`, { method: "POST", headers, body: text, signal: AbortSignal.timeout(timeoutMs) });
+      res = await doFetch(`${origin}${path}`, { method: "POST", headers, body: text, signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
       raw = await res.text();
     } catch {
       // Network, DNS, TLS, timeout: the error object itself is dropped (it may echo the request).
-      throw upstream(`${what} request`);
+      throw failure(`${what} request`);
     }
-    options.debug?.({ method: "POST", path, headers: redactVisaHeaders(headers), status: res.status });
+    options.debug?.({ ...provenance, method: "POST", path: logPath, headers: redactVisaHeaders(headers), status: res.status });
     let body: unknown;
     try {
       body = raw ? JSON.parse(raw) : undefined;
@@ -277,16 +293,17 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   }
 
   const reverse = async (providerRef: string, amount: number, currency: "USD"): Promise<void> => {
-    if (!PROVIDER_ID.test(providerRef)) throw new LaneError("UPSTREAM_ERROR", "Visa Acceptance reversal: unusable payment id");
+    if (!PROVIDER_ID.test(providerRef)) throw new LaneError("UPSTREAM_ERROR", `${label} reversal: unusable payment id`);
     const { status, body } = await send("reversal", VISA_PATHS.reversals(providerRef), visaReversalRequest(amount, currency));
     if (status >= 200 && status < 300 && body?.status === "REVERSED") return;
-    throw upstream("reversal", status, body?.status);
+    throw failure("reversal", status, body?.status);
   };
 
   return {
+    ...provenance,
     authorize: async (input) => {
       const { status, body } = await send("authorization", VISA_PATHS.payments, visaAuthorizationRequest(input));
-      if (!body) throw upstream("authorization", status);
+      if (!body) throw failure("authorization", status);
       const ok = status >= 200 && status < 300;
       const id = typeof body.id === "string" && PROVIDER_ID.test(body.id) ? body.id : undefined;
       const providerStatus = body.status;
@@ -295,19 +312,19 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
       const authorizedAmount = visaCents(isObject(order?.amountDetails) ? order.amountDetails.authorizedAmount : undefined);
       const held = authorizedAmount ?? input.amount;
       if (ok && providerStatus === "AUTHORIZED") {
-        if (!id) throw upstream("authorization", status);
+        if (!id) throw failure("authorization", status);
         // A partial approval cannot pay the accepted price: release what it holds and fail.
         if (authorizedAmount !== undefined && authorizedAmount < input.amount) {
           await reverse(id, authorizedAmount, input.currency).catch(() => undefined);
-          throw upstream("authorization (partial approval)", status);
+          throw failure("authorization (partial approval)", status);
         }
-        return { providerRef: id, status: "authorized", authorizedAmount: held };
+        return { ...provenance, providerRef: id, status: "authorized", authorizedAmount: held };
       }
       // U7: DECLINED comes as 201 with errorInformation.reason; INVALID_REQUEST as 400 (or 201) with a top-level reason.
       if ((ok && providerStatus === "DECLINED") || ((ok || status === 400) && providerStatus === "INVALID_REQUEST")) {
         const info = isObject(body.errorInformation) ? body.errorInformation : undefined;
         const code = providerStatus === "DECLINED" ? info?.reason : body.reason;
-        return { providerRef: id ?? `declined_${input.idempotencyKey}`, status: "declined",
+        return { ...provenance, providerRef: id ?? `declined_${input.idempotencyKey}`, status: "declined",
           ...(typeof code === "string" && REASON_CODE.test(code) ? { reason: code } : {}) };
       }
       // U7: a hold the payment cannot go on with (review, risk decline, partial approval): release what the response
@@ -315,14 +332,14 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
       if (ok && id && typeof providerStatus === "string" && (providerStatus.startsWith("AUTHORIZED_") || providerStatus === "PARTIAL_AUTHORIZED")) {
         await reverse(id, held, input.currency).catch(() => undefined);
       }
-      throw upstream("authorization", status, providerStatus);
+      throw failure("authorization", status, providerStatus);
     },
     capture: async (providerRef, amount, currency = "USD") => {
-      if (!PROVIDER_ID.test(providerRef)) throw new LaneError("UPSTREAM_ERROR", "Visa Acceptance capture: unusable payment id");
-      if (amount === undefined) throw new LaneError("UPSTREAM_ERROR", "Visa Acceptance capture needs the authorized amount");
+      if (!PROVIDER_ID.test(providerRef)) throw new LaneError("UPSTREAM_ERROR", `${label} capture: unusable payment id`);
+      if (amount === undefined) throw new LaneError("UPSTREAM_ERROR", `${label} capture needs the authorized amount`);
       const { status, body } = await send("capture", VISA_PATHS.captures(providerRef), visaCaptureRequest(amount, currency));
       if (status >= 200 && status < 300 && body?.status === "PENDING") return;
-      throw upstream("capture", status, body?.status);
+      throw failure("capture", status, body?.status);
     },
     reverse,
   };

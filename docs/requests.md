@@ -381,3 +381,13 @@ C 线合入时的原始交接记录（保留全部原文）：
 | A57 | 状态更新（2026-10-18）：已完成（lane C，commits `b21549c`、`ea0eeab`）：POLICY.yaml 与种子含 assistant 类别（policyId `3526a909e404`）；Sample 助理与 key；控制台「连接请求」面板；`examples/assistant-sdk`、`examples/merchant-sdk`；`tests/acceptance` A32 通过（两助理两商家 churn）。发现：SDK 不传 `kind` 时无法引荐回调商家（见 A52，lane B 处理中）；商家握手 auto 字段不写回执，故 `questionsSkipped` 只计 purpose 放行与 Tier 0 投递。 |
 | A61 | A → 人（记录，2026-10-18）：助理的带证据 `stated` 写入与用户自己的 agent 同级信任（最新的受信陈述为准，撤销 link 即降为候选）；Dreaming 从助理对话学到的 "stated" 仍按 observed 记录，只有显式 `remember`+evidence 受信。`npm publish @agent-cookie/sdk` 由人执行。 |
 | A52 | 状态更新（2026-10-18）：已完成（lane B）：SDK `FindInput` 可带可选 `kind`（校验同工作台 `^[a-z][a-z0-9_]{0,63}$`），`createIntent`/`find` 透传；没有 `kind` 时只搜目录（UCP）商家。README 两段快速开始已说明。MCP `find_agents` 暂不暴露 `kind`。 |
+
+2026-10-18，commerce rail 移交 D 线；以下只追加，等待 A 线审阅，不改 `docs/plan.md`。
+
+| ID | 请求 | 状态 |
+| --- | --- | --- |
+| D1-scope | D → A / 人：D1 指定新建 `apps/visa-sim`，但移交的目录边界仍仅列 `packages/auth`、`packages/pay`、`packages/ucp`、`apps/unlock`。请确认该新 app 及安装精确版本 `cybersource-rest-client@0.0.84` 所需的根 `pnpm-lock.yaml` 条目是 D1 的明确例外；其他跨线修改仍由 A 完成。模拟器只监听 `127.0.0.1`，所有结果明确标模拟，不声称 Visa 服务端认可。 | 待 A / 人确认目录例外 |
+| D1-label | D → A：为模拟结果跨工作台、控制台及回执保留身份，建议在契约 `PaymentAuthorization` 和支付回执新增可选 `provider: "Visa Acceptance simulator"`、`simulated: true`（旧结果无此字段保持兼容）；工作台数据库映射须持久化并在授权、撤销与重取结果时保留，控制台 / 通道必须显示该标签。请 A 确认最终类型并重生成 OpenAPI；D 不自行修改 contract。 | 待 A 冻结形状 |
+| D1-workspace | D → A：D1 需要工作台配置在 `VISA_ACCEPTANCE_SIMULATOR=1` 时允许 `VISA_ACCEPTANCE_HOST=http://127.0.0.1:<port>`，其他情况仍只准 sandbox；向 `visaProvider` 传递明确 simulator 开关。A21 加真实 HTTP 模拟器授权后撤销用例；`scripts/visa-smoke.ts` 加 `--simulator` 并保留 live 分支；CI 启动模拟器后运行 A21 与 `smoke:visa --simulator`。D 提供 provider / 模拟器 API 和测试，A 审阅并修改工作台、CI，禁止接线 Stripe。 | 待 A；依赖 D1-scope / D1-label |
+| D1-scope-approved | 人已在本 Devin 会话选择“Yes—approve apps/visa-sim and its lockfile entries”；D1 目录例外已获批，其余跨线工作仍待 A。D 的 simulator/provider core 实现仅凭 `VISA_ACCEPTANCE_SIMULATOR=1` 且精确 loopback origin 启用（无新增 options 开关），raw provider 与结果带 `label: "Visa Acceptance simulator", simulated: true`；共享契约仍采用 D1-label 的待审提案。为避免当前工作台丢失模拟身份，`createPayments` 暂时拒绝 simulator provider（不产生授权），A 落地契约和展示传播后由 D 移除此 fail-closed gate。包内 `smoke:visa-simulator` 是 HTTP provider 冒烟，不冒充工作台 `smoke:visa --simulator` / A21 模拟路径已完成。 | 目录例外已确认；完整 D1 仍依赖 A |
+| D1-timeout-limit | D → A：脚本 `timeout` 明确停在授权前且不建立 hold，只证明该模拟场景不留 hold；丢失“已建立 hold”的真实响应仍是 U9，需要提供方查询/对账，不能宣称通用 no-orphan 保证。SDK 0.0.84 无 `ErrorBody` 类，实际生成错误体类为 `PtsV2PaymentsPost400Response`；模拟器用它构造 400 / 401 体，401 的状态/体组合非新增 Visa 服务端实证。 | 请在演示与验收用同一边界 |
