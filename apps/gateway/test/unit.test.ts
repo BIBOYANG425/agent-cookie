@@ -1,16 +1,17 @@
 // Gateway tests that start no workspace process: config, crypto, the proxy's refusal rules, the route table against
 // GATEWAY_ENDPOINTS, global registration, consent links (via the SDK's AssistantClient, unchanged), the consent page,
-// passkey routes with injected verifiers, sessions, CSRF, rate limiting, jar-key expiry and the operator route.
+// passkey routes with injected verifiers, sessions, CSRF, rate limiting, jar-key expiry and the operator funnel (from stored snapshots).
 import { mkdtempSync, rmSync, statSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_POLICY, GATEWAY_ENDPOINTS, LINK_TTL_MS } from "@agent-cookie/contract";
+import { DEFAULT_POLICY, GATEWAY_ENDPOINTS, LINK_TTL_MS, type OperatorFunnel } from "@agent-cookie/contract";
 import { AssistantClient } from "@agent-cookie/sdk";
 import type { verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import { createGateway, type Gateway, type GatewayDeps } from "../src/app.js";
 import { gatewayOrigin, loadConfig } from "../src/config.js";
 import { decryptSecret, deriveKeys, encryptSecret, signSession, verifySession } from "../src/crypto.js";
+import { parseFunnelReport } from "../src/funnel.js";
 import { refusedInstancePath } from "../src/proxy.js";
 
 const ORIGIN = "http://127.0.0.1:4320";
@@ -377,25 +378,120 @@ describe("passkeys, sessions, CSRF", () => {
   });
 });
 
-describe("operator (Phase 4 reserve)", () => {
-  it("needs the operator key and returns counts only", async () => {
+describe("operator funnel (Phase 4)", () => {
+  const KEY = "operator-key-0123456789";
+  const auth = { headers: { authorization: `Bearer ${KEY}` } };
+  const funnel = async (gw: Gateway, query = "") => {
+    const res = await gw.app.request(`/operator/funnel${query}`, auth);
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    return { raw, body: JSON.parse(raw) as OperatorFunnel };
+  };
+
+  it("needs the operator key; refresh only takes 1", async () => {
     expect((await gateway().app.request("/operator/funnel", { headers: { authorization: "Bearer anything-at-all-123" } })).status).toBe(401);
-    const key = "operator-key-0123456789";
-    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: key });
+    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: KEY });
     expect((await gw.app.request("/operator/funnel")).status).toBe(401);
     expect((await gw.app.request("/operator/funnel", { headers: { authorization: "Bearer operator-key-wrong-000" } })).status).toBe(401);
-    const res = await gw.app.request("/operator/funnel", { headers: { authorization: `Bearer ${key}` } });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(Date.parse(body.generatedAt as string)).toBeGreaterThan(0);
+    expect((await gw.app.request("/operator/funnel?refresh=1")).status).toBe(401);
+    for (const q of ["?refresh=2", "?refresh=", "?refresh=true"]) {
+      const res = await gw.app.request(`/operator/funnel${q}`, auth);
+      expect(res.status, q).toBe(422);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe("MISSING_FIELD");
+    }
+  });
+
+  it("with no person: measured, zeros, coverage all 0", async () => {
+    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: KEY });
+    const { body } = await funnel(gw);
+    expect(Date.parse(body.generatedAt)).toBeGreaterThan(0);
     expect(body).toEqual({
-      generatedAt: body.generatedAt, measured: false, persons: 0, intents: 0, quoted: 0, accepted: 0, questionsSkipped: 0, byAssistant: [], byMerchant: [],
+      generatedAt: body.generatedAt, measured: true, persons: 0, coverage: { live: 0, snapshot: 0, missing: 0 },
+      intents: 0, quoted: 0, accepted: 0, questionsSkipped: 0, byAssistant: [], byMerchant: [],
     });
-    // persons is the real count, the one counter the gateway knows before Phase 4.
-    await register(gw);
-    gw.store.insertPerson({ userId: "usr_dddddddddddddddd", createdAt: Date.now(), dataDir: "/nonexistent" });
-    const again = (await (await gw.app.request("/operator/funnel", { headers: { authorization: `Bearer ${key}` } })).json()) as Record<string, unknown>;
-    expect(again).toMatchObject({ measured: false, persons: 1, intents: 0 });
+  });
+
+  it("sums stored snapshots across persons, groups by the global assistant, counts a person without one as missing", async () => {
+    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: KEY });
+    const muse = await register(gw, "Muse");
+    const dots = await register(gw, "Dots");
+    const [a, b, c] = ["usr_aaaaaaaaaaaaaaaa", "usr_bbbbbbbbbbbbbbbb", "usr_cccccccccccccccc"];
+    for (const userId of [a, b, c]) gw.store.insertPerson({ userId, createdAt: Date.now(), dataDir: "/nonexistent" });
+    // Muse approved by A and B (a different instance agent id in each jar), Dots by B only.
+    const approveAs = (linkId: string, agentId: string, userId: string, instanceAgentId: string) => {
+      gw.store.insertLink({ id: linkId, agentId, createdAt: Date.now(), expiresAt: Date.now() + 60_000 });
+      expect(gw.store.approveLink(linkId, {
+        decidedAt: Date.now(), userId, instanceLinkId: `il_${linkId}`, instanceAgentId, instanceSessionId: `s_${linkId}`, jarUrl: `${ORIGIN}/u/${userId}`, jarKeyCiphertext: "x",
+      }, Date.now())).toBe(true);
+    };
+    approveAs("lk_1", muse.agentId, a, "ag_inst_museA");
+    approveAs("lk_2", muse.agentId, b, "ag_inst_museB");
+    approveAs("lk_3", dots.agentId, b, "ag_inst_dotsB");
+    expect(gw.store.assistantMapping(b).map((m) => m.agentId).sort()).toEqual([muse.agentId, dots.agentId].sort());
+    expect(gw.store.assistantMapping()).toHaveLength(3);
+
+    gw.store.putFunnelSnapshot(a, Date.now(), [
+      { createdBy: "ag_inst_museA", quoted: 2, accepted: true, questionsSkipped: 3 },
+      { createdBy: "ag_personal_a", quoted: 0, accepted: false, questionsSkipped: 1 },
+      { quoted: 1, accepted: false, questionsSkipped: 0 },
+    ]);
+    gw.store.putFunnelSnapshot(b, Date.now(), [
+      { createdBy: "ag_inst_museB", quoted: 1, accepted: false, questionsSkipped: 2 },
+      { createdBy: "ag_inst_dotsB", quoted: 3, accepted: true, questionsSkipped: 4 },
+      // A's instance agent id means nothing in B's jar: the mapping is per person.
+      { createdBy: "ag_inst_museA", quoted: 0, accepted: false, questionsSkipped: 0 },
+    ]);
+
+    const { raw, body } = await funnel(gw);
+    expect(body).toMatchObject({
+      measured: true, persons: 3, coverage: { live: 0, snapshot: 2, missing: 1 },
+      intents: 6, quoted: 4, accepted: 2, questionsSkipped: 10, byMerchant: [],
+    });
+    const expected = [
+      { agentId: muse.agentId, agentName: "Muse", intents: 2, accepted: 1, questionsSkipped: 5 },
+      { agentId: dots.agentId, agentName: "Dots", intents: 1, accepted: 1, questionsSkipped: 4 },
+      { agentId: "personal", agentName: "The person's own agents", intents: 3, accepted: 0, questionsSkipped: 1 },
+    ].sort((x, y) => (x.agentId < y.agentId ? -1 : 1));
+    expect(body.byAssistant).toEqual(expected);
+    // Aggregates only: no person's id, no instance agent id.
+    for (const id of [a, b, c, "ag_inst_museA", "ag_inst_museB", "ag_inst_dotsB", "ag_personal_a"]) expect(raw).not.toContain(id);
+  });
+
+  it("refresh=1: a jar that cannot start falls back to its snapshot (else missing) and logs the id and a reason only", async () => {
+    const logs: string[] = [];
+    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: KEY, AGENT_COOKIE_WORKSPACE_ENTRY: BROKEN }, { log: (line) => logs.push(line) });
+    const [a, b] = ["usr_ffffffffffffffff", "usr_gggggggggggggggg"];
+    for (const userId of [a, b]) gw.store.insertPerson({ userId, createdAt: Date.now(), dataDir: gw.instances.personDir(userId) });
+    gw.store.putFunnelSnapshot(a, Date.now(), [{ quoted: 1, accepted: true, questionsSkipped: 2 }]);
+    const { body } = await funnel(gw, "?refresh=1");
+    expect(body).toMatchObject({ persons: 2, coverage: { live: 0, snapshot: 1, missing: 1 }, intents: 1, quoted: 1, accepted: 1, questionsSkipped: 2 });
+    expect(logs).toContain(`operator funnel: live read of ${a} failed (instance unavailable)`);
+    expect(logs).toContain(`operator funnel: live read of ${b} failed (instance unavailable)`);
+  });
+
+  it("stores only the counts, rejects malformed reports, and removes the snapshot with the person", async () => {
+    expect(parseFunnelReport({ rows: [{ intentId: "in_1", createdAt: "2026-01-01T00:00:00Z", quoted: 1, accepted: false, createdBy: "ag_1", questionsSkipped: 2, fieldsGranted: 3 }] }))
+      .toEqual([{ createdBy: "ag_1", quoted: 1, accepted: false, questionsSkipped: 2 }]);
+    expect(parseFunnelReport({ rows: [{ quoted: 1, accepted: true }] })).toEqual([{ quoted: 1, accepted: true, questionsSkipped: 0 }]);
+    for (const bad of [
+      null, [], {}, { rows: {} }, { rows: [null] }, { rows: [{ quoted: -1, accepted: false }] }, { rows: [{ quoted: 1.5, accepted: false }] },
+      { rows: [{ quoted: "1", accepted: false }] }, { rows: [{ quoted: 1, accepted: "yes" }] }, { rows: [{ quoted: 1, accepted: true, questionsSkipped: -2 }] },
+      { rows: [{ quoted: 1, accepted: true, createdBy: "x".repeat(129) }] }, { rows: [{ quoted: 1, accepted: true, createdBy: 7 }] },
+    ]) expect(parseFunnelReport(bad), JSON.stringify(bad)).toBeUndefined();
+
+    const gw = gateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: KEY });
+    const userId = "usr_eeeeeeeeeeeeeeee";
+    gw.store.insertPerson({ userId, createdAt: Date.now(), dataDir: "/nonexistent" });
+    expect(gw.store.putFunnelSnapshot(userId, 1, [{ createdBy: "ag_1", quoted: 1, accepted: true, questionsSkipped: 2, intentId: "in_secret" } as never])).toBe(true);
+    expect(gw.store.funnelSnapshot(userId)).toEqual({ takenAt: 1, rows: [{ createdBy: "ag_1", quoted: 1, accepted: true, questionsSkipped: 2 }] });
+    gw.store.deletePerson(userId);
+    expect(gw.store.funnelSnapshot(userId)).toBeUndefined();
+    // A snapshot for someone who no longer exists is not stored.
+    expect(gw.store.putFunnelSnapshot(userId, 2, [])).toBe(false);
+    expect((await funnel(gw)).body).toMatchObject({ persons: 0, coverage: { live: 0, snapshot: 0, missing: 0 }, intents: 0 });
+    await gw.close();
+    gateways.splice(gateways.indexOf(gw), 1);
+    expect(readFileSync(join(gw.config.dataDir, "gateway.sqlite")).includes(Buffer.from("in_secret"))).toBe(false);
   });
 });
 
