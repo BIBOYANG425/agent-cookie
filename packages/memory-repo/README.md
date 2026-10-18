@@ -104,7 +104,7 @@ suite remains a separate HTTP-only integration task.
 
 ## Learning and intent history
 
-Local flat history types match the shared `IntentRecord`. Both `openMemoryRepo` with `rules` and the preview `openLearningMemoryRepo` with `learningRules` preserve the exact ten preference fields and nested `evidence: { intentId?, conversationId?, snippet? }`. Older C preview top-level source IDs and string evidence remain readable. Append, list, revoke, reopen and CARD regeneration use the injected rules. Runtime dependency on rules is still type-only. No route or SDK method is introduced here.
+`WorkspaceIntentRecord` is a compatibility alias for the formal shared `IntentRecord`. History projection uses shared `ContributionEvidence` and `isField`; it does not maintain a second preference whitelist. Both `openMemoryRepo` with `rules` and the preview `openLearningMemoryRepo` with `learningRules` preserve the formal preference fields and nested evidence. Older C preview top-level source IDs and string evidence remain readable. Append, list, revoke, reopen and CARD regeneration use the injected rules. Runtime dependency on rules is still type-only. No route or SDK method is introduced here.
 
 `appendIntent` accepts A's flat `IntentRecord` and the earlier C wrapper. `searchIntents(q)` remains a C additive method; A's current contract does not expose it.
 
@@ -119,7 +119,7 @@ seed reset. Direct append/search validate the `intents/` directory and target
 files against symlink/path escape at the point of access; unrelated operations
 do not traverse it.
 
-`test/intents.test.ts`, `test/learning.test.ts` and `test/a-learning-contract.test.ts` exercise actual temporary Git repositories: raw-property omission, both history formats, nested evidence, exact writer/owner checks, source-count promotion, revocation, reopen, commits and reset. Tests and typechecks also run against an isolated A `0129f08` contract overlay. These package results do not claim production model extraction or HTTP learning acceptance.
+`test/intents.test.ts`, `test/learning.test.ts` and `test/a-learning-contract.test.ts` exercise actual temporary Git repositories: raw-property omission, both history formats, nested evidence, exact writer/owner checks, source-count promotion, revocation, reopen, commits and reset. Tests and typechecks use the formal contract on main in an isolated Node 22 runtime. These package results do not claim production model extraction or HTTP learning acceptance.
 
 ## Shared Agent Memory Repo metadata
 

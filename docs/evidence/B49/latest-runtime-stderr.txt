@@ -1,0 +1,5 @@
+[workspace] memory repo write failed (intent): WorkspaceError: SCOPE_DENIED
+    at <anonymous> (/private/tmp/agent-cookie-b49-runtime-hs8xs43o/packages/memory-repo/src/index.ts:95:67)
+    at <anonymous> (/private/tmp/agent-cookie-b49-runtime-hs8xs43o/packages/memory-repo/src/index.ts:77:12) {
+  code: 'SCOPE_DENIED'
+}

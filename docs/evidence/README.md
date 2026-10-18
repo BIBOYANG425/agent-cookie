@@ -11,6 +11,7 @@
 | A17 · iMessage 主流程（B） | [B 实际收发日志](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-imessage-real-adapters.json)、[B 联调报告](https://github.com/BIBOYANG425/agent-cookie/blob/52321186803b9738a4aa956338af094679a12c7e/docs/evidence/2026-10-17-real-adapters-verification.md)、[原片待交项](A17-imessage.md) | 已合并的 PR #12 交付真实搜索 / 选择 / handoff 日志（三条 delivered、一次 accept 和 checkout 地址回执）；连续原片待 B，尚不标完整 A17 通过 |
 | A23 · stock Agent Memory Repo skill 互操作（P1） | [cognition-skill-interop.md](cognition-skill-interop.md) | 已通过：未修改 stock skill 在 Claude Code 保存/commit、新会话读回；同库10次真实HTTP及限定reset成功，四路径回seed、skill文件与双方历史保留。Synthetic自动支撑另7项通过 |
 | C20 · 动态记忆与对话旁听学习 | [learning.md](learning.md) · [真实 HTTP](learning-backend-http.json) · [真实 SDK](learning-sdk-bridge.json) · [静默后读取](learning-idle-observation.json) | 正式契约/读取/暂停/贡献撤销已实连，两家 live 报价为基线；B负责OpenRouter接线，真实学习与排序、当前界面录屏仍待，未通过 |
+| B49 · 学习六场景隔离复跑 | [最终 C 复跑](B49/final-report.md) · [原始结果](B49/final-six-scenarios.json) · [前次基线](b49-c-alignment.md) | 原版 B 脚本/断言未改，1/6 通过；五项 A 接线仍缺。Synthetic extractor + fixture checkout，不计作真实 C20 |
 
 A15 核对原版首回是否正确使用本次卡上适用的 auto 字段，不要求固定字段或具体数值；仍需实际投递回执与运行前后代码未改证明。错误截图不能代替成功回复。A16 必须各自从干净克隆开始，由 Claude Code 和 Devin 独立应用 skill，并实际读到授权字段、写回本商家 note；仅基线测试、生成 diff 或部分录制不构成通过。C11 缺 note 枚举、删除、clear 等完整生命周期契约，保持 **P1 BLOCKED**，详见 [requests](../requests.md)。
 

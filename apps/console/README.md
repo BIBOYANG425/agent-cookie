@@ -34,13 +34,13 @@ pnpm --dir apps/console dev
 
 The Vite server uses the installed **`@agent-cookie/sdk` `WorkspaceClient`** against the fixed `http://127.0.0.1:4310`. A narrow same-origin `/workspace-api` bridge keeps credentials server-side in dev and preview. It rejects other hosts/origins, missing console request markers, and paths outside the table below. Static hosting alone cannot connect to the workspace.
 
-To verify an unmerged B SDK, `AGENT_COOKIE_SDK_ROOT` may point to an external B checkout runtime whose `node_modules/@agent-cookie/sdk/dist/index.js` has been built. No SDK source is copied into this app. The resolver checks the actual installed methods. **Only missing methods (or a missing SDK package) use the `TODO(sdk)` HTTP fallback.** An SDK rejection is propagated, never retried through HTTP. Restart after installing/updating the SDK. The original C10b check used B `fd1b8d4`; the learning SDK signatures below were checked against B `e24957c`.
+To verify an unmerged B SDK, `AGENT_COOKIE_SDK_ROOT` may point to an external B checkout runtime whose `node_modules/@agent-cookie/sdk/dist/index.js` has been built. No SDK source is copied into this app. The resolver checks the actual installed methods. **Only missing methods (or a missing SDK package) use the `TODO(sdk)` HTTP fallback.** An SDK rejection is propagated, never retried through HTTP. Restart after installing/updating the SDK. The original C10b check used B `fd1b8d4`; the learning SDK signatures below remain unchanged in PR20 `d9aa3ce`.
 
 Set `AGENT_COOKIE_SAMPLE=1` when connecting an isolated Sample backend; the bridge and UI preserve that label. It changes presentation only, not authorization.
 
 Both transports reject upstream redirects, omit cookies, disable caching, and time out after eight seconds. A browser disconnect cancels the upstream request. The bridge first checks `/me` through `getMe` and requires owner role before every operation. Only a safe error code reaches the browser; exception messages and headers do not.
 
-| SDK method | HTTP contract | B e24957c |
+| SDK method | HTTP contract | B d9aa3ce |
 | --- | --- | --- |
 | `getMe()` | `GET /me`; owner role required | SDK |
 | `getMyCard()` | `GET /personal/card`; `{ card, candidates, superseded }` | SDK |
@@ -60,11 +60,11 @@ The UI polls card, grants, activity and the optional learned endpoint; the recei
 
 ## Learned view (C19, A learning contract)
 
-The wire projection follows A `0129f08`: `GET /personal/learned` returns `{ paused, learned }`. Each group contains `field`, `value`, `status: 'card' | 'candidate'`, author IDs in `sources`, and `evidence[]` with `contributionId`, `agentId`, `basis`, `createdAt` and optional `intentId`, `conversationId`, `snippet`. The ten allowed pref fields are copied from that contract while it is awaiting merge into main; the console does not invent additional keys.
+The learned view imports `PREF_FIELDS`, `PrefField`, `LearnedEntry`, `LearnedEvidence` and `LearnedResponse` from the published contract now on main. `GET /personal/learned` returns `{ paused, learned }`. Each group contains `field`, `value`, `status: 'card' | 'candidate'`, author IDs in `sources`, and `evidence[]` with `contributionId`, `agentId`, `basis`, `createdAt` and optional `intentId`, `conversationId`, `snippet`. The console no longer maintains a separate preference whitelist or learned wire types.
 
-Each evidence item has its own revoke button using the actual `contributionId`. Both IDs on one item are aliases of one evidence source. A manually stated preference may lack conversation/intent metadata; the UI displays its author, basis and time without inventing a conversation. The group status always comes from the workspace, never from a browser-side source count.
+Each evidence item has its own revoke button using the actual `contributionId`. Both IDs on one item are aliases of one evidence source. Repeated contributions from one conversation count once; two conversations from one writer count twice. Records without either ID count as zero independent evidence sources, even when multiple writers submitted them. A manually stated preference may still be on the card without conversation/intent metadata; the UI displays its author, basis and time. The group status always comes from the workspace, never from a browser-side source count.
 
-The bridge uses `getLearned()` for the list. `getLearning()` is the separate state read and must not be mistaken for the list. B `e24957c` provides all three learning methods. Its write parameter is `LearningControl { enabled: boolean }`, so the bridge calls `setLearning({ enabled: !paused })`; the SDK converts that to A's `PUT /personal/learning` body `{ paused }` and returns `{ paused }`. The browser and missing-method HTTP fallback continue to use `{ paused }`. Regression tests exercise both pause and resume against B's SDK signature, while keeping the fallback body unchanged. A failed SDK call never falls back to HTTP. Older installations missing these methods still use the marked `TODO(sdk)` path.
+The bridge uses `getLearned()` for the list. `getLearning()` is the separate state read and must not be mistaken for the list. B `d9aa3ce` provides all three learning methods. Its write parameter is `LearningControl { enabled: boolean }`, so the bridge calls `setLearning({ enabled: !paused })`; the SDK converts that to A's `PUT /personal/learning` body `{ paused }` and returns `{ paused }`. The browser and missing-method HTTP fallback continue to use `{ paused }`. Regression tests exercise both pause and resume against B's SDK signature, while keeping the fallback body unchanged. A failed SDK call never falls back to HTTP. Older installations missing these methods still use the marked `TODO(sdk)` path.
 
 The earlier `{ enabled, entries }` and B `{ enabled, generation, learned }` proposals are no longer accepted as live responses; `enabled` now appears only as the SDK write parameter.
 

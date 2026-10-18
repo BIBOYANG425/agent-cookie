@@ -4,6 +4,7 @@
 - [x] A23（P1）：专用工作台种库、未修改stock skill在Claude Desktop Code保存/commit、全新会话读回、同库contribute/purpose receipt/限定reset全部通过；[真实证据](evidence/cognition-skill-interop.md)，Synthetic自动支撑单列。
 - [x] B49 C侧：pref证据来源与writer分离并返回evidenceSources；普通字段仍按writer；批量evidence撤销一个commit；Photon接力/作者不一致拒绝回归；原版B脚本完成隔离复跑。
 - [ ] B49 全链路出口仍待A：原版B六场景1/6，stated降级/跨会话去重/writer-count包装/原话SQLite/接力record.agentId五项未过，详见[报告](evidence/b49-c-alignment.md)；不改B断言或放宽C校验。
+- [x] PR21 跟进（2026-10-17）：核对 A PR19 / B PR20 与 B52；已落 main 的 pref、证据、学习响应与 IntentRecord 改用正式契约，控制台缺证据 ID 不再按 writer 计数。B 后到 `d9aa3ce` 补根 learn 构建，已在隔离树接入；未改六场景业务代码或断言。最新精确基线与结果见[复跑记录](evidence/B49/final-report.md)，缺口继续追加 requests。
 - 第6项 `skills/agent-cookie/SKILL.md` 属于B线，更新要求与 CLAUDE.md 过期reset说明一并追加requests，由对应负责人修改。
 
 - [x] C01 fixtures 种子与 dev-keys 对齐 v0.3（Category 只有 personal|shoe） — ff01d0b
@@ -30,7 +31,7 @@
 
 ## 动态记忆 + 对话旁听学习（人的要求，2026-10-17）
 
-循环：C17 → C18 → C19 → C20；实现、针对性验证、记录证据后再核对 A/B。已读 A `0129f08` 契约与 B `e24957c` 学习计划/实现；B最新`4dfa81c`仅增OpenRouter配置检查，不改接口，运行时载荷已对齐；main 未合并的共享类型仍保留少量导入迁移 `TODO(contract)`。下列组件完成不等于真实 C20 完成。
+循环：C17 → C18 → C19 → C20；实现、针对性验证、记录证据后再核对 A/B。已对齐 main `32490f1` 的学习类型及 B `d9aa3ce` 的学习计划/SDK；B 相比 `0f26ddf` 新增文档和根 learn 构建，A `9937542` 尚无 B49 后台修复。已发布类型的导入 TODO 已清理；B49 `evidenceSources`、批量撤销与 HTTP/事务接口仍待 A/B，局部扩展继续标 `TODO(contract)`。下列组件完成不等于真实 C20 完成。
 
 - [x] C17 晋升规则：默认 rules/parser 接受 A 的 pref 白名单与嵌套 evidence；按 intentId/conversationId 别名连通关系去重，personal stated 立即 medium，observed/inferred 两个独立来源晋升 medium；同对话重复不算第二源，衰减后掉卡。52 tests，main/A/B 契约类型验证通过；已修复 A 扩展 FIELDS 导致 pref 卡重复的问题。
 - [x] C18 意图记忆：默认 openMemoryRepo 支持嵌套 evidence 和 A 的 flat IntentRecord；作者使用实际 personal agentId，保留旧 C wrapper；仅写结构化摘要和 ≤200 字证据，剔除 text/query/public/title/seller 自由文本。append/list/revoke/reopen、commit author、检索与原文排除共 29 个真实 Git tests；main 与 B 整合契约类型检查通过。

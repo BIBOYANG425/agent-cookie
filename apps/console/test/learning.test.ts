@@ -40,12 +40,31 @@ describe('learning boundary', () => {
       { ...evidence, contributionId: 'third', conversationId: 'conversation-2' },
     ];
     expect(countEvidenceSources(rows)).toBe(2);
-    expect(countEvidenceSources([evidence, { ...evidence, contributionId: 'second' }])).toBe(1);
+    expect(countEvidenceSources([evidence, { ...evidence, contributionId: 'second' }])).toBe(0);
     const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: rows }] });
     expect(state.entries[0].status).toBe('candidate');
     expect(render(state.entries)).toContain('3 条贡献 · 2 个来源');
     expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [evidence, evidence] }] })).toThrow('契约');
     expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, contributionId: undefined }] }] })).toThrow('契约');
+  });
+
+  it('counts evidence IDs rather than writers, without changing the returned card status', () => {
+    const evidence = entry.evidence[0];
+    const noIds = [evidence, { ...evidence, contributionId: 'other-writer', agentId: 'another-agent' }];
+    expect(countEvidenceSources(noIds)).toBe(0);
+    const stated = render([{ ...entry, status: 'card', evidence: noIds }]);
+    expect(stated).toContain('已进入身份卡');
+    expect(stated).toContain('2 条贡献 · 0 个来源');
+    expect(stated).toContain('未提供对话或意图 ID，不计入独立证据来源');
+    expect(stated).not.toContain('按来源 agent 去重');
+
+    const sameChat = [
+      { ...evidence, conversationId: 'chat-1' },
+      { ...evidence, contributionId: 'repeat', agentId: 'another-agent', conversationId: 'chat-1' },
+    ];
+    expect(countEvidenceSources(sameChat)).toBe(1);
+    expect(countEvidenceSources([sameChat[0], { ...sameChat[0], contributionId: 'independent', conversationId: 'chat-2' }])).toBe(2);
+    expect(countEvidenceSources([...noIds, ...sameChat])).toBe(1);
   });
 
   it.each([404, 501])('keeps core views available when optional learned endpoint returns %s', async (status) => {

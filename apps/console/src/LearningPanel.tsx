@@ -52,7 +52,7 @@ export function LearningPanel({ state, sample, disabled, revoke, selectStage }: 
                 <div><dt>记录时间</dt><dd><time dateTime={evidence.createdAt}>{time(evidence.createdAt)}</time></dd></div>
                 {evidence.conversationId && <div><dt>对话</dt><dd><code>{evidence.conversationId}</code></dd></div>}
                 {evidence.intentId && <div><dt>意图</dt><dd><code>{evidence.intentId}</code></dd></div>}
-                {!evidence.conversationId && !evidence.intentId && <div><dt>来源标识</dt><dd>未提供对话或意图 ID，按来源 agent 去重。</dd></div>}
+                {!evidence.conversationId && !evidence.intentId && <div><dt>来源标识</dt><dd>未提供对话或意图 ID，不计入独立证据来源。</dd></div>}
                 <div><dt>贡献 ID</dt><dd><code>{evidence.contributionId}</code></dd></div></dl>
               <button type="button" className="danger" disabled={disabled}
                 aria-label={`撤销学到的${fieldName(entry.field)}记录 ${evidence.contributionId}`}

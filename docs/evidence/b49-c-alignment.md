@@ -35,3 +35,15 @@
 未修改 A/B 处理这些红项；未把 Synthetic extractor 或 fixture checkout 记作真实模型／UCP 验收。C 自身的单元测试结果由相应任务记录，本报告只陈述这次未修改 B 脚本的集成结果。
 
 原始六项结果：[six-scenarios.json](B49/six-scenarios.json)。精确基线、时间、执行命令及退出码：[baseline.json](B49/baseline.json)。实际 stderr：[runtime-stderr.txt](B49/runtime-stderr.txt)。
+
+## 最新 B / 已提交 C 复跑
+
+2026-10-17 17:25 PDT，以 B `c4e40eee30639220b5818e4cac02e0c6f5317ecf`、A main `32490f1`（与 lane-a `9937542` 的工作台／契约源码一致）、C `e094414c3a5a9dc581842283ea64da2b97e34b39` 再次原样运行六场景，仍为 **1 通过、5 失败，exit 1**。原脚本 SHA256 不变，六项观测值与旧结果一致；旧证据未覆盖。本次仅验已提交 C，不包含后续调整。
+
+依赖版本、精确来源及 B52 核对见 [最新报告](B49/latest-report.md)，原始结果见 [latest-six-scenarios.json](B49/latest-six-scenarios.json)，输入文件哈希与退出码见 [latest-baseline.json](B49/latest-baseline.json)。没有实际模型／手机请求，也没有访问或重置现有服务。
+
+## 最终 C 工作树与正式包验证
+
+2026-10-17 17:27 PDT，C `e094414` 加本轮未提交的 rules/memory 类型对齐源码再次原样复跑，仍为 **1/6 通过、exit 1**。精确文件哈希单列，未冒称新 HEAD。其后四包正式测试 **431 passed + 4 todo**（rules 70、memory 48、workspace 234+4todo、SDK 79），四包类型检查和 SDK/learn 构建通过。新到 B `d9aa3ce` 仅改根 bootstrap；已单独同步临时副本并实际验证 `pnpm build:deps` 通过，六场景程序和断言未变。
+
+完整结果及远端 Photon/MCP CI 失败的独立范围见 [最终报告](B49/final-report.md)；[最终六场景 JSON](B49/final-six-scenarios.json)、[精确基线](B49/final-baseline.json)、[正式包日志](B49/final-validation.txt) 均与旧证据分开保存。
