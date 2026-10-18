@@ -164,3 +164,27 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.mjs a32-churn.tes
 计划 §3 写的是“`questionsSkipped` ≥ 每个 intent 的 auto 字段数”。本测试按任务要求断言 ≥ 1，因为商家读 auto 字段（callback 商家和 UCP 代理都一样）不写回执，这两个 intent 的 `questionsSkipped` 只算 checkout 地址这 1 项。
 
 2026-10-18 在本机连续运行 3 次，均为 **1 passed**（每次约 4 秒）。运行基于当时的工作树，包含 A 线尚未提交的改动：带 evidence 的 stated 写入上卡、撤销后重新生成卡片（`apps/workspace/src/services/assistant.ts`、`card.ts`、`sessions.ts`）。另做了一次变异检查：把 A 的写入改成 `observed` 后，第 3 步按预期失败（`C's first context read carries A's stated values`）。
+
+## A33 托管 jar（网关）· 自启专用网关
+
+`a33-gateway.test.ts` 是 `docs/bring-your-own-agent-plan.md` 第 3 阶段（托管网关）的 A33 提议（尚待人加入 `docs/plan.md` §2）。和 A32 一样是“不启动工作台”规则的例外：`a33-gateway.ts` 以子进程启动真实的 `apps/gateway`（其自带 tsx 运行 `src/main.ts`），监听随机空闲的 `127.0.0.1` 端口，设 `AGENT_COOKIE_TEST=1`（`POST /test/session` 免 WebAuthn 登录）、全新临时 `AGENT_COOKIE_GATEWAY_DATA_DIR` 和同端口的 `AGENT_COOKIE_GATEWAY_ORIGIN`；网关再为每个人起一个真实的 `apps/workspace`（blank seed、fixture UCP 回放）。结束时 SIGTERM 网关（它先停掉所有实例），删除临时目录；若网关被迫 SIGKILL，Linux 上按数据目录找出残留实例一并杀掉。测试只打 HTTP，不导入网关或工作台代码，不读 SQLite 或 git，不需要 `AGENT_COOKIE_URL` 或任何钥匙。前提同 A32：仓库根已 `pnpm install`，`apps/gateway/node_modules/.bin/tsx` 与 `apps/workspace/node_modules/.bin/tsx` 存在。
+
+```sh
+cd tests/acceptance
+node node_modules/vitest/vitest.mjs run --config vitest.config.mjs a33-gateway.test.ts
+```
+
+只运行这个文件。“安全的 auto.assistant 列表”取自生成的 `fixtures/memory/POLICY.yaml`（即 `DEFAULT_POLICY`，blank 实例在用户装策略前就用它），并与同意页列出的字段名互相核对。
+
+步骤与断言：
+
+1. 起始 `/healthz` 为 `{ running: 0, known: 0 }`。P1、P2 各自 `POST /test/session`，两个 cookie。助理公司 M 在网关注册一次（`category: "assistant"`）。
+2. M 为 P1 申请 link（201，`url` 是 `/link/<id>`，无 `jar`、无 `sessionId`；再申请返回同一个，200）。未登录打开同意页只给 passkey 按钮；P1 打开：200 HTML，写着 M 的名字和 P1 的 userId，字段名恰为安全列表，没有值也没有 key。跨站 `Origin`、以及既无同源 `Origin` 也无 token 的批准都是 403 SCOPE_DENIED；同源批准后 M 轮询得 `sessionId` 与 `jar = { url: <origin>/u/<P1>, key }`，jar key 不同于全局 key。
+3. 经 `jar.url` 用 jar key：`/assistant/context` 200，`fields` 为空，`unknown` 恰为安全列表（不含 `shipping_address`、`payment_method`），`writable` 恰为 `write.assistant`。全局 key 打 jar、jar key 打网关的 `/assistant/link/:id` 都是 401。M 以 `stated` 加 evidence 写入 `pref.brand`（201，`stored: "stated"`），下一次 context 带这个值、不带 evidence 原话。M 建 intent（不带 `kind`），拿到 fixture 回放报价，接受第一条：blank jar 没有地址，结果是 `handoff` 加 `continueUrl`，响应里不出现 `shipping_address`。
+4. M 为 P2 申请第二个 link，P2 同样看页并批准：另一个 `jar.url`（不同 userId）、另一把 key、另一个 session；`/healthz` 为 `{ running: 2, known: 2 }`。P1 的 jar key 打 P2 的 jar、反之，均为 401 或 404（实测 401）。P2 的 jar 不知道 P1 告诉 M 的值。
+5. `/u/<P1>/owner/activity`（GET）与 `/u/<P1>/demo/reset`（POST）在无 key、M 的全局 key、M 的 P1 jar key 三种情况下都是 404 NOT_FOUND。已决定的同意页仍不含值。
+6. P1 的 `/me.json`：`userId`、`jarUrl` 正确；恰一条 link（approved，M 的**全局** agentId 与名字）；恰一条 `assist` 授权（M 的全局 id，live）；被接受的商店有加宽到 `checkout` 的授权。回执用途恰为 `assist` 与 `handshake`：M 的 `assist` 回执列 `pref.brand`；每个报价的 UCP 商店一条 `handshake`（其一是被接受的商店），都只列 `pref.brand`（预算由请求给出，不算读卡）；没有 `checkout` 回执，因为没有地址可放行。所有回执只含合法字段名；全文不含写入的值、evidence 原话或 conversationId、任何 key，也不含 P2 的 userId。M 的 `/assistant/stats` 为 `intents 1, quoted 1, accepted 1`，`questionsSkipped` 等于这些 handshake 回执字段数之和。
+7. P1 在 cookie 页撤销 M 的 assist 授权（同源 POST）：M 在 P1 jar 上的 context 立即 403 GRANT_REVOKED，`/me.json` 中该授权为 `revoked`；M 在 P2 jar 上仍 200。
+8. P2 删除自己的数据：P2 的 jar 404，M 读 P2 的 link 404，P2 的 `/me.json` 401；M 的 P1 link 仍为 approved；`/healthz` 为 `{ running: 1, known: 1 }`。
+
+2026-10-18 基于 `67a085f`（网关：批准后 `LINK_TTL_MS` 内可读 jar、`measured: false`）在本机连续运行 3 次，均为 **1 passed**（每次约 8 秒），之后没有残留进程或临时目录；`tsc --noEmit` 通过。变异检查：把 M 的写入改成 `observed` 后，第 3 步按预期失败（`expected { stored: 'observed', …(1) } to match object { stored: 'stated', …(1) }`）。

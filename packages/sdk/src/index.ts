@@ -19,7 +19,7 @@ export * from './merchant.js';
 export * from './prompt.js';
 export { ASSISTANT_GRANT_TTL_MS, FIELDS, LINK_TTL_MS } from '@agent-cookie/contract';
 export type { AcceptResult, ActivityEvent, AssistantContext, AssistantStats, Basis, Card, Category, ErrorCode, Field, FunnelReport, FunnelRow,
-  FunnelStage, Grant, Handshake, IntentEvent, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
+  FunnelStage, Grant, Handshake, IntentEvent, JarAccess, Link, LinkStatus, LinkView, MerchantStats, PolicyDocument, PolicyView, Quote, ReadDecision,
   Receipt, Registration, Role, SearchStats, ShadowReport } from '@agent-cookie/contract';
 
 // GET /personal/grants adds these display fields to the contract Grant.

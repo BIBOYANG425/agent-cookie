@@ -41,6 +41,8 @@ const GRANT = "SCOPE_DENIED | GRANT_EXPIRED | GRANT_REVOKED";
 export const ENDPOINTS: Endpoint[] = [
   { method: "POST", path: "/agents/register", caller: "anyone", summary: "Create an agent; returns agentId and a key shown once. Merchants self-register; category personal needs the owner key (A13, confirmed); category assistant: like a merchant (no key needed), role assistant, callbackUrl and chatEndpoint refused (422)",
     request: "RegisterRequest", response: "Registration", responses: { 201: "Registration", 401: KEY, 403: ROLE, 422: "MISSING_FIELD" } },
+  { method: "GET", path: "/healthz", caller: "anyone", summary: "→ HealthResponse { ok: true, seed }: liveness for a supervisor (the gateway); no key, no data",
+    response: "HealthResponse", responses: { 200: "HealthResponse" } },
   { method: "GET", path: "/me", caller: "keyed", summary: "agentId, category, role for the presented key",
     response: "Me", responses: { 200: "Me", 401: KEY } },
 

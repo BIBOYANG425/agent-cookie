@@ -1,6 +1,6 @@
 // The one HTTP transport every client shares: configuration, typed errors, redaction, Sample marking, and the
 // commerce methods a personal agent and a linked assistant both call (the intent routes accept either key).
-import type { AcceptResult, ErrorCode, IntentEvent, IntentRequest, Quote } from '@agent-cookie/contract';
+import type { AcceptResult, ErrorCode, IntentEvent, IntentRequest, JarAccess, Quote } from '@agent-cookie/contract';
 import { INTENT_EVENT_TYPES, INTENT_STREAM_HEARTBEAT_MS, QUOTE_POLL_MAX_MS } from '@agent-cookie/contract';
 import { observationBody, observeResult, type ObservationInput, type ObserveResult } from './learning.js';
 
@@ -31,6 +31,10 @@ export interface QuoteStream extends AsyncIterable<IntentEvent> {
 }
 
 export interface WorkspaceConfig {
+  /**
+   * Where the workspace is: an origin (`http://127.0.0.1:4310`) or an origin and a path prefix, e.g. a person's
+   * instance under the hosted gateway (`https://jar.example/u/usr_abc`). Every route goes under it. See workspaceBase.
+   */
   baseUrl: string;
   key: string;
   /** Explicitly label local demo/stub data when the backend omits Sample metadata. */
@@ -92,28 +96,65 @@ export function isWorkspaceError(error: unknown, ...codes: ErrorCode[]): error i
 }
 
 const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', 'localhost', '[::1]'];
-const ORIGIN_RULE = 'AGENT_COOKIE_URL must be an https:// origin, or http:// on loopback (127.0.0.1, localhost, [::1]), '
-  + 'with no path, query or credentials.';
+const BASE_RULE = 'AGENT_COOKIE_URL must be an https:// URL, or http:// on loopback (127.0.0.1, localhost, [::1]), '
+  + 'optionally with a path prefix such as /u/usr_abc (no trailing slash), and no query, fragment or credentials.';
+/** One segment of a path prefix: unreserved characters only. */
+const SEGMENT = /^[A-Za-z0-9._~-]+$/;
 
 /**
- * The origin of a workspace URL, refused before a key could travel to it unless it is either
- *  - `https:` on any host: a hosted jar behind its TLS gateway (plan Phase 3), or
- *  - `http:` on loopback only: the local workspace (127.0.0.1:4310 by default).
- * An origin only: no path, query, fragment or embedded credentials. Every refusal carries the same message.
+ * The base URL of a workspace, refused before a key could travel to it unless it is either
+ *  - `https:` on any host: a hosted jar, e.g. a person's instance under the gateway (`https://jar.example/u/usr_abc`), or
+ *  - `http:` on loopback only: the local workspace (127.0.0.1:4310) or a local gateway (`http://127.0.0.1:4320/u/usr_abc`).
+ * An origin, optionally followed by a path prefix of "/"-separated segments of unreserved characters
+ * ([A-Za-z0-9._~-]). The prefix has no trailing slash: `https://jar.example/u/abc/` is refused, not normalised, so a
+ * jar has one spelling (a bare origin may end in "/": that is the same URL). It is written as the URL parser reads it:
+ * no escape, backslash, whitespace, empty or dot segment. No query, fragment or embedded credentials. Every refusal
+ * carries the same message. Returns the origin, or the origin and the prefix, never with a trailing slash.
  */
-export function workspaceOrigin(value: string | undefined): string {
+export function workspaceBase(value: string | undefined): string {
+  const raw = (value ?? 'http://127.0.0.1:4310').trim();
   let url: URL;
-  try { url = new URL(value ?? 'http://127.0.0.1:4310'); }
-  catch { throw new Error(ORIGIN_RULE); }
+  try { url = new URL(raw); }
+  catch { throw new Error(BASE_RULE); }
   const transport = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname));
-  if (!transport || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error(ORIGIN_RULE);
-  return url.origin;
+  const prefix = url.pathname === '/' ? '' : url.pathname;
+  if (!transport || url.username || url.password || raw.length > 2048
+    // Nothing the parser would decode, strip or resolve: what is written is what the key is sent to.
+    || /[\x00-\x20\x7f%\\?#]/.test(raw) || /\/\.{1,2}(?=\/|$)/.test(raw)
+    || (prefix && !prefix.split('/').slice(1).every(segment => SEGMENT.test(segment)))) throw new Error(BASE_RULE);
+  return url.origin + prefix;
+}
+
+/**
+ * The URL of a route under a base from workspaceBase: the prefix, then `path` (built from fixed strings and encoded
+ * ids, starting with "/"). Whatever `path` holds, the result stays on the base's origin and under its prefix: a
+ * credential never leaves the configured base.
+ */
+export function routeUrl(baseUrl: string, path: string): URL {
+  const base = new URL(baseUrl);
+  const prefix = base.pathname === '/' ? '' : base.pathname;
+  let url: URL | undefined;
+  try { url = path.startsWith('/') ? new URL(base.origin + prefix + path) : undefined; } catch { url = undefined; }
+  if (!url || url.origin !== base.origin || !url.pathname.startsWith(`${prefix}/`)) throw new Error('Invalid workspace path.');
+  return url;
+}
+
+/** A bearer key as the SDK accepts one from a response: printable ASCII without spaces, at most 512 characters. */
+export function bearerKey(value: unknown): value is string { return typeof value === 'string' && /^[\x21-\x7e]{1,512}$/.test(value); }
+
+/**
+ * LinkView.jar (contract JarAccess) projected to `{ url, key }`: `url` a base URL by workspaceBase's rule (returned
+ * normalised), `key` a bearer key. Undefined when malformed; callers refuse it with a message that names neither value.
+ */
+export function jarAccess(value: unknown): JarAccess | undefined {
+  if (!isObject(value) || typeof value.url !== 'string' || !bearerKey(value.key)) return undefined;
+  try { return { url: workspaceBase(value.url), key: value.key }; } catch { return undefined; }
 }
 
 export function workspaceConfigFromEnv(env: Record<string, string | undefined>): WorkspaceConfig {
   const key = env.AGENT_COOKIE_KEY?.trim();
   if (!key || /[^\x21-\x7e]/.test(key)) throw new Error('Set AGENT_COOKIE_KEY in your local environment.');
-  const baseUrl = workspaceOrigin(env.AGENT_COOKIE_URL);
+  const baseUrl = workspaceBase(env.AGENT_COOKIE_URL);
   if (env.AGENT_COOKIE_SAMPLE !== undefined && !['0', '1'].includes(env.AGENT_COOKIE_SAMPLE)) {
     throw new Error('AGENT_COOKIE_SAMPLE must be 0 or 1.');
   }
@@ -285,9 +326,7 @@ export function timeoutOf(value: number | undefined): number {
 export async function send(wire: Wire, path: string, options: SendOptions = {}): Promise<unknown> {
   const { body, idempotencyKey, method, withViolations = false, signal } = options;
   if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
-  const url = new URL(path, wire.baseUrl);
-  // Every path is built here from fixed strings and encoded ids; a credential never leaves the configured origin.
-  if (url.origin !== wire.baseUrl) throw new Error('Invalid workspace path.');
+  const url = routeUrl(wire.baseUrl, path);
   if (signal?.aborted) throw cancelled();
   let response: Response;
   let payload: unknown;
@@ -334,11 +373,9 @@ export class BaseClient {
     return send(this.#wire, path, options);
   }
 
-  /** The raw authenticated GET behind an event stream; the caller owns the body. Same origin, redirect and cookie rules. */
+  /** The raw authenticated GET behind an event stream; the caller owns the body. Same base, redirect and cookie rules. */
   protected openStream(path: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
-    const url = new URL(path, this.#wire.baseUrl);
-    if (url.origin !== this.#wire.baseUrl) throw new Error('Invalid workspace path.');
-    return this.#wire.fetch(url, {
+    return this.#wire.fetch(routeUrl(this.#wire.baseUrl, path), {
       method: 'GET',
       headers: { ...headers, Authorization: `Bearer ${this.#wire.key}` },
       redirect: 'manual', // Never forward a local credential to a redirect destination.

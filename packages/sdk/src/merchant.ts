@@ -4,7 +4,7 @@
 import type { Category, Field, Handshake, MerchantStats, Quote, Registration } from '@agent-cookie/contract';
 import { NOTE_MAX_BYTES } from '@agent-cookie/contract';
 import {
-  BaseClient, count, fieldName, isObject, send, strings, text, timeoutOf, validDate, validId, validQuote, workspaceOrigin,
+  BaseClient, count, fieldName, isObject, send, strings, text, timeoutOf, validDate, validId, validQuote, workspaceBase,
   type RequestOptions,
 } from './core.js';
 import { contributionBody, contributionResult, type ContributionInput, type ContributionResult } from './contributions.js';
@@ -68,7 +68,9 @@ const optional = (v: unknown, max: number) => v === undefined || text(v, max);
 /**
  * POST /agents/register, no key: creates an agent and returns its key ONCE. The key is a bearer credential: keep it
  * in your secret store (AGENT_COOKIE_KEY), never in chat, logs or commits. Category "personal" needs the owner key and
- * is refused here; use it for assistants and merchants.
+ * is refused here; use it for assistants and merchants. `url` follows a client's baseUrl rule (an origin, or an origin
+ * and a path prefix). At the hosted gateway an assistant registers once at the gateway's own URL, and that key works
+ * at the gateway only (requestLink, link, waitForLink).
  */
 export async function registerAgent(url: string, input: RegisterInput, options: RegisterOptions = {}): Promise<Registration> {
   const caps = input?.capabilities;
@@ -78,7 +80,7 @@ export async function registerAgent(url: string, input: RegisterInput, options: 
   const body = { name: input.name, category: input.category, ...(caps !== undefined ? { capabilities: [...caps] } : {}),
     ...(input.callbackUrl !== undefined ? { callbackUrl: input.callbackUrl } : {}),
     ...(input.chatEndpoint !== undefined ? { chatEndpoint: input.chatEndpoint } : {}) };
-  const payload = await send({ baseUrl: workspaceOrigin(url), fetch: options.fetch ?? globalThis.fetch, timeoutMs: timeoutOf(options.timeoutMs) },
+  const payload = await send({ baseUrl: workspaceBase(url), fetch: options.fetch ?? globalThis.fetch, timeoutMs: timeoutOf(options.timeoutMs) },
     '/agents/register', { body, ...(options.signal ? { signal: options.signal } : {}) });
   if (!isObject(payload) || !validId(payload.agentId) || typeof payload.key !== 'string' || !/^[\x21-\x7e]{1,512}$/.test(payload.key)
     || !validId(payload.category) || !validId(payload.role)) throw new Error('Invalid registration response.');

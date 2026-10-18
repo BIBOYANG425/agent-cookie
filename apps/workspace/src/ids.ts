@@ -27,6 +27,11 @@ export function mintKey(): string {
   return `ck_${encode(randomBytes(20))}`;
 }
 
+/** A blank instance's user secret (the HMAC key of its pairwise session ids): 256 random bits, same encoding as keys. */
+export function mintSecret(): string {
+  return encode(randomBytes(32));
+}
+
 export function hashKey(key: string): string {
   return createHash("sha256").update(key, "utf8").digest("hex");
 }
