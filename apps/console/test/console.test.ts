@@ -171,6 +171,7 @@ describe('receipts panel', () => {
     expect(purposeLabel('checkout')).toBe('结账地址（checkout）');
     expect(purposeLabel('payment')).toBe('支付授权（payment）');
     expect(purposeLabel('tier0')).toBe('零接入前缀（tier0）');
+    expect(purposeLabel('history')).toBe('历史记录（history）');
     expect(purposeLabel('quoted')).toBe('阶段 · 报价（quoted）');
     expect(purposeLabel('accepted')).toBe('阶段 · 接受（accepted）');
     expect(purposeLabel('warranty')).toBe('warranty');

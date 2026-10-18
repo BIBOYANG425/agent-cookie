@@ -41,3 +41,12 @@ it('distinguishes pending, unavailable and successful empty reads', () => {
   expect(render(null)).not.toContain('还没有读取回执');
   expect(render([])).toContain('还没有读取回执');
 });
+
+it('renders a history receipt (GET /assistant/history) with no fields as 无字段 and the 历史记录 label', () => {
+  const html = render([{ id: 'r-history', sessionId: 'session-assistant', agentId: 'Sample Company Assistant', fields: [],
+    purpose: 'history', createdAt: '2026-10-18T09:00:00Z', policyId: 'sample000000' }]);
+  expect(html).toContain('<dt>读取字段</dt><dd>无字段</dd>');
+  expect(html).toContain('<dt>用途</dt><dd>历史记录（history）</dd>');
+  expect(html).toContain('Sample Company Assistant');
+  expect(html).not.toContain('field-key');
+});

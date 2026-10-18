@@ -4,6 +4,10 @@
 // style fields ride every handshake, payment_method opens only for purpose "payment", shipping_address only for
 // "checkout", merchants write only shoe_size, the user's own agents read and write everything, and a company
 // assistant (category "assistant") never reads or writes shipping_address or payment_method.
+// History (Phase 4): the optional `history` section says which categories may read the person's intent and purchase
+// history. The floor: merchants (shoe, retail) never read it, the user's own agents (personal) always do, and only a
+// company assistant is the owner's choice. A document without `history` stays valid (older installed documents keep
+// their id) and reads as "personal only".
 // Purpose "payment" is the workspace's own read of the token on the user's behalf (it also names the stage and the
 // receipts); a merchant read of payment_method is refused whatever the document says, and merchants only ever see the
 // authorization result.
@@ -30,9 +34,14 @@ export interface PolicyDocument {
   write: Record<Category, Field[]>;
   /** Phase 3, optional: outcome-aware seller ranking weights. Absent = catalog order after size and preferences. */
   ranking?: RankingWeights;
+  /**
+   * Phase 4, optional: may read the person's intent and purchase history (GET /assistant/history for an assistant).
+   * Floor: personal always true, shoe and retail never; assistant is the owner's choice. Absent = personal only.
+   */
+  history?: Partial<Record<Category, boolean>>;
 }
 
-const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set(["v", "auto", "purpose", "write", "ranking"]);
+const TOP_LEVEL_KEYS: ReadonlySet<string> = new Set(["v", "auto", "purpose", "write", "ranking", "history"]);
 const RANKING_KEYS: ReadonlySet<string> = new Set(["winRate", "failure"]);
 
 const MERCHANT_AUTO: readonly Field[] = ["lang", "tone", "length", "shoe_size", "budget", "deadline"];
@@ -70,6 +79,8 @@ export const DEFAULT_POLICY: PolicyDocument = deepFreeze({
     // Assistants write candidates (promoted by the same corroboration rules as merchant writes), never the address or token.
     assistant: ["shoe_size", ...PREF_FIELDS],
   },
+  // Phase 4: the user's own agents read the history; a company assistant only once the owner turns it on.
+  history: { personal: true, assistant: false },
 });
 
 /** JSON with object keys sorted at every level; array order is kept (it is meaningful). Two equal documents canonicalize equal. */
@@ -120,6 +131,17 @@ export function policyPurposesFor(doc: PolicyDocument, category: Category, field
 }
 
 /**
+ * May agents of this category read the person's intent and purchase history? This is the evaluator the workspace
+ * uses (GET /assistant/history). Deterministic: personal always, merchants (shoe, retail) never whatever the document
+ * says, an assistant only when the document says `history.assistant: true`.
+ */
+export function policyHistory(doc: PolicyDocument, category: Category): boolean {
+  if (category === "personal") return true;
+  if (category === "assistant") return doc.history?.assistant === true;
+  return false;
+}
+
+/**
  * Shape and FLOOR check for a document a user wants to install. Empty list = may be installed. Messages name sections
  * and field names only (never values). Checks every problem it can find rather than stopping at the first.
  */
@@ -138,6 +160,20 @@ export function policyViolations(input: unknown): string[] {
       for (const k of RANKING_KEYS) {
         const v = (r as Record<string, unknown>)[k];
         if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100) out.push(`ranking.${k} must be an integer 0–100`);
+      }
+    }
+  }
+  if (doc.history !== undefined) {
+    const h = doc.history;
+    if (!h || typeof h !== "object" || Array.isArray(h)) {
+      out.push("history must be an object keyed by category");
+    } else {
+      for (const [k, v] of Object.entries(h as Record<string, unknown>)) {
+        if (!CATEGORIES.includes(k as Category)) { out.push(`history.${k}: unknown category`); continue; }
+        if (typeof v !== "boolean") { out.push(`history.${k} must be true or false`); continue; }
+        // ---- the history floor ----
+        if ((k === "shoe" || k === "retail") && v) out.push(`history.${k}: merchants never read history`);
+        if (k === "personal" && !v) out.push("history.personal must be true (the user's own agents read their history)");
       }
     }
   }

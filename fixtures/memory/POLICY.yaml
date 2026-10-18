@@ -109,3 +109,6 @@ write:
     - "pref.recipient"
     - "pref.price_band"
     - "pref.size_system"
+history:
+  personal: true
+  assistant: false

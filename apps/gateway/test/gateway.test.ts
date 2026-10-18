@@ -10,7 +10,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import { AssistantClient, WorkspaceError, type LinkView } from "@agent-cookie/sdk";
-import type { MeView } from "@agent-cookie/contract";
+import type { MeView, OperatorFunnel } from "@agent-cookie/contract";
 import { createGateway, type Gateway, type GatewayDeps } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 
@@ -349,10 +349,82 @@ describe("idle instances", () => {
     expect(s.logs).toContain(stopped);
     expect((await health(s.origin)).instances).toEqual({ running: 0, known: 1 });
     expect(s.gw.store.person(person.userId)!.port).toBeNull();
+    // The idle stop took the operator funnel's snapshot first (counts only; no intent yet here).
+    expect(s.gw.store.funnelSnapshot(person.userId)?.rows).toEqual([]);
 
     // The next request starts it again; the pairwise session survived on disk.
     const again = await AssistantClient.forJar(jar).context();
     expect(again.sessionId).toBe(first.sessionId);
     expect((await health(s.origin)).instances.running).toBe(1);
+  });
+});
+
+describe("operator funnel across real instances", () => {
+  const OPERATOR_KEY = "operator-key-it-0123456789";
+  let s: Served;
+
+  beforeAll(async () => {
+    s = await serveGateway({ AGENT_COOKIE_GATEWAY_OPERATOR_KEY: OPERATOR_KEY });
+  });
+
+  afterAll(async () => {
+    await s?.stop();
+  });
+
+  const funnel = async (query = ""): Promise<{ raw: string; body: OperatorFunnel }> => {
+    const res = await fetch(`${s.origin}/operator/funnel${query}`, { headers: { authorization: `Bearer ${OPERATOR_KEY}` } });
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    return { raw, body: JSON.parse(raw) as OperatorFunnel };
+  };
+  const counts = (f: OperatorFunnel) => {
+    const { generatedAt: _g, coverage: _c, ...rest } = f;
+    return rest;
+  };
+
+  it("reads a running jar live, a stopped one from the snapshot taken at stop, and refresh=1 starts it again", async () => {
+    const kite = await registerAssistant(s.origin, "Kite");
+    const client = new AssistantClient({ baseUrl: s.origin, key: kite.key });
+    const link = await client.requestLink();
+    const person = await testSession(s.origin);
+    await approve(s.origin, link.id, person.cookie);
+    const jar = (await client.link(link.id)).jar!;
+    const created = await fetch(`${jar.url}/personal/intents`, json({ text: "trail running shoes" }, { authorization: `Bearer ${jar.key}`, "idempotency-key": "gw-funnel-1" }));
+    expect(created.status, await created.clone().text()).toBe(201);
+    expect(s.gw.instances.isRunning(person.userId)).toBe(true);
+
+    // Live, until the intent's merchant round settles (two equal reads in a row).
+    let live = (await funnel()).body;
+    for (let i = 0; i < 30; i++) {
+      await sleep(500);
+      const again = (await funnel()).body;
+      const same = JSON.stringify(counts(again)) === JSON.stringify(counts(live));
+      live = again;
+      if (same) break;
+    }
+    expect(live).toMatchObject({ measured: true, persons: 1, coverage: { live: 1, snapshot: 0, missing: 0 }, byMerchant: [] });
+    expect(live.intents).toBeGreaterThanOrEqual(1);
+    const kiteRow = live.byAssistant.find((g) => g.agentId === kite.agentId);
+    expect(kiteRow).toMatchObject({ agentName: "Kite" });
+    expect(kiteRow!.intents).toBeGreaterThanOrEqual(1);
+
+    // Stopped: the snapshot taken just before the SIGTERM, same numbers; reading it does not start the jar.
+    await s.gw.instances.stop(person.userId);
+    expect(s.gw.instances.isRunning(person.userId)).toBe(false);
+    const fromSnapshot = await funnel();
+    expect(fromSnapshot.body.coverage).toEqual({ live: 0, snapshot: 1, missing: 0 });
+    expect(counts(fromSnapshot.body)).toEqual(counts(live));
+    expect(s.gw.instances.isRunning(person.userId)).toBe(false);
+    expect(fromSnapshot.raw).not.toContain(person.userId);
+
+    // refresh=1 starts it on demand and reads live.
+    const refreshed = (await funnel("?refresh=1")).body;
+    expect(refreshed.coverage).toEqual({ live: 1, snapshot: 0, missing: 0 });
+    expect(counts(refreshed)).toEqual(counts(live));
+    expect(s.gw.instances.isRunning(person.userId)).toBe(true);
+
+    const all = s.logs.join("\n");
+    expect(all).not.toMatch(KEY_RE);
+    expect(all).not.toContain("operator funnel:");
   });
 });

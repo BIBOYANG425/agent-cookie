@@ -3,11 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type * as Contract from '../../../packages/contract/src/policy-document';
 import type * as ContractPolicy from '../../../packages/contract/src/policy';
-import { DEFAULT_POLICY, policyViolations } from '../../../packages/contract/src/policy-document';
+import { DEFAULT_POLICY, policyHistory, policyViolations } from '../../../packages/contract/src/policy-document';
 import { createLiveAdapter, createSampleAdapter } from '../src/adapters';
 import { ConsoleController } from '../src/controller';
 import type { ConsoleSnapshot } from '../src/model';
-import { parseViolations, PolicyViolationError, samplePolicyView, type PolicyDocument, type PolicyView, type ReadDecision,
+import { historyReadable, normalizePolicyView, parseViolations, PolicyViolationError, samplePolicyView, type PolicyDocument, type PolicyView, type ReadDecision,
   type ShadowReport } from '../src/policy';
 import { PolicyPanel, PolicyResultView } from '../src/PolicyPanel';
 
@@ -192,5 +192,57 @@ describe('policy actions through the live adapter', () => {
     const snapshot = await bad.load();
     expect(snapshot.policy).toEqual({ availability: 'error', message: expect.stringContaining('策略响应格式') });
     expect(snapshot.card.card).toEqual([]);
+  });
+});
+
+describe('policy panel: history (Phase 4)', () => {
+  const cells = (html: string) => [...html.matchAll(/<td data-label="历史记录">(.*?)<\/td>/gu)].map((match) => match[1]);
+  const NOTE = '历史：可读取此人的意图与购买记录（商家永远不可读，个人 agent 永远可读，公司助理由你决定；每次读取写回执）';
+
+  it('Sample policy carries the default history switches', () => {
+    expect(samplePolicyView().policy.history).toEqual({ personal: true, assistant: false });
+  });
+
+  it('renders a 历史记录 column for the default: personal 可读, merchants and the assistant 不可读, plus the note', () => {
+    const html = panel({});
+    expect(html).toContain('<th scope="col">历史记录</th>');
+    expect(cells(html)).toEqual(['可读', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>']);
+    expect(html).toContain(NOTE);
+    expect(html.match(/<tr>/gu)).toHaveLength(5);
+  });
+
+  it('shows the assistant as 可读 once history.assistant is true; merchants stay 不可读 whatever the document says', () => {
+    const on: PolicyView = { ...view, policy: { ...structuredClone(DEFAULT_POLICY), history: { personal: true, assistant: true } } };
+    expect(cells(panel({ state: { availability: 'ready', data: on } })))
+      .toEqual(['可读', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>', '可读']);
+    // A floor-breaking or absent section is shown with the contract's evaluator semantics, never as written.
+    const odd: PolicyView = { ...view, policy: { ...structuredClone(DEFAULT_POLICY), history: { personal: false, shoe: true, retail: true } } };
+    expect(cells(panel({ state: { availability: 'ready', data: odd } })))
+      .toEqual(['可读', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>']);
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY);
+    expect(cells(panel({ state: { availability: 'ready', data: { ...view, policy: older } } })))
+      .toEqual(['可读', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>', '<span class="muted">不可读</span>']);
+  });
+
+  it('historyReadable matches the contract policyHistory for every category and document shape', () => {
+    const docs = [DEFAULT_POLICY, { ...DEFAULT_POLICY, history: { personal: true, assistant: true } },
+      { ...DEFAULT_POLICY, history: { personal: false, shoe: true, retail: true, assistant: false } }, { ...DEFAULT_POLICY, history: undefined }];
+    for (const doc of docs) for (const category of ['personal', 'shoe', 'retail', 'assistant'] as const) {
+      expect(historyReadable(doc as PolicyDocument, category)).toBe(policyHistory(doc, category));
+    }
+  });
+
+  it('normalizePolicyView keeps a boolean history per known category and rejects anything else as malformed', () => {
+    const body = (history: unknown) => ({ policyId: 'a1b2c3d4e5f6', source: 'installed',
+      policy: { ...structuredClone(DEFAULT_POLICY), history } });
+    expect(normalizePolicyView(body({ personal: true, assistant: true })).policy.history).toEqual({ personal: true, assistant: true });
+    expect(normalizePolicyView(body({ personal: true, assistant: false })).policy).toEqual(DEFAULT_POLICY);
+    expect(normalizePolicyView(body({})).policy.history).toEqual({});
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY);
+    const olderView = normalizePolicyView({ policyId: '3526a909e404', source: 'repo', policy: older });
+    expect(Object.hasOwn(olderView.policy, 'history')).toBe(false);
+    for (const bad of [{ assistant: 'true' }, { assistant: 1 }, { assistant: null }, { company: true }, [], 'personal', null, true]) {
+      expect(() => normalizePolicyView(body(bad))).toThrow('策略响应格式与契约不一致');
+    }
   });
 });

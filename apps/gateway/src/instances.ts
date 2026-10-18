@@ -44,8 +44,19 @@ export interface InstanceManagerOptions {
   exists?(userId: string): boolean;
   onStart?(userId: string, port: number, ownerKeyHash: string): void;
   onStop?(userId: string): void;
+  /**
+   * Called before the gateway stops a still-running instance for idle, a requested stop or shutdown (never for a
+   * delete, never after an unexpected exit), with the owner-authenticated fetch of that instance and an abort signal
+   * that fires after `beforeStopTimeoutMs`. Errors are swallowed and logged; the stop goes on regardless.
+   */
+  beforeStop?(userId: string, fetch: Lease["fetch"], signal: AbortSignal): Promise<void>;
+  /** Default 5 s. */
+  beforeStopTimeoutMs?: number;
   log?(line: string): void;
 }
+
+/** Why an instance is stopped: a delete skips `beforeStop`. */
+export type StopReason = "idle" | "requested" | "shutdown" | "delete";
 
 export interface FetchInit {
   method?: "GET" | "HEAD" | "POST" | "PUT";
@@ -145,34 +156,39 @@ export class InstanceManager {
       userId,
       port: held.port,
       ...(held.seed ? { seed: held.seed } : {}),
-      fetch: async (path, init = {}) => {
-        if (!path.startsWith("/")) throw new InstanceError("instance path must start with /");
-        const headers: Record<string, string> = { ...(init.headers ?? {}) };
-        if (init.owner) {
-          if (!held.ownerKey) throw new InstanceError("instance stopped");
-          headers.authorization = `Bearer ${held.ownerKey}`;
-        } else if (init.key) {
-          headers.authorization = `Bearer ${init.key}`;
-        }
-        let body = init.body;
-        if (init.json !== undefined) {
-          headers["content-type"] = "application/json";
-          body = JSON.stringify(init.json);
-        }
-        return fetch(`http://127.0.0.1:${held.port}${path}`, {
-          method: init.method ?? (body === undefined || body === null ? "GET" : "POST"),
-          headers,
-          ...(body === undefined || body === null ? {} : { body }),
-          redirect: "manual",
-          ...(init.signal ? { signal: init.signal } : {}),
-        });
-      },
+      fetch: this.#fetchFor(held),
       release: () => {
         if (released) return;
         released = true;
         held.inflight--;
         held.lastUsed = Date.now();
       },
+    };
+  }
+
+  /** fetch against one live instance; `owner: true` uses its owner key while it still holds one. */
+  #fetchFor(held: Live): Lease["fetch"] {
+    return async (path, init = {}) => {
+      if (!path.startsWith("/")) throw new InstanceError("instance path must start with /");
+      const headers: Record<string, string> = { ...(init.headers ?? {}) };
+      if (init.owner) {
+        if (!held.ownerKey) throw new InstanceError("instance stopped");
+        headers.authorization = `Bearer ${held.ownerKey}`;
+      } else if (init.key) {
+        headers.authorization = `Bearer ${init.key}`;
+      }
+      let body = init.body;
+      if (init.json !== undefined) {
+        headers["content-type"] = "application/json";
+        body = JSON.stringify(init.json);
+      }
+      return fetch(`http://127.0.0.1:${held.port}${path}`, {
+        method: init.method ?? (body === undefined || body === null ? "GET" : "POST"),
+        headers,
+        ...(body === undefined || body === null ? {} : { body }),
+        redirect: "manual",
+        ...(init.signal ? { signal: init.signal } : {}),
+      });
     };
   }
 
@@ -344,12 +360,29 @@ export class InstanceManager {
     }
   }
 
-  async #stopLocked(userId: string, reason: string): Promise<void> {
+  async #beforeStop(live: Live): Promise<void> {
+    const ms = this.opts.beforeStopTimeoutMs ?? 5_000;
+    const controller = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<"timeout">((r) => { timer = setTimeout(() => { controller.abort(); r("timeout"); }, ms); });
+    try {
+      const outcome = await Promise.race([this.opts.beforeStop!(live.userId, this.#fetchFor(live), controller.signal).then(() => "done" as const), timedOut]);
+      if (outcome === "timeout") this.#log(`instance ${live.userId}: before-stop read timed out`);
+    } catch (e) {
+      this.#log(`instance ${live.userId}: before-stop read failed (${e instanceof Error ? e.name : "error"})`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async #stopLocked(userId: string, reason: StopReason): Promise<void> {
     const live = this.#live.get(userId);
     if (!live) return;
     live.stopping = true;
     this.#live.delete(userId);
     this.opts.onStop?.(userId);
+    // Still running and still holding its owner key: let the gateway take what it keeps of a stopped instance.
+    if (reason !== "delete" && this.opts.beforeStop && live.alive && live.ownerKey) await this.#beforeStop(live);
     live.ownerKey = "";
     if (live.alive && live.child.pid !== undefined) {
       // tsx relays SIGTERM to the workspace, which closes its listener and SQLite and exits.

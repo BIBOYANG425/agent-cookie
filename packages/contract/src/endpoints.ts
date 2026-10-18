@@ -119,12 +119,22 @@ export const ENDPOINTS: Endpoint[] = [
     responses: { 201: "ContributionResult", 401: KEY, 403: GRANT, 404: "NOT_FOUND", 422: "MISSING_FIELD" } },
   { method: "GET", path: "/assistant/stats", caller: "assistant", summary: "→ AssistantStats: counts over intents this assistant created (intents, quoted, accepted, completed, questionsSkipped)",
     response: "AssistantStats", responses: { 200: "AssistantStats", 401: KEY, 403: ROLE } },
+  { method: "GET", path: "/assistant/history", caller: "assistant", summary: "?limit= (default 50, max 200) → AssistantHistoryResponse { intents }: the person's intent and purchase history, newest first, each with its outcome (accepted quote's agentId and status) and its public summary; never the user's words (text, query) and never a card field value. Allowed only while the installed policy's history.assistant is true, else 403 SCOPE_DENIED; needs the live assist grant (SCOPE_DENIED / GRANT_REVOKED / GRANT_EXPIRED as for context). Every allowed read writes a receipt (purpose history, fields []), at most one per session per hour; questionsSkipped is unchanged by it",
+    query: "AssistantHistoryQuery", response: "AssistantHistoryResponse", responses: { 200: "AssistantHistoryResponse", 401: KEY, 403: GRANT } },
   { method: "GET", path: "/owner/links", caller: "owner", summary: "?limit= (default 100, max 500) → { links: Link[] } newest first: pending links to decide, and decided ones",
     query: "LinksQuery", response: "LinksResponse", responses: { 200: "LinksResponse", 401: KEY, 403: ROLE } },
   { method: "POST", path: "/owner/links/:id/approve", caller: "owner", summary: "→ Link approved: creates the assistant's pairwise session and grant (purpose assist, stage introduced); 404 unknown, 409 LINK_NOT_PENDING when decided or expired",
     response: "Link", responses: { 200: "Link", 401: KEY, 403: ROLE, 404: "NOT_FOUND", 409: "LINK_NOT_PENDING" } },
   { method: "POST", path: "/owner/links/:id/decline", caller: "owner", summary: "→ Link declined; the assistant's GET sees declined and may ask again later; 404 unknown, 409 LINK_NOT_PENDING when decided or expired",
     response: "Link", responses: { 200: "Link", 401: KEY, 403: ROLE, 404: "NOT_FOUND", 409: "LINK_NOT_PENDING" } },
+
+  // ---- the person's own agents (bring-your-own-agent plan §7): keys the owner mints, lists and revokes
+  { method: "POST", path: "/owner/keys", caller: "owner", summary: "MintKeyRequest { agentId, role: personal | merchant, label } → 201 MintKeyResult { key, agentId, role, label, createdAt }: the key is returned once and never logged or shown again (only its hash is stored); an unknown agentId is created (category personal for role personal, retail for merchant, name = label), an existing one must have that role (422 MISSING_FIELD); an agent may hold several keys",
+    request: "MintKeyRequest", response: "MintKeyResult", responses: { 201: "MintKeyResult", 401: KEY, 403: ROLE, 422: "MISSING_FIELD" } },
+  { method: "GET", path: "/owner/keys", caller: "owner", summary: "→ KeysResponse { keys: KeyView[] } newest first: the keys the owner minted (agentId, role, label, createdAt, revokedAt?); never a key or a hash; the owner key, registered agents' keys and Sample keys are not listed",
+    response: "KeysResponse", responses: { 200: "KeysResponse", 401: KEY, 403: ROLE } },
+  { method: "POST", path: "/owner/keys/:agentId/revoke", caller: "owner", summary: "→ RevokeKeyResult { ok, revokedAt, revoked }: revoke every live key of that agent; from then on they answer 401 AUTH_REQUIRED; the agent keeps its contributions, sessions and receipts; 404 when the owner never minted a key for that agentId",
+    response: "RevokeKeyResult", responses: { 200: "RevokeKeyResult", 401: KEY, 403: ROLE, 404: "NOT_FOUND" } },
 
   { method: "GET", path: "/owner/activity", caller: "owner", summary: "Event list, no field values (owner key)",
     query: "ActivityQuery", response: "ActivityResponse", responses: { 200: "ActivityResponse", 401: KEY, 403: ROLE } },

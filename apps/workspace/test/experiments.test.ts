@@ -196,7 +196,7 @@ describe("Phase 4 · Wilson interval and configuration", () => {
     v9.close();
     const store = new Store(path);
     expect(store.schemaVersion()).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(13);
+    expect(SCHEMA_VERSION).toBe(15);
     expect((store.db.prepare("PRAGMA table_info(intents)").all() as Array<{ name: string }>).map((c) => c.name)).toContain("arm");
     expect(store.intent("i_old")).toBeDefined();
     expect(store.intent("i_old")!.arm).toBeUndefined();

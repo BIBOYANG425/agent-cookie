@@ -39,10 +39,14 @@ export class ReceiptWriter {
 
   constructor(private ctx: Ctx) {}
 
-  /** `dedupe: false` always writes (a purpose release); otherwise repeatsRecent decides. An empty field list writes nothing. */
-  write(r: Receipt, userId: string, actor: string, opts: { dedupe: boolean }): Promise<ReceiptOutcome> {
+  /**
+   * `dedupe: false` always writes (a purpose release); otherwise repeatsRecent decides. An empty field list writes
+   * nothing, unless `allowEmpty` (a release that is not a card field, e.g. the intent history an assistant reads:
+   * services/assistant.ts HISTORY_PURPOSE).
+   */
+  write(r: Receipt, userId: string, actor: string, opts: { dedupe: boolean; allowEmpty?: boolean }): Promise<ReceiptOutcome> {
     const run = this.serial.then(async (): Promise<ReceiptOutcome> => {
-      if (r.fields.length === 0) return "none";
+      if (r.fields.length === 0 && opts.allowEmpty !== true) return "none";
       if (opts.dedupe && repeatsRecent(this.ctx, r)) return "deduped";
       await persistStrict(this.ctx, "receipt", actor, (repo) => repo.appendReceipt(r, writeMeta(this.ctx, "workspace", r)));
       this.ctx.store.insertReceipt({ ...r, userId });

@@ -85,6 +85,20 @@ export interface UnlockRequest {
   token: string;
 }
 
+/**
+ * POST /owner/keys body (bring-your-own-agent plan §7, the person's own agent): mint a key for one of the person's own
+ * agents (`role: "personal"`, category personal: it reads the whole card) or for a store's agent the owner adds by hand
+ * (`role: "merchant"`, category retail). `agentId` is the owner's own name for the agent (`[a-z0-9][a-z0-9_.-]{0,63}`,
+ * e.g. "laptop"); an unknown one is created with `label` as its name, an existing one must already have that role
+ * (else 422 MISSING_FIELD). An agent may hold several keys; each has its own label and revocation.
+ */
+export interface MintKeyRequest {
+  agentId: string;
+  role: "personal" | "merchant";
+  /** What this key is for, in the owner's words (1–200 UTF-8 bytes): "laptop", "the kitchen speaker". Never the key. */
+  label: string;
+}
+
 /** POST /test/clock body (AGENT_COOKIE_TEST=1 only). */
 export interface ClockRequest {
   /**
@@ -180,6 +194,27 @@ export interface FunnelQuery {
    * @default 200
    */
   limit?: number;
+}
+
+/** GET /assistant/history. */
+export interface AssistantHistoryQuery {
+  /**
+   * @asType integer
+   * @minimum 1
+   * @maximum 200
+   * @default 50
+   */
+  limit?: number;
+}
+
+/**
+ * Response of GET /assistant/history, newest first. Entries are the intent history as GET /personal/intents serves it
+ * MINUS the user's own words: `text` and `query` are never sent to an assistant. Each entry carries id, agentId (who
+ * created it), kind, public, createdAt, expiresAt and accepted (incl. the merchant's agentId and status). No card
+ * field values.
+ */
+export interface AssistantHistoryResponse {
+  intents: IntentHistoryEntry[];
 }
 
 /** GET /.well-known/agent-cookie-jwks.json (lane D). */
@@ -302,6 +337,45 @@ export interface ActivityResponse {
 export interface ResetResult {
   ok: true;
   seededAt: string;
+}
+
+/** POST /owner/keys → 201. The key is shown here once and never again (only its hash is stored); keep it in AGENT_COOKIE_KEY. */
+export interface MintKeyResult {
+  key: string;
+  agentId: string;
+  role: "personal" | "merchant";
+  label: string;
+  createdAt: string;
+}
+
+/**
+ * One key the owner minted, as GET /owner/keys lists it: never the key or its hash. The owner key itself and keys
+ * made by POST /agents/register or the Sample seed are not listed (they carry no label).
+ */
+export interface KeyView {
+  agentId: string;
+  role: "personal" | "merchant";
+  label: string;
+  createdAt: string;
+  /** Set once POST /owner/keys/:agentId/revoke revoked it; a revoked key answers 401 AUTH_REQUIRED. */
+  revokedAt?: string;
+}
+
+/** GET /owner/keys. Newest first. */
+export interface KeysResponse {
+  keys: KeyView[];
+}
+
+/**
+ * POST /owner/keys/:agentId/revoke: every live key of that agent is revoked at once; the agent, its contributions,
+ * sessions and receipts stay (revocation stops future reads, it does not recall what was already released).
+ * `revoked` counts the keys this call revoked (0 when none was live).
+ */
+export interface RevokeKeyResult {
+  ok: true;
+  revokedAt: string;
+  /** @asType integer */
+  revoked: number;
 }
 
 /** POST /test/clock. */

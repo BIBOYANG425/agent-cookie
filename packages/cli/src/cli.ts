@@ -1,9 +1,12 @@
 import { readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { Command, CommanderError } from 'commander';
 import {
-  WorkspaceClient, WorkspaceError, workspaceConfigFromEnv,
-  type FunnelReport, type LinkList, type LinkResult, type PolicyDocument, type PolicyResult, type ShadowResult,
+  WorkspaceClient, WorkspaceError, workspaceBase, workspaceConfigFromEnv,
+  type FunnelReport, type KeyList, type LinkList, type LinkResult, type MintedKey, type PolicyDocument, type PolicyResult, type ShadowResult,
 } from '@agent-cookie/sdk';
+import { StartError, startWorkspace, type StartWorkspace } from './start.js';
 
 interface CliIO {
   out(text: string): void;
@@ -11,7 +14,78 @@ interface CliIO {
 }
 
 /** A local failure whose message is already safe to print: never a key, a file's contents or a raw upstream message. */
-class CliError extends Error {}
+export class CliError extends Error {}
+
+/** What `init` and the key commands touch outside the SDK client; tests replace each one. */
+export interface CliDeps {
+  /** A client for an explicit workspace and key (init: the owner key it found). */
+  clientFor?: (baseUrl: string, key: string) => WorkspaceClient;
+  /** True when GET <baseUrl>/healthz answers 2xx. */
+  healthy?: (baseUrl: string) => Promise<boolean>;
+  /** The contents of a file (init reads <data-dir>/owner.key); rejects when it cannot be read. */
+  readText?: (path: string) => Promise<string>;
+  /** Starts the workspace detached and resolves once it listens (init --start). */
+  start?: StartWorkspace;
+  homedir?: () => string;
+}
+
+const DEFAULT_URL = 'http://127.0.0.1:4310';
+const AGENT_ID = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+const OWNER_KEY_MAX = 512;
+
+async function isHealthy(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${baseUrl}/healthz`, { redirect: 'manual', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+    await response.body?.cancel();
+    return response.ok;
+  } catch { return false; }
+}
+
+/** A value as a POSIX shell word: bare when it is plain, else single-quoted. */
+const shellWord = (v: string) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
+
+/** The two lines an agent's environment needs. The only place a minted key is ever printed. */
+function envLines(baseUrl: string, key: string): string {
+  return `export AGENT_COOKIE_URL=${shellWord(baseUrl)}\nexport AGENT_COOKIE_KEY=${shellWord(key)}\n`;
+}
+
+function agentIdOption(value: string, flag: string): string {
+  if (!AGENT_ID.test(value)) throw new CliError(`${flag} must be a lower-case id: a letter or digit, then up to 63 of a-z 0-9 _ . -`);
+  return value;
+}
+function labelOption(value: string): string {
+  if (!value.trim() || new TextEncoder().encode(value).length > 200 || /[\x00-\x1f\x7f]/.test(value)) {
+    throw new CliError('--label must be 1-200 bytes of text on one line.');
+  }
+  return value;
+}
+function baseOption(value: string): string {
+  try { return workspaceBase(value); }
+  catch { throw new CliError('The workspace URL must be https://, or http:// on 127.0.0.1 or localhost, with no trailing slash, query or credentials.'); }
+}
+
+export function formatKeys(list: KeyList): string {
+  const head = `${sampleLabel(list.sample)}Keys · ${list.keys.length} key${list.keys.length === 1 ? '' : 's'}\n`;
+  if (!list.keys.length) return `${head}No keys minted yet. Mint one: agent-cookie keys mint --agent <id> --role personal --label <text>\n`;
+  return head + table(['agent id', 'role', 'label', 'created', 'revoked'],
+    list.keys.map(k => [k.agentId, k.role, k.label, k.createdAt, k.revokedAt ?? '-']));
+}
+
+/** The one-time announcement of a minted key: who it is for, the two env lines, and the warning. */
+function formatMinted(minted: MintedKey, baseUrl: string): string {
+  return `${sampleLabel(minted.sample)}Minted a ${minted.role} key for ${clean(minted.agentId)} ("${clean(minted.label)}") at ${clean(minted.createdAt)}.\n`
+    + 'It is shown here once and never again. Put these two lines in that agent\'s environment, never in a file you commit, a chat or a log:\n\n'
+    + envLines(baseUrl, minted.key)
+    + `\nRevoke it: agent-cookie keys revoke ${clean(minted.agentId)}\n`;
+}
+
+const SNIPPET = [
+  "import { WorkspaceClient, workspaceConfigFromEnv } from '@agent-cookie/sdk';",
+  'const me = new WorkspaceClient(workspaceConfigFromEnv(process.env));',
+  "await me.remember({ field: 'shoe_size', value: 'EU 42' }); // something the person told you",
+  'const card = await me.getMyCard();',
+  'console.log(card);',
+].join('\n');
 
 const POLICY_FILE_MAX_BYTES = 64 * 1024;
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -101,11 +175,16 @@ async function readPolicyFile(path: string): Promise<PolicyDocument> {
 }
 
 export async function runCli(args: string[], env: NodeJS.ProcessEnv, io: CliIO,
-  createClient = () => new WorkspaceClient(workspaceConfigFromEnv(env))): Promise<number> {
+  createClient = () => new WorkspaceClient(workspaceConfigFromEnv(env)), deps: CliDeps = {}): Promise<number> {
+  const clientFor = deps.clientFor ?? ((baseUrl: string, key: string) => new WorkspaceClient({ baseUrl, key }));
+  const healthy = deps.healthy ?? isHealthy;
+  const readText = deps.readText ?? ((path: string) => readFile(path, 'utf8'));
+  const start = deps.start ?? startWorkspace;
+  const home = deps.homedir ?? homedir;
   let failure = 'Unable to read the card.';
   const program = new Command()
     .name('agent-cookie')
-    .description('Local Agent Cookie CLI: your card, the owner funnel, the field policy and consent links, through the workspace.')
+    .description('Local Agent Cookie CLI: first run (init), your card, keys for your own agents, the owner funnel, the field policy and consent links, through the workspace.')
     .option('--pretty', 'Format JSON for humans')
     .exitOverride()
     .configureOutput({ writeOut: io.out, writeErr: () => {} });
@@ -174,6 +253,68 @@ export async function runCli(args: string[], env: NodeJS.ProcessEnv, io: CliIO,
     .action(async (id: string) => {
       failure = 'Unable to decline the link.';
       io.out(formatDecision(await createClient().declineLink(linkId(id))));
+    });
+  program.command('init').description('First run of the personal path: find (or --start) a workspace, then mint a personal key for your own agent, shown once')
+    .option('--url <url>', `The workspace (default: AGENT_COOKIE_URL, else ${DEFAULT_URL})`)
+    .option('--start', 'Start a blank workspace from this repository, detached, if none answers at the URL')
+    .option('--data-dir <dir>', 'Where the workspace keeps its data and owner.key (default: AGENT_COOKIE_DATA_DIR, else ~/.agent-cookie)')
+    .option('--agent <id>', 'The agent id for your own agent', 'my-agent')
+    .option('--label <text>', 'What the key is for, in your words', 'my own agent')
+    .action(async (opts: { url?: string; start?: boolean; dataDir?: string; agent: string; label: string }) => {
+      failure = 'Unable to initialise.';
+      const baseUrl = baseOption(opts.url ?? env.AGENT_COOKIE_URL ?? DEFAULT_URL);
+      const agentId = agentIdOption(opts.agent, '--agent');
+      const label = labelOption(opts.label);
+      const dataDir = resolve(opts.dataDir ?? env.AGENT_COOKIE_DATA_DIR ?? join(home(), '.agent-cookie'));
+      if (await healthy(baseUrl)) {
+        io.out(`A workspace answers at ${baseUrl}${opts.start ? '; not starting another' : ''}.\n`);
+      } else if (opts.start) {
+        failure = 'Unable to start the workspace.';
+        const started = await start({ baseUrl, dataDir, env });
+        io.out(`Started a blank workspace at ${baseUrl} (pid ${started.pid}). Data: ${dataDir}. Log: ${started.logPath}.\n`
+          + `It keeps running in the background. Stop it with: kill ${started.pid}\n`);
+      } else {
+        throw new CliError(`No workspace answers at ${baseUrl}/healthz. Start one with: agent-cookie init --start (or pass --url).`);
+      }
+      // The owner key: never printed, never echoed in an error.
+      let ownerKey = env.AGENT_COOKIE_OWNER_KEY?.trim();
+      if (!ownerKey) {
+        const path = join(dataDir, 'owner.key');
+        try { ownerKey = (await readText(path)).trim(); }
+        catch { throw new CliError(`No owner key: set AGENT_COOKIE_OWNER_KEY, or point --data-dir at the directory where the workspace wrote owner.key (looked in ${path}).`); }
+      }
+      if (!ownerKey || ownerKey.length > OWNER_KEY_MAX || /[^\x21-\x7e]/.test(ownerKey)) throw new CliError('The owner key is not a valid key.');
+      failure = 'Unable to mint the key.';
+      const minted = await clientFor(baseUrl, ownerKey).mintKey({ agentId, role: 'personal', label });
+      io.out(`\n${formatMinted(minted, baseUrl)}\nThen, in your agent (Node 22, npm i @agent-cookie/sdk):\n\n${SNIPPET}\n`);
+    });
+  const keys = program.command('keys').description('Keys for your own agents and hand-added stores: mint, list or revoke; owner key');
+  keys.action(() => { keys.outputHelp(); });
+  keys.command('mint').description('Mint a key; it is printed once, to stdout, and never stored')
+    .requiredOption('--agent <id>', 'The agent id, e.g. laptop (created when new)')
+    .requiredOption('--role <role>', 'personal (reads the whole card) or merchant (a store you add by hand)')
+    .requiredOption('--label <text>', 'What the key is for, in your words')
+    .action(async (opts: { agent: string; role: string; label: string }) => {
+      failure = 'Unable to mint the key.';
+      const agentId = agentIdOption(opts.agent, '--agent');
+      if (opts.role !== 'personal' && opts.role !== 'merchant') throw new CliError('--role must be personal or merchant.');
+      const label = labelOption(opts.label);
+      const baseUrl = baseOption(env.AGENT_COOKIE_URL ?? DEFAULT_URL);
+      io.out(formatMinted(await createClient().mintKey({ agentId, role: opts.role, label }), baseUrl));
+    });
+  keys.command('list').description('The keys you minted, newest first: labels and dates, never a key')
+    .option('--json', 'Print the keys as JSON')
+    .action(async (opts: { json?: boolean }) => {
+      failure = 'Unable to read the keys.';
+      const list = await createClient().listKeys();
+      if (opts.json) json(list); else io.out(formatKeys(list));
+    });
+  keys.command('revoke').description('Revoke every live key of one agent; it keeps what it already wrote')
+    .argument('<agentId>', 'The agent id, from keys list')
+    .action(async (id: string) => {
+      failure = 'Unable to revoke the keys.';
+      const result = await createClient().revokeKey(agentIdOption(id, 'The agent id'));
+      io.out(`${sampleLabel(result.sample)}Revoked ${result.revoked} key${result.revoked === 1 ? '' : 's'} of ${clean(id)} at ${clean(result.revokedAt)}.\n`);
     });
   try {
     await program.parseAsync(args.length ? args : ['--help'], { from: 'user' });
