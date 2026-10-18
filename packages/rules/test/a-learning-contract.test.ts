@@ -9,7 +9,7 @@ const nested = (id: string, conversationId: string): LearningContribution => ({
   evidence: { conversationId, intentId: `intent-${id}`, snippet: 'I prefer relaxed; [%0A]\n剪裁\u2028' },
 });
 
-describe('A 0129f08 nested learning contract', () => {
+describe('shared nested learning contract', () => {
   it('round-trips nested evidence through the default RulesApi, not just the learning-only parser', () => {
     const c = nested('one', 'conversation-one');
     const line = rules.renderContribution(c as Contribution);
@@ -23,7 +23,7 @@ describe('A 0129f08 nested learning contract', () => {
     const second = nested('two', 'conversation-two');
     expect(mergeCard([first], options).card).toEqual([]);
     expect(mergeCard([first, second], options).card).toEqual([{ field: 'pref.fit', value: 'relaxed', confidence: 'medium',
-      sources: ['personal'], updatedAt: now, lastSupportedAt: now, changedRecently: false }]);
+      sources: ['personal'], evidenceSources: ['conversation:conversation-one', 'conversation:conversation-two'], updatedAt: now, lastSupportedAt: now, changedRecently: false }]);
     expect(mergeCard([first, { ...second, revokedAt: now }], options).card).toEqual([]);
   });
 
@@ -31,11 +31,11 @@ describe('A 0129f08 nested learning contract', () => {
     const first = { ...nested('one', 'conversation-one'), basis: 'observed' as const };
     const second = { ...nested('two', 'conversation-two'), basis: 'observed' as const };
     expect(mergeCard([first, second], options).card).toEqual([{ field: 'pref.fit', value: 'relaxed', confidence: 'medium',
-      sources: ['personal'], updatedAt: now, lastSupportedAt: now, changedRecently: false }]);
+      sources: ['personal'], evidenceSources: ['conversation:conversation-one', 'conversation:conversation-two'], updatedAt: now, lastSupportedAt: now, changedRecently: false }]);
     const sameConversation = { ...second, agentId: 'other', evidence: { conversationId: 'conversation-one' } };
     expect(mergeCard([first, sameConversation], options).card).toEqual([]);
     expect(mergeCard([first, sameConversation], options).candidates).toEqual([
-      { field: 'pref.fit', value: 'relaxed', sources: ['other', 'personal'], reason: 'single_source' },
+      { field: 'pref.fit', value: 'relaxed', sources: ['other', 'personal'], evidenceSources: ['conversation:conversation-one'], reason: 'single_source' },
     ]);
   });
 

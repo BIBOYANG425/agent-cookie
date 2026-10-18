@@ -11,12 +11,13 @@ import {
   text, timestamp, validateNote,
 } from './codec.js';
 import {
-  assertRepository, canonicalRoot, commitFiles, exclusive, initialize,
+  assertFileBoundary, assertRepository, canonicalRoot, commitFiles, exclusive, initialize,
   optionalFile, recordFiles, restoreSeed,
 } from './storage.js';
-import type { IntentHistoryApi, LearningMemoryRepo, MemoryRepoWithIntents, OpenLearningMemoryRepoOptions } from './learning-types.js';
+import type { ContributionRevocationApi, ContributionRevocationTarget, IntentHistoryApi, LearningMemoryRepo, MemoryRepoWithIntents, OpenLearningMemoryRepoOptions } from './learning-types.js';
 import { intentFilename, parseIntent, projectIntent, renderIntent, summarizeIntent, validateLearningContribution } from './intent-history.js';
 export type { AppendIntentInput, WorkspaceIntentRecord, IntentSummary, IntentHistoryApi, MemoryRepoWithIntents } from './learning-types.js';
+export type { ContributionRevocationApi, ContributionRevocationTarget } from './learning-types.js';
 export type { LearningMemoryRepo, OpenLearningMemoryRepoOptions } from './learning-types.js';
 
 export const openLearningMemoryRepo = (opts: OpenLearningMemoryRepoOptions): Promise<LearningMemoryRepo> =>
@@ -32,11 +33,37 @@ interface StorageRules<C, K, M> {
   mergeCard(contributions: readonly C[], merge: M): K;
   renderCard(card: K, meta: Parameters<RulesApi['renderCard']>[1]): string;
 }
-type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard'> & IntentHistoryApi & {
+type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard' | 'revokeContribution' | 'forgetContributions' | 'revokeContributions'> & IntentHistoryApi & ContributionRevocationApi & {
+  forgetContributions(ids: string[], merge: M, meta: WriteMeta): Promise<CommitRef>;
+  revokeContributions(ids: readonly string[], revokedAt: string, merge: M, meta: WriteMeta): Promise<{card: K; commit: CommitRef}>;
   appendContribution(c: C, meta: WriteMeta): Promise<CommitRef>;
   listContributions(): Promise<C[]>;
   regenerateCard(merge: M, meta: WriteMeta): Promise<{ card: K; commit: CommitRef }>;
 };
+
+function revocationMatches(target: ContributionRevocationTarget): (row: LearningContribution) => boolean {
+  if (typeof target === 'string') { text(target); return row => row.id === target; }
+  const invalid = () => { throw new WorkspaceError('MISSING_FIELD', 'Invalid contribution evidence selector'); };
+  if (!target || typeof target !== 'object' || Array.isArray(target)
+    || Object.keys(target).length !== 1 || !Object.hasOwn(target, 'evidence')) return invalid();
+  const evidence = target.evidence;
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return invalid();
+  const keys = Object.keys(evidence);
+  if (!keys.length || keys.some(key => key !== 'intentId' && key !== 'conversationId')) return invalid();
+  for (const key of keys) {
+    const value = evidence[key as keyof typeof evidence];
+    text(value);
+    if (!value.trim()) return invalid();
+  }
+  return row => {
+    const nested = typeof row.evidence === 'object' && row.evidence !== null ? row.evidence : {};
+    for (const key of ['intentId', 'conversationId'] as const) {
+      if (nested[key] !== undefined && row[key] !== undefined && nested[key] !== row[key]) return false;
+      if (evidence[key] !== undefined && (nested[key] ?? row[key]) !== evidence[key]) return false;
+    }
+    return true;
+  };
+}
 
 async function openRepository<C extends LearningContribution, K, M extends MergeInput>(
   opts: Omit<OpenMemoryRepoOptions, 'rules'> & { rules: StorageRules<C, K, M> },
@@ -69,6 +96,7 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
         const record = projectIntent(input, userId, meta.at);
         if (meta.author !== (record.agentId ?? 'personal')) throw new WorkspaceError('SCOPE_DENIED');
         const path = `intents/${intentFilename(record.intent.id, meta.at)}`;
+        await assertFileBoundary(root, path);
         const previous = (await optionalFile(join(root, path)))?.toString('utf8') ?? '';
         const content = `${previous}${previous && !previous.endsWith('\n') ? '\n' : ''}${renderIntent(record)}\n`;
         return commitFiles(root, new Map([[path, content]]), meta, 'Append sanitized intent');
@@ -95,15 +123,17 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
     appendContribution(c, meta) {
       return perform(async () => {
         metadata(meta); validate(c, userId);
+        if (meta.author !== c.agentId) throw new WorkspaceError('SCOPE_DENIED');
         const path = `contributions/${filename(c.agentId)}`;
         const previous = (await optionalFile(join(root, path)))?.toString('utf8') ?? '';
         const content = `${previous}${previous && !previous.endsWith('\n') ? '\n' : ''}${rules.renderContribution(c)}\n`;
         return commitFiles(root, new Map([[path, content]]), meta, 'Append contribution');
       });
     },
-    revokeContribution(id, revokedAt, meta) {
+    revokeContribution(target, revokedAt, meta) {
       return perform(async () => {
-        text(id); timestamp(revokedAt); metadata(meta);
+        const matches = revocationMatches(target);
+        timestamp(revokedAt); metadata(meta);
         const updates = new Map<string, string>();
         for (const name of await recordFiles(root, 'contributions')) {
           const path = `contributions/${name}`;
@@ -111,13 +141,81 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
           let changed = false;
           const updated = content.split('\n').map((line) => {
             const c = rules.parseContributions(line, { userId, agentId: ownerFromFilename(name) })[0];
-            if (!c || c.id !== id) return line;
+            if (!c || !matches(c)) return line;
             changed = true;
-            return rules.renderContribution({ ...c, revokedAt });
+            const revoked = Object.create(Object.getPrototypeOf(c), Object.getOwnPropertyDescriptors(c)) as C;
+            Object.assign(revoked, { revokedAt });
+            return rules.renderContribution(revoked);
           }).join('\n');
           if (changed) updates.set(path, updated);
         }
         return updates.size ? commitFiles(root, updates, meta, 'Revoke contribution') : { sha: '' };
+      });
+    },
+    revokeContributions(ids, revokedAt, merge, meta) {
+      return perform(async () => {
+        metadata(meta); timestamp(revokedAt); timestamp(merge.now);
+        if (!Array.isArray(ids) || ids.length > 10000) throw new WorkspaceError('MISSING_FIELD');
+        ids.forEach(id => text(id));
+        const selected = new Set(ids);
+        const all = await list();
+        const next = all.map(row => {
+          if (!selected.has(row.id) || row.revokedAt) return row;
+          const copy = { ...row, revokedAt };
+          if (typeof copy.evidence === 'object' && copy.evidence) {
+            copy.evidence = { ...copy.evidence }; delete copy.evidence.snippet;
+          } else if (typeof copy.evidence === 'string') delete copy.evidence;
+          return copy;
+        });
+        const card = rules.mergeCard(next, merge);
+        if (!all.some(row => selected.has(row.id) && !row.revokedAt)) return { card, commit: { sha: '' } };
+        const byId = new Map(next.map(row => [row.id, row]));
+        const updates = new Map<string, string>();
+        for (const name of await recordFiles(root, 'contributions')) {
+          const path = `contributions/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const updated = content.split('\n').map(line => {
+            const row = rules.parseContributions(line, { userId, agentId: ownerFromFilename(name) })[0];
+            return row && selected.has(row.id) && !row.revokedAt ? rules.renderContribution(byId.get(row.id)!) : line;
+          }).join('\n');
+          if (updated !== content) updates.set(path, updated);
+        }
+        updates.set('CARD.md', rules.renderCard(card, { userId, generatedAt: meta.at }));
+        return { card, commit: await commitFiles(root, updates, meta, 'Revoke source contributions') };
+      });
+    },
+    forgetContributions(ids, merge, meta) {
+      return perform(async () => {
+        metadata(meta); timestamp(merge.now);
+        if (!Array.isArray(ids) || ids.length > 10000 || !Array.isArray(merge.personalAgentIds)) throw new WorkspaceError('MISSING_FIELD');
+        ids.forEach(id => text(id));
+        const selected = new Set(ids);
+        const remaining = (await list()).filter(row => !selected.has(row.id));
+        const updates = new Map<string, string>();
+        for (const name of await recordFiles(root, 'contributions')) {
+          const path = `contributions/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const cleaned = content.split('\n').filter(line => {
+            const row = rules.parseContributions(line, { userId, agentId: ownerFromFilename(name) })[0];
+            return !row || !selected.has(row.id);
+          }).join('\n');
+          if (cleaned !== content) updates.set(path, cleaned);
+        }
+        // Older preview histories could embed extracted preferences. Remove their current copies too.
+        for (const name of await recordFiles(root, 'intents')) {
+          const path = `intents/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const cleaned = content.split('\n').map(line => {
+            const record = parseIntent(line, userId, name);
+            if (!record || !record.extracted.some(row => selected.has(row.id))) return line;
+            record.extracted = record.extracted.filter(row => !selected.has(row.id));
+            return renderIntent(record);
+          }).join('\n');
+          if (cleaned !== content) updates.set(path, cleaned);
+        }
+        const card = rules.renderCard(rules.mergeCard(remaining, merge), { userId, generatedAt: meta.at });
+        if (card !== await readFile(join(root, 'CARD.md'), 'utf8')) updates.set('CARD.md', card);
+        return updates.size ? commitFiles(root, updates, meta, 'Forget current preference') : { sha: '' };
       });
     },
     listContributions() { return perform(list); },

@@ -106,17 +106,17 @@ describe('C07 memory repository', () => {
     expect((await repoGit(f.path).status()).isClean()).toBe(true);
   });
 
-  it('refuses unrelated repositories and dirty repositories without staging user files', async () => {
+  it('refuses unrelated repositories and dirty managed paths without staging user files', async () => {
     const f = await setup();
     const unrelated = join(f.temp, 'unrelated');
     await mkdir(unrelated);
     await repoGit(unrelated).init();
     await expect(openMemoryRepo({ ...f.opts, path: unrelated })).rejects.toThrow();
     const repo = await f.open();
-    await writeFile(join(f.path, 'unrelated.txt'), 'keep me');
+    await writeFile(join(f.path, 'notes', 'unrelated.md'), 'keep me');
     await expect(f.open()).rejects.toThrow();
     await expect(repo.appendContribution(contribution(), meta())).rejects.toThrow();
-    expect(await readFile(join(f.path, 'unrelated.txt'), 'utf8')).toBe('keep me');
+    expect(await readFile(join(f.path, 'notes', 'unrelated.md'), 'utf8')).toBe('keep me');
     expect((await repoGit(f.path).status()).staged).toEqual([]);
   });
 

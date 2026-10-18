@@ -1,19 +1,8 @@
-import type { CommitRef, Intent, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
+import type { CommitRef, ContributionEvidence, Intent, IntentRecord, MemoryRepo, OpenMemoryRepoOptions, Quote, WriteMeta } from '@agent-cookie/contract';
 import type { LearningCard, LearningContribution, LearningMergeOptions, LearningRulesApi } from '@agent-cookie/rules';
 
-// Structural projection of lane A 0129f08 while main retains the previous contract.
-// TODO(contract): import IntentRecord after that contract lands on main.
-export interface WorkspaceIntentRecord {
-  id: string;
-  userId: string;
-  agentId: string;
-  text?: string;
-  query?: string;
-  kind?: string;
-  public: Record<string, string>;
-  createdAt: string;
-  chosenQuote?: { id: string; title?: string; seller?: string; price: number; currency: 'USD' };
-}
+/** Existing C export name; the flat record is the formal shared type. */
+export type WorkspaceIntentRecord = IntentRecord;
 
 /** Compatibility input for C preview history already written before A's contract. */
 export interface AppendIntentInput {
@@ -33,7 +22,13 @@ export interface IntentHistoryApi {
   searchIntents(q: string): Promise<IntentSummary[]>;
 }
 
-export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent'> & IntentHistoryApi;
+/** TODO(contract): additive C selector; the shared API currently accepts only a record ID. */
+export type ContributionRevocationTarget = import('@agent-cookie/contract').ContributionRevocationTarget;
+export interface ContributionRevocationApi {
+  revokeContribution(target: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+}
+
+export type MemoryRepoWithIntents = Omit<MemoryRepo, 'appendIntent' | 'revokeContribution'> & IntentHistoryApi & ContributionRevocationApi;
 
 export type OpenLearningMemoryRepoOptions = Omit<OpenMemoryRepoOptions, 'rules'> & { rules: LearningRulesApi };
 export type LearningMemoryRepo = Omit<MemoryRepoWithIntents, 'appendContribution' | 'listContributions' | 'regenerateCard'> & {

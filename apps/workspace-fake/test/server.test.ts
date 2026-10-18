@@ -34,7 +34,7 @@ describe('Sample HTTP workspace',()=>{
   });
   it('runs SDK find, keeps handshakes value-free, grounds checkout address access in the selected quote',async()=>{
     const {call,client}=await setup();
-    const found=await client.find({kind:'trail_shoes',public:{budget:'120'}},'sample-find');
+    const found=await client.find({text:'trail shoes',public:{budget:'120'}},'sample-find');
     expect(found.sample).toBe(true);expect(found.quotes).toHaveLength(2);
     const grants=(await call('/personal/grants')).data.grants;
     const a=grants.find((g:any)=>g.agentId==='sample-shoe-a'),b=grants.find((g:any)=>g.agentId==='sample-shoe-b');
@@ -54,10 +54,10 @@ describe('Sample HTTP workspace',()=>{
   });
   it('isolates users and enforces idempotency, expiry, revocation and owner-only reset',async()=>{
     const {call,client,advance}=await setup();
-    const input={kind:'trail_shoes' as const,public:{budget:'120'}};
+    const input={text:'trail shoes',public:{budget:'120'}};
     const found=await client.find(input,'repeat');
     expect((await client.find(input,'repeat')).intentId).toBe(found.intentId);
-    expect((await call('/personal/intents','sample-personal-key',{kind:'trail_shoes',public:{budget:'99'}},'repeat')).status).toBe(409);
+    expect((await call('/personal/intents','sample-personal-key',{text:'trail shoes',public:{budget:'99'}},'repeat')).status).toBe(409);
     expect((await call(`/personal/intents/${found.intentId}/quotes`,'sample-other-key')).status).toBe(404);
     expect((await call(`/personal/quotes/${found.quotes[0].id}/accept`,'sample-other-key',{},'foreign')).status).toBe(404);
     const grant=(await call('/personal/grants')).data.grants[0];
@@ -71,13 +71,13 @@ describe('Sample HTTP workspace',()=>{
   });
   it('does not accept identity fields or send HTTP traffic to fixture merchants',async()=>{
     const {call}=await setup(false);
-    expect((await call('/personal/intents','sample-personal-key',{kind:'trail_shoes',public:{userId:'other'}},'injection')).status).toBe(422);
+    expect((await call('/personal/intents','sample-personal-key',{text:'trail shoes',public:{userId:'other'}},'injection')).status).toBe(422);
     expect((await call('/demo/reset','sample-owner-key',{})).status).toBe(404);
-    expect((await call('/personal/intents','sample-personal-key',{kind:'trail_shoes',public:{budget:'80'}},'empty')).data.sample).toBe(true);
+    expect((await call('/personal/intents','sample-personal-key',{text:'trail shoes',public:{budget:'80'}},'empty')).data.sample).toBe(true);
   });
   it('does not fabricate checkout reads or receipts when the saved address is missing',async()=>{
     const {client}=await setup(true,false);
-    const found=await client.find({kind:'trail_shoes',public:{budget:'120'}},'missing-address');
+    const found=await client.find({text:'trail shoes',public:{budget:'120'}},'missing-address');
     await expect(client.accept(found.quotes[0].id,'accept')).rejects.toMatchObject({code:'MISSING_FIELD'});
     expect((await client.getReceipts()).receipts).toHaveLength(0);
   });

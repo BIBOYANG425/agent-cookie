@@ -7,7 +7,7 @@
 // (apps/workspace/src/stubs). Implementations must be deterministic where marked and never read the
 // system clock: every time-aware call receives `now` / `at` explicitly.
 import type {
-  Agent, Basis, Card, Contribution, ContributionEvidence, IntentRecord, Note, ObservationTurn, Quote, Receipt,
+  Agent, Basis, Card, Contribution, ContributionEvidence, ContributionRevocationTarget, IntentRecord, Note, ObservationTurn, Quote, Receipt,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ export interface MemoryRepo {
   /** Append one line to contributions/<c.agentId>.md. */
   appendContribution(c: Contribution, meta: WriteMeta): Promise<CommitRef>;
   /** Mark a contribution revoked (the user's own action) in its writer's file. Unknown id → resolves without a commit (`sha: ""`). */
-  revokeContribution(id: string, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
+  revokeContribution(id: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
   /**
    * B49 forget: mark every listed contribution revoked (evidence snippets removed, as revokeContribution does) AND
    * rewrite CARD.md from what is left, in ONE commit by meta.author. Unknown ids are skipped; none known → no commit
@@ -117,6 +117,8 @@ export interface MemoryRepo {
    * regenerateCard (several commits).
    */
   revokeContributions?(ids: readonly string[], revokedAt: string, merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }>;
+  /** Remove selected current contribution/evidence lines and rebuild CARD.md; historical Git commits remain. */
+  forgetContributions?(ids: string[], merge: MergeOptions, meta: WriteMeta): Promise<CommitRef>;
   /** Re-run rules.mergeCard over contributions/*.md and write CARD.md. Returns the card it wrote. */
   regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }>;
   /** Upsert one key in notes/<sessionId>.md (owned by note.agentId). Rejects with WorkspaceError MISSING_FIELD if the file would exceed NOTE_MAX_BYTES. */

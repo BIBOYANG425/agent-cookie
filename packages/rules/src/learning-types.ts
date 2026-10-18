@@ -1,17 +1,21 @@
-// Structural projection of lane A 0129f08 while main still has the previous contract.
-// TODO(contract): import these additive types once that contract lands on main.
-import { isField, type Card, type CardField, type Candidate, type Contribution, type Field, type MergeOptions, type RulesApi } from '@agent-cookie/contract';
+// Learning metadata matches main; preview aliases remain readable for existing memory files.
+// evidenceSources is the canonical ID list, matching the shared B49 contract.
+import { isField, PREF_KEYS, PREF_FIELDS, type Card, type CardField, type Candidate, type Contribution, type ContributionEvidence, type Field, type MergeOptions, type PrefField, type RulesApi } from '@agent-cookie/contract';
 
-export const LEARNING_PREF_KEYS = ['brand', 'color', 'material', 'style', 'fit', 'avoid', 'occasion', 'recipient', 'price_band', 'size_system'] as const;
-export type LearningPrefField = `pref.${typeof LEARNING_PREF_KEYS[number]}`;
-export const LEARNING_PREF_FIELDS: readonly LearningPrefField[] = LEARNING_PREF_KEYS.map(key => `pref.${key}` as const);
-export type LearningField = Field | LearningPrefField;
-export interface LearningEvidence { intentId?: string; conversationId?: string; snippet?: string }
+export const LEARNING_PREF_KEYS = PREF_KEYS;
+export type LearningPrefField = PrefField;
+export const LEARNING_PREF_FIELDS = PREF_FIELDS;
+export type LearningField = Field;
+export type LearningEvidence = ContributionEvidence;
 /** Top-level IDs and string evidence remain readable for already-written C preview records. */
 export interface LearningMetadata { intentId?: string; conversationId?: string; evidence?: string | LearningEvidence }
 export type LearningContribution = Omit<Contribution, 'field' | 'evidence'> & LearningMetadata & { field: LearningField };
-export type LearningCardField = Omit<CardField, 'field'> & { field: LearningField };
-export type LearningCandidate = Omit<Candidate, 'field'> & { field: LearningField };
+export type EvidenceCard = Omit<Card, 'card' | 'candidates'> & {
+  card: Array<CardField & { evidenceSources: string[] }>;
+  candidates: Array<Candidate & { evidenceSources: string[] }>;
+};
+export type LearningCardField = Omit<CardField, 'field'> & { field: LearningField; evidenceSources: string[] };
+export type LearningCandidate = Omit<Candidate, 'field'> & { field: LearningField; evidenceSources: string[] };
 export type LearningSuperseded = Omit<Card['superseded'][number], 'field'> & { field: LearningField };
 export type LearningCard = Omit<Card, 'card' | 'candidates' | 'superseded'> & {
   card: LearningCardField[]; candidates: LearningCandidate[]; superseded: LearningSuperseded[];
@@ -25,7 +29,7 @@ export type LearningRulesApi = Omit<RulesApi, 'mergeCard' | 'renderCard' | 'rend
 };
 
 export function isLearningField(value: unknown): value is LearningField {
-  return isField(value) || (typeof value === 'string' && (LEARNING_PREF_FIELDS as readonly string[]).includes(value));
+  return isField(value);
 }
 
 /** Evidence is never truncated; 200 Unicode code points, including punctuation/whitespace. */

@@ -31,7 +31,7 @@ it('connects A SQLite to real C rules and Git receipt persistence through SDK re
       fetch: async (input, init) => app.request(String(input), init) });
   };
   let deps = await createDeps(config);
-  cleanups.push(async () => { await deps.delivery.settle(); deps.close(); });
+  cleanups.push(async () => { await deps.delivery.settle(); await deps.close(); });
   expect(deps.rules).toBe(rules);
   const append = vi.spyOn(deps.repo, 'appendReceipt');
   const client = connect(deps, personalKey);
@@ -39,17 +39,19 @@ it('connects A SQLite to real C rules and Git receipt persistence through SDK re
   expect(card).toMatchObject({ sample: true, card: expect.arrayContaining([
     expect.objectContaining({ field: 'shoe_size', value: '42' }),
   ]) });
-  const found = await client.find({ kind: 'trail_shoes', public: { budget: '120' } }, 'ac:find');
+  const found = await client.find({ text: 'trail shoes', public: { budget: '120' } }, 'ac:find');
   expect(found.quotes).toHaveLength(2); // Real D adapter replays the two EU 42 recordings.
+  expect((await client.getReceipts()).receipts).toEqual([]); // No kind hint: no ACME/Tier 0 introduction.
+  await client.accept(found.quotes[0].id, 'ac:accept');
   expect(append).toHaveBeenCalledOnce();
   expect(await append.mock.results[0].value).toMatchObject({ sha: expect.stringMatching(/^[a-f0-9]{40}$/) });
   const receipts = await client.getReceipts();
   expect(receipts.receipts).toEqual(expect.arrayContaining([
-    expect.objectContaining({ agentId: 'sample-acme', purpose: 'tier0', fields: expect.arrayContaining(['lang', 'shoe_size']) }),
+    expect.objectContaining({ agentId: found.quotes[0].agentId, purpose: 'checkout', fields: ['shipping_address'] }),
   ]));
   expect((await connect(deps, ownerKey).getActivity()).activity.filter(e => e.event === 'memory.write' && e.result === 'failed')).toEqual([]);
   await deps.delivery.settle();
-  deps.close();
+  await deps.close();
   deps = await createDeps(config);
   expect(await connect(deps, personalKey).getMyCard()).toEqual(card);
   expect(await connect(deps, personalKey).getReceipts()).toEqual(receipts);

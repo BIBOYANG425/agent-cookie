@@ -2,7 +2,7 @@
 // services with deterministic code; the routes only parse, authenticate and serialize.
 import { Hono, type MiddlewareHandler } from "hono";
 import {
-  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
+  isPrefField,  isField, NOTE_MAX_BYTES, OBSERVATION_MAX_TURNS, OBSERVATION_MESSAGE_ID_MAX, OBSERVATION_TURN_MAX_CHARS, WorkspaceError,
   type Basis, type Category, type Observation, type ObservationTurn, type Registration,
 } from "@agent-cookie/contract";
 import { authenticate, requireRole } from "./auth.js";
@@ -238,7 +238,13 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.put("/personal/learning", auth, personalOrOwner, async (c) => {
     const body = await readJson(c);
     if (typeof body.paused !== "boolean") fail("MISSING_FIELD", "paused must be true or false");
-    return json(deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
+    return json(await deps.learning.setPaused(c.get("agent").agentId, user(), body.paused));
+  });
+  app.post("/personal/learning/forget", auth, personalOrOwner, async (c) => {
+    const body = await readJson(c);
+    if (Object.keys(body).length !== 1 || !isPrefField(body.field)) fail("MISSING_FIELD", "Expected a preference field");
+    const result = await deps.learning.forgetField(c.get("agent").agentId, user(), body.field);
+    return json(result, result.projection === "complete" ? 200 : 202);
   });
   app.get("/personal/learned", auth, personalOrOwner, (c) => json(deps.learning.learned(user())));
   app.post("/personal/learned/forget", auth, personalOrOwner, async (c) => {

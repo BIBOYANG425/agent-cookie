@@ -1,19 +1,10 @@
 import type { CardField } from './model';
+import { PREF_FIELDS, type PrefField, type LearnedEntry, type LearnedEvidence, type LearnedResponse } from '../../../packages/contract/src/types';
 
-// Local wire projection of A 0129f085e297942ad174b34f02b26ab28d789822:
-// packages/contract/src/types.ts (LearningState, LearnedResponse, LearnedEntry, LearnedEvidence, PREF_KEYS).
-// TODO(contract): import these exports after A's contract is merged; main currently lacks them.
-export const LEARNED_FIELDS = ['pref.brand', 'pref.color', 'pref.material', 'pref.style', 'pref.fit',
-  'pref.avoid', 'pref.occasion', 'pref.recipient', 'pref.price_band', 'pref.size_system'] as const;
-export type LearnedField = typeof LEARNED_FIELDS[number];
-export interface LearnedEvidence {
-  contributionId: string; agentId: string; basis: 'observed' | 'stated' | 'inferred'; createdAt: string;
-  intentId?: string; conversationId?: string; snippet?: string;
-}
-export interface LearnedEntry {
-  field: LearnedField; value: string; status: 'card' | 'candidate'; sources: string[]; evidence: LearnedEvidence[];
-}
-export interface LearnedResponse { paused: boolean; learned: LearnedEntry[] }
+// Read the published contract directly; workspace requests still go through the SDK bridge.
+export const LEARNED_FIELDS = PREF_FIELDS;
+export type LearnedField = PrefField;
+export type { LearnedEntry, LearnedEvidence, LearnedResponse };
 
 // Console view state. No record/group IDs are fabricated for the revoke API.
 export interface LearningState {
@@ -72,7 +63,7 @@ export function countEvidenceSources(evidence: readonly LearnedEvidence[]): numb
   for (const item of evidence) {
     const aliases = [item.conversationId && `conversation:${item.conversationId}`, item.intentId && `intent:${item.intentId}`]
       .filter((id): id is string => !!id);
-    if (aliases.length === 0) aliases.push(`agent:${item.agentId}`);
+    if (aliases.length === 0) continue;
     const combined = new Set(aliases);
     for (let index = components.length - 1; index >= 0; index--) {
       const component = components[index];

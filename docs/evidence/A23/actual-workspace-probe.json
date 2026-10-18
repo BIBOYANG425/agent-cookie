@@ -1,0 +1,208 @@
+{
+  "label": "Actual Claude Desktop Code stock-skill repository + actual workspace HTTP",
+  "base": "http://127.0.0.1:4331",
+  "repo": "/private/tmp/agent-cookie-a23-memory-vuee0ba0",
+  "skillCommit": "b441ca0bc3704e1a7a1923991ddcbb0ce6acbb21",
+  "startedAt": "2026-10-18T00:13:59.649Z",
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/personal/contributions",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/personal/card",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/agents/register",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/personal/intents",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/agent/quotes",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/personal/quotes/q_w69s6ym8/accept",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/agent/fields",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/personal/receipts",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/agent/notes/a23_actual",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/demo/reset",
+      "status": 200
+    }
+  ],
+  "checks": {
+    "cardRegeneratedInSelectedRepo": true,
+    "contributionAndPurposeReceiptSucceeded": true,
+    "stockCommitSurvivedWorkspaceWrites": true,
+    "skillFilesAndMemoryIndexPreserved": true,
+    "allHistoryPreserved": true,
+    "managedPathsExactlySeed": true,
+    "noManagedUntrackedFiles": true,
+    "no500": true
+  },
+  "preserved": [
+    {
+      "path": "MEMORY.md",
+      "sha256": "0b65605f07ec01f82149d245effba17b9469815cb80929c5bdde1f140c1784ad"
+    },
+    {
+      "path": "POLICY.yaml",
+      "sha256": "4e28b545f0ed542b003dbccc2e07b48c06934a7f7a567f2e3e2a2f5648291bf4"
+    },
+    {
+      "path": "archive/README.md",
+      "sha256": "dcce0bc81bfef46e5a7b404c248c92d0bdc8f6087b01014022b66c4b635d85e9"
+    },
+    {
+      "path": "intents/2026-10-18-i_hyc03stn.md",
+      "sha256": "a1bfcc4ab6fb620c920d82c5934d2249e2989b6ac71f5f59df923dc0064e4504"
+    },
+    {
+      "path": "preferences.md",
+      "sha256": "721f814cce48166c2c4710de369f5cfc7283186817d2f63957c543283dafa3b4"
+    }
+  ],
+  "history": [
+    {
+      "commit": "a136bffd50386d49e0c2d40e31e4e9f96ad0da21",
+      "author": "workspace",
+      "subject": "Reset managed memory paths to seed"
+    },
+    {
+      "commit": "0d3ca782baa074af997ada66c4d4a3c8637b23e3",
+      "author": "ag_9a5wsy5j",
+      "subject": "Write note"
+    },
+    {
+      "commit": "03c352b7fa3336f1febe496c77e5370861b78eb2",
+      "author": "workspace",
+      "subject": "Append receipt"
+    },
+    {
+      "commit": "39440aa6d91dbc9f361ac6df8fcb38a6c7c1d0f0",
+      "author": "sample-personal-photon",
+      "subject": "Append sanitized intent"
+    },
+    {
+      "commit": "ec00f15ccc970be5526f7953cdb79f6110ca45d5",
+      "author": "sample-personal-photon",
+      "subject": "Append sanitized intent"
+    },
+    {
+      "commit": "ac0c8b7abe479579b7114aa9c628d8a6cf24b557",
+      "author": "workspace",
+      "subject": "Regenerate card"
+    },
+    {
+      "commit": "f19dcaedabdce5355d6bd247f4a1bccb021110db",
+      "author": "sample-personal-photon",
+      "subject": "Append contribution"
+    },
+    {
+      "commit": "564a4ced48303b1743afd6543344618b62df9ec5",
+      "author": "workspace",
+      "subject": "Reset managed memory paths to seed"
+    },
+    {
+      "commit": "619752e533fc05fefa2903c3574a99f66a0cc084",
+      "author": "ag_ydh218ms",
+      "subject": "Write note"
+    },
+    {
+      "commit": "0c32e9517e93936d7cf9b6e44f539223943c837b",
+      "author": "workspace",
+      "subject": "Append receipt"
+    },
+    {
+      "commit": "0498968c2ff454a45f498e662f4c9cf68191bdca",
+      "author": "sample-personal-photon",
+      "subject": "Append sanitized intent"
+    },
+    {
+      "commit": "2fc48f0f87f11695f0fa2fc52fd31691728eff79",
+      "author": "sample-personal-photon",
+      "subject": "Append sanitized intent"
+    },
+    {
+      "commit": "e8798dff7c49ac283fd44331e64c2e5f1e06d719",
+      "author": "workspace",
+      "subject": "Regenerate card"
+    },
+    {
+      "commit": "9a9fd0869e4bbfbeb40b84ee668c747741411a17",
+      "author": "sample-personal-photon",
+      "subject": "Append contribution"
+    },
+    {
+      "commit": "b441ca0bc3704e1a7a1923991ddcbb0ce6acbb21",
+      "author": "BIBOYANG425",
+      "subject": "Remember preference for short bullet-point summaries"
+    },
+    {
+      "commit": "dfc12c76f7455d3a1b4dc7a511361cb8d2345a13",
+      "author": "workspace",
+      "subject": "Initialize memory repository"
+    }
+  ],
+  "initialIndex": [
+    "CARD",
+    "contributions/sample-personal-photon",
+    "receipts",
+    "POLICY.yaml",
+    "archive/README",
+    "preferences"
+  ],
+  "contributionId": "c_6z3v3d9n",
+  "receipt": {
+    "id": "r_ygt8ftqm",
+    "sessionId": "grvmxf71",
+    "purpose": "checkout",
+    "fields": [
+      "shipping_address"
+    ]
+  },
+  "changedManagedBeforeReset": [
+    "CARD.md",
+    "contributions/sample-personal-photon.md",
+    "notes/grvmxf71.md",
+    "receipts.md"
+  ],
+  "managedDifferencesAfterReset": "",
+  "finalIndex": [
+    "CARD",
+    "contributions/sample-personal-photon",
+    "receipts",
+    "POLICY.yaml",
+    "archive/README",
+    "preferences"
+  ],
+  "gitStatusAfter": "",
+  "completedAt": "2026-10-18T00:14:02.148Z",
+  "result": "PASS"
+}

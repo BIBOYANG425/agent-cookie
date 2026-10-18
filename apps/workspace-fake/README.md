@@ -16,14 +16,14 @@ AGENT_COOKIE_DEMO=1 AGENT_COOKIE_FIXTURES=.runtime/sample-fixtures pnpm start
 
 The explicit seed command generates **B-local fallback data** while C's fixtures are absent. It never writes `fixtures/`. Runtime files and `.env` are ignored; use the personal binding from the generated dev-key file in MCP/Photon's `AGENT_COOKIE_KEY`, without printing or forwarding keys. `AGENT_COOKIE_URL=http://127.0.0.1:4310`.
 
-For C data use `AGENT_COOKIE_FIXTURES=../../fixtures`. **C compatibility is not yet verified**: as of the recorded remote check, no branch contained `fixtures/`. Loader follows `@agent-cookie/contract` for `users.json`, `agents.json`, `contributions.json`, and `dev-keys.json`. Dev keys are a map from key to `{agentId, role}`; the contract's one demo user is joined server-side. This fake additionally needs `quotes.json` (`Array<Omit<Quote, 'id' | 'intentId'>>`), a B-only fixture extension pending C's offer-file format. Only example.com HTTPS checkout URLs are allowed; sample links cannot purchase anything. Real UCP recorded responses need an adapter once C/D publish their schema. `AGENT_COOKIE_DEMO=1` or `AGENT_COOKIE_TEST=1` is required before loading dev keys.
+For C data use `AGENT_COOKIE_FIXTURES=../../fixtures`. C now provides fixtures for A's backend. This fake still expects its documented B quote envelope; do not treat UCP recordings as `quotes.json`. Loader follows `@agent-cookie/contract` for `users.json`, `agents.json`, `contributions.json`, and `dev-keys.json`. Dev keys are a map from key to `{agentId, role}`; the contract's one demo user is joined server-side. This fake additionally needs `quotes.json` (`Array<Omit<Quote, 'id' | 'intentId'>>`), a B-only fixture extension pending C's offer-file format. Only example.com HTTPS checkout URLs are allowed; sample links cannot purchase anything. Real UCP recorded responses need an adapter once C/D publish their schema. `AGENT_COOKIE_DEMO=1` or `AGENT_COOKIE_TEST=1` is required before loading dev keys.
 
 ## Implemented endpoints
 
-- `/me`, `/personal/card`: authenticated identity and card, using A's existing `stubRules` implementation of `RulesApi` until C's rules package arrives.
+- `/me`, `/personal/card`: authenticated identity and card, using C's deterministic rules.
 - `/agent/handshake`: pairwise session, style values and available field names; no address or other private values.
 - `/agent/fields`: `canRead` from the contract plus merchant/session ownership, grant validity, and accepted-quote checks. Only the selected merchant can read shipping address for checkout. Payment fields are denied in this P0 demo.
-- `POST /personal/intents`, `GET /personal/intents/:id/quotes`, `POST /personal/quotes/:id/accept`: budget filtering, up to two Sample quotes, idempotency, actual `AcceptResult` with `status=handoff`, Sample warning and receipt. A missing saved address fails without creating a receipt. Unknown ETA stays unknown.
+- `POST /personal/intents`, `GET /personal/intents/:id/quotes`, `POST /personal/quotes/:id/accept`: text/query lexical matching against its Sample catalog, explicit budget filtering, up to five Sample quotes, idempotency, actual `AcceptResult` with `status=handoff`, Sample warning and receipt. A missing saved address fails without creating a receipt. Unknown ETA stays unknown.
 - `/personal/receipts`, `/personal/grants`, `POST /personal/grants/:id/revoke`, `/owner/activity`.
 - `POST /demo/reset`: owner only and DEMO only; resets only this process's in-memory state.
 

@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 // Dynamic memory (2026-10-17, human direction; lane B's LearnApi does the classifying; B49 rulings). Two ways in:
 //   - POST /personal/observations: turns of a conversation. Only the user's own turns are kept, per (personal agent,
 //     conversation), in process memory (observations.ts, bounded; SQLite mirrors only ids, counts and times).
@@ -16,12 +17,12 @@
 // Learning failures are logged and never affect the request that triggered them.
 import {
   EVIDENCE_SNIPPET_MAX, isField, isPrefField, OBSERVATION_BATCH_TURNS, OBSERVATION_IDLE_MS,
-  type Basis, type ContributionCandidate, type ContributionEvidence, type ForgetRequest, type ForgetResult, type IntentHistoryEntry,
+  type ForgetLearningResult, type PrefField, type Basis, type ContributionCandidate, type ContributionEvidence, type ForgetRequest, type ForgetResult, type IntentHistoryEntry,
   type IntentRecord, type LearnApi, type LearnedEntry, type LearnedResponse, type LearningState, type Observation, type ObservationAck, type Quote,
 } from "@agent-cookie/contract";
 import type { IntentRow, QuoteRow, StoredContribution } from "../db.js";
 import { containsContactOrPayment, prefValueProblem } from "../guards.js";
-import type { AuthedAgent } from "../http.js";
+import { fail, type AuthedAgent } from "../http.js";
 import type { CardService } from "./card.js";
 import { persist, writeMeta, type Ctx } from "./context.js";
 import { ObservationQueue, type QueuedConversation } from "./observations.js";
@@ -71,15 +72,74 @@ export class LearningService {
   }
 
   /** Pausing also drops every conversation still waiting: nothing observed before the pause is learned after it. */
-  setPaused(actor: string, userId: string, paused: boolean): LearningState {
-    this.ctx.store.tx(() => {
-      this.ctx.store.setSetting(userId, PAUSED_KEY, paused ? "1" : "0");
-      if (paused) this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
-      const dropped = paused ? this.queue.dropUser(userId).length : 0;
-      if (paused) this.ctx.store.dropObservations(userId);
-      this.ctx.log({ event: "learning.set", actor, result: paused ? "paused" : "on", reason: dropped ? `dropped=${dropped}` : "" });
+  setPaused(actor: string, userId: string, paused: boolean): Promise<LearningState> {
+    return this.card.mutate(async () => {
+      if (!paused && this.ctx.store.pendingForgets(userId).length) fail("UPSTREAM_ERROR", "Forget projection is pending");
+      this.ctx.store.tx(() => {
+        this.ctx.store.setSetting(userId, PAUSED_KEY, paused ? "1" : "0");
+        if (paused) this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
+        this.ctx.log({ event: "learning.set", actor, result: paused ? "paused" : "on" });
+      });
+      if (paused) { this.queue.dropUser(userId); this.ctx.store.dropObservations(userId); }
+      return this.state(userId);
     });
-    return this.state(userId);
+  }
+
+  private suppressedKey(userId: string, field: string, value: string): string {
+    const secret = this.ctx.store.user(userId)!.secret;
+    return 'learning.block.' + createHmac('sha256', secret).update(JSON.stringify([field, norm(value)])).digest('hex');
+  }
+
+  /** One serving-store transaction, followed by a recoverable current-files projection. */
+  forgetField(actor: string, userId: string, field: PrefField): Promise<ForgetLearningResult> {
+    const run = this.applying.then(() => this.card.mutate(async () => {
+      const removed = this.ctx.store.tx(() => {
+        const rows = this.ctx.store.contributionsForUser(userId).filter(c => c.field === field);
+        this.ctx.store.setSetting(userId, PAUSED_KEY, '1');
+        this.ctx.store.setSetting(userId, EPOCH_KEY, String(Number(this.epoch(userId)) + 1));
+        const oldIds = this.ctx.store.pendingForgets(userId).find(job => job.field === field)?.ids ?? [];
+        const ids = [...new Set([...oldIds, ...rows.map(c => c.id)])];
+        for (const row of rows) this.ctx.store.setSetting(userId, this.suppressedKey(userId, field, row.value), '1');
+        this.ctx.store.deletePreference(userId, field);
+        this.ctx.store.setSetting(userId, `learning.forget.${field}`, JSON.stringify(ids));
+        this.ctx.log({ event: 'learning.forget', actor, object: field, result: 'removed', reason: `count=${rows.length}` });
+        return rows.length;
+      });
+      this.queue.dropUser(userId); this.ctx.store.dropObservations(userId);
+      this.card.get(userId);
+      const complete = await this.projectForget(actor, userId, field);
+      this.ctx.store.checkpoint();
+      return { field, paused: true as const, removed, projection: complete ? 'complete' as const : 'pending' as const, historyErased: false as const };
+    }));
+    this.applying = run.catch(() => undefined);
+    return run;
+  }
+
+  private async projectForget(actor: string, userId: string, field: string): Promise<boolean> {
+    const job = this.ctx.store.pendingForgets(userId).find(row => row.field === field);
+    if (!job) return true;
+    try {
+      const repo = this.ctx.repo();
+      if (!repo.forgetContributions) throw new Error('Projection unavailable');
+      await repo.forgetContributions(job.ids, { now: this.ctx.clock.nowIso(), personalAgentIds: this.ctx.store.personalAgentIds() },
+        writeMeta(this.ctx, actor, { field, ids: job.ids }));
+      this.ctx.store.completeForget(userId, field);
+      return true;
+    } catch {
+      this.ctx.log({ event: 'learning.forget', actor, object: field, result: 'pending', reason: 'projection unavailable' });
+      return false;
+    }
+  }
+
+  /** Replay only opaque IDs after a crash; never enqueue original conversation text. */
+  async recoverForgets(): Promise<boolean> {
+    const user = this.ctx.store.firstUser();
+    if (!user) return true;
+    let complete = true;
+    for (const job of this.ctx.store.pendingForgets(user.userId)) {
+      if (!await this.projectForget('workspace', user.userId, job.field)) complete = false;
+    }
+    return complete;
   }
 
   /** Queue the user's turns of an observation (already validated by app.ts). Never blocks on learning. */
@@ -117,11 +177,16 @@ export class LearningService {
     return { queued: true };
   }
 
+  /** Drain due conversations; keep the original void-returning integration interface. */
+  async flushDue(): Promise<void> {
+    await this.flushDueStats();
+  }
+
   /**
    * Dreaming step (a): learn from every conversation that, at `nowMs`, has been quiet for OBSERVATION_IDLE_MS or has
    * OBSERVATION_BATCH_TURNS turns. Returns how many conversations were taken and how many contributions written.
    */
-  async flushDue(nowMs: number = this.ctx.clock.now()): Promise<{ conversations: number; learned: number }> {
+  async flushDueStats(nowMs: number = this.ctx.clock.now()): Promise<{ conversations: number; learned: number }> {
     const idleBefore = nowMs - OBSERVATION_IDLE_MS;
     let conversations = 0;
     let learned = 0;
@@ -183,7 +248,7 @@ export class LearningService {
       const epoch = this.epoch(userId);
       const started = this.forgets;
       try {
-        const record: IntentRecord = { id: intent.id, userId, agentId: actor.agentId, public: intent.public, createdAt: intent.createdAt };
+        const record: IntentRecord = { id: intent.id, userId, agentId: actor.agentId, evidence: { intentId: intent.id }, public: intent.public, createdAt: intent.createdAt };
         if (intent.text) record.text = intent.text;
         if (intent.query) record.query = intent.query;
         if (intent.kind) record.kind = intent.kind;
@@ -272,6 +337,7 @@ export class LearningService {
     const key = `${agentId}\u0000${conversationId}`;
     const running = this.inflight.get(key);
     if (running) return running;
+    if (this.inflight.size >= 4) return Promise.resolve(0);
     const run = this.processNow(agentId, conversationId).finally(() => this.inflight.delete(key));
     this.inflight.set(key, run);
     return run;
@@ -349,6 +415,7 @@ export class LearningService {
       if (!isField(field) || !isPrefField(field)) { skip("field"); continue; }
       let value = c.value.normalize("NFKC").replace(/\s+/g, " ").trim();
       if (prefValueProblem(value)) { skip("value"); continue; }
+      if (this.ctx.store.setting(userId, this.suppressedKey(userId, field, value))) { skip("forgotten"); continue; }
       const same = (x: StoredContribution) => x.field === field && norm(x.value) === norm(value);
       // One spelling per value: a later "brooks" joins the existing "Brooks", so sources add up.
       value = existing.find((x) => same(x) && !x.revokedAt)?.value ?? value;
@@ -367,7 +434,7 @@ export class LearningService {
         evidence.snippet = snippet;
       }
       if (!live()) break;
-      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false });
+      const { contribution } = await this.card.record(personal, userId, { field, value, basis, evidence }, { regenerate: false, canWrite: live });
       existing.push(contribution);
       written.push(field);
     }

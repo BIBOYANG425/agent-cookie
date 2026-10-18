@@ -1,3 +1,4 @@
-- lang: zh [id: sample-lang-01; basis: stated; at: 2026-10-17T16:00:00.000Z]
-- tone: 简短 [id: sample-tone-01; basis: stated; at: 2026-10-17T16:00:01.000Z]
-- shoe_size: 42 [id: sample-shoe-size-01; basis: stated; at: 2026-10-17T16:00:02.000Z]
+- lang: zh [id: sample-lang-01; basis: stated; at: 2026-10-17T16:00:00.000Z; added: 2026-10-17]
+- tone: 简短 [id: sample-tone-01; basis: stated; at: 2026-10-17T16:00:01.000Z; added: 2026-10-17]
+- shoe_size: 42 [id: sample-shoe-size-01; basis: stated; at: 2026-10-17T16:00:02.000Z; added: 2026-10-17]
+- shipping_address: Sample Recipient, 123 Example Lane, Los Angeles, CA 90024, US (Sample%3B not for shipping) [id: seed-shipping-address-01; basis: stated; at: 2026-10-17T16:00:03.000Z; added: 2026-10-17]

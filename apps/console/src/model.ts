@@ -1,6 +1,6 @@
-// TODO(contract): import these wire types from B's SDK when it lands in main.
-// Card/Contribution/ActivityEvent: bd9d6e3 packages/contract/src/types.ts.
-// GrantView: bd9d6e3 apps/workspace/src/services/sessions.ts.
+// Display models keep field keys open for generic rendering; adapters validate wire responses.
+// Card/Contribution/ActivityEvent mirror packages/contract/src/types.ts.
+// GrantView projects the HTTP view from apps/workspace/src/services/sessions.ts.
 export interface Contribution {
   id: string; userId: string; agentId: string; field: string; value: string;
   basis: 'observed' | 'stated' | 'inferred'; createdAt: string; revokedAt?: string;

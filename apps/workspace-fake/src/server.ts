@@ -3,18 +3,30 @@ import { randomUUID } from 'node:crypto';
 import {
   autoFields, canRead, isField, merchantKeyFor, readDecision,
   GRANT_TTL_MS, WorkspaceError, type AcceptResult, type ActivityEvent, type Field,
-  type Grant, type Handshake, type Intent, type Quote, type Receipt, type Session,
+  type Grant, type Handshake, type IntentRequest, type Quote, type Receipt, type Session,
 } from '@agent-cookie/contract';
 import { rules } from '@agent-cookie/rules';
 const { mergeCard, deriveSessionId } = rules;
 import { validateFixtures, type FixtureKey, type Fixtures } from './fixtures.js';
 
 interface Options { demo?: boolean; now?: () => number; onActivity?: (event: ActivityEvent) => void }
-interface StoredIntent { intent: Intent; quotes: Quote[] }
+interface StoredIntent { intent: IntentRequest & { id: string; userId: string; expiresAt: string; public: Record<string,string> }; quotes: Quote[] }
 interface StoredSession { session: Session; grant: Grant; intentId: string }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const reject = (code: ConstructorParameters<typeof WorkspaceError>[0]): never => { throw new WorkspaceError(code); };
 const allowed = (key: FixtureKey, role: string) => { if (key.role !== role) reject('SCOPE_DENIED'); };
+// Sample-only lexical catalog. Unknown products return no quotes; no network or invented merchandise.
+const matchesText = (query: string, quote: Quote | Fixtures['quotes'][number]) =>
+  `${quote.title ?? ''} ${quote.text}`.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+    .some(word => word.length > 1 && word !== 'sample' && query.toLowerCase().includes(word));
+function sampleBudget(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parts = value.replace(/,/g, '').match(/\d+(?:\.\d{1,2})?/g)?.map(Number);
+  if (!parts?.length) return reject('MISSING_FIELD');
+  const price = Math.round(Math.max(...parts) * 100);
+  if (!Number.isSafeInteger(price) || price <= 0) return reject('MISSING_FIELD');
+  return price;
+}
 
 async function bodyOf(req: IncomingMessage): Promise<Record<string, unknown>> {
   let size = 0; const chunks: Buffer[] = [];
@@ -110,19 +122,25 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
             if (!selected || purpose !== 'checkout') reject('PURPOSE_MISMATCH');
           }
         }
-        const values = { ...valuesFor(key.userId), ...intents.get(s.intentId)?.intent.public };
+        const current = intents.get(s.intentId)?.intent.public;
+        const values: Record<string,string> = { ...valuesFor(key.userId), ...current, ...(current?.size ? {shoe_size: current.size} : {}) };
         result = Object.fromEntries(fields.filter(f => values[f] !== undefined).map(f => [f, values[f]]));
         receipt(s, fields.filter(f => values[f] !== undefined) as Field[], purpose ?? 'auto');
       } else if (req.method === 'POST' && path === '/personal/intents') {
         allowed(key, 'personal');
-        if (body.kind !== 'trail_shoes' || !object(body.public) || Object.entries(body.public).some(([k, v]) =>
-          !['budget', 'deadline'].includes(k) || typeof v !== 'string' || v.length > 100)) reject('MISSING_FIELD');
+        const conditions = body.public ?? {};
+        if (typeof body.text !== 'string' || !body.text.trim() || Buffer.byteLength(body.text) > 1000
+          || (body.query !== undefined && (typeof body.query !== 'string' || !body.query.trim() || Buffer.byteLength(body.query) > 200))
+          || !object(conditions) || Object.entries(conditions).some(([k, v]) =>
+          !['budget', 'deadline', 'size', 'shoe_size', 'color', 'count'].includes(k) || typeof v !== 'string' || Buffer.byteLength(v) > 256)) reject('MISSING_FIELD');
         result = await idempotent(() => {
-          const intent: Intent = { id: randomUUID(), userId: key.userId, kind: 'trail_shoes', public: body.public as Record<string,string>, expiresAt: new Date(now() + GRANT_TTL_MS).toISOString() };
-          const budget = intent.public.budget ?? valuesFor(key.userId).budget;
-          if (budget !== undefined && (!/^\d+(\.\d{1,2})?$/.test(budget) || Number(budget) <= 0)) return reject('MISSING_FIELD');
-          const matches = fixtures.agents.filter(a => a.category === 'shoe' && a.capabilities.includes(intent.kind)
-            && fixtures.quotes.some(q => q.agentId === a.agentId && (budget === undefined || q.price <= Math.round(Number(budget) * 100)))).slice(0,2);
+          const intent: StoredIntent['intent'] = { id: randomUUID(), userId: key.userId, text: body.text as string,
+            ...(body.query !== undefined ? {query: body.query as string} : {}), public: conditions as Record<string,string>, expiresAt: new Date(now() + GRANT_TTL_MS).toISOString() };
+          const budget = sampleBudget(intent.public.budget);
+          const count = intent.public.count === undefined ? 2 : Number(intent.public.count);
+          if (!Number.isInteger(count) || count < 1 || count > 5) return reject('MISSING_FIELD');
+          const eligible = fixtures.quotes.filter(q => matchesText(intent.query ?? intent.text, q) && (budget === undefined || q.price <= budget));
+          const matches = fixtures.agents.filter(a => a.category !== 'personal' && eligible.some(q => q.agentId === a.agentId)).slice(0,count);
           const quotes: Quote[] = [];
           for (const agent of matches) {
             const user = fixtures.users.find(u => u.userId === key.userId)!;
@@ -130,7 +148,7 @@ export function createFakeWorkspace(input: Fixtures, options: Options = {}) {
             const session: Session = { sessionId, userId: user.userId, agentId: agent.agentId, createdAt: iso() };
             const grant: Grant = { id: randomUUID(), sessionId, fields: autoFields(agent.category), purpose: 'auto', expiresAt: intent.expiresAt };
             sessions.set(sessionId, { session, grant, intentId: intent.id });
-            const quote = fixtures.quotes.find(q => q.agentId === agent.agentId && (budget === undefined || q.price <= Math.round(Number(budget) * 100)))!;
+            const quote = eligible.find(q => q.agentId === agent.agentId)!;
             quotes.push({ ...quote, id: randomUUID(), intentId: intent.id });
           }
           intents.set(intent.id, { intent, quotes });

@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-17",
+  "branch": "lane-b",
+  "integratedMerge": "0fbf12d",
+  "laneA": "e381b15",
+  "laneC": "688754d",
+  "mode": "isolated-real-A-C-with-synthetic-extractor",
+  "liveModels": false,
+  "liveChannel": false,
+  "probeExitCode": 1,
+  "results": [
+    {"name":"explicit_statement_reaches_card","passed":false,"observed":{"status":"candidate","basis":["observed"]}},
+    {"name":"same_agent_two_conversations","passed":false,"observed":{"status":"candidate","evidenceCount":1,"writerCount":1}},
+    {"name":"same_agent_two_conversations_after_refresh","passed":false,"observed":{"status":"candidate","evidenceCount":2,"writerCount":1}},
+    {"name":"pause_resume_discards_late_result","passed":true,"observed":{"learnedCount":0,"paused":false}},
+    {"name":"queued_original_never_reaches_disk","passed":false,"observed":{"rawCanaryOnDisk":true}},
+    {"name":"cross_agent_fixture_accept_preserves_history","passed":false,"observed":{"acceptStatus":"handoff","memoryWriteFailures":1}}
+  ],
+  "existingSdkTests": {"passed":79,"failed":0},
+  "typecheckPassed": ["sdk","learn","mcp","channel-photon","workspace"],
+  "realLearningComplete": false
+}

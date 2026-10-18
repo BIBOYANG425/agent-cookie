@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   OBSERVATION_MAX_CONVERSATIONS, OBSERVATION_MAX_QUEUED_TURNS, OBSERVATION_MESSAGE_TTL_MS,
   type ContributionCandidate, type LearnApi, type ObservationTurn,
@@ -13,7 +13,7 @@ import {
 import { openMemoryRepo } from "@agent-cookie/memory-repo";
 import { rules } from "@agent-cookie/rules";
 import { createApp } from "../src/app.js";
-import { NO_LEARNING, loadLearn, type LearnModule } from "../src/adapters.js";
+import { NO_LEARNING } from "../src/adapters.js";
 import { loadConfig, REPO_ROOT } from "../src/config.js";
 import { createDeps } from "../src/deps.js";
 import type { InMemoryRepo } from "./stubs/memory-repo.js";
@@ -260,6 +260,26 @@ describe("B49 ③: forget", () => {
   });
 });
 
+describe("B49 forget: a failed transaction releases every lock", () => {
+  it("after a forget whose SQLite transaction fails (500), the next forget, a resume, learning and a Dreaming run all complete", async () => {
+    const learn = new Learner();
+    learn.onConversation = () => black("stated");
+    const h = await harness({ learn });
+    await h.post("/personal/contributions", KEYS.personal, { field: "pref.color", value: "black" });
+    vi.spyOn(h.deps.store, "deletePreference").mockImplementationOnce(() => { throw new Error("synthetic transaction failure"); });
+    expect((await h.post("/personal/learning/forget", KEYS.personal, { field: "pref.color" })).status).toBe(500);
+    // each of these would hang if the card lock, the apply chain or the request gate were still held
+    const within = <T>(p: Promise<T>) => Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("hung")), 2000))]);
+    expect((await within(h.post("/personal/learning/forget", KEYS.personal, { field: "pref.fit" }))).status).toBe(200);
+    expect((await within(h.put("/personal/learning", KEYS.personal, { paused: false }))).status).toBe(200);
+    await observe(h, "after-failure", [turn("I always prefer black.")]);
+    await within(learnAt(h, 301_000));
+    expect((await within(h.post("/owner/dreaming/run", KEYS.owner))).status).toBe(200);
+    expect(await entry(h, "pref.color")).toMatchObject({ status: "card" }); // the failed forget rolled back; learning goes on
+    await h.deps.close();
+  });
+});
+
 describe("B49 ④: on an accept every record is written by the agent that accepted", () => {
   it("Desktop asks, Photon accepts: handoff, the history record and the learned contribution are Photon's, naming the intent", async () => {
     const learn = new Learner();
@@ -307,29 +327,13 @@ describe("B49 ④: on an accept every record is written by the agent that accept
   });
 });
 
-describe("B49 ①: the learner is lane B's, keyed by ANTHROPIC_API_KEY", () => {
-  const fake: LearnModule & { opts: unknown[] } = {
-    opts: [],
-    createHaikuExtractor(o) { this.opts.push(o); return "extractor"; },
-    createWorkspaceLearner(o) { this.opts.push(o); return { extract: async () => [], extractFromConversation: async () => [] }; },
-  };
-  it("no key → learns nothing (never synthetic), and says why; a key → createWorkspaceLearner(createHaikuExtractor({ apiKey }))", () => {
-    const base = loadConfig({ FIXTURES_DIR: SAMPLE_FIXTURES_DIR });
-    expect(loadLearn(base, fake)).toEqual({ api: NO_LEARNING, reason: "no ANTHROPIC_API_KEY" });
-    const keyed = loadConfig({ FIXTURES_DIR: SAMPLE_FIXTURES_DIR, ANTHROPIC_API_KEY: "sk-test-not-a-real-key" });
-    expect(loadLearn(keyed, undefined)).toEqual({ api: NO_LEARNING, reason: "@agent-cookie/learn not installed" });
-    expect(loadLearn(keyed, fake).reason).toBeUndefined();
-    expect(fake.opts).toEqual([{ apiKey: "sk-test-not-a-real-key" }, { extract: "extractor", mode: "all" }]);
-  });
-
-  it("a workspace started without a key says learning is off, and why", async () => {
-    const h = await harness();
-    expect((await activity(h)).find((e) => e.event === "learn.off")).toMatchObject({ result: "off", reason: "no ANTHROPIC_API_KEY" });
-  });
-
-  it("the key never reaches the activity log", async () => {
-    const h = await harness({ env: { ANTHROPIC_API_KEY: "sk-test-not-a-real-key" } });
-    expect(JSON.stringify(await activity(h))).not.toContain("sk-test");
+describe("B49 ①: explicit OpenRouter activation", () => {
+  it("without provider opt-in, a key alone leaves learning off and never appears in activity", async () => {
+    const h = await harness({ env: { OPENROUTER_API_KEY: "synthetic-unused-key" } });
+    const events = await activity(h);
+    expect(events.find(e => e.event === "learn.off")).toMatchObject({ result: "off", reason: "learning provider off" });
+    expect(JSON.stringify(events)).not.toContain("synthetic-unused-key");
+    await h.deps.close();
   });
 });
 

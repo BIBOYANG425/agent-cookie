@@ -36,10 +36,11 @@ export interface Config {
   dreamingIntervalMs: number;
   /** A LearnApi call that takes longer is abandoned and logged as failed (LEARN_TIMEOUT_MS). */
   learnTimeoutMs: number;
-  /** Lane B's Haiku extractor key (ANTHROPIC_API_KEY). Unset → nothing is learned (never synthetic results). Never logged. */
-  anthropicApiKey?: string;
-  /** AGENT_COOKIE_LEARN_MODE=explicit-only: lane B's H14 fallback (first-person statements only). Default "all". */
+  /** Explicit opt-in: a credential in the environment alone never enables model calls. */
+  learnProvider: "off" | "openrouter";
+  learnApiKey?: string;
   learnMode: "all" | "explicit-only";
+  learnTelemetryEndpoint?: string;
   /** Sentry tracing + logs (plan §4). Off when unset. */
   sentryDsn?: string;
   sentryEnvironment: string;
@@ -74,6 +75,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (jarKek && Buffer.from(jarKek, "base64url").length !== 32) {
     throw new Error("AGENT_COOKIE_JAR_KEK must decode to exactly 32 bytes");
   }
+  const learnProvider = env.AGENT_COOKIE_LEARN_PROVIDER ?? "off";
+  if (!["off", "openrouter"].includes(learnProvider)) throw new Error("Invalid learning provider");
+  const learnApiKey = learnProvider === "openrouter" ? env.OPENROUTER_API_KEY : undefined;
+  if (learnProvider !== "off" && !learnApiKey) throw new Error("Learning provider requires its API key");
+  const learnMode = env.AGENT_COOKIE_LEARN_MODE ?? "all";
+  if (learnMode !== "all" && learnMode !== "explicit-only") throw new Error("Invalid learning mode");
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   return {
     host: "127.0.0.1",
@@ -96,10 +103,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(unlockSecret ? { unlockSecret } : {}),
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
+    learnProvider: learnProvider as Config["learnProvider"],
+    ...(learnApiKey ? { learnApiKey } : {}),
+    learnMode,
+    ...(env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT ? { learnTelemetryEndpoint: env.AGENT_COOKIE_LEARNING_OTLP_ENDPOINT } : {}),
     dreamingIntervalMs: env.DREAMING_INTERVAL_MS === "0" ? 0 : int(env.DREAMING_INTERVAL_MS, DREAMING_DEFAULT_INTERVAL_MS, 1000, 86_400_000),
     learnTimeoutMs: int(env.LEARN_TIMEOUT_MS, 30_000, 50, 600_000),
-    ...(env.ANTHROPIC_API_KEY?.trim() ? { anthropicApiKey: env.ANTHROPIC_API_KEY.trim() } : {}),
-    learnMode: env.AGENT_COOKIE_LEARN_MODE === "explicit-only" ? "explicit-only" : "all",
     ...(env.SENTRY_DSN ? { sentryDsn: env.SENTRY_DSN } : {}),
     sentryEnvironment: env.SENTRY_ENVIRONMENT ?? (env.AGENT_COOKIE_DEMO === "1" ? "demo" : "development"),
     sentryTracesSampleRate: rate(env.SENTRY_TRACES_SAMPLE_RATE, 1),

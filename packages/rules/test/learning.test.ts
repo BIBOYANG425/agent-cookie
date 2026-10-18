@@ -12,14 +12,14 @@ const row = (id: string, extra: Partial<LearningContribution> = {}): LearningCon
 describe('dynamic learning · TODO(contract)', () => {
   it('promotes a personal stated preference immediately at medium', () => {
     expect(mergeCard([row('a', { basis: 'stated' })], options).card).toEqual([
-      { field: 'pref.fit', value: 'relaxed', confidence: 'medium', sources: ['personal'], updatedAt: now, lastSupportedAt: now, changedRecently: false },
+      { field: 'pref.fit', value: 'relaxed', confidence: 'medium', sources: ['personal'], evidenceSources: [], updatedAt: now, lastSupportedAt: now, changedRecently: false },
     ]);
   });
 
   it('keeps one inference as candidate and promotes two independent intents from the same writer at medium', () => {
     const a = row('a', { intentId: 'intent-a' });
     expect(mergeCard([a], options).card).toEqual([]);
-    expect(mergeCard([a], options).candidates).toEqual([{ field: 'pref.fit', value: 'relaxed', sources: ['personal'], reason: 'inferred' }]);
+    expect(mergeCard([a], options).candidates).toEqual([{ field: 'pref.fit', value: 'relaxed', sources: ['personal'], evidenceSources: ['intent:intent-a'], reason: 'inferred' }]);
     const result = mergeCard([a, row('b', { intentId: 'intent-b' })], options);
     expect(result.card[0]).toMatchObject({ field: 'pref.fit', confidence: 'medium', sources: ['personal'] });
     expect(result.candidates).toEqual([]);
@@ -42,7 +42,7 @@ describe('dynamic learning · TODO(contract)', () => {
     const records = [row('a', { conversationId: 'c', intentId: 'i' }), row('b', { intentId: 'i' })];
     const result = mergeCard(records, options);
     expect(result.card).toEqual([]);
-    expect(result.candidates).toEqual([{ field: 'pref.fit', value: 'relaxed', sources: ['personal'], reason: 'inferred' }]);
+    expect(result.candidates).toEqual([{ field: 'pref.fit', value: 'relaxed', sources: ['personal'], evidenceSources: ['conversation:c'], reason: 'inferred' }]);
     expect(result).toEqual(mergeCard([...records].reverse(), options));
     expect(mergeCard([...records, row('independent', { intentId: 'other' })], options).card[0]?.confidence).toBe('medium');
   });
@@ -73,8 +73,8 @@ describe('dynamic learning · TODO(contract)', () => {
     expect(mergeCard([...copies, bridge], { ...options, now: ago(-2) }).card).toEqual([]);
   });
 
-  it('applies metadata-aware promotion to existing fields but missing provenance never qualifies', () => {
-    expect(mergeCard([row('a', { field: 'tone', intentId: 'a' }), row('b', { field: 'tone', intentId: 'b' })], options).card[0]?.field).toBe('tone');
+  it('keeps ordinary inferred fields off-card and never qualifies preferences without provenance', () => {
+    expect(mergeCard([row('a', { field: 'tone', intentId: 'a' }), row('b', { field: 'tone', intentId: 'b' })], options).card).toEqual([]);
     expect(mergeLearningCard([row('a'), row('b', { agentId: 'other' })], options).card).toEqual([]);
   });
 
@@ -95,11 +95,11 @@ describe('dynamic learning · TODO(contract)', () => {
     }
   });
 
-  it('preserves observed consensus and decay for dynamic fields', () => {
+  it('requires independent evidence for observed preferences and keeps their confidence medium', () => {
     for (const age of [180, 181, 366]) {
-      const result = mergeCard([row('a', { agentId: 'a', basis: 'observed', createdAt: ago(age) }), row('b', { agentId: 'b', basis: 'observed', createdAt: ago(age) })], options);
+      const result = mergeCard([row('a', { agentId: 'a', basis: 'observed', intentId: 'a', createdAt: ago(age) }), row('b', { agentId: 'b', basis: 'observed', intentId: 'b', createdAt: ago(age) })], options);
       expect(result.card).toHaveLength(age > 365 ? 0 : 1);
-      if (age <= 365) expect(result.card[0]?.confidence).toBe(age <= 180 ? 'high' : 'medium');
+      if (age <= 365) expect(result.card[0]?.confidence).toBe('medium');
     }
   });
 
@@ -119,7 +119,7 @@ describe('dynamic learning · TODO(contract)', () => {
   it('lets newer independent inference replace older observed consensus and older promoted preference', () => {
     const fresh = [row('a', { intentId: 'a', createdAt: ago(1) }), row('b', { intentId: 'b' })];
     for (const older of [
-      [row('old-a', { basis: 'observed', agentId: 'shop-a', value: 'fitted', createdAt: ago(4) }), row('old-b', { basis: 'observed', agentId: 'shop-b', value: 'fitted', createdAt: ago(3) })],
+      [row('old-a', { basis: 'observed', agentId: 'shop-a', intentId: 'old-a', value: 'fitted', createdAt: ago(4) }), row('old-b', { basis: 'observed', agentId: 'shop-b', intentId: 'old-b', value: 'fitted', createdAt: ago(3) })],
       [row('old-a', { intentId: 'old-a', value: 'fitted', createdAt: ago(4) }), row('old-b', { intentId: 'old-b', value: 'fitted', createdAt: ago(3) })],
     ]) {
       const result = mergeCard([...older, ...fresh], options);

@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm build && vitest run",
     "check": "node --env-file-if-exists=.env --import tsx src/main.ts check",
     "dev": "node --env-file-if-exists=.env --import tsx src/main.ts",
     "start": "node --env-file-if-exists=.env dist/main.js"
@@ -21,8 +21,9 @@
   },
   "name": "@agent-cookie/mcp",
   "dependencies": {
+    "@agent-cookie/learn": "workspace:*",
+    "@agent-cookie/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.1",
-    "zod": "4.6.7",
-    "@agent-cookie/sdk": "workspace:*"
+    "zod": "4.6.7"
   }
 }

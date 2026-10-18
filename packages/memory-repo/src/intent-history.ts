@@ -1,5 +1,5 @@
-import { isField, WorkspaceError } from '@agent-cookie/contract';
-import type { LearningContribution, LearningEvidence, LearningField } from '@agent-cookie/rules';
+import { isField, WorkspaceError, type ContributionEvidence } from '@agent-cookie/contract';
+import type { LearningContribution } from '@agent-cookie/rules';
 import { escape, filename, ownerFromFilename, text, timestamp, unescape } from './codec.js';
 import type { IntentSummary } from './learning-types.js';
 
@@ -7,17 +7,13 @@ interface StoredIntent {
   intent: { id: string; userId: string; kind?: string; expiresAt?: string };
   extracted: LearningContribution[];
   recordedAt: string;
+  evidence?: { intentId: string };
   agentId?: string;
   createdAt?: string;
   chosenQuote?: { id: string; agentId?: string; price: number; currency: 'USD' };
 }
 
-// Structural projection of A 0129f08; TODO(contract): use the shared guards on main.
 // Rules remains a type-only dependency: runtime rendering/merging is injected.
-const prefKeys = ['brand', 'color', 'material', 'style', 'fit', 'avoid', 'occasion', 'recipient', 'price_band', 'size_system'];
-function isLearningField(value: unknown): value is LearningField {
-  return isField(value) || (typeof value === 'string' && prefKeys.some(key => value === `pref.${key}`));
-}
 function isLearningContributionMetadata(value: LearningContribution): boolean {
   for (const source of [value.intentId, value.conversationId]) {
     if (source !== undefined && (typeof source !== 'string' || !source.trim())) return false;
@@ -50,11 +46,11 @@ function isoTimestamp(value: unknown): string {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(value)) invalid('Expected an ISO timestamp');
   return value;
 }
-function projectEvidence(value: unknown): string | LearningEvidence {
+function projectEvidence(value: unknown): string | ContributionEvidence {
   if (typeof value === 'string') return value;
   const raw = object(value);
   if (Object.keys(raw).some(key => !['intentId', 'conversationId', 'snippet'].includes(key))) invalid('Invalid evidence properties');
-  const evidence: LearningEvidence = {};
+  const evidence: ContributionEvidence = {};
   for (const key of ['intentId', 'conversationId'] as const) {
     if (raw[key] !== undefined) evidence[key] = identifier(raw[key]);
   }
@@ -64,7 +60,7 @@ function projectEvidence(value: unknown): string | LearningEvidence {
 export function validateLearningContribution(c: LearningContribution, userId: string): void {
   text(c.id); filename(c.agentId); text(c.value, false); timestamp(c.createdAt);
   if (c.revokedAt !== undefined) timestamp(c.revokedAt);
-  if (!isLearningField(c.field) || !isLearningContributionMetadata(c)
+  if (!isField(c.field) || !isLearningContributionMetadata(c)
     || !['observed', 'stated', 'inferred'].includes(c.basis)) invalid('Invalid learning contribution');
   for (const source of [c.intentId, c.conversationId]) if (source !== undefined) text(source);
   if (typeof c.evidence === 'string') text(c.evidence, false);
@@ -85,6 +81,11 @@ export function projectIntent(input: unknown, userId: string, at: string): Store
   const result: StoredIntent = { intent: { id, userId }, extracted: [], recordedAt: isoTimestamp(at) };
   if (kind !== undefined) result.intent.kind = kind;
   if (flat) {
+    if (raw.evidence !== undefined) {
+      const evidence = object(raw.evidence);
+      if (Object.keys(evidence).length !== 1 || evidence.intentId !== id) invalid('Original intent evidence mismatch');
+      result.evidence = { intentId: id };
+    }
     result.agentId = identifier(raw.agentId);
     result.createdAt = isoTimestamp(raw.createdAt);
     object(raw.public);
@@ -98,7 +99,7 @@ export function projectIntent(input: unknown, userId: string, at: string): Store
       if (source.userId !== userId) throw new WorkspaceError('SCOPE_DENIED');
       const field = source.field;
       const basis = source.basis;
-      if (!isLearningField(field) || (basis !== 'stated' && basis !== 'observed' && basis !== 'inferred')) invalid();
+      if (!isField(field) || (basis !== 'stated' && basis !== 'observed' && basis !== 'inferred')) invalid();
       const c: LearningContribution = {
         id: identifier(source.id), userId, agentId: identifier(source.agentId),
         field, value: string(source.value, false), basis, createdAt: isoTimestamp(source.createdAt),
@@ -137,6 +138,7 @@ export function renderIntent(record: StoredIntent): string {
   const attributes: [string, string][] = [['userId', record.intent.userId], ['recordedAt', record.recordedAt]];
   if (record.agentId !== undefined) attributes.push(['format', 'workspace-v1'], ['agentId', record.agentId], ['createdAt', record.createdAt!]);
   else attributes.push(['expiresAt', record.intent.expiresAt!], ['extractedCount', String(record.extracted.length)]);
+  if (record.evidence) attributes.push(['sourceIntentId', record.evidence.intentId]);
   if (record.intent.kind !== undefined) attributes.push(['kind', record.intent.kind]);
   record.extracted.forEach((c, index) => {
     const prefix = `extracted.${index}.`;
@@ -193,6 +195,7 @@ export function parseIntent(line: string, userId: string, name: string): StoredI
       });
       input = { intent: { id: unescape(match[1]!), userId: attributes.get('userId'), kind: attributes.get('kind'), expiresAt: attributes.get('expiresAt') }, extracted };
     }
+    if (attributes.has('sourceIntentId')) input.evidence = { intentId: attributes.get('sourceIntentId') };
     if (attributes.has('chosenQuote.id')) input.chosenQuote = {
       id: attributes.get('chosenQuote.id'), agentId: attributes.get('chosenQuote.agentId'),
       price: Number(attributes.get('chosenQuote.price')), currency: attributes.get('chosenQuote.currency'),

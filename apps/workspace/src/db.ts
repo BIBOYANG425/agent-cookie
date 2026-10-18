@@ -224,6 +224,18 @@ export class Store {
     this.exec("INSERT INTO settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value", userId, key, value);
   }
 
+  pendingForgets(userId: string): Array<{ field: string; ids: string[] }> {
+    return (this.db.prepare("SELECT key, value FROM settings WHERE user_id = ? AND key LIKE 'learning.forget.%'").all(userId) as Row[])
+      .map(row => ({ field: String(row.key).slice('learning.forget.'.length), ids: JSON.parse(String(row.value)) as string[] }));
+  }
+  completeForget(userId: string, field: string): void {
+    this.exec("DELETE FROM settings WHERE user_id = ? AND key = ?", userId, `learning.forget.${field}`);
+  }
+  deletePreference(userId: string, field: string): void {
+    this.exec("DELETE FROM contributions WHERE user_id = ? AND field = ?", userId, field);
+    this.exec("DELETE FROM cards WHERE user_id = ?", userId);
+  }
+
   // ---- observation queue mirror (learning.ts): ids, counts and times only; the text is in memory.
   /** Record a waiting conversation's counters (insert or update). */
   mirrorObservation(b: ObservationBatchRow): void {

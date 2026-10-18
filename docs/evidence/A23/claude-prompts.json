@@ -1,0 +1,11 @@
+{
+  "save": {
+    "session": "claude.ai/epitaxy/local_9afd9e64-6456-4002-9e2c-ef66c26b5a17",
+    "prompt": "A23 stock Agent Memory Repo interop trial. Use the installed agent-memory-repo skill unchanged (read .claude/skills/agent-memory-repo/SKILL.md). Existing memory repository: /private/tmp/agent-cookie-a23-memory-vuee0ba0 . It is a separate git repo already seeded by our local workspace, with no remote. Follow the skill to read all MEMORY.md and follow relevant Index links. Save this Sample trial preference: 我偏好简短的要点总结. Put it in your own topic file outside CARD.md, contributions/, notes/, receipts.md; these four paths are workspace-managed and must not be edited directly. Update MEMORY.md Index with a root-relative wiki link if needed. Commit only the memory files you changed, using your normal git identity; do not push, add a remote, change the installed skill, or edit the project. Report the exact saved path, preference, git commit hash, and clean status. This request authorizes that local memory write and commit."
+  },
+  "recall": {
+    "session": "claude.ai/epitaxy/local_dc93c712-2aeb-4b2f-9b94-b215a3924feb",
+    "prompt": "New-session A23 memory recall test. Use the installed, unchanged agent-memory-repo skill at .claude/skills/agent-memory-repo/SKILL.md with the existing independent memory repository /private/tmp/agent-cookie-a23-memory-vuee0ba0 . Read its entire MEMORY.md first and follow the Index to find the trial preference saved in a previous session. What preference did I save? Quote the saved memory entry and its file path, and report the latest memory commit hash and whether git status is clean. This is read-only: do not change or commit anything, do not push, and do not include git email addresses."
+  },
+  "note": "Two independent Claude Desktop Code sessions on This computer. The recall prompt did not include the preference or the save-session response."
+}

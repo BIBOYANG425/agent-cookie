@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/AgentMemoryRepo/agentmemoryrepo",
+  "upstreamHead": "8798cb26c817d451a5ed6cba0ad8d9eca8d5ec3e",
+  "skillPath": "skills/agent-memory-repo/SKILL.md",
+  "gitBlob": "171c82b59524654ad86d34b74a606a3026730642",
+  "sha256": "5b254acb3e4f6d1b3baa170ae4b283e2e38153b54fbe7a4b51193d826185cb44",
+  "stockBytesUnmodified": true,
+  "installCommand": "npx --yes skills add AgentMemoryRepo/agentmemoryrepo --skill agent-memory-repo --agent claude-code --yes",
+  "project": "/private/tmp/agent-cookie-a23-project-vuee0ba0",
+  "memory": "/private/tmp/agent-cookie-a23-memory-vuee0ba0",
+  "memoryRemoteConfigured": false,
+  "claudeCliAuth": {
+    "loggedIn": false,
+    "authMethod": "none",
+    "apiProvider": "firstParty"
+  }
+}

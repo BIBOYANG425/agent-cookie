@@ -113,3 +113,27 @@ AGENT_COOKIE_ISOLATED_PROBE=1 AGENT_COOKIE_URL=http://127.0.0.1:4310 \
 ```
 
 它明确返回 `automaticLearningVerified:false`、`rankingEffectVerified:false`，用于记录实际接线和基线，不能替代B真实模型、个人agent通道和排序证据。人工贡献与两条排队消息不构成C20成功。只读契约验证请限定 `learning-http.test.ts`，不要运行带URL的整个历史套件：后者会reset且要求 `AGENT_COOKIE_TEST=1`。
+
+## A23 stock memory 格式互操作（独立 opt-in）
+
+用户对 A23(c,d) 明确授权 **git + HTTP**；这是本目录原 HTTP-only 规则的限范围例外。`memory-interop.test.ts` 不导入 workspace、contract、SDK、rules 或 SQLite，不调用模型，也不运行第三方 skill。它以 `Synthetic A23 ordinary agent` 作者在指定独立记忆库提交普通 Markdown、SQL 文件及 `MEMORY.md` Index，用于自动互操作支撑。真实 Claude stock skill 写入／跨会话回读由单独的实录验收，不能由这两个测试代替。
+
+规范按上游 [SPEC.md](https://github.com/AgentMemoryRepo/agentmemoryrepo/blob/main/SPEC.md) 与 [stock skill](https://github.com/AgentMemoryRepo/agentmemoryrepo/blob/main/skills/agent-memory-repo/SKILL.md) 核对：记忆库独立于项目；写前必须干净；先读 `MEMORY.md`；普通文件可自由组织；`## Index` 的 `[[path]]` 从根解析，Markdown 省略 `.md`，SQL 保留扩展名。测试仅 stage 本次改动的三个文件，不配置远端、不推送、不执行记忆中的脚本，也不主动 checkout、clean 或改写历史。
+
+两个集成项默认跳过：
+
+- **A23(c)**：Synthetic 普通提交后，通过既有 HTTP 端点写贡献、确认 CARD 再生成；注册现有 `retail` 类别的 inert callback 商家，提交 Sample 报价并返回 handoff，accept 后按 `checkout` 读取 Sample 地址产生回执，再写／读 note。确认四个自管路径实际发生变化、普通文件保留、Index 可解析，git log 同时保有 Synthetic 作者与后续 workspace 提交。无真实商品、UCP、付款或 stock skill 成功声明。
+- **A23(d)**：只有 (c) 全部完成并确认 HTTP 写入了所指定的记忆库后，才执行 `POST /demo/reset`。普通文件、`MEMORY.md` 修改和原提交应保留；`contributions/`、`notes/`、`CARD.md`、`receipts.md` 的受跟踪内容及未跟踪文件严格对比 `fixtures-seed`。A reset 后 reconcile 产生的地址／CARD 差异也会失败，不算作相等。
+
+运行前由负责人启动全新、专用的 demo 工作台，绑定此 `MEMORY_REPO_PATH`，装载 Sample fixtures，并设置 `AGENT_COOKIE_DEMO=1`、`AGENT_COOKIE_UCP=fixture`。owner 与 personal 钥匙分别通过测试进程的 `AGENT_COOKIE_KEY`、`AGENT_COOKIE_PERSONAL_KEY` 注入；不写进命令或报告。测试拒绝 4310、5173 和真实 stock rehearsal 的 4331。自动验收预留 4332，不能与其他运行共享记忆库。
+
+```sh
+cd tests/acceptance
+AGENT_COOKIE_A23_TEST=1 AGENT_COOKIE_ISOLATED_PROBE=1 \
+  AGENT_COOKIE_URL=http://127.0.0.1:4332 MEMORY_REPO_PATH=/absolute/path/to/dedicated-memory \
+  node node_modules/vitest/vitest.mjs run --config vitest.config.mjs memory-interop.test.ts
+```
+
+**只运行上面指定的文件**，不要带着该 URL 运行整个历史套件。测试结束保留独立记忆库和提交供检查，afterAll 只关闭测试 callback，不另做 reset。重跑会新增新的 Synthetic 文件与提交，建议每次新建专用数据目录和记忆库。
+
+`memory-interop-safety.test.ts` 的 5 项离线测试覆盖显式 opt-in、保护端口、配置错误不回显凭据、根 wiki 解析和路径逃逸拒绝，无后台访问。2026-10-17 在专用 `127.0.0.1:4332` 实测两文件共 **7 passed**（5 safety + A23(c,d)，2.97 秒），类型检查通过。运行使用隔离 runtime `/private/tmp/agent-cookie-c21-runtime-o056ei5h` 与记忆库 `/private/tmp/agent-cookie-a23-auto-memory-vuee0ba0`；该 runtime 包含本轮未提交的 C memory 修复及同步地址后的 seed，不能归因于未修改的 main。无钥匙日志保存在 `/private/tmp/agent-cookie-a23-results-Yz0j2c/stdout.log`（临时本机证据）。这证明 Synthetic 普通文件与工作台读写／重置互操作，**不证明真实 Claude stock skill 的安装、写入或跨会话回读**。

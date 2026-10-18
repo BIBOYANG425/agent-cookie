@@ -38,7 +38,7 @@ it('routes a genuine event shape through HTTP find → select → handoff; dupli
   await handleDelivery(event('要第二双','select-again'),store,config,client,save,send);
   expect(send.mock.calls[2][1]).toContain('Sample');expect((await client.getReceipts()).receipts).toHaveLength(1);
   await handleDelivery(event('要第二双','foreign-space','new-space'),store,config,client,save,send);
-  expect(send.mock.calls[3][1]).toContain('请先让我找鞋');
+  expect(send.mock.calls[3][1]).toContain('请先搜索商品');
 });
 it('rejects other senders, groups, projects, outbound messages, old events and free-form authority injection',async()=>{
   const original=event('帮我找双越野跑鞋');const start=Date.now()-1000;
@@ -69,7 +69,7 @@ it('stores cursor/outbox privately and rejects wrong-account reuse or concurrent
 
 it.each(['ordered','handoff','blocked','failed'] as const)('renders actual %s outcomes without inventing a link or losing a failure handoff',async status=>{
   const client=await workspace();
-  const offers=await client.find({kind:'trail_shoes',public:{}},'render');
+  const offers=await client.find({text:'trail shoes',public:{}},'render');
   vi.spyOn(client,'accept').mockResolvedValue({status,quoteId:offers.quotes[0].id,sample:true,message:'Sample buyer review',
     ...(status==='ordered'?{orderId:'sample-order'}:{}),...(status==='failed'?{continueUrl:'https://example.com/review'}:{})});
   const text=await respond('要第一双','selection',{offers},client);
@@ -82,16 +82,16 @@ it.each(['ordered','handoff','blocked','failed'] as const)('renders actual %s ou
 
 it('offers only the first selection when the backend finds one eligible merchant',async()=>{
   const client=await workspace();
-  const found=await client.find({kind:'trail_shoes',public:{}},'single');
+  const found=await client.find({text:'trail shoes',public:{}},'single');
   vi.spyOn(client,'find').mockResolvedValue({...found,quotes:found.quotes.slice(0,1)});
   const text=await respond('帮我找双越野跑鞋，120以内','single-search',{},client);
-  expect(text).toContain('要第一双');expect(text).not.toContain('要第二双');
+  expect(text).toContain('选1');expect(text).not.toContain('选2');
   expect(text).toContain('Sample');expect(text).toContain('到货时间未知');
 });
 
 it('retains recorded quote provenance when AcceptResult has no source metadata',async()=>{
   const client=await workspace();
-  const offers=await client.find({kind:'trail_shoes',public:{}},'provenance');
+  const offers=await client.find({text:'trail shoes',public:{}},'provenance');
   offers.sample=false;offers.quotes[0].source='fixture';
   vi.spyOn(client,'accept').mockResolvedValue({status:'handoff',quoteId:offers.quotes[0].id,sample:false,
     continueUrl:'https://example.com/checkout'});

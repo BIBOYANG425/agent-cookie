@@ -1,0 +1,41 @@
+
+│
+●   codex  Agent detected — installing non-interactively
+│
+◇  Source: https://github.com/AgentMemoryRepo/agentmemoryrepo.git
+│
+◒  Cloning repository…◐  Cloning repository…◓  Cloning repository…◑  Cloning repository…◒  Cloning repository…◐  Cloning repository…◇  Repository cloned
+│
+◇  Found 1 skill
+│
+●  Selected 1 skill: agent-memory-repo
+
+│
+◇  Installation Summary ───────────────╮
+│                                      │
+│  ./.agents/skills/agent-memory-repo  │
+│    copy → Claude Code                │
+│                                      │
+├──────────────────────────────────────╯
+│
+◇  Security Risk Assessments ───────────────────────────────────────╮
+│                                                                   │
+│                     Gen               Socket            Snyk      │
+│  agent-memory-repo  Med Risk          0 alerts          Low Risk  │
+│                                                                   │
+│  Details: https://skills.sh/AgentMemoryRepo/agentmemoryrepo       │
+│                                                                   │
+├───────────────────────────────────────────────────────────────────╯
+│
+◇  Installation complete
+
+│
+◇  Installed 1 skill ──────────────────────╮
+│                                          │
+│  ✓ agent-memory-repo (copied)            │
+│    → ./.claude/skills/agent-memory-repo  │
+│                                          │
+├──────────────────────────────────────────╯
+
+│
+└  Done!  Review skills before use; they run with full agent permissions.
