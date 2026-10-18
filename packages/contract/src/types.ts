@@ -656,6 +656,11 @@ export interface LinkView {
   expiresAt: string;
   /** Present once approved. */
   sessionId?: string;
+  /**
+   * Hosted gateway only (gateway.ts): present once approved, for LINK_TTL_MS after the approval (then purged). The
+   * person's instance under the gateway and the assistant's key for it. A single workspace never sets it.
+   */
+  jar?: { url: string; key: string };
 }
 /**
  * GET /assistant/context: what a linked assistant may know, as VALUES (it acts for the user) but without provenance.

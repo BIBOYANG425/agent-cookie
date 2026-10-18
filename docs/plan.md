@@ -208,6 +208,7 @@ Shopify 店不认识我们，UCP 也没有地方放我们的 session ID。所以
 | A28 | 报价推送 | `GET /personal/intents/:id/events` 以 SSE 推送已有与新到报价、complete、expired；`Last-Event-ID` 可续；SDK `find()` 先走流再回退长轮询（`a28-events.test.ts`） | `P1` |
 | A31 | 公司助理接入 | 助理注册 → 申请 link → owner 批准 → `GET /assistant/context` 只有策略允许的值、没有地址与支付 → 建 intent、accept → 回执含 assist 与 checkout → 漏斗行 createdBy/questionsSkipped → 撤销后 403；带用户原话证据的 stated 写入上卡，第二个助理第一次读就能看到（`a31-assistant.test.ts`） | `P1` |
 | A32 | 助理之间的 churn | 两家公司助理、两家商家：A 学到两件事并下单；C 第一次 context 就知道；D 只在结账拿到地址；回执恰好四个 session；C 读不到 A 的 intent；撤销 A 后 C 不再看到 A 的值；任何面向助理或商家的响应不含 payment_method（`tests/acceptance/a32-churn.test.ts`） | `P1` |
+| A33 | 托管 jar（网关） | 助理公司在网关注册一次 → 申请 link → 两个用户分别用 passkey（测试里用 `/test/session`）登录并批准 → 各得一个 `/u/:userId` 下的 jar 与各自的 key；跨 jar 的 key 被拒；代理拒绝 owner / demo / test 路由；cookie 页只有计数与名字；撤销后 403；删除数据后 jar 与 link 均 404（`tests/acceptance/a33-gateway.test.ts`，`apps/gateway/test`） | `P1` |
 | A29 / A30 | （计划）空白工作台 + 自带 agent；陌生商家 agent 跳过自身 onboarding | `docs/bring-your-own-agent-plan.md` v0.1 的个人自建路径，v0.2 排到最后，未实现 | — |
 
 ### 比赛目标（10 月 17 日赛道页）
