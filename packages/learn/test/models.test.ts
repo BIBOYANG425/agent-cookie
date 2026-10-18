@@ -1,57 +1,81 @@
-import {readFileSync} from 'node:fs';
-import {it,expect,vi} from 'vitest';
-import {createLearner,type LearningTurn} from '../src/index.js';
-import {createHaikuExtractor,createJevClassifier,HAIKU_MODEL,OPENROUTER_HAIKU_MODEL} from '../src/models.js';
-const fixtures=JSON.parse(readFileSync(new URL('./fixtures/model-responses.json',import.meta.url),'utf8'));
+import {it,expect,vi,afterEach} from 'vitest';
+import {createLearner,createWorkspaceLearner,type LearningTurn} from '../src/index.js';
+import {createExtractor,createHaikuExtractor,createJevClassifier,DEFAULT_EXTRACTION_MODEL,JEV_MODEL,getExtractorDefaults} from '../src/models.js';
 const policy={'pref.color':{description:'Clothing color preference'}};
 const turn:LearningTurn={text:'我一直更喜欢黑色衣服。',messageId:'msg1',conversationId:'conv1',occurredAt:'2026-10-17T22:00:00Z',source:'photon',speaker:'owner',isGroup:false};
-it('replays actual Jev/Haiku wire envelopes and pins the extraction model',async()=>{
-  const calls:Array<{url:string;body:any}>=[];
-  const mock=vi.fn(async(url:any,init:any)=>{calls.push({url:String(url),body:JSON.parse(init.body)});return Response.json(String(url).includes('typesafe')?fixtures.jev:fixtures.haiku)}) as unknown as typeof fetch;
-  const result=await createLearner({policy,classify:createJevClassifier({apiKey:'test',fetch:mock}),extract:createHaikuExtractor({apiKey:'test',fetch:mock})}).learn(turn);
-  expect(result.reason).toBe('learned');expect(calls).toHaveLength(2);expect(calls[1].body.model).toBe(HAIKU_MODEL);
-  expect(calls[0].body.state).toBe(turn.text);expect(calls[1].body.messages[0].content).toBe(turn.text);
-  expect(calls[1].body.output_config.format.schema.properties.preferences.items.properties.key.enum).toEqual(['pref.color']);
+const preference={key:'pref.color',value:'黑色',evidence:turn.text,basis:'stated'};
+const extracted={sensitive:false,stable:true,preferences:[preference]};
+const jev={model:'typesafe/jev-1.14-20261014',answers:{stable:{type:'noul',noul:0.98},sensitive:{type:'noul',noul:0.07},key:{type:'choice',choice:'pref.color',confidence:1,probabilities:{'pref.color':1,none:0}}}};
+const completion=(value:unknown=extracted)=>({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(value)}}]});
+const mockFetch=()=>vi.fn(async(url:unknown)=>Response.json(String(url).includes('/decisions')?jev:completion()));
+afterEach(()=>vi.unstubAllEnvs());
+it('automatically gates OpenRouter extraction with one three-question Decisions request',async()=>{
+ const mock=mockFetch();const extract=createExtractor({apiKey:'test',fetch:mock});
+ const result=await createLearner({policy,extract}).learn(turn);
+ expect(result.preferences).toEqual([preference]);expect(mock).toHaveBeenCalledTimes(2);
+ const calls=mock.mock.calls as unknown as [string,RequestInit][];
+ const decision=JSON.parse(String(calls[0][1].body));const extraction=JSON.parse(String(calls[1][1].body));
+ expect(calls[0][0]).toBe('https://openrouter.ai/api/alpha/decisions');expect(decision.model).toBe(JEV_MODEL);
+ expect(Object.keys(decision.questions)).toEqual(['stable','sensitive','key']);
+ expect(decision.questions.stable.type).toBe('noul');expect(decision.questions.sensitive.type).toBe('noul');
+ expect(decision.questions.key).toMatchObject({type:'choice',criteria:{'pref.color':policy['pref.color'].description,none:expect.any(String)}});
+ expect(decision.state).toEqual({utterance:turn.text});expect(extraction.model).toBe(DEFAULT_EXTRACTION_MODEL);
+ for(const body of [decision,extraction]){expect(body.provider).toMatchObject({allow_fallbacks:true,require_parameters:true,data_collection:'deny',zdr:true});expect(body.provider).not.toHaveProperty('only');expect(body).not.toHaveProperty('user');}
+ expect(extraction.response_format.json_schema.strict).toBe(true);
+ expect(extraction.response_format.json_schema.schema.properties.preferences.items.properties.key.enum).toEqual(['pref.color']);
+ expect(extraction.messages[1].content).toBe(turn.text);expect(getExtractorDefaults(extract)?.model).toBe(DEFAULT_EXTRACTION_MODEL);
 });
-it('falls back when Jev unavailable, but not after a negative verdict',async()=>{
-  const extract=vi.fn().mockResolvedValue(JSON.parse(fixtures.haiku.content[0].text));
-  expect((await createLearner({policy,classify:async()=>{throw Error('secret')},extract}).learn(turn)).reason).toBe('learned');
-  extract.mockClear();
-  expect((await createLearner({policy,classify:async()=>({sensitive:true,stable:true,keys:['pref.color']}),extract}).learn(turn)).reason).toBe('sensitive');
-  expect(extract).not.toHaveBeenCalled();
+it('uses configured alternatives and keeps the old A factory name compatible without a direct provider',()=>{
+ vi.stubEnv('AGENT_COOKIE_LEARN_MODEL','qwen/qwen3-235b-a22b-2507');
+ expect(getExtractorDefaults(createHaikuExtractor({apiKey:'test',provider:'openrouter'}))?.model).toBe('qwen/qwen3-235b-a22b-2507');
+ expect(()=>createHaikuExtractor({apiKey:'test',provider:'anthropic'})).toThrow('Only OpenRouter');
+ expect(()=>createExtractor({apiKey:'test',model:'unknown'})).toThrow('Unsupported');
 });
-it('Jev uncertainty fails closed',async()=>{
-  const raw=structuredClone(fixtures.jev);raw.answers.sensitive.noul=0.2;
-  const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(raw)});
-  const extract=vi.fn();await createLearner({policy,classify,extract}).learn(turn);expect(extract).not.toHaveBeenCalled();
+it('falls back on service unavailability only after local filters',async()=>{
+ const extract=vi.fn().mockResolvedValue(extracted);
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({error:'PRIVATE'},{status:503})});
+ expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('learned');expect(extract).toHaveBeenCalledTimes(1);
+ extract.mockClear();await createLearner({policy,classify,extract}).learn({...turn,text:'I have asthma and prefer black.'});expect(extract).not.toHaveBeenCalled();
 });
-it.each([Response.json({error:'SECRET'},{status:429}),Response.json({...fixtures.haiku,stop_reason:'max_tokens'}),Response.json({...fixtures.haiku,content:[{type:'text',text:'bad JSON SECRET'}]})])('does not leak provider failures',async r=>{
-  const extract=createHaikuExtractor({apiKey:'test',fetch:async()=>r});
-  expect(await createLearner({policy,extract}).learn(turn)).toEqual({preferences:[],reason:'unavailable'});
+it.each([0.11,0.5,0.98])('sensitive or uncertain Jev probability %s cannot fall back even with malformed other answers',async probability=>{
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({answers:{sensitive:{type:'noul',noul:probability},key:'bad'}})});
+ const extract=vi.fn();expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('sensitive');expect(extract).not.toHaveBeenCalled();
+});
+it('missing safety decision fails closed, not service fallback',async()=>{
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json({answers:{stable:{type:'noul',noul:1}}})});
+ const extract=vi.fn();await createLearner({policy,classify,extract}).learn(turn);expect(extract).not.toHaveBeenCalled();
+});
+it.each(['none','pref.unknown'])('does not extract for an unselected/unknown key %s',async choice=>{
+ const raw=structuredClone(jev);raw.answers.key.choice=choice;
+ const classify=createJevClassifier({apiKey:'test',fetch:async()=>Response.json(raw)});const extract=vi.fn();
+ expect((await createLearner({policy,classify,extract}).learn(turn)).reason).toBe('not_stable');expect(extract).not.toHaveBeenCalled();
+});
+it('explicit-only still honors the Jev safety gate',async()=>{
+ const classify=vi.fn(async()=>({sensitive:true,stable:true,keys:['pref.color']}));const extract=vi.fn();
+ await createLearner({policy,mode:'explicit-only',classify,extract}).learn(turn);expect(classify).toHaveBeenCalledTimes(1);expect(extract).not.toHaveBeenCalled();
+});
+it('one request per eligible user turn, not per batch or question; other speakers are excluded',async()=>{
+ const mock=mockFetch();const api=createWorkspaceLearner({extract:createExtractor({apiKey:'test',fetch:mock})});const at=turn.occurredAt;
+ const rows=await api.extractFromConversation([{role:'user',text:turn.text,at},{role:'other',text:'I like red.',at},{role:'user',text:turn.text,at}],{conversationId:'conv',channel:'imessage'});
+ expect(rows).toHaveLength(2);expect(mock.mock.calls.filter(([url])=>String(url).includes('/decisions'))).toHaveLength(2);
 });
 it('sensitive and group recordings produce no provider requests',async()=>{
-  const mock=vi.fn() as unknown as typeof fetch;
-  const learner=createLearner({policy,extract:createHaikuExtractor({apiKey:'test',fetch:mock}),classify:createJevClassifier({apiKey:'test',fetch:mock})});
-  await learner.learn({...turn,text:'我有哮喘，最近药费很贵；我喜欢蓝色。'});
-  await learner.learn({...turn,isGroup:true,speaker:'other',text:'我喜欢红色'});
-  expect(mock).not.toHaveBeenCalled();
-});
-it('uses OpenRouter structured Haiku with restricted routing and identical local validation',async()=>{
-  const mock=vi.fn(async()=>Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:fixtures.haiku.content[0].text}}]}));
-  const result=await createLearner({policy,extract:createHaikuExtractor({apiKey:'synthetic-key',provider:'openrouter',fetch:mock})}).learn(turn);
-  expect(result.preferences[0]).toMatchObject({key:'pref.color',value:'黑色',basis:'stated'});
-  const [url,init]=(mock.mock.calls as any)[0];const body=JSON.parse(init.body);
-  expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
-  expect(body.model).toBe(OPENROUTER_HAIKU_MODEL);
-  expect(body.provider).toEqual({only:['amazon-bedrock/us'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true});
-  expect(body.response_format.json_schema.strict).toBe(true);
-  expect(body.messages[1].content).toBe(turn.text);expect(body).not.toHaveProperty('user');
+ const mock=mockFetch();const learner=createLearner({policy,extract:createExtractor({apiKey:'test',fetch:mock})});
+ await learner.learn({...turn,text:'我有哮喘，最近药费很贵；我喜欢蓝色。'});await learner.learn({...turn,isGroup:true,speaker:'other'});expect(mock).not.toHaveBeenCalled();
 });
 it.each([
-  {choices:[{finish_reason:'length',message:{role:'assistant',content:fixtures.haiku.content[0].text}}]},
-  {choices:[{finish_reason:'stop',message:{role:'assistant',content:fixtures.haiku.content[0].text,refusal:'private refusal'}}]},
-  {error:{message:'private provider failure'}},
-])('fails closed on incomplete, refused or unavailable OpenRouter responses',async raw=>{
-  const extract=createHaikuExtractor({apiKey:'synthetic-key',provider:'openrouter',fetch:async()=>Response.json(raw)});
-  expect(await createLearner({policy,extract}).learn(turn)).toEqual({preferences:[],reason:'unavailable'});
+ {choices:[{finish_reason:'length',message:{role:'assistant',content:JSON.stringify(extracted)}}]},
+ {choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(extracted),refusal:'PRIVATE'}}]},
+ completion({...extracted,authorize:true}),completion({...extracted,preferences:[{...preference,evidence:'x'.repeat(201)}]}),
+ {error:{message:'PRIVATE'}},
+])('rejects incomplete, refused and invalid JSON-schema responses',async raw=>{
+ const extract=createExtractor({apiKey:'test',fetch:async()=>Response.json(raw)});
+ await expect(extract({text:turn.text,policy,signal:new AbortController().signal})).rejects.toThrow('LEARNING_MODEL_UNAVAILABLE');
+});
+
+it('forbids stated in the wire schema when the local explicit-statement check fails',async()=>{
+ const mock=mockFetch();const extract=createExtractor({apiKey:'test',fetch:mock});
+ await extract({text:'Black is the color I choose for my clothes.',policy,signal:new AbortController().signal});
+ const body=JSON.parse(String((mock.mock.calls as unknown as [string,RequestInit][])[0][1].body));
+ expect(body.response_format.json_schema.schema.properties.preferences.items.properties.basis.enum).toEqual(['observed','inferred']);
 });

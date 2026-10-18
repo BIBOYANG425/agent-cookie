@@ -11,6 +11,7 @@ import {createApp} from '../../../apps/workspace/src/app.js';
 import {loadConfig} from '../../../apps/workspace/src/config.js';
 import {createDeps} from '../../../apps/workspace/src/deps.js';
 import {createWorkspaceLearner} from '../../learn/src/workspace.js';
+import {createExtractor,createJevClassifier,DEFAULT_EXTRACTION_MODEL,JEV_MODEL} from '../../learn/src/models.js';
 import {WorkspaceClient} from '../src/index.js';
 
 const fixtures=fileURLToPath(new URL('../../../fixtures/',import.meta.url));
@@ -18,8 +19,24 @@ const keys=JSON.parse(await readFile(join(fixtures,'dev-keys.json'),'utf8')) as 
 const keyFor=(agent:string)=>Object.keys(keys).find(k=>keys[k].agentId===agent)!;
 const stated='I always prefer black clothing.';
 const incidental='Black is the color I choose for my clothes.';
-const synthetic=(basis:'stated'|'observed')=>createWorkspaceLearner({
-  extract:async input=>({sensitive:false,stable:true,preferences:[{key:'pref.color',value:'black',evidence:input.text,basis}]}),
+const live=process.argv.includes('--live');
+if(live&&!process.env.OPENROUTER_API_KEY)throw Error('LIVE_ACCEPTANCE_REQUIRES_LOCAL_OPENROUTER_KEY');
+type ModelCall={model:string;status:number;elapsedMs:number;reportedModel?:string;provider?:string;cost?:number;finishReason?:string;stable?:number;sensitive?:number;key?:string};
+let modelCalls:ModelCall[]=[];
+let accessFailed=false;
+const measuredFetch:typeof fetch=async(url,init)=>{
+  if(accessFailed)throw Error('MODEL_ACCESS_STOPPED');
+  const body=JSON.parse(String(init?.body));const start=performance.now();
+  const response=await fetch(url,init);const raw=await response.clone().json().catch(()=>({}));
+  modelCalls.push({model:body.model,status:response.status,elapsedMs:Math.round(performance.now()-start),reportedModel:raw.model,
+    provider:raw.provider,cost:raw.usage?.cost,finishReason:raw.choices?.[0]?.finish_reason,
+    stable:raw.answers?.stable?.noul,sensitive:raw.answers?.sensitive?.noul,key:raw.answers?.key?.choice});
+  if([401,402,403].includes(response.status))accessFailed=true;
+  return response;
+};
+const realExtractor=()=>createExtractor({apiKey:process.env.OPENROUTER_API_KEY!,fetch:measuredFetch});
+const scenarioLearner=(basis:'stated'|'observed')=>createWorkspaceLearner({
+  extract:live?realExtractor():async input=>({sensitive:false,stable:true,preferences:[{key:'pref.color',value:'black',evidence:input.text,basis}]}),
 });
 const noLearning:LearnApi={extract:async()=>[],extractFromConversation:async()=>[]};
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return {promise,resolve};};
@@ -50,16 +67,21 @@ const observe=async(c:WorkspaceClient,id:string,text:string)=>{
   if(!result.queued)throw Error('ISOLATED_OBSERVATION_NOT_QUEUED');
 };
 async function check(name:string,run:()=>Promise<Omit<Result,'name'>>){
-  try{results.push({name,...await run()});}catch{results.push({name,passed:false,observed:{error:'ISOLATED_PROBE_ERROR'}});}
+  modelCalls=[];const start=performance.now();
+  try{if(accessFailed)throw Error('MODEL_ACCESS_STOPPED');results.push({name,...await run()});}
+  catch{results.push({name,passed:false,observed:{error:accessFailed?'MODEL_ACCESS_STOPPED':'ISOLATED_PROBE_ERROR'}});}
+  if(live){const result=results[results.length-1];result.observed={...result.observed,elapsedMs:Math.round(performance.now()-start),
+    modelCalls:[...modelCalls],jevCalls:modelCalls.filter(c=>c.model===JEV_MODEL).length,
+    extractionCalls:modelCalls.filter(c=>c.model!==JEV_MODEL).length};}
 }
 
-await check('explicit_statement_reaches_card',()=>isolated(synthetic('stated'),async h=>{
+await check('explicit_statement_reaches_card',()=>isolated(scenarioLearner('stated'),async h=>{
   await observe(h.client,'explicit-one',stated);await h.advance(301000);await h.flush();
   const row=(await h.client.getLearned()).learned.find(r=>r.field==='pref.color');
   return {passed:row?.status==='card',observed:{status:row?.status??'absent',basis:row?.evidence.map(e=>e.basis)}};
 }));
 
-for(const refresh of [false,true])await check(refresh?'same_agent_two_conversations_after_refresh':'same_agent_two_conversations',()=>isolated(synthetic('observed'),async h=>{
+for(const refresh of [false,true])await check(refresh?'same_agent_two_conversations_after_refresh':'same_agent_two_conversations',()=>isolated(scenarioLearner('observed'),async h=>{
   await observe(h.client,'independent-one',incidental);await h.advance(301000);await h.flush();
   await observe(h.client,'independent-two',incidental);await h.advance(refresh?31*86400000:602000);await h.flush();
   const row=(await h.client.getLearned()).learned.find(r=>r.field==='pref.color');
@@ -68,11 +90,16 @@ for(const refresh of [false,true])await check(refresh?'same_agent_two_conversati
 
 await check('pause_resume_discards_late_result',async()=>{
   const entered=deferred(),release=deferred();
-  const learn=createWorkspaceLearner({extract:async input=>{entered.resolve();await release.promise;
-    return {sensitive:false,stable:true,preferences:[{key:'pref.color',value:'black',evidence:input.text,basis:'stated'}]};}});
+  const actual=live?realExtractor():undefined;
+  const learn=createWorkspaceLearner({
+    ...(live?{classify:createJevClassifier({apiKey:process.env.OPENROUTER_API_KEY!,fetch:measuredFetch}),timeoutMs:30000}:{}),
+    extract:async input=>{
+      const output=actual?await actual(input):{sensitive:false,stable:true,preferences:[{key:'pref.color',value:'black',evidence:input.text,basis:'stated'}]};
+      entered.resolve();await release.promise;return output;
+    }});
   return isolated(learn,async h=>{
     await observe(h.client,'in-flight',stated);await h.advance(301000);const flushing=h.flush();
-    try{await entered.promise;await h.client.setLearning({enabled:false});await h.client.setLearning({enabled:true});}
+    try{await Promise.race([entered.promise,flushing.then(()=>{throw Error('EXTRACTOR_NOT_ENTERED');})]);await h.client.setLearning({enabled:false});await h.client.setLearning({enabled:true});}
     finally{release.resolve();await flushing;}
     const rows=(await h.client.getLearned()).learned;
     return {passed:rows.length===0,observed:{learnedCount:rows.length,paused:(await h.client.getLearning()).paused}};
@@ -106,5 +133,5 @@ const capture=spawnSync('pnpm',['exec','vitest','run','--config',
 });
 const capturePassed=capture.status===0;
 if(!capturePassed)console.error('Capture acceptance failed. Run pnpm --filter @agent-cookie/sdk exec vitest run --config vitest.learning-acceptance.config.ts for its unchanged assertion report.');
-console.log(JSON.stringify({captureAcceptance:{passed:capturePassed,exitCode:capture.status},mode:'isolated-real-A-C-with-synthetic-extractor',liveModels:false,liveChannel:false,results},null,2));
+console.log(JSON.stringify({captureAcceptance:{passed:capturePassed,exitCode:capture.status},mode:live?'isolated-real-A-C-with-live-Jev-and-extractor':'isolated-real-A-C-with-synthetic-extractor',liveModels:live,models:live?{classifier:JEV_MODEL,extractor:process.env.AGENT_COOKIE_LEARN_MODEL??DEFAULT_EXTRACTION_MODEL}:undefined,liveChannel:false,results},null,2));
 if(!capturePassed||results.some(r=>!r.passed))process.exitCode=1;

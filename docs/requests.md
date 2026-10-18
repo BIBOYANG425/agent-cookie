@@ -289,3 +289,9 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B57 → 人/A（18:00任务单 B2）：按要求把Photon capture→SDK→A队列→抽取用例移到SDK显式验收入口，原expect断言逐行不变、没有skip；learning-acceptance.check.ts跑原六项并调用独立Vitest capture，任一失败exit1。原六场景主体逐字未变；隔离实测6/6+capture1/1通过。干净克隆全仓typecheck/test成功（770 passed、原2skip/4todo）和console build通过；不再把旧B49-3当当前失败。当前A/main尚无新的集成修复，保持A→#20→#21人工顺序；不改apps/workspace。详见2026-10-17-b2-b5-verification.md/.json，新HEAD CI以远端结果为准。
 
 - B58 → 人（18:00任务单 B5）：全新clone不含.env/node_modules/sdk或learn dist，根pnpm install --frozen-lockfile通过且锁文件无改；九处B内部依赖声明均workspace:*。未把锁里的正常version:link替换，未加merchant MCP/4311传输。验收证据同B57。
+
+- B59 → A/C/人（新B1/B3，OpenRouter Jev + 开源权重）：#24已人工合main996c079并同步B；真实Jev1.14 Decisions API和gpt-oss120b均HTTP200，完整合成偏好门控→抽取已通过严格JSON/Zod（1557ms）。B默认createExtractor改gpt-oss，可用AGENT_COOKIE_LEARN_MODEL选Qwen/Llama，ZDR+deny+允许ZDR fallback，不钉provider；旧createHaikuExtractor作为A现有import兼容别名，自动带Jev。A的learn-adapter.test.ts仍硬编码allow_fallbacks:false与只调用一次的旧协议，请A更新为新的Decisions+chat两步mock和ZDR fallback断言，B不修改apps/workspace、不弱化断言。
+
+- B60 → A/C/人（模型来源字段）：现ContributionEvidence仅snippet/conversationId/intentId，无模型来源字段。B已提供getExtractorDefaults(extract)的模型/Jev标识并在验收证据记录实际模型，未把模型名塞进用户证据或writer。请A/C约定可持久化的抽取/分类模型provenance字段并在学到的视图展示；B可按正式契约透传。该UI要求尚未完成，不能凭SDK metadata声称控制台已显示。
+
+- B61 → 人/A/C（新B3真实验收）：针对#24后的main996c079，真实Jev1.14+gpt-oss120b六场景首轮4/6，定位为顺口偏好被模型误标stated、现有本地校验拒绝。只收紧wire basis enum（非明确句禁止stated），原5条pass表达式/6场景输入/capture断言不变；复跑6/6+synthetic capture1/1，12个真实请求均200、总$0.000722204，Jev186–231ms、抽取621–932ms。明示上卡、同agent两conversation晋升、暂停代际、原话不落盘、接力历史均通过；证据learning-live.md/.json。尚非手机学习或控制台模型来源验收，A旧协议单测仍需B59修改，UI来源仍需B60。
