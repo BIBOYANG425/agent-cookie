@@ -1,6 +1,8 @@
-import type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
+import type { AcceptResult, ActivityEvent, Card, Grant, IntentRequest, Quote, Receipt } from '@agent-cookie/contract';
+import { forgetBody, forgetResult, type ForgetLearningInput, observationBody, observeResult, learningState, learnedResponse, controlBody, type ObservationInput, type LearningControl } from './learning.js';
+export * from './learning.js';
 export type { AcceptResult, ActivityEvent, Card, Grant, Quote, Receipt } from '@agent-cookie/contract';
-export interface FindInput { kind: 'trail_shoes'; public: Record<string, string> }
+export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
@@ -24,6 +26,8 @@ export interface WorkspaceConfig {
   key: string;
   /** Explicitly label local demo/stub data when the backend omits Sample metadata. */
   sample?: boolean;
+  /** Explicit observation enablement; omit until A's compatible learning service is available. */
+  learning?: boolean;
 }
 
 // These are the GET /me wire fields from plan v0.3, not a second domain model.
@@ -89,18 +93,20 @@ export class WorkspaceClient {
   #config: WorkspaceConfig;
   #fetch: typeof fetch;
   #timeoutMs: number;
+  #learning?: boolean;
 
   constructor(options: WorkspaceConfig & { fetch?: typeof fetch; timeoutMs?: number }) {
     this.#config = workspaceConfigFromEnv({ AGENT_COOKIE_URL: options.baseUrl, AGENT_COOKIE_KEY: options.key,
       AGENT_COOKIE_SAMPLE: options.sample ? '1' : undefined });
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#learning = options.learning === true;
     this.#timeoutMs = options.timeoutMs ?? 25_000;
     if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs < 1 || this.#timeoutMs > 120_000) {
       throw new Error('Workspace timeout must be between 1 and 120000 milliseconds.');
     }
   }
 
-  async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}): Promise<unknown> {
+  async #request(path: string, body?: unknown, idempotencyKey?: string, options: RequestOptions = {}, method?: 'PUT'): Promise<unknown> {
     if (idempotencyKey !== undefined && !/^[\x21-\x7e]{1,200}$/.test(idempotencyKey)) throw new Error('Invalid idempotency key.');
     const cancelled = () => new DOMException('The workspace request was cancelled.', 'AbortError');
     if (options.signal?.aborted) throw cancelled();
@@ -108,7 +114,7 @@ export class WorkspaceClient {
     let payload: unknown;
     try {
       response = await this.#fetch(new URL(path, this.#config.baseUrl), {
-        method: body === undefined ? 'GET' : 'POST',
+        method: method ?? (body === undefined ? 'GET' : 'POST'),
         headers: { Accept: 'application/json', Authorization: `Bearer ${this.#config.key}`,
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
@@ -146,6 +152,25 @@ export class WorkspaceClient {
     return { agentId: payload.agentId as string, category: payload.category as string, role: payload.role as string };
   }
 
+  get learningAvailable(): boolean { return !!this.#learning; }
+  async observe(input:ObservationInput,options?:RequestOptions) {
+    if(!this.#learning)throw new Error('Learning observations are not enabled.');
+    return observeResult(await this.#request('/personal/observations',observationBody(input),undefined,options));
+  }
+  async getLearning(options?:RequestOptions) {
+    return learningState(await this.#request('/personal/learning',undefined,undefined,options));
+  }
+  async getLearned(options?:RequestOptions) {
+    return learnedResponse(await this.#request('/personal/learned',undefined,undefined,options));
+  }
+  async setLearning(input:LearningControl,options?:RequestOptions) {
+    return learningState(await this.#request('/personal/learning',controlBody(input),undefined,options,'PUT'));
+  }
+
+  async forgetLearning(input:ForgetLearningInput,options?:RequestOptions) {
+    return forgetResult(await this.#request('/personal/learning/forget',forgetBody(input),undefined,options));
+  }
+
   async getMyCard(options?: RequestOptions): Promise<unknown> {
     const payload = await this.#request('/personal/card', undefined, undefined, options);
     if (!isObject(payload) || !Array.isArray(payload.card) || !Array.isArray(payload.candidates)) {
@@ -156,9 +181,16 @@ export class WorkspaceClient {
   }
 
   async createIntent(input: FindInput, idempotencyKey: string, options?: RequestOptions): Promise<{ intentId: string; sample: boolean }> {
-    if (input.kind !== 'trail_shoes' || !isObject(input.public) || Object.entries(input.public).some(([k,v]) =>
-      !['budget', 'deadline'].includes(k) || typeof v !== 'string' || v.length > 100)) throw new Error('Invalid shopping intent.');
-    const payload = await this.#request('/personal/intents', input, idempotencyKey, options);
+    // Match A's HTTP byte limits. Do not normalize the user's sentence or invent optional conditions.
+    const text = (v: unknown, max: number) => typeof v === 'string' && !!v.trim() && new TextEncoder().encode(v).length <= max;
+    if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
+      || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
+        || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
+          || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))) throw new Error('Invalid shopping intent.');
+    // Explicit wire shape: arbitrary runtime properties are not identity/authority, nor a legacy kind fallback.
+    const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
+      ...(input.public !== undefined ? { public: input.public } : {}) };
+    const payload = await this.#request('/personal/intents', body, idempotencyKey, options);
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
     return { intentId: payload.intentId, sample: payload.sample === true };
   }
@@ -168,7 +200,8 @@ export class WorkspaceClient {
     if (!isObject(payload) || !Array.isArray(payload.quotes) || !payload.quotes.every(q => isObject(q)
       && ['id','intentId','agentId','text'].every(k => typeof q[k] === 'string' && q[k])
       && q.intentId === intentId && Number.isSafeInteger(q.price) && Number(q.price) >= 0 && q.currency === 'USD'
-      && (q.etaDate == null || typeof q.etaDate === 'string'))) throw new Error('Invalid quote response.');
+      && (q.etaDate == null || typeof q.etaDate === 'string')
+      && (q.sizeNote === undefined || typeof q.sizeNote === 'string'))) throw new Error('Invalid quote response.');
     return { quotes: payload.quotes as Quote[], sample: payload.sample === true };
   }
 

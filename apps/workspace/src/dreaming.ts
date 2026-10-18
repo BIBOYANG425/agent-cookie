@@ -74,11 +74,12 @@ export class Dreaming {
     }
 
     await step("learn", async () => {
-      stats.learned = (await this.learning.flushDue(Date.parse(now))).learned;
+      stats.learned = (await this.learning.flushDueStats(Date.parse(now))).learned;
       return "ok";
     });
 
-    await step("regenerate", async () => {
+    await step("regenerate", () => this.card.mutate(async () => {
+      if (this.ctx.store.pendingForgets(userId).length) return { skipped: "forget projection pending" };
       const card = this.card.compute(userId, now);
       if (before) stats.promoted = [...entries(card)].filter((e) => !before!.has(e)).length;
       decayedFields = card.decayed ?? this.decayedFallback(userId, card, now);
@@ -86,9 +87,10 @@ export class Dreaming {
       this.ctx.store.saveCard(userId, card, now);
       await this.ctx.repo().regenerateCard(opts(), writeMeta(this.ctx, DREAMING_AUTHOR, { dreaming: now, step: "regenerate" }));
       return "ok";
-    });
+    }));
 
-    await step("compact", async () => {
+    await step("compact", () => this.card.mutate(async () => {
+      if (this.ctx.store.pendingForgets(userId).length) return { skipped: "forget projection pending" };
       const repo = this.ctx.repo();
       if (!repo.compact) return { skipped: "memory repo has no compact yet" };
       const r = await repo.compact({ ...opts(), keepSuperseded: DREAMING_KEEP_SUPERSEDED },
@@ -96,7 +98,7 @@ export class Dreaming {
       stats.archived = r.archived;
       if (r.archivedIds.length > 0) this.ctx.store.markArchived(r.archivedIds, now);
       return "ok";
-    });
+    }));
 
     await step("log", async () => {
       const failed = steps.filter((s) => s.result === "failed").map((s) => s.step);

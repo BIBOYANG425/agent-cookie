@@ -23,6 +23,8 @@ async function main() {
     if (result.status === 'timeout') process.exitCode = 1;
   } else if (mode === 'serve' && args.length === 1) {
     const { serve } = await import('./runtime.js'); await serve(process.env);
+  } else if (mode === 'serve-spectrum' && args.length === 1) {
+    const { serveSpectrum } = await import('./spectrum-runtime.js'); await serveSpectrum(process.env);
   } else {
     throw new Error('Unknown command.');
   }

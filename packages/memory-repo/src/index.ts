@@ -33,7 +33,9 @@ interface StorageRules<C, K, M> {
   mergeCard(contributions: readonly C[], merge: M): K;
   renderCard(card: K, meta: Parameters<RulesApi['renderCard']>[1]): string;
 }
-type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard' | 'revokeContribution'> & IntentHistoryApi & ContributionRevocationApi & {
+type Repository<C, K, M> = Omit<MemoryRepo, 'appendIntent' | 'appendContribution' | 'listContributions' | 'regenerateCard' | 'revokeContribution' | 'forgetContributions' | 'revokeContributions'> & IntentHistoryApi & ContributionRevocationApi & {
+  forgetContributions(ids: string[], merge: M, meta: WriteMeta): Promise<CommitRef>;
+  revokeContributions(ids: readonly string[], revokedAt: string, merge: M, meta: WriteMeta): Promise<{card: K; commit: CommitRef}>;
   appendContribution(c: C, meta: WriteMeta): Promise<CommitRef>;
   listContributions(): Promise<C[]>;
   regenerateCard(merge: M, meta: WriteMeta): Promise<{ card: K; commit: CommitRef }>;
@@ -148,6 +150,72 @@ async function openRepository<C extends LearningContribution, K, M extends Merge
           if (changed) updates.set(path, updated);
         }
         return updates.size ? commitFiles(root, updates, meta, 'Revoke contribution') : { sha: '' };
+      });
+    },
+    revokeContributions(ids, revokedAt, merge, meta) {
+      return perform(async () => {
+        metadata(meta); timestamp(revokedAt); timestamp(merge.now);
+        if (!Array.isArray(ids) || ids.length > 10000) throw new WorkspaceError('MISSING_FIELD');
+        ids.forEach(id => text(id));
+        const selected = new Set(ids);
+        const all = await list();
+        const next = all.map(row => {
+          if (!selected.has(row.id) || row.revokedAt) return row;
+          const copy = { ...row, revokedAt };
+          if (typeof copy.evidence === 'object' && copy.evidence) {
+            copy.evidence = { ...copy.evidence }; delete copy.evidence.snippet;
+          } else if (typeof copy.evidence === 'string') delete copy.evidence;
+          return copy;
+        });
+        const card = rules.mergeCard(next, merge);
+        if (!all.some(row => selected.has(row.id) && !row.revokedAt)) return { card, commit: { sha: '' } };
+        const byId = new Map(next.map(row => [row.id, row]));
+        const updates = new Map<string, string>();
+        for (const name of await recordFiles(root, 'contributions')) {
+          const path = `contributions/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const updated = content.split('\n').map(line => {
+            const row = rules.parseContributions(line, { userId, agentId: ownerFromFilename(name) })[0];
+            return row && selected.has(row.id) && !row.revokedAt ? rules.renderContribution(byId.get(row.id)!) : line;
+          }).join('\n');
+          if (updated !== content) updates.set(path, updated);
+        }
+        updates.set('CARD.md', rules.renderCard(card, { userId, generatedAt: meta.at }));
+        return { card, commit: await commitFiles(root, updates, meta, 'Revoke source contributions') };
+      });
+    },
+    forgetContributions(ids, merge, meta) {
+      return perform(async () => {
+        metadata(meta); timestamp(merge.now);
+        if (!Array.isArray(ids) || ids.length > 10000 || !Array.isArray(merge.personalAgentIds)) throw new WorkspaceError('MISSING_FIELD');
+        ids.forEach(id => text(id));
+        const selected = new Set(ids);
+        const remaining = (await list()).filter(row => !selected.has(row.id));
+        const updates = new Map<string, string>();
+        for (const name of await recordFiles(root, 'contributions')) {
+          const path = `contributions/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const cleaned = content.split('\n').filter(line => {
+            const row = rules.parseContributions(line, { userId, agentId: ownerFromFilename(name) })[0];
+            return !row || !selected.has(row.id);
+          }).join('\n');
+          if (cleaned !== content) updates.set(path, cleaned);
+        }
+        // Older preview histories could embed extracted preferences. Remove their current copies too.
+        for (const name of await recordFiles(root, 'intents')) {
+          const path = `intents/${name}`;
+          const content = await readFile(join(root, path), 'utf8');
+          const cleaned = content.split('\n').map(line => {
+            const record = parseIntent(line, userId, name);
+            if (!record || !record.extracted.some(row => selected.has(row.id))) return line;
+            record.extracted = record.extracted.filter(row => !selected.has(row.id));
+            return renderIntent(record);
+          }).join('\n');
+          if (cleaned !== content) updates.set(path, cleaned);
+        }
+        const card = rules.renderCard(rules.mergeCard(remaining, merge), { userId, generatedAt: meta.at });
+        if (card !== await readFile(join(root, 'CARD.md'), 'utf8')) updates.set('CARD.md', card);
+        return updates.size ? commitFiles(root, updates, meta, 'Forget current preference') : { sha: '' };
       });
     },
     listContributions() { return perform(list); },

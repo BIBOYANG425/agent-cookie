@@ -1,0 +1,82 @@
+{
+  "captureAcceptance": {
+    "passed": true,
+    "exitCode": 0
+  },
+  "mode": "isolated-real-A-C-with-synthetic-extractor",
+  "liveModels": false,
+  "liveChannel": false,
+  "results": [
+    {
+      "name": "explicit_statement_reaches_card",
+      "passed": true,
+      "observed": {
+        "status": "card",
+        "basis": [
+          "stated"
+        ]
+      }
+    },
+    {
+      "name": "same_agent_two_conversations",
+      "passed": true,
+      "observed": {
+        "status": "card",
+        "evidenceCount": 2,
+        "writerCount": 1
+      }
+    },
+    {
+      "name": "same_agent_two_conversations_after_refresh",
+      "passed": true,
+      "observed": {
+        "status": "card",
+        "evidenceCount": 2,
+        "writerCount": 1
+      }
+    },
+    {
+      "name": "pause_resume_discards_late_result",
+      "passed": true,
+      "observed": {
+        "learnedCount": 0,
+        "paused": false
+      }
+    },
+    {
+      "name": "queued_original_never_reaches_disk",
+      "passed": true,
+      "observed": {
+        "rawCanaryOnDisk": false
+      }
+    },
+    {
+      "name": "cross_agent_fixture_accept_preserves_history",
+      "passed": true,
+      "observed": {
+        "acceptStatus": "handoff",
+        "memoryWriteFailures": 0
+      }
+    }
+  ],
+  "baseCommit": "75123ac39005174105e681ead6b5b0c417f5ff12",
+  "sixScenarioBodySha256": "b3c2c2fa30c8a595bdf90b155a91f75d0a2546c180e9b369c876ac691c38d0a0",
+  "captureAssertionsUnchanged": true,
+  "cleanClone": {
+    "sdkDistInitiallyAbsent": true,
+    "learnDistInitiallyAbsent": true,
+    "credentialsCopied": false,
+    "frozenRootInstall": "passed",
+    "rootLockUnchanged": true,
+    "typecheck": "passed",
+    "tests": {
+      "passed": 770,
+      "skipped": 2,
+      "todo": 4
+    },
+    "consoleBuild": "passed"
+  },
+  "internalManifests": "workspace:*",
+  "liveModelCalls": 0,
+  "liveChannelChanges": false
+}

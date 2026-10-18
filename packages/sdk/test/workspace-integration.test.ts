@@ -10,7 +10,7 @@ import { createDeps, type Deps } from '../../../apps/workspace/src/deps.js';
 import { WorkspaceClient } from '../src/index.js';
 
 const cleanups: Array<{deps: Deps; temp: string}>=[];
-afterEach(async()=>{for(const {deps,temp} of cleanups.splice(0)){await deps.delivery.settle();deps.close();rmSync(temp,{recursive:true,force:true});}});
+afterEach(async()=>{for(const {deps,temp} of cleanups.splice(0)){await deps.delivery.settle();await deps.close();rmSync(temp,{recursive:true,force:true});}});
 
 async function setup(fixturesDir: string) {
   const temp=mkdtempSync(join(tmpdir(),'agent-cookie-sdk-'));
@@ -35,7 +35,7 @@ it('connects both personal agents to A SQLite with C seed, preserving pairwise i
     expect.objectContaining({field:'lang',value:'zh'}),expect.objectContaining({field:'shoe_size',value:'42'}),
   ])});
   expect(await desktop.getMyCard()).toEqual(card);
-  const input={kind:'trail_shoes' as const,public:{budget:'120',deadline:'周五前到'}};
+  const input={text:'trail shoes',public:{budget:'120',deadline:'周五前到'}};
   const first=await photon.find(input,'integration:photon');
   expect(first.sample).toBe(true);expect(first.quotes).toHaveLength(2);
   expect(first.quotes.map(q=>q.price).sort((a,b)=>a-b)).toEqual([10995,11200]);
@@ -62,7 +62,7 @@ it('hands off without address disclosure after the seeded address contribution i
   const root=fileURLToPath(new URL('../../../fixtures/',import.meta.url));
   const {personals:[client],owner}=await setup(root);
   await owner.revokeContribution('seed-shipping-address-01');
-  const found=await client.find({kind:'trail_shoes',public:{budget:'120'}},'receipt:find');
+  const found=await client.find({text:'trail shoes',public:{budget:'120'}},'receipt:find');
   expect(await client.accept(found.quotes[1].id,'receipt:accept')).toMatchObject({status:'handoff',sample:true});
   expect((await client.getReceipts()).receipts.filter(r=>r.purpose==='checkout')).toHaveLength(0);
 });
@@ -71,7 +71,7 @@ it('revokes a grant and a known source, and permits only the owner to reset isol
   const root=fileURLToPath(new URL('../../../fixtures/',import.meta.url));
   const {personals:[client],owner}=await setup(root);
   const original=await owner.getMyCard();
-  await client.find({kind:'trail_shoes',public:{budget:'120'}},'console:find');
+  await client.find({text:'trail shoes',public:{budget:'120'}},'console:find');
   const before=await owner.getGrants();
   expect(before.grants.length).toBeGreaterThan(0);
   const target=before.grants[0];

@@ -1,5 +1,5 @@
 // Learning metadata matches main; preview aliases remain readable for existing memory files.
-// TODO(contract): add B49 evidenceSources to CardField/Candidate; keep the extension local until agreed.
+// evidenceSources is the canonical ID list, matching the shared B49 contract.
 import { isField, PREF_KEYS, PREF_FIELDS, type Card, type CardField, type Candidate, type Contribution, type ContributionEvidence, type Field, type MergeOptions, type PrefField, type RulesApi } from '@agent-cookie/contract';
 
 export const LEARNING_PREF_KEYS = PREF_KEYS;

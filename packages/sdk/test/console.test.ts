@@ -92,7 +92,7 @@ describe('caller cancellation', () => {
       return Response.json({ intentId: 'i' });
     });
     const client = new WorkspaceClient({ ...config, fetch: fetcher });
-    await expect(client.find({ kind: 'trail_shoes', public: {} }, 'cancel-find', { signal: abort.signal }))
+    await expect(client.find({ text: 'trail shoes', public: {} }, 'cancel-find', { signal: abort.signal }))
       .rejects.toMatchObject({ name: 'AbortError' });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });

@@ -1,31 +1,33 @@
-# A10 真实客户端（手动） · P0
+# A10 — real Claude Desktop / SQLite evidence index
 
-状态：**未执行；证据待采集。** 本文是操作模板，不是运行结果。
+**Passed on the recorded 2026-10-17 15:06 PDT baseline, commit `1352eff`.** This replaces the stale “not executed” template with the already captured evidence. It is not a new Desktop run on the current Dreaming build and is not live-model learning acceptance. No user was asked to repeat the successful calls.
 
-通过标准：Claude Desktop 通过 MCP 完成一次 `find_agents`，工作台活动日志有对应记录，导出保存在本目录。
-
-## 执行前
-
-- 记录日期、执行人、仓库提交、Node 版本、Claude Desktop 版本、MCP 配置来源与工作台版本。
-- 使用真实 Claude Desktop 客户端和 B 线的 MCP stdio server，配置工作台 URL 和个人 agent 钥匙；证据里不保留钥匙值。
-- 记录 UCP 是 live 还是 `AGENT_COOKIE_UCP=fixture`；fixture 模式不能描述成实时商家结果。
-
-## 执行与取证
-
-1. 在 Claude Desktop 发起一次能触发 `find_agents` 的请求。
-2. 录下工具名、真实调用、返回结果或错误。仅配置成功或只调 `get_my_card` 不能算本项通过。
-3. 从 `GET /owner/activity` 导出同一时间窗口的工作台事件；日志不得含字段值。
-4. 通过时间、事件与对象核对 MCP 调用和工作台活动记录，不用模拟客户端替代。
-
-## 执行记录（待填写）
-
-| 内容 | 记录 |
+| Item | Verified record |
 | --- | --- |
-| 日期 / 执行人 | 待填写 |
-| 仓库提交 / 组件版本 | 待填写 |
-| UCP 模式 | 待填写 |
-| 客户端录屏或截图路径 | 待采集 |
-| 活动日志导出路径 | 待采集 |
-| 对应事件与时间 | 待填写 |
-| 结果与判定理由 | 未执行 |
-| 失败 / 阻塞 / 限制 | 待填写 |
+| Client | Real Claude Desktop, local MCP stdio; user confirmed visible results |
+| Trusted identity | `sample-personal-desktop`; credentials omitted |
+| Backend | Same-machine 127.0.0.1:4310, SQLite + real rules + real Git memory-repo |
+| UCP | `fixture`, Sample labels retained; not real-time inventory |
+| `get_my_card` | 15:06:11 PDT, corresponding card HTTP 200 |
+| `find_agents` | 15:06:13 PDT, corresponding intent 201 and quotes 200 |
+| `list_receipts` | 15:09:31 PDT, corresponding receipts 200 |
+| Provenance | [Protocol/backend JSON](2026-10-17-postmerge-b-verification.json) and [verification narrative](2026-10-17-postmerge-b-verification.md) |
+| Version limits | Original evidence does not record an exact Desktop release or Node version; do not infer them from current installation |
+
+![Real Desktop card and first quote](2026-10-17-claude-real-adapters-card-quotes.jpg)
+
+The screenshot contains the Sample card, `find_agents` heading and the first $109.95 quote. The second $112.00 quote was below its viewport and was verified through native accessibility state and backend readback, not through this screenshot. Both returned `source=fixture`, `etaDate=null`. Card values are Sample data; address values are not shown.
+
+![Real Desktop receipt result](2026-10-17-claude-real-adapters-result.jpg)
+
+## Beat 6: same store, same session
+
+The Desktop lookup above and the iMessage checkout at 14:49:54 PDT refer to the same Black Flag merchant. Full session IDs were compared internally; matching SHA-256 fingerprints are recorded in the JSON. The actual console screenshots display the same short session `jrrg7b6g`:
+
+![Desktop-created grant in the console](2026-10-17-postmerge-same-session.jpg)
+
+![Earlier phone checkout in the console](2026-10-17-postmerge-phone-session.jpg)
+
+These two screenshots are console evidence, not a merchant chat. This indexing pass verified all four image hashes against the recorded JSON and visually rechecked the card and grant images. The receipt itself remains an earlier handoff; Desktop did not make a new accept or payment.
+
+**Still not passed:** merchant model reads its own note and produces a real returning-customer opening. At current B `20712a4`, `commerce.ts` writes `last_order` for both ordered and handoff results, but the find path has no corresponding merchant note-read/model opening. Handoff does not establish a purchased order. A should distinguish `last_handoff` from a completed `last_order` and supply the trusted same-merchant/session reading path; B must not simulate that greeting or combine ACME with Black Flag. See B56 and earlier B38/B40.

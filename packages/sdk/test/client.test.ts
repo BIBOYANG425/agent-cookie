@@ -144,7 +144,7 @@ it('labels demo data explicitly even when the SQLite backend has no sample prope
     .mockResolvedValueOnce(Response.json({receipts:[]}));
   const client=new WorkspaceClient({...configFromEnv,fetch:fetcher});
   expect(await client.getMyCard()).toMatchObject({sample:true});
-  expect(await client.find({kind:'trail_shoes',public:{}},'find')).toMatchObject({sample:true});
+  expect(await client.find({text:'trail shoes',public:{}},'find')).toMatchObject({sample:true});
   expect(await client.accept('q','accept')).toMatchObject({status:'handoff',sample:true});
   expect(await client.getReceipts()).toMatchObject({sample:true});
 });

@@ -23,7 +23,7 @@ export interface IntentHistoryApi {
 }
 
 /** TODO(contract): additive C selector; the shared API currently accepts only a record ID. */
-export type ContributionRevocationTarget = string | { evidence: Pick<ContributionEvidence, 'intentId' | 'conversationId'> };
+export type ContributionRevocationTarget = import('@agent-cookie/contract').ContributionRevocationTarget;
 export interface ContributionRevocationApi {
   revokeContribution(target: ContributionRevocationTarget, revokedAt: string, meta: WriteMeta): Promise<CommitRef>;
 }

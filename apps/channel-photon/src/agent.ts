@@ -1,21 +1,23 @@
 import { createHash } from 'node:crypto';
-import type { WorkspaceClient, FindInput, FindResult } from '@agent-cookie/sdk';
+import type { WorkspaceClient, FindResult } from '@agent-cookie/sdk';
+import { shoppingInput } from './intent.js';
 
 export type AgentWorkspace = Pick<WorkspaceClient, 'getMyCard' | 'find' | 'accept' | 'getReceipts'>;
 export interface Conversation { offers?: FindResult }
 export const operationKey = (kind: string, id: string) => `photon:${kind}:${createHash('sha256').update(id).digest('hex')}`;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const help = '我可以读取你的身份卡、找越野跑鞋、查看读取回执。试试「帮我找双越野跑鞋，120以内」，再回复「要第二双」。';
+const help = '我可以读取你的身份卡、按你的需求搜索商品、查看读取回执。试试「帮我找件黑色外套，M码，150美元以内」，看到报价后回复「选1」或「选2」。';
 
 /** Deliberately bounded demo parser. It is not an LLM, and never invents identity or authority. */
 export async function respond(text: string, messageId: string, conversation: Conversation, workspace: AgentWorkspace): Promise<string> {
   const input = text.trim();
-  const selection = /^(?:要|选|选择|我要)?\s*(?:第)?\s*([12一二两])\s*(?:双|个|款)?[。！!]?$/u.exec(input)
-    ?? /^(?:choose|select|take)\s+([12])$/i.exec(input);
+  const selection = /^(?:要|选|选择|我要)?\s*(?:第)?\s*([1-9一二两三四五])\s*(?:双|个|款|件)?[。！!]?$/u.exec(input)
+    ?? /^(?:choose|select|take)\s+([1-9])$/i.exec(input);
   if (selection) {
-    const index = ['1','一'].includes(selection[1]) ? 0 : 1;
+    const number = ({一:1,二:2,两:2,三:3,四:4,五:5} as Record<string,number>)[selection[1]] ?? Number(selection[1]);
+    const index = number - 1;
     const quote = conversation.offers?.quotes[index];
-    if (!quote) return '请先让我找鞋，看到报价后再选择。';
+    if (!quote) return '请先搜索商品，再按已显示的报价编号选择。';
     const result = await workspace.accept(quote.id, operationKey('accept', quote.id));
     // AcceptResult has no source field yet; retain the selected quote's provenance.
     const sample = result.sample || conversation.offers?.sample || quote.source === 'sample' || quote.source === 'fixture';
@@ -34,26 +36,28 @@ export async function respond(text: string, messageId: string, conversation: Con
     const result = await workspace.getReceipts();
     return `${result.sample ? '[Sample 演示] ' : ''}最近的字段读取：\n${result.receipts.slice(-5).map(r => `${r.agentId} · ${r.fields.join(', ')} · ${r.purpose}`).join('\n') || '暂无读取回执。'}`;
   }
-  if (/(?:找|买|推荐|search|find|buy)/i.test(input) && /(?:越野|跑鞋|trail|running shoes)/i.test(input)) {
-    const budget = /(?:预算\s*[：:]?\s*|\$|under\s+|budget\s+)(\d+(?:\.\d{1,2})?)/i.exec(input)?.[1]
-      ?? /(\d+(?:\.\d{1,2})?)\s*(?:美元|美金|刀)?\s*(?:以内|以下)/.exec(input)?.[1];
-    const deadline = input.match(/(?:周|星期)[一二三四五六日天]前(?:到)?/)?.[0];
-    const intent: FindInput = { kind:'trail_shoes', public:{...(budget ? {budget} : {}), ...(deadline ? {deadline} : {})} };
+  if (!input || /^(?:帮助|你好|谢谢|help|hello|hi|thanks|ping)[!！。.]?$/i.test(input)
+    || /^(?:accept|checkout|pay)\s+(?:quoteId|userId|agentId|purpose)=/i.test(input)) return help;
+  {
+    const intent = shoppingInput(text);
+    const deadline = intent.public?.deadline;
     // Drop stale options before a new search so failure cannot select yesterday's offer.
     delete conversation.offers;
     const found = await workspace.find(intent, operationKey('find',messageId));
     conversation.offers = { ...found, quotes: found.quotes.slice(0,2) };
-    const lines = conversation.offers.quotes.map((q,i) => `${i+1}. ${q.title ?? q.text} — $${(q.price/100).toFixed(2)} USD\n${q.etaDate ? `商家提供的到货日期：${q.etaDate}` : '到货时间未知'}${q.etaText ? `；${q.etaText}` : ''}`);
-    const selectionHint = lines.length > 1 ? '\n\n回复「要第一双」或「要第二双」。' : lines.length === 1 ? '\n\n回复「要第一双」。' : '';
-    return `${found.sample ? '[Sample 演示报价，非真实库存]\n' : ''}${lines.join('\n\n') || '没有找到符合条件的报价。'}${selectionHint}${deadline ? '\n目前不能保证你要求的到货时间。' : ''}`;
+    const lines = conversation.offers.quotes.map((q,i) => `${i+1}. ${q.title ?? q.text} — $${(q.price/100).toFixed(2)} USD\n${q.etaDate ? `商家提供的到货日期：${q.etaDate}` : '到货时间未知'}${q.etaText ? `；${q.etaText}` : ''}${q.sizeNote ? `\n${q.sizeNote}` : ''}`);
+    const selectionHint = lines.length > 1 ? '\n\n回复「选1」或「选2」。' : lines.length === 1 ? '\n\n回复「选1」。' : '';
+    const sourceHint = found.quotes.some(q => q.source === 'fixture')
+      ? '[Sample 录制报价，非实时搜索；录制内容可能不对应本次需求]\n'
+      : found.sample ? '[Sample 演示报价，非真实库存]\n' : '';
+    return `${sourceHint}${lines.join('\n\n') || '没有找到符合条件的报价。'}${selectionHint}${deadline ? '\n目前不能保证你要求的到货时间。' : ''}`;
   }
-  return help;
 }
 
 export function publicFailure(error: unknown): string {
   const code = object(error) && typeof error.code === 'string' ? error.code : '';
-  if (['GRANT_EXPIRED','GRANT_REVOKED','NOT_FOUND'].includes(code)) return '这次报价已失效或权限已撤销，请重新找鞋。';
+  if (['GRANT_EXPIRED','GRANT_REVOKED','NOT_FOUND'].includes(code)) return '这次报价已失效或权限已撤销，请重新搜索商品。';
   if (code === 'MISSING_FIELD') return '缺少必要资料或输入不完整，暂时无法继续。';
-  if (code === 'IDEMPOTENCY_CONFLICT') return '本次选择与之前的操作冲突，请重新找鞋后选择。';
+  if (code === 'IDEMPOTENCY_CONFLICT') return '本次选择与之前的操作冲突，请重新搜索后选择。';
   return '后台暂时无法完成请求；未确认新的订单或付款。请稍后查看回执再重试。';
 }

@@ -51,6 +51,11 @@ export class InMemoryRepo implements MemoryRepo {
     this.card = this.rules.mergeCard(this.contributions, merge);
     return { card: structuredClone(this.card), commit: this.commit(`revoke ${hit.length} + regenerate CARD.md`, meta) };
   }
+  async forgetContributions(ids: string[], merge: MergeOptions, meta: WriteMeta): Promise<CommitRef> {
+    this.contributions = this.contributions.filter(c => !ids.includes(c.id));
+    this.card = this.rules.mergeCard(this.contributions, merge);
+    return this.commit('forget current preference', meta);
+  }
   async regenerateCard(merge: MergeOptions, meta: WriteMeta): Promise<{ card: Card; commit: CommitRef }> {
     this.card = this.rules.mergeCard(this.contributions, merge);
     return { card: structuredClone(this.card), commit: this.commit("regenerate CARD.md", meta) };

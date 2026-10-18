@@ -117,10 +117,10 @@ export interface CardField {
   lastSupportedAt: string;
   changedRecently: boolean;
   /**
-   * Learned values (B49, lane C fills it): how many independent sources RulesApi.mergeCard counted for this value —
+   * Learned values (B49, lane C fills it): canonical independent sources RulesApi.mergeCard counted for this value —
    * distinct conversations / intents from evidence, not writers. `sources` stays the writers' agentIds.
    */
-  evidenceSources?: number;
+  evidenceSources?: string[];
 }
 
 export interface Candidate {
@@ -129,7 +129,7 @@ export interface Candidate {
   sources: string[];
   reason: "single_source" | "inferred";
   /** As CardField.evidenceSources: independent conversations / intents behind this value (lane C fills it). */
-  evidenceSources?: number;
+  evidenceSources?: string[];
 }
 
 export interface Session {
@@ -302,6 +302,7 @@ export interface IntentHistoryEntry {
 
 /** What MemoryRepo.appendIntent writes: the user's own request history, in the user's own repo. */
 export interface IntentRecord {
+  evidence?: Pick<ContributionEvidence, "intentId">;
   id: string;
   userId: string;
   agentId: string;
@@ -560,3 +561,14 @@ export const NOTE_TTL_DAYS = 365;
 export const CARD_DECAY_MEDIUM_DAYS = 180;
 export const CARD_DROP_DAYS = 365;
 export const QUOTE_POLL_MAX_MS = 20_000;
+
+export interface ForgetLearningInput { field: PrefField }
+export interface ForgetLearningResult {
+  field: PrefField;
+  paused: true;
+  removed: number;
+  projection: "complete" | "pending";
+  historyErased: false;
+}
+
+export type ContributionRevocationTarget = string | { evidence: { intentId?: string; conversationId?: string } };
