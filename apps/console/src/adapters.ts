@@ -32,7 +32,7 @@ export function createSampleAdapter(now: () => number = Date.now,
   let serial = 0;
   const addEvent = (event: string, object: string, reason: string) => events.push({
     id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), event,
-    actor: 'Sample · 本地控制台', object, result: 'Sample · 本地完成', reason,
+    actor: 'Sample · local console', object, result: 'Sample · completed locally', reason,
   });
   const seed = () => {
     contributions = structuredClone(initialContributions);
@@ -51,12 +51,12 @@ export function createSampleAdapter(now: () => number = Date.now,
     // One pending Sample consent link; approving or declining it changes only this page (no session, no grant).
     links = [sampleLink(now())];
     events = samplePaymentEvents(now(), () => `sample-event-${++serial}`);
-    addEvent('Sample 已载入', 'sample-user', '仅本页内存中的演示状态，未连接工作台。');
+    addEvent('Sample loaded', 'sample-user', 'An in-memory preview. No workspace is connected.');
     for (const need of presentation.needs ?? []) {
       const grant = grants.find((row) => row.agentId === need.agentId);
       if (grant) grant.handshake = { unavailable: [...need.unavailable] };
       events.push({ id: `sample-event-${++serial}`, at: new Date(now()).toISOString(), kind: 'needs_declared',
-        event: 'Sample · 商家申请', actor: need.agentId, object: need.object, result: 'Sample', reason: '预设的可选契约投影，不代表真实申请或放行。' });
+        event: 'Sample · merchant request', actor: need.agentId, object: need.object, result: 'Sample', reason: 'Scripted preview, not an actual request or release.' });
     }
   };
   seed();
@@ -94,7 +94,7 @@ export function createSampleAdapter(now: () => number = Date.now,
     async revokeContribution(id) {
       const record = contributions.find((row) => row.id === id);
       const learnedRecord = learned.find((row) => row.evidence.some((evidence) => evidence.contributionId === id));
-      if (!record && !learnedRecord) throw new Error('Sample 记录不存在');
+      if (!record && !learnedRecord) throw new Error('Sample record not found');
       if (record) record.revokedAt = new Date(now()).toISOString();
       if (learnedRecord) {
         learnedRecord.evidence = learnedRecord.evidence.filter((evidence) => evidence.contributionId !== id);
@@ -103,39 +103,39 @@ export function createSampleAdapter(now: () => number = Date.now,
         if (learnedRecord.evidence.length === 0) learned = learned.filter((entry) => entry !== learnedRecord);
         else if (countEvidenceSources(learnedRecord.evidence) < 2) learnedRecord.status = 'candidate';
       }
-      addEvent('撤销来源记录', id, 'Sample 来源已撤销；仅更新本页演示身份卡。');
+      addEvent('Remove source', id, 'Sample source removed from this local preview only.');
     },
     async revokeGrant(id) {
       const grant = grants.find((row) => row.id === id);
-      if (!grant) throw new Error('Sample 授权不存在');
+      if (!grant) throw new Error('Sample permission not found');
       grant.revokedAt = new Date(now()).toISOString();
-      addEvent('撤销授权', id, 'Sample 授权已撤销；未向真实商家或工作台发送请求。');
+      addEvent('Revoke access', id, 'Sample permission revoked locally. No request was sent to a merchant or workspace.');
     },
     async setLearning(paused) {
       learningPaused = paused;
-      addEvent(paused ? '暂停学习' : '恢复学习', 'sample-learning', '仅更改 Sample 开关；未调用提取器或工作台。');
+      addEvent(paused ? 'Pause learning' : 'Resume learning', 'sample-learning', 'Only the preview setting changed. No model or workspace was called.');
     },
     async selectLearningStage(id) {
       const next = initialLearning.stages?.find((row) => row.id === id);
-      if (!next) throw new Error('Sample 阶段不存在');
+      if (!next) throw new Error('Sample stage not found');
       stageId = id;
       learned = structuredClone(next.learned);
-      addEvent('切换 Sample 学习阶段', id, '加载已编写的演示记录，不代表真实提取或购物结果。');
+      addEvent('Change sample stage', id, 'Loads scripted records, not actual extraction or shopping results.');
     },
     async decideLink(id, decision) {
       const index = links.findIndex((row) => row.id === id);
-      if (index === -1) throw new Error('Sample 连接请求不存在');
+      if (index === -1) throw new Error('Sample connection request not found');
       if (linkNow(links[index]).status !== 'pending') throw new LinkNotPendingError();
       links[index] = { ...links[index], status: decisionStatus[decision], decidedAt: new Date(now()).toISOString(),
         ...(decision === 'approve' ? { sessionId: 'sample-session-assistant' } : {}) };
       addEvent(decisionLabels[decision], id, decision === 'approve'
-        ? 'Sample 连接请求已批准；仅更新本页，没有创建真实会话或授权，也未请求工作台。'
-        : 'Sample 连接请求已拒绝；仅更新本页，未请求工作台。');
+        ? 'Sample connection approved locally. No real session or permission was created.'
+        : 'Sample connection declined locally. No workspace request was sent.');
     },
-    async reset() { seed(); addEvent('重置 Sample', 'sample-user', '恢复本页的种子来源与演示授权。'); },
+    async reset() { seed(); addEvent('Reset sample', 'sample-user', 'Restored the local sample context and permissions.'); },
     // Sample has no workspace to evaluate against; the floor check and the shadow replay are the workspace's job.
-    async shadowPolicy() { throw new Error('Sample 模式不评估策略：请连接本机工作台，由工作台重放回执和读取记录。'); },
-    async installPolicy() { throw new Error('Sample 模式不安装策略：请连接本机工作台，由工作台按底线核对。'); },
+    async shadowPolicy() { throw new Error('Connect to a workspace to preview a policy against past reads.'); },
+    async installPolicy() { throw new Error('Connect to a workspace to validate and install a policy.'); },
   };
 }
 
@@ -175,7 +175,7 @@ const receiptRow = (row: Json): Receipt => ({ id: row.id as string, sessionId: r
 const validIntent = (row: unknown): boolean => object(row) && string(row.id) && string(row.agentId)
   && date(row.createdAt) && date(row.expiresAt) && object(row.public) && Object.values(row.public).every(string)
   && ['text', 'query', 'kind'].every((key) => row[key] === undefined || string(row[key]));
-const malformed = () => new Error('工作台响应格式与已核对契约不一致。');
+const malformed = () => new Error('Workspace data does not match the expected contract.');
 class RequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
@@ -192,17 +192,17 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         credentials: 'omit', cache: 'no-store', redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-    } catch { throw new Error('无法连接本机工作台，或请求已超时。'); }
+    } catch { throw new Error('Cannot reach the local workspace, or the request timed out.'); }
     let result: unknown;
     try { result = await response.json(); } catch {
-      if (!response.ok) throw new RequestError(`工作台拒绝请求：${response.status} REQUEST_FAILED`, response.status);
+      if (!response.ok) throw new RequestError(`Workspace rejected the request: ${response.status} REQUEST_FAILED`, response.status);
       throw malformed();
     }
     if (!response.ok) {
       const code = object(result) && object(result.error) && string(result.error.code) && /^[A-Z_]{1,40}$/u.test(result.error.code)
         ? result.error.code : 'REQUEST_FAILED';
-      if (code === 'CONSOLE_KEY_MISSING') throw new Error('请在本机控制台服务设置 AGENT_COOKIE_KEY 后重新连接。');
-      if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('本机控制台服务需要 owner 钥匙，请核对 AGENT_COOKIE_KEY。');
+      if (code === 'CONSOLE_KEY_MISSING') throw new Error('Set AGENT_COOKIE_KEY on the console server, then reconnect.');
+      if (code === 'CONSOLE_OWNER_REQUIRED') throw new Error('The console server requires an owner key. Check AGENT_COOKIE_KEY.');
       // Policy routes only: the 422 message is policyViolations(...).join("; "), which names sections and field
       // names, never values (packages/contract/src/policy-document.ts).
       if (violations && response.status === 422 && code === 'MISSING_FIELD' && object(result) && object(result.error)
@@ -211,7 +211,7 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
         if (lines.length > 0) throw new PolicyViolationError(lines);
       }
       // Server messages may contain secrets or field values; show only the error code.
-      throw new RequestError(`工作台拒绝请求：${response.status} ${code}`, response.status);
+      throw new RequestError(`Workspace rejected the request: ${response.status} ${code}`, response.status);
     }
     return result;
   };
@@ -219,9 +219,9 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     try { return normalizeLearning(await request('/personal/learned', 'GET', signal)); }
     catch (error) {
       if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable', paused: null,
-        entries: [], message: '工作台尚未提供学习记录接口。身份卡、授权和活动可继续使用。' };
+        entries: [], message: 'Learning is unavailable in this workspace. Context, permissions and activity are still available.' };
       return { availability: 'error', paused: null, entries: [],
-        message: `暂时无法读取学习记录。${error instanceof Error ? error.message : '请稍后重试。'}` };
+        message: `Cannot load learning records. ${error instanceof Error ? error.message : 'Please try again.'}` };
     }
   };
   const section = async <T>(path: string, normalize: (body: unknown) => T & { sample?: boolean }, name: string,
@@ -231,8 +231,8 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
       return { availability: 'ready', data, ...(data.sample === true ? { sample: true } : {}) };
     } catch (error) {
       if (error instanceof RequestError && [404, 501].includes(error.status)) return { availability: 'unavailable',
-        message: `工作台尚未提供${name}接口。其他面板可继续使用。` };
-      return { availability: 'error', message: `暂时无法读取${name}。${error instanceof Error ? error.message : '请稍后重试。'}` };
+        message: `The workspace does not support ${name} yet. Other panels remain available.` };
+      return { availability: 'error', message: `Cannot load ${name}. ${error instanceof Error ? error.message : 'Please try again.'}` };
     }
   };
   const optionalRows = async <T>(path: string, key: string, check: (row: unknown) => boolean, signal?: AbortSignal,
@@ -248,16 +248,16 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     mode: 'live',
     async load(signal) {
       const me = await request('/me', 'GET', signal);
-      if (!object(me) || me.role !== 'owner') throw new Error('请使用 owner 钥匙连接控制台；其他角色不能读取活动或重置演示。');
+      if (!object(me) || me.role !== 'owner') throw new Error('Connect with an owner key to view activity and manage the demo.');
       const [card, grantBody, activityBody, learned, receipts, intents, policy, funnel, experiments, links] = await Promise.all([
         request('/personal/card', 'GET', signal), request('/personal/grants', 'GET', signal), request('/owner/activity', 'GET', signal),
         learning(signal),
         optionalRows<Receipt>('/personal/receipts', 'receipts', validReceipt, signal, receiptRow),
         optionalRows<IntentHistoryEntry>('/personal/intents', 'intents', validIntent, signal),
-        section('/personal/policy', normalizePolicyView, '策略', signal),
-        section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, '漏斗', signal),
-        section('/owner/experiments', normalizeExperimentReport, '实验', signal),
-        section('/owner/links', normalizeLinks, '连接请求', signal),
+        section('/personal/policy', normalizePolicyView, 'Policy', signal),
+        section(`/owner/funnel?limit=${FUNNEL_LIMIT}`, normalizeFunnelReport, 'Journey', signal),
+        section('/owner/experiments', normalizeExperimentReport, 'Experiments', signal),
+        section('/owner/links', normalizeLinks, 'Connections', signal),
       ]);
       if (!validCard(card) || !object(grantBody) || !rows(grantBody.grants, validGrant)
         || !object(activityBody) || !rows(activityBody.events, validEvent)) throw malformed();
@@ -280,7 +280,7 @@ export function createLiveAdapter(fetcher: Fetcher = fetch, now: () => number = 
     async setLearning(paused, signal) {
       // A 0129f08: PUT /personal/learning and its acknowledgement both use { paused }.
       const body = await request('/personal/learning', 'PUT', signal, { paused });
-      if (normalizeLearningPaused(body) !== paused) throw new Error('工作台未确认所请求的学习开关状态。');
+      if (normalizeLearningPaused(body) !== paused) throw new Error('The workspace did not confirm the requested learning setting.');
     },
     async shadowPolicy(candidate, signal) {
       return normalizeShadowReport(await request('/personal/policy/shadow', 'POST', signal, { policy: candidate }, true));

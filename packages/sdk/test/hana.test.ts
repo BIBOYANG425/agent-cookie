@@ -32,6 +32,8 @@ describe('HANA transport identity',()=>{
   it('resolves category labels without widening a value-only deletion',()=>{
     const rows=[{field:'pref.color',value:'black'},{field:'pref.color',value:'white'},{field:'pref.fit',value:'loose'}] as LearnedResponse['learned'];
     expect(resolveForgetPreference('颜色',rows)).toEqual({kind:'resolved',field:'pref.color'});
+    expect(resolveForgetPreference('Color',rows)).toEqual({kind:'resolved',field:'pref.color'});
+    expect(resolveForgetPreference('fit',rows)).toEqual({kind:'resolved',field:'pref.fit'});
     expect(resolveForgetPreference('black',rows).kind).toBe('partial');
     expect(resolveForgetPreference('loose',rows)).toEqual({kind:'resolved',field:'pref.fit'});
     expect(resolveForgetPreference('unknown',rows).kind).toBe('missing');

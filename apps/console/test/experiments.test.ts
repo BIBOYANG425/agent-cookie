@@ -42,21 +42,21 @@ const core = (path: string) => path.endsWith('/me') ? json({ role: 'owner' })
   : path.endsWith('/owner/experiments') ? undefined : json({ error: { code: 'NOT_FOUND' } }, 404);
 
 describe('experiment panel', () => {
-  it('renders the Sample report: both arms, Wilson ranges as percentages, medians, 样本不足 and no difference', async () => {
+  it('renders the Sample report: both arms, Wilson ranges as percentages, medians, Insufficient data and no difference', async () => {
     const network = vi.spyOn(globalThis, 'fetch');
     const controller = new ConsoleController(createSampleAdapter(() => at));
     await controller.refresh();
     const state = controller.getState().data!.experiments!;
     expect(state).toMatchObject({ availability: 'ready', sample: true, data: { sample: true, experiment: 'ranking' } });
     const html = render(state, true);
-    for (const text of ['Sample · 排序实验 E1 · 只含计数', '<th scope="col">意图数（n）</th>', '<th scope="col">95% 区间（Wilson）</th>',
-      '对照（control）', '处理（treatment）', '今天的顺序', '按卖家在你过往意图中的结果记录排序', '<strong>样本不足</strong>',
-      '每组至少需要 40 个意图才比较两组，现在对照 2 个、处理 1 个', '不计算两组之差', 'docs/commerce-analytics-plan.md §6',
-      '<td data-label="接受率" class="num">50%</td>', '<td data-label="95% 区间（Wilson）" class="num">9.5%–90.5%</td>',
-      '<td data-label="95% 区间（Wilson）" class="num">20.7%–100%</td>', '<td data-label="中位接受时长" class="num">3 分 32 秒</td>',
-      '<td data-label="中位接受时长" class="num">1 分 36 秒</td>', 'Sample 数据：编写的分组计数']) expect(html).toContain(text);
-    expect(html).not.toContain('个百分点');
-    expect(html).not.toContain('处理 − 对照');
+    for (const text of ['Sample · ranking experiment E1', '<th scope="col">Requests (n)</th>', '<th scope="col">95% interval (Wilson)</th>',
+      'Control (control)', 'Treatment (treatment)', 'Default order', 'Ranked by merchant outcomes in earlier requests', '<strong>Insufficient data</strong>',
+      'at least 40 requests per group are needed. Control has 2; treatment has 1', 'No difference or improvement is claimed', 'No improvement is claimed below 40 requests per group',
+      '<td data-label="Acceptance rate" class="num">50%</td>', '<td data-label="95% interval (Wilson)" class="num">9.5%–90.5%</td>',
+      '<td data-label="95% interval (Wilson)" class="num">20.7%–100%</td>', '<td data-label="Median time to accept" class="num">3m 32s</td>',
+      '<td data-label="Median time to accept" class="num">1m 36s</td>', 'Sample counts, not actual workspace']) expect(html).toContain(text);
+    expect(html).not.toContain('percentage points');
+    expect(html).not.toContain('Treatment − Control');
     expect(html.match(/<tr>/gu)).toHaveLength(3);
     expect(network).not.toHaveBeenCalled();
     network.mockRestore();
@@ -78,15 +78,15 @@ describe('experiment panel', () => {
     expect([...EXPERIMENT_ARMS]).toEqual([...CONTRACT_ARMS]);
   });
 
-  it('shows 样本不足 and computes no difference whenever either arm is below 40', () => {
+  it('shows Insufficient data and computes no difference whenever either arm is below 40', () => {
     for (const [control, treatment] of [[39, 400], [400, 39], [1, 0], [0, 45], [39, 39]]) {
       const data = report(arm(Math.floor(control / 2), control), arm(treatment, treatment));
       const comparison = compareArms(data);
       expect(comparison).toEqual({ kind: 'insufficient', control, treatment });
       expect(comparison).not.toHaveProperty('difference');
       const html = render(ready(data));
-      expect(html).toContain('<strong>样本不足</strong>');
-      expect(html).not.toContain('个百分点');
+      expect(html).toContain('<strong>Insufficient data</strong>');
+      expect(html).not.toContain('percentage points');
       expect(html).not.toContain('Sample');
     }
   });
@@ -107,7 +107,7 @@ describe('experiment panel', () => {
     expect(intervalText([-0.2, 1.4])).toBe('0%–100%');
     expect(percent(0.33333)).toBe('33.3%');
     // An empty arm next to a running one has no rate or interval to show.
-    expect(render(ready(report(arm(0, 0), arm(2, 7))))).toContain('<td data-label="接受率" class="num">—</td>');
+    expect(render(ready(report(arm(0, 0), arm(2, 7))))).toContain('<td data-label="Acceptance rate" class="num">—</td>');
   });
 
   it('at 40 or more per arm shows the difference with its Newcombe interval and says whether it excludes 0', () => {
@@ -119,35 +119,35 @@ describe('experiment panel', () => {
     expect(comparison.interval[0]).toBeCloseTo(-0.0138, 3);
     expect(comparison.interval[1]).toBeCloseTo(0.3901, 3);
     const html = render(ready(overlap));
-    expect(html).toContain('<strong>+20.0 个百分点</strong>');
-    expect(html).toContain('95% 区间 −1.4 至 +39.0 个百分点');
-    expect(html).toContain('区间包含 0：现有数据不能说明两组的接受率不同。');
-    expect(html).not.toContain('样本不足');
-    expect(render(ready(report(arm(10, 40), arm(30, 40))))).toContain('区间在 0 以上');
-    expect(render(ready(report(arm(30, 40), arm(10, 40))))).toContain('区间在 0 以下');
+    expect(html).toContain('<strong>+20.0 percentage points</strong>');
+    expect(html).toContain('95% interval −1.4 to +39.0 percentage points');
+    expect(html).toContain('The interval includes zero: the data does not establish a difference.');
+    expect(html).not.toContain('Insufficient data');
+    expect(render(ready(report(arm(10, 40), arm(30, 40))))).toContain('The interval is above zero');
+    expect(render(ready(report(arm(30, 40), arm(10, 40))))).toContain('The interval is below zero');
   });
 
   it('shows the off state when both arms are empty, and connection / endpoint states', () => {
     const off = render(ready(report(arm(0, 0), arm(0, 0))));
-    expect(off).toContain('实验未开启：两组都还没有意图');
+    expect(off).toContain('No experiment data');
     expect(off).toContain('<code>AGENT_COOKIE_EXPERIMENT=ranking</code>');
     expect(off).not.toContain('<table');
-    expect(off).not.toContain('样本不足');
+    expect(off).not.toContain('Insufficient data');
     expect(compareArms(report(arm(0, 0), arm(0, 0)))).toEqual({ kind: 'off' });
-    expect(render(undefined)).toContain('连接后显示实验');
-    expect(render({ availability: 'unavailable', message: '工作台尚未提供实验接口。其他面板可继续使用。' })).toContain('工作台尚未提供实验接口');
+    expect(render(undefined)).toContain('Connect to view experiments');
+    expect(render({ availability: 'unavailable', message: 'The workspace does not support Experiments yet. Other panels remain available.' })).toContain('does not support Experiments yet');
     const workspaceSample = render(ready(report(arm(1, 2), arm(1, 1), true)));
-    expect(workspaceSample).toContain('Sample · 排序实验 E1');
-    expect(workspaceSample).toContain('Sample 数据，不代表真实商家或用户。工作台按意图上保存的分组重新计算');
-    expect(workspaceSample).not.toContain('编写的分组计数');
+    expect(workspaceSample).toContain('Sample · ranking experiment E1');
+    expect(workspaceSample).toContain('Sample data, not actual merchants or users. Counts, rates and intervals are calculated by the workspace from recorded groups');
+    expect(workspaceSample).not.toContain('Sample counts');
   });
 
   it('formats median time to accept and leaves it out when nothing was accepted', () => {
-    expect(durationText(850)).toBe('850 毫秒');
-    expect(durationText(12340)).toBe('12.3 秒');
-    expect(durationText(212000)).toBe('3 分 32 秒');
-    expect(durationText(3 * 3600000 + 5 * 60000)).toBe('3 小时 5 分');
-    expect(render(ready(report(arm(0, 3), arm(1, 3, 61000))))).toContain('<td data-label="中位接受时长" class="num">—</td>');
+    expect(durationText(850)).toBe('850 ms');
+    expect(durationText(12340)).toBe('12.3s');
+    expect(durationText(212000)).toBe('3m 32s');
+    expect(durationText(3 * 3600000 + 5 * 60000)).toBe('3h 5m');
+    expect(render(ready(report(arm(0, 3), arm(1, 3, 61000))))).toContain('<td data-label="Median time to accept" class="num">—</td>');
   });
 });
 
@@ -161,12 +161,12 @@ describe('experiments over the live adapter', () => {
     expect(paths).toContain('/workspace-api/owner/experiments');
     expect(snapshot.experiments).toEqual({ availability: 'ready', data: report(arm(1, 2, 5000), arm(0, 1)) });
     expect(JSON.stringify(snapshot.experiments)).not.toContain('secret');
-    expect(render(snapshot.experiments)).toContain('样本不足');
+    expect(render(snapshot.experiments)).toContain('Insufficient data');
   });
 
   it('a missing endpoint or a malformed report degrades this panel only', async () => {
     const missing = await createLiveAdapter(async (path) => core(path) ?? json({ error: { code: 'NOT_FOUND' } }, 404), () => at).load();
-    expect(missing.experiments).toEqual({ availability: 'unavailable', message: expect.stringContaining('实验') });
+    expect(missing.experiments).toEqual({ availability: 'unavailable', message: expect.stringContaining('Experiments') });
     const good = report(arm(1, 2), arm(1, 1));
     for (const bad of [{ ...good, experiment: 'handshake' }, { ...good, arms: { control: good.arms.control } },
       { ...good, arms: { ...good.arms, control: { ...good.arms.control, rate: 1.5 } } },
@@ -176,10 +176,10 @@ describe('experiments over the live adapter', () => {
       { ...good, arms: { ...good.arms, treatment: { ...good.arms.treatment, n: 1.5 } } },
       { ...good, arms: { ...good.arms, treatment: { ...good.arms.treatment, medianAcceptMs: -1 } } },
       { ...good, sample: 'no' }, { ...good, generatedAt: 'now' }]) {
-      expect(() => normalizeExperimentReport(bad)).toThrow('实验响应格式');
+      expect(() => normalizeExperimentReport(bad)).toThrow('Experiment data does not match');
     }
     const broken = await createLiveAdapter(async (path) => core(path) ?? json({ ...good, experiment: 'other' }), () => at).load();
-    expect(broken.experiments).toEqual({ availability: 'error', message: expect.stringContaining('实验响应格式') });
+    expect(broken.experiments).toEqual({ availability: 'error', message: expect.stringContaining('Experiment data does not match') });
     expect(broken.grants).toEqual([]);
     const labelled = await createLiveAdapter(async (path) => core(path) ?? json({ ...good, sample: true }), () => at).load();
     expect(labelled.experiments).toMatchObject({ availability: 'ready', sample: true });
@@ -187,13 +187,13 @@ describe('experiments over the live adapter', () => {
 });
 
 describe('funnel arm column', () => {
-  it('shows 对照 / 处理 / — from FunnelRow.arm next to the existing columns', async () => {
+  it('shows Control / Treatment / — from FunnelRow.arm next to the existing columns', async () => {
     const snapshot = await createSampleAdapter(() => at).load();
     const html = renderToStaticMarkup(createElement(FunnelPanel, { state: snapshot.funnel, sample: true }));
-    expect(html).toContain('<th scope="col">分组</th>');
-    for (const column of ['时间', '介绍', '报价', '首个报价(ms)', '接受', '结果', '字段(读/授)', '回执']) expect(html).toContain(`<th scope="col">${column}</th>`);
-    expect(html.match(/<td data-label="分组">处理<\/td>/gu)).toHaveLength(1);
-    expect(html.match(/<td data-label="分组">对照<\/td>/gu)).toHaveLength(2);
+    expect(html).toContain('<th scope="col">Group</th>');
+    for (const column of ['Time', 'Introduced', 'Quoted', 'First quote (ms)', 'Accepted', 'Outcome', 'Fields (read/granted)', 'Receipts']) expect(html).toContain(`<th scope="col">${column}</th>`);
+    expect(html.match(/<td data-label="Group">Treatment<\/td>/gu)).toHaveLength(1);
+    expect(html.match(/<td data-label="Group">Control<\/td>/gu)).toHaveLength(2);
     const row = { intentId: 'i-1', createdAt: new Date(at).toISOString(), source: 'live', introduced: 1, quoted: 0, accepted: false,
       fieldsGranted: 6, fieldsRead: 0, purposeReleases: 0 };
     const live: FunnelReport = normalizeFunnelReport({ rows: [row, { ...row, intentId: 'i-2', arm: 'treatment' }], sample: false,
@@ -201,9 +201,9 @@ describe('funnel arm column', () => {
     expect(live.rows.map((r) => r.arm)).toEqual([undefined, 'treatment']);
     expect(live.rows[0]).not.toHaveProperty('arm');
     const liveHtml = renderToStaticMarkup(createElement(FunnelPanel, { state: { availability: 'ready', data: live }, sample: false }));
-    expect(liveHtml).toContain('<td data-label="分组">—</td>');
-    expect(liveHtml).toContain('<td data-label="分组">处理</td>');
+    expect(liveHtml).toContain('<td data-label="Group">—</td>');
+    expect(liveHtml).toContain('<td data-label="Group">Treatment</td>');
     expect(() => normalizeFunnelReport({ rows: [{ ...row, arm: 'holdout' }], sample: false, generatedAt: new Date(at).toISOString() }))
-      .toThrow('漏斗响应格式');
+      .toThrow('Journey data does not match');
   });
 });

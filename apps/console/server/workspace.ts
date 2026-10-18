@@ -3,7 +3,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-const upstream = 'http://127.0.0.1:4310';
+// Explicit local demo upstream; credentials remain in the existing request path.
+function localWorkspaceUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
+    || url.pathname !== '/' || url.search || url.hash) throw new Error('Workspace upstream must be a loopback HTTP origin.');
+  return url.origin;
+}
 const prefix = '/workspace-api';
 type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned'
   | 'listLinks';
@@ -147,6 +153,7 @@ export function createWorkspaceBridge(options: {
   sample?: boolean;
   fetcher?: typeof fetch;
 }) {
+  const upstream = localWorkspaceUrl(process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310');
   const send = (response: ServerResponse, status: number, body: unknown) => {
     if (response.destroyed) return;
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',

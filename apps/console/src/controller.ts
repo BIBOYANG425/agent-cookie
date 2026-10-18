@@ -4,14 +4,14 @@ import { parseCandidate, PolicyViolationError, type ShadowReport } from './polic
 /** The last policy-panel action's outcome. Kept apart from notice/error so the next poll does not clear it. */
 export type PolicyResult = { kind: 'invalid'; message: string }
   | { kind: 'shadow'; report: ShadowReport }
-  | { kind: 'violations'; action: '影子评估' | '安装'; violations: string[] }
+  | { kind: 'violations'; action: 'Policy preview' | 'Install'; violations: string[] }
   | { kind: 'installed'; policyId: string };
 interface State {
   data: ConsoleSnapshot | null; loading: boolean; notice: string; error: string; pending: string; policyResult?: PolicyResult;
-  /** Links the workspace answered 409 for (already approved, declined or expired): shown as 已处理, with no buttons. */
+  /** Links the workspace answered 409 for (already approved, declined or expired): shown as Handled, with no buttons. */
   handledLinks: readonly string[];
 }
-const message = (error: unknown) => error instanceof Error ? error.message : '请求失败';
+const message = (error: unknown) => error instanceof Error ? error.message : 'Request failed';
 export function remainingSeconds(grant: GrantView, receivedAt: number, now: number): number {
   return grant.status !== 'live' ? 0 : Math.max(0, Math.ceil((grant.remainingMs - Math.max(0, now - receivedAt)) / 1000));
 }
@@ -57,7 +57,7 @@ export class ConsoleController {
       const data = await this.adapter.load(request.signal);
       if (generation === this.generation) this.update({ data: this.sorted(data), error: '', loading: false });
     } catch (error) {
-      if (generation === this.generation) this.update({ error: `刷新失败：${message(error)}`, loading: false });
+      if (generation === this.generation) this.update({ error: `Refresh failed: ${message(error)}`, loading: false });
     } finally { if (generation === this.generation) this.request = undefined; }
   }
   /**
@@ -75,23 +75,23 @@ export class ConsoleController {
     try {
       const settled = await operation(request.signal);
       acknowledged = true;
-      const notice = typeof settled === 'string' ? settled : `${this.adapter.mode === 'sample' ? 'Sample · 仅本页：' : '工作台已确认：'}${label}完成。`;
+      const notice = typeof settled === 'string' ? settled : `${this.adapter.mode === 'sample' ? 'Sample · local preview: ' : 'Workspace confirmed: '}${label} completed.`;
       if (!reload) { if (generation === this.generation) this.update({ notice }); return; }
       const data = await this.adapter.load(request.signal);
       if (generation === this.generation) this.update({ data: this.sorted(data), loading: false, notice });
     } catch (error) {
       if (generation === this.generation) this.update({ error: acknowledged
-        ? `${label}已确认，但刷新失败。当前显示可能过期，请刷新核对。${message(error)}`
-        : `${label}未确认成功，未更新显示。${message(error)}` });
+        ? `${label} was confirmed, but refresh failed. Displayed data may be outdated. ${message(error)}`
+        : `${label} was not confirmed. Displayed data is unchanged. ${message(error)}` });
     } finally {
       if (generation === this.generation) { this.request = undefined; this.update({ pending: '' }); }
     }
   }
-  revokeContribution(id: string) { return this.perform('撤销来源记录', (signal) => this.adapter.revokeContribution(id, signal)); }
-  revokeGrant(id: string) { return this.perform('撤销授权', (signal) => this.adapter.revokeGrant(id, signal)); }
-  setLearning(paused: boolean) { return this.perform(paused ? '暂停学习' : '恢复学习', (signal) => this.adapter.setLearning(paused, signal)); }
-  selectLearningStage(id: string) { return this.perform('切换 Sample 学习阶段', async () => {
-    if (!this.adapter.selectLearningStage) throw new Error('当前连接不支持 Sample 阶段。');
+  revokeContribution(id: string) { return this.perform('Remove source', (signal) => this.adapter.revokeContribution(id, signal)); }
+  revokeGrant(id: string) { return this.perform('Revoke access', (signal) => this.adapter.revokeGrant(id, signal)); }
+  setLearning(paused: boolean) { return this.perform(paused ? 'Pause learning' : 'Resume learning', (signal) => this.adapter.setLearning(paused, signal)); }
+  selectLearningStage(id: string) { return this.perform('Change sample stage', async () => {
+    if (!this.adapter.selectLearningStage) throw new Error('This connection does not support sample stages.');
     await this.adapter.selectLearningStage(id);
   }); }
   /** Candidate text → POST shadow. Invalid JSON never leaves the page. */
@@ -100,9 +100,9 @@ export class ConsoleController {
     const candidate = parseCandidate(text);
     if (!candidate.ok) { this.update({ policyResult: { kind: 'invalid', message: candidate.message } }); return; }
     this.update({ policyResult: undefined });
-    await this.perform('影子评估', async (signal) => {
+    await this.perform('Policy preview', async (signal) => {
       try { this.update({ policyResult: { kind: 'shadow', report: await this.adapter.shadowPolicy(candidate.value, signal) } }); }
-      catch (error) { this.policyRejected('影子评估', error); throw error; }
+      catch (error) { this.policyRejected('Policy preview', error); throw error; }
     }, false);
   }
   /** Candidate text → PUT. On 422 every violation is listed and the installed document stays as it was. */
@@ -111,17 +111,17 @@ export class ConsoleController {
     const candidate = parseCandidate(text);
     if (!candidate.ok) { this.update({ policyResult: { kind: 'invalid', message: candidate.message } }); return; }
     this.update({ policyResult: undefined });
-    await this.perform('安装策略', async (signal) => {
+    await this.perform('Install policy', async (signal) => {
       try { this.update({ policyResult: { kind: 'installed', policyId: (await this.adapter.installPolicy(candidate.value, signal)).policyId } }); }
-      catch (error) { this.policyRejected('安装', error); throw error; }
+      catch (error) { this.policyRejected('Install', error); throw error; }
     });
   }
-  private policyRejected(action: '影子评估' | '安装', error: unknown) {
+  private policyRejected(action: 'Policy preview' | 'Install', error: unknown) {
     if (error instanceof PolicyViolationError) this.update({ policyResult: { kind: 'violations', action, violations: error.violations } });
   }
   /**
    * Approve or decline one consent link. The row changes only after the workspace acknowledges and the snapshot reloads;
-   * a 409 (decided elsewhere, or expired) is not a failure: the row is marked 已处理 and the snapshot reloads.
+   * a 409 (decided elsewhere, or expired) is not a failure: the row is marked Handled and the snapshot reloads.
    */
   decideLink(id: string, decision: LinkDecision) {
     return this.perform(decisionLabels[decision], async (signal) => {
@@ -129,12 +129,12 @@ export class ConsoleController {
       catch (error) {
         if (!(error instanceof LinkNotPendingError)) throw error;
         if (!this.state.handledLinks.includes(id)) this.update({ handledLinks: [...this.state.handledLinks, id] });
-        return `${this.adapter.mode === 'sample' ? 'Sample · ' : ''}这条连接请求已处理：它已被批准、拒绝或已过期，这次没有更改。`;
+        return `${this.adapter.mode === 'sample' ? 'Sample · ' : ''}This request was already approved, declined or expired. No change was made.`;
       }
     });
   }
   reset() {
-    return this.perform(this.adapter.mode === 'sample' ? '重置 Sample' : '重置演示', async (signal) => {
+    return this.perform(this.adapter.mode === 'sample' ? 'Reset sample' : 'Reset demo', async (signal) => {
       await this.adapter.reset(signal);
       this.update({ handledLinks: [] });
     });

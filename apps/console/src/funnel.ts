@@ -8,16 +8,16 @@ export type { FunnelReport, FunnelRow, SearchStats };
 export const FUNNEL_LIMIT = 50;
 
 export const outcomeLabels: Record<AcceptResult['status'], string> = {
-  ordered: '已下单', handoff: '转交商家完成', blocked: '已拦截', failed: '失败',
+  ordered: 'Ordered', handoff: 'Continue with merchant', blocked: 'Blocked', failed: 'Failed',
 };
 export const stageLabels: Record<FunnelStage, string> = {
-  introduced: '介绍', quoted: '报价', accepted: '接受', checkout: '结账', payment: '支付', completed: '完成',
+  introduced: 'Introduced', quoted: 'Quoted', accepted: 'Accepted', checkout: 'Checkout', payment: 'Payment', completed: 'Completed',
 };
-export const sourceLabels: Record<DataSource, string> = { sample: 'Sample', fixture: '录制回放', live: '实时' };
+export const sourceLabels: Record<DataSource, string> = { sample: 'Sample', fixture: 'Fixture replay', live: 'Live' };
 /** Filter buckets in the order the workspace checks them (contract SearchStats). */
 export const searchBuckets: ReadonlyArray<[keyof SearchStats, string]> = [
-  ['droppedAvoid', '避开（pref.avoid）'], ['droppedCurrency', '非美元'], ['droppedUnavailable', '不可购买'],
-  ['droppedShipsTo', '不配送到所在国家'], ['droppedBudget', '超出本次预算'], ['droppedInvalid', '价格或卖家信息无效'],
+  ['droppedAvoid', 'Avoid (pref.avoid)'], ['droppedCurrency', 'Non-USD'], ['droppedUnavailable', 'Unavailable'],
+  ['droppedShipsTo', 'Does not ship to your country'], ['droppedBudget', 'Over request budget'], ['droppedInvalid', 'Invalid price or seller'],
 ];
 const SEARCH_KEYS: ReadonlyArray<keyof SearchStats> = ['offers', 'droppedAvoid', 'droppedCurrency', 'droppedUnavailable',
   'droppedShipsTo', 'droppedBudget', 'droppedInvalid', 'eligible', 'eligibleSellers', 'picked'];
@@ -26,7 +26,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256;
 const date = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
-const malformed = () => new Error('漏斗响应格式与契约不一致。');
+const malformed = () => new Error('Journey data does not match the workspace contract.');
 
 /** Copies only the contract's count and id keys, so nothing else a response carries can reach the page. */
 export function normalizeFunnelReport(body: unknown): FunnelReport {
@@ -66,7 +66,7 @@ export function funnelTotals(rows: readonly FunnelRow[]): FunnelTotals {
 
 export function conversionText(totals: FunnelTotals): string {
   if (totals.intents === 0) return '—';
-  return `${totals.accepted}/${totals.intents}（${Math.round((totals.accepted / totals.intents) * 100)}%）`;
+  return `${totals.accepted}/${totals.intents} (${Math.round((totals.accepted / totals.intents) * 100)}%)`;
 }
 
 /**

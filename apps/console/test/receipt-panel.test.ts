@@ -17,10 +17,10 @@ it('renders all contract fields as names, with reader, purpose and time', () => 
   expect(html).not.toContain('unexpected-field-value');
 });
 
-it('labels a handshake receipt 首次介绍 with the raw purpose beside it (a UCP store proxy\'s auto-field read, as the workspace writes it)', () => {
+it('labels a handshake receipt Introduction with the raw purpose beside it (a UCP store proxy\'s auto-field read, as the workspace writes it)', () => {
   const html = render([{ id: 'r-ucp', sessionId: 'session-ucp', agentId: 'ucp:sample-store.example', intentId: 'i_sample01', fields: ['lang', 'shoe_size'],
     purpose: 'handshake', createdAt: '2026-10-18T10:00:00Z', policyId: 'sample000000' }]);
-  expect(html).toContain('<dt>用途</dt><dd>首次介绍（handshake）</dd>');
+  expect(html).toContain('<dt>Purpose</dt><dd>Introduction (handshake)</dd>');
   for (const field of ['lang', 'shoe_size']) expect(html).toContain(`<code class="field-key">${field}</code>`);
   expect(html).toContain('ucp:sample-store.example');
   expect(html).toContain('i_sample01');
@@ -32,12 +32,12 @@ it('orders receipts newest first, escapes display text and tolerates no fields',
   expect(html).toContain('&lt;script&gt;reader&lt;/script&gt;');
   expect(html).toContain('&lt;img src=x&gt;');
   expect(html).not.toContain('<script>');
-  expect(html).toContain('无字段');
+  expect(html).toContain('No fields');
 });
 
 it('distinguishes pending, unavailable and successful empty reads', () => {
-  expect(render()).toContain('读取后显示回执');
-  expect(render(null)).toContain('暂时无法读取');
-  expect(render(null)).not.toContain('还没有读取回执');
-  expect(render([])).toContain('还没有读取回执');
+  expect(render()).toContain('Connect to view access receipts');
+  expect(render(null)).toContain('Temporarily unavailable');
+  expect(render(null)).not.toContain('No receipts yet');
+  expect(render([])).toContain('No receipts yet');
 });

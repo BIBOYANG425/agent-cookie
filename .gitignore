@@ -6,3 +6,6 @@ node_modules/
 dist/
 .DS_Store
 docs/superpowers/
+
+# Local demo process logs (may contain private runtime context)
+.demo-runlogs/

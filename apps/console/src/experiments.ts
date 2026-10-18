@@ -18,10 +18,10 @@ export interface ExperimentReport {
 
 export const EXPERIMENT_ARMS: readonly ExperimentArm[] = ['control', 'treatment'];
 export const isExperimentArm = (value: unknown): value is ExperimentArm => value === 'control' || value === 'treatment';
-export const armLabels: Record<ExperimentArm, string> = { control: '对照', treatment: '处理' };
+export const armLabels: Record<ExperimentArm, string> = { control: 'Control', treatment: 'Treatment' };
 export const armNotes: Record<ExperimentArm, string> = {
-  control: '今天的顺序：指定商家、尺码、偏好、预算、目录顺序',
-  treatment: '按卖家在你过往意图中的结果记录排序',
+  control: 'Default order: merchant, size, preferences, budget, catalog order',
+  treatment: 'Ranked by merchant outcomes in earlier requests',
 };
 /** docs/commerce-analytics-plan.md §6: no sentence about lift before each E1 arm has at least this many intents. */
 export const MIN_ARM_N = 40;
@@ -30,7 +30,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const date = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 const count = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const unit = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
-const malformed = () => new Error('实验响应格式与契约不一致。');
+const malformed = () => new Error('Experiment data does not match the workspace contract.');
 
 function normalizeArm(value: unknown): ExperimentArmStats {
   if (!object(value) || !count(value.n) || !count(value.accepted) || value.accepted > value.n || !unit(value.rate)
@@ -88,17 +88,17 @@ export function points(value: number): string {
   return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded).toFixed(1)}`;
 }
 export function durationText(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} 毫秒`;
-  if (ms < 60000) return `${Math.round(ms / 100) / 10} 秒`;
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${Math.round(ms / 100) / 10}s`;
   const seconds = Math.round(ms / 1000);
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
-  return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
 /**
  * Sample only: authored counts, labelled Sample, matching the arms on the Sample funnel rows (sample-intent-3 treatment
  * and accepted; sample-intent-2 control and accepted; sample-intent-1 control, not accepted). Both arms are far below
- * MIN_ARM_N, so the panel shows 样本不足. The intervals are the Wilson z = 1.96 values for those counts (checked in
+ * MIN_ARM_N, so the panel shows Insufficient data. The intervals are the Wilson z = 1.96 values for those counts (checked in
  * test/experiments.test.ts); the medians are authored, not measured.
  */
 export function sampleExperimentReport(now: number): ExperimentReport {

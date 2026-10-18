@@ -41,47 +41,47 @@ describe('policy panel', () => {
     const snapshot = await createSampleAdapter(() => at).load();
     expect(snapshot.policy).toMatchObject({ availability: 'ready', sample: true });
     const html = panel({ state: snapshot.policy, sample: true });
-    for (const text of ['Sample · 按用途放行', '<code>sample-policy</code>（Sample 占位，不是哈希）', '默认（default）',
-      '工作台内置的 v1 字段表', '个人 agent', '鞋店', '零售 · UCP 商店', '<code class="field-key">pref.avoid</code>',
-      '<code class="field-key">shipping_address</code> 仅用于 <span><code>checkout</code></span>',
-      '<code class="field-key">payment_method</code> 仅用于 <span><code>payment</code></span>', '未设置：按指定商家',
-      'data-label="自动"', 'data-label="按用途"', 'data-label="可写"', 'Sample 模式不评估也不安装',
-      '<th scope="row">公司助理 <code class="field-key">assistant</code></th>']) expect(html).toContain(text);
+    for (const text of ['Sample · access checked by purpose', '<code>sample-policy</code> (sample placeholder)', 'Default (default)',
+      'Built-in v1 field policy', 'Personal agent', 'Shoe store', 'Retail · UCP store', '<code class="field-key">pref.avoid</code>',
+      '<code class="field-key">shipping_address</code> only for <span><code>checkout</code></span>',
+      '<code class="field-key">payment_method</code> only for <span><code>payment</code></span>', 'Default: merchant',
+      'data-label="Automatic"', 'data-label="By purpose"', 'data-label="Writable"', 'Connect to a workspace to preview or install a policy',
+      '<th scope="row">Connected assistant <code class="field-key">assistant</code></th>']) expect(html).toContain(text);
     // Header row plus one row per category: personal, shoe, retail, assistant.
     expect(html.match(/<tr>/gu)).toHaveLength(5);
-    expect(html).toMatch(/<button type="button" disabled="">影子评估<\/button>/u);
-    expect(html).toMatch(/<button type="button" class="primary" disabled="">安装<\/button>/u);
-    expect(html).toContain('<button type="button">填入当前文档</button>');
-    await expect(createSampleAdapter().shadowPolicy({})).rejects.toThrow('Sample');
-    await expect(createSampleAdapter().installPolicy({})).rejects.toThrow('Sample');
+    expect(html).toMatch(/<button type="button" disabled="">Policy preview<\/button>/u);
+    expect(html).toMatch(/<button type="button" class="primary" disabled="">Install<\/button>/u);
+    expect(html).toContain('<button type="button">Use current policy</button>');
+    await expect(createSampleAdapter().shadowPolicy({})).rejects.toThrow('Connect to a workspace');
+    await expect(createSampleAdapter().installPolicy({})).rejects.toThrow('Connect to a workspace');
     expect(network).not.toHaveBeenCalled();
     network.mockRestore();
   });
 
   it('shows the assistant category row like the others: its auto fields, no purpose field, its writes', () => {
     const html = panel({});
-    const row = html.slice(html.indexOf('<th scope="row">公司助理'), html.indexOf('</tr>', html.indexOf('<th scope="row">公司助理')));
+    const row = html.slice(html.indexOf('<th scope="row">Connected assistant'), html.indexOf('</tr>', html.indexOf('<th scope="row">Connected assistant')));
     const fieldList = (fields: readonly string[]) => `<ul class="policy-fields">${fields.map((field) => `<li><code class="field-key">${field}</code></li>`).join('')}</ul>`;
-    expect(row).toContain(`<td data-label="自动">${fieldList(DEFAULT_POLICY.auto.assistant)}</td>`);
-    expect(row).toContain('<td data-label="按用途"><span class="muted">无</span></td>');
-    expect(row).toContain(`<td data-label="可写">${fieldList(DEFAULT_POLICY.write.assistant)}</td>`);
+    expect(row).toContain(`<td data-label="Automatic">${fieldList(DEFAULT_POLICY.auto.assistant)}</td>`);
+    expect(row).toContain('<td data-label="By purpose"><span class="muted">None</span></td>');
+    expect(row).toContain(`<td data-label="Writable">${fieldList(DEFAULT_POLICY.write.assistant)}</td>`);
     for (const field of ['shipping_address', 'payment_method']) expect(row).not.toContain(field);
-    expect(html.indexOf('零售 · UCP 商店')).toBeLessThan(html.indexOf('公司助理'));
+    expect(html.indexOf('Retail · UCP store')).toBeLessThan(html.indexOf('Connected assistant'));
   });
 
   it('labels each source, shows ranking weights when present, and enables actions when live', () => {
     const ranked = panel({ state: { availability: 'ready', data: { ...view, policy: { ...view.policy, ranking: { winRate: 30, failure: 70 } } } } });
     expect(ranked).toContain('winRate 30 · failure 70');
-    expect(ranked).toContain('已安装（installed）');
-    expect(ranked).toContain('保存在工作台 SQLite');
+    expect(ranked).toContain('Installed (installed)');
+    expect(ranked).toContain('stored in the workspace database');
     expect(ranked).not.toContain('Sample');
-    expect(ranked).toContain('<button type="button">影子评估</button>');
-    expect(ranked).toContain('<button type="button" class="primary">安装</button>');
+    expect(ranked).toContain('<button type="button">Policy preview</button>');
+    expect(ranked).toContain('<button type="button" class="primary">Install</button>');
     expect(panel({ state: { availability: 'ready', data: { ...view, source: 'repo' } } })).toContain('POLICY.yaml');
-    expect(panel({ state: { availability: 'ready', data: view, sample: true } })).toContain('Sample · 按用途放行');
-    expect(panel({ state: { availability: 'unavailable', message: '工作台尚未提供策略接口。其他面板可继续使用。' } }))
-      .toContain('工作台尚未提供策略接口');
-    expect(panel({ disabled: true })).toMatch(/disabled="">影子评估/u);
+    expect(panel({ state: { availability: 'ready', data: view, sample: true } })).toContain('Sample · access checked by purpose');
+    expect(panel({ state: { availability: 'unavailable', message: 'The workspace does not support Policy yet. Other panels remain available.' } }))
+      .toContain('does not support Policy yet');
+    expect(panel({ disabled: true })).toMatch(/disabled="">Policy preview/u);
   });
 });
 
@@ -104,11 +104,11 @@ describe('policy actions through the live adapter', () => {
     const before = controller.getState().data;
     await controller.installPolicy(JSON.stringify(broken, null, 2));
     expect(JSON.parse(String(puts[1].body))).toEqual(broken);
-    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: '安装', violations });
+    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: 'Install', violations });
     expect(controller.getState().data).toBe(before);
-    expect(controller.getState().error).toContain('安装策略未确认成功');
+    expect(controller.getState().error).toContain('Install policy was not confirmed');
     const html = renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult }));
-    expect(html).toContain('工作台拒绝安装，当前策略没有改变。');
+    expect(html).toContain('Installation rejected. The current policy is unchanged.');
     for (const line of violations) expect(html).toContain(`<li>${line}</li>`);
     expect(html.match(/<li>/gu)).toHaveLength(violations.length);
   });
@@ -142,12 +142,12 @@ describe('policy actions through the live adapter', () => {
     expect(posts).toEqual([{ path: '/workspace-api/personal/policy/shadow', body: { policy: candidate } }]);
     expect(loads).toBe(1);
     expect(controller.getState().policyResult).toEqual({ kind: 'shadow', report });
-    expect(controller.getState().notice).toContain('影子评估完成');
+    expect(controller.getState().notice).toContain('Policy preview completed');
     const html = renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult }));
-    expect(html).toContain('2 处决定会改变，7 处不变');
+    expect(html).toContain('2 decisions would change; 7 would stay the same');
     expect(html).toContain('<li><code>rcpt-1</code> · receipt · <code>shipping_address</code>: allow → PURPOSE_MISMATCH</li>');
     expect(html).toContain('<li><code>evt-9</code> · read · <code>budget</code>: allow → SCOPE_DENIED</li>');
-    expect(html).toContain('PURPOSE_MISMATCH = 用途不符');
+    expect(html).toContain('PURPOSE_MISMATCH = Purpose mismatch');
   });
 
   it('a shadow 422 lists violations too, and invalid JSON never leaves the page', async () => {
@@ -155,7 +155,7 @@ describe('policy actions through the live adapter', () => {
       ? json({ error: { code: 'MISSING_FIELD', message: policyViolations({ v: 2 }).join('; ') } }, 422)
       : core(path) ?? json(view));
     const controller = new ConsoleController(createLiveAdapter(fetcher, () => at));
-    for (const [text, message] of [['', '请先粘贴'], ['{"v":', '不是合法的 JSON'], ['[1]', '必须是一个 JSON 对象']]) {
+    for (const [text, message] of [['', 'Paste a candidate'], ['{"v":', 'not valid JSON'], ['[1]', 'must be a JSON object']]) {
       await controller.shadowPolicy(text);
       expect(controller.getState().policyResult).toEqual({ kind: 'invalid', message: expect.stringContaining(message) });
       await controller.installPolicy(text);
@@ -163,9 +163,9 @@ describe('policy actions through the live adapter', () => {
     }
     expect(fetcher).not.toHaveBeenCalled();
     await controller.shadowPolicy('{"v":2}');
-    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: '影子评估', violations: policyViolations({ v: 2 }) });
+    expect(controller.getState().policyResult).toEqual({ kind: 'violations', action: 'Policy preview', violations: policyViolations({ v: 2 }) });
     expect(renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult })))
-      .toContain('工作台没有做影子评估');
+      .toContain('Policy preview rejected');
   });
 
   it('a successful install reports the new id and reloads the snapshot', async () => {
@@ -181,16 +181,16 @@ describe('policy actions through the live adapter', () => {
     const policy = (controller.getState().data as ConsoleSnapshot).policy;
     expect(policy).toEqual({ availability: 'ready', data: { policy: candidate, policyId: 'bbbbbbbbbbbb', source: 'installed' } });
     expect(renderToStaticMarkup(createElement(PolicyResultView, { result: controller.getState().policyResult })))
-      .toContain('已安装策略 <code>bbbbbbbbbbbb</code>');
+      .toContain('Installed policy <code>bbbbbbbbbbbb</code>');
   });
 
   it('degrades to an unavailable or error section without blocking the card', async () => {
     const missing = createLiveAdapter(async (path) => core(path) ?? json({ error: { code: 'NOT_FOUND' } }, 404), () => at);
-    expect((await missing.load()).policy).toEqual({ availability: 'unavailable', message: expect.stringContaining('策略') });
+    expect((await missing.load()).policy).toEqual({ availability: 'unavailable', message: expect.stringContaining('Policy') });
     const bad = createLiveAdapter(async (path) => core(path) ?? (path.endsWith('/personal/policy')
       ? json({ ...view, policy: { ...view.policy, v: 2 } }) : json({ error: { code: 'NOT_FOUND' } }, 404)), () => at);
     const snapshot = await bad.load();
-    expect(snapshot.policy).toEqual({ availability: 'error', message: expect.stringContaining('策略响应格式') });
+    expect(snapshot.policy).toEqual({ availability: 'error', message: expect.stringContaining('Policy data does not match') });
     expect(snapshot.card.card).toEqual([]);
   });
 });

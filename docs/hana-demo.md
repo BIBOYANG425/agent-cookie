@@ -1,6 +1,6 @@
 # HANA demo reproduction and cutover
 
-Status: preparation, **not a live HANA phone acceptance**. Original channel-photon is the fallback. The human cancelled the original 06:00 PDT cutoff on 2026-10-18 at 10:13 PDT; continue HANA acceptance with the original agent retained as rollback. Full elapsed rehearsal time includes the real five-minute idle wait; the edited film budget is 4:30.
+Status: real phone offers, natural candidate learning and merchant handoff have been verified; see `docs/evidence/hana-demo/06-phone-preference.md`, `07-phone-handoff.json` and the checkout screenshot. The shortened hackathon demonstration uses these verified steps plus the current console and a second personal client. Merchant-model greetings, three reset rehearsals and independent-machine reproduction remain unverified. Original channel-photon is the fallback. The human cancelled the original 06:00 PDT cutoff on 2026-10-18 at 10:13 PDT; continue HANA acceptance with the original agent retained as rollback. Full elapsed rehearsal time includes the real five-minute idle wait; the edited film budget is 4:30.
 
 ## Inputs an independent operator needs
 

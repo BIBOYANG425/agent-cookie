@@ -7,14 +7,14 @@ import type { ActivityEvent } from './model';
 /** The live adapter reads /personal/receipts without a query, so the workspace's default page applies: the newest 50. */
 export const RECEIPT_LIMIT = 50;
 
-const purposeLabels: Record<string, string> = { handshake: '首次介绍', checkout: '结账地址', payment: '支付授权', tier0: '零接入前缀' };
+const purposeLabels: Record<string, string> = { handshake: 'Introduction', checkout: 'Checkout address', payment: 'Payment authorization', tier0: 'Text-prefix delivery' };
 /**
- * handshake → 首次介绍 (as in the grants panel), checkout → 结账地址, payment → 支付授权, tier0 → 零接入前缀, a funnel stage
- * (quoted, accepted) → 阶段 · 报价; else the raw purpose. The raw purpose always stays visible.
+ * handshake → Introduction (as in the grants panel), checkout → Checkout address, payment → Payment authorization, tier0 → Text-prefix delivery, a funnel stage
+ * (quoted, accepted) → Stage · Quoted; else the raw purpose. The raw purpose always stays visible.
  */
 export function purposeLabel(purpose: string): string {
-  if (Object.hasOwn(purposeLabels, purpose)) return `${purposeLabels[purpose]}（${purpose}）`;
-  if (Object.hasOwn(stageLabels, purpose)) return `阶段 · ${stageLabels[purpose as keyof typeof stageLabels]}（${purpose}）`;
+  if (Object.hasOwn(purposeLabels, purpose)) return `${purposeLabels[purpose]} (${purpose})`;
+  if (Object.hasOwn(stageLabels, purpose)) return `Stage · ${stageLabels[purpose as keyof typeof stageLabels]} (${purpose})`;
   return purpose;
 }
 
@@ -35,19 +35,19 @@ export function shortId(id: string): string {
 // ---- payment events in the activity log (apps/workspace commerce.ts) ----
 // payment.authorize: result = the authorization status or the error code; reason = `tap=<signature> billto=<field name|none>`.
 // payment.reverse: result = the reversal outcome (reversed, not_reversed, not_supported) or an error code.
-// An unknown authorize result is shown raw; an unknown reverse result is an error code (the reversal threw), so 撤销失败.
+// An unknown authorize result is shown raw; an unknown reverse result is an error code (the reversal threw), so Reversal failed.
 const paymentEvents: Record<string, { title: string; note: string; results: Record<string, string>; fallback?: string }> = {
   'payment.authorize': {
-    title: '支付授权',
-    note: '工作台代你向支付提供方申请这笔金额的预授权。tap= 是付款方签名（none 表示没有签名），billto= 是作为账单地址交给支付提供方的字段名（none 表示没有交），都不含字段值。',
-    results: { authorized: '授权', reversed: '已撤销', OVER_BUDGET: '超预算', used: '已使用', AUTHORIZATION_USED: '已使用',
-      declined: '拒绝', SCOPE_DENIED: '拒绝', NOT_FOUND: '拒绝', JAR_LOCKED: 'jar 已锁定', UPSTREAM_ERROR: '支付提供方出错' },
+    title: 'Payment authorization',
+    note: 'The workspace requests a payment hold for this amount. tap= records the payer signature; billto= names billing-address fields. none means absent. Field values are never shown.',
+    results: { authorized: 'Permissions', reversed: 'Revoked', OVER_BUDGET: 'Over budget', used: 'Used', AUTHORIZATION_USED: 'Used',
+      declined: 'Decline', SCOPE_DENIED: 'Decline', NOT_FOUND: 'Decline', JAR_LOCKED: 'Jar locked', UPSTREAM_ERROR: 'Payment provider error' },
   },
   'payment.reverse': {
-    title: '撤销支付授权',
-    note: '释放商家没有使用的预授权。结果不是“已撤销”时，预授权可能保留在卡上，直到过期。',
-    results: { reversed: '已撤销', not_reversed: '未撤销', not_supported: '不支持撤销' },
-    fallback: '撤销失败',
+    title: 'Reverse payment authorization',
+    note: 'Releases an unused payment hold. Unless reversal is confirmed, the hold may remain until expiry.',
+    results: { reversed: 'Revoked', not_reversed: 'Not reversed', not_supported: 'Reversal unsupported' },
+    fallback: 'Reversal failed',
   },
 };
 export interface ActivityLabel { title: string; result: string; note?: string }
@@ -56,7 +56,7 @@ export function activityLabel(event: ActivityEvent): ActivityLabel {
   const known = Object.hasOwn(paymentEvents, event.event) ? paymentEvents[event.event] : undefined;
   if (!known) return { title: event.event, result: event.result };
   const label = Object.hasOwn(known.results, event.result) ? known.results[event.result] : known.fallback;
-  return { title: `${known.title}（${event.event}）`, result: !label ? event.result : event.result ? `${label}（${event.result}）` : label,
+  return { title: `${known.title} (${event.event})`, result: !label ? event.result : event.result ? `${label} (${event.result})` : label,
     note: known.note };
 }
 

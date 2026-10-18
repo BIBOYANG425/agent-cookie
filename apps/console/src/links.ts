@@ -9,13 +9,13 @@ export interface LinkList { links: Link[] }
 export type LinkDecision = 'approve' | 'decline';
 
 export const LINK_STATUSES: readonly LinkStatus[] = ['pending', 'approved', 'declined', 'expired'];
-export const linkStatusLabels: Record<LinkStatus, string> = { pending: '待批准', approved: '已批准', declined: '已拒绝', expired: '已过期' };
+export const linkStatusLabels: Record<LinkStatus, string> = { pending: 'Pending', approved: 'Approved', declined: 'Declined', expired: 'Expired' };
 export const decisionStatus: Record<LinkDecision, LinkStatus> = { approve: 'approved', decline: 'declined' };
-export const decisionLabels: Record<LinkDecision, string> = { approve: '批准连接请求', decline: '拒绝连接请求' };
+export const decisionLabels: Record<LinkDecision, string> = { approve: 'Approve connection', decline: 'Decline connection' };
 
-/** The workspace's 409 (or the Sample adapter's equivalent): the link was already approved, declined or expired. Shown as 已处理. */
+/** The workspace's 409 (or the Sample adapter's equivalent): the link was already approved, declined or expired. Shown as Handled. */
 export class LinkNotPendingError extends Error {
-  constructor() { super('这条连接请求已处理，不在待批准状态。'); }
+  constructor() { super('This connection request is no longer pending.'); }
 }
 
 /** Sample only: the agent in fixtures/agents.json (test/links.test.ts checks they match). */
@@ -31,7 +31,7 @@ export function sampleLink(now: number): Link {
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 256;
 const date = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
-const malformed = () => new Error('连接请求响应格式与契约不一致。');
+const malformed = () => new Error('Connection data does not match the workspace contract.');
 
 /** Copies only the contract's Link keys, so nothing else a response carries can reach the page. Undefined when invalid. */
 export function linkRow(row: unknown): Link | undefined {

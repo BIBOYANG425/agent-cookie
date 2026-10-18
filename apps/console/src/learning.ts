@@ -21,7 +21,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string';
 const identifier = (v: unknown): v is string => text(v) && v.length > 0;
 const date = (v: unknown): v is string => text(v) && Number.isFinite(Date.parse(v));
-const malformed = () => new Error('学习响应格式与 A 线已核对契约不一致。');
+const malformed = () => new Error('Learning data does not match the workspace contract.');
 
 // Optional provenance can degrade independently; it never changes core validation or status.
 function normalizeModels(value: unknown): EvidenceModels | undefined {

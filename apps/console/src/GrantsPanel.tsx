@@ -2,30 +2,39 @@ import { remainingSeconds } from './controller';
 import { FieldName } from './fields';
 import { GrantNeeds } from './GrantNeeds';
 import { stageLabels } from './funnel';
-import type { ConsoleSnapshot } from './model';
+import type { ConsoleSnapshot, GrantView } from './model';
 import { shortPolicyId } from './policy';
-
-const formatTime = (at: string | number) => new Date(at).toLocaleString('zh-CN', { hour12: false });
+const formatTime = (at: string | number) => new Date(at).toLocaleString('en-US', { hour12: false });
 
 export function GrantsPanel({ data, sample, now, blocked, currentPolicyId, revoke }: {
   data: ConsoleSnapshot | null; sample: boolean; now: number; blocked: boolean; currentPolicyId?: string;
   revoke: (id: string) => void;
 }) {
+  const active = data?.grants.filter(grant => grant.status === 'live' && remainingSeconds(grant, data.receivedAt, now) > 0) ?? [];
+  const history = data?.grants.filter(grant => !active.includes(grant)) ?? [];
+  const renderGrant = (grant: GrantView) => {
+    const seconds = remainingSeconds(grant, data!.receivedAt, now);
+    const status = grant.status === 'revoked' ? 'Revoked' : seconds === 0 ? 'Expired' : `${seconds}s remaining`;
+    return <article className="grant" key={grant.id}>
+      <div className="grant-title"><div><h3>{grant.agentName}</h3><p className="muted small">{grant.purpose === 'handshake' ? 'Introduction' : grant.purpose} · {grant.fields.length} allowed fields</p>
+        <GrantNeeds grant={grant} events={data!.events} /></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
+      <details className="grant-inspect"><summary>Inspect fields, purpose and session</summary>
+        <dl><div><dt>Recipient</dt><dd>{grant.agentId}</dd></div>
+          <div><dt>Allowed fields</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map(field => <li key={field}><FieldName field={field} /></li>)}</ul> : 'None'}</dd></div>
+          <div><dt>Purpose</dt><dd>{grant.purpose === 'handshake' ? 'Introduction (handshake)' : grant.purpose}</dd></div>
+          <div><dt>Stage</dt><dd>{grant.stage ? `${stageLabels[grant.stage]} (${grant.stage})` : 'Not recorded'}</dd></div>
+          <div><dt>Policy</dt><dd>{grant.policyId ? <><code title={grant.policyId}>{shortPolicyId(grant.policyId)}</code>{grant.policyId === currentPolicyId ? ' · current policy' : ''}</> : 'Not recorded'}</dd></div>
+          <div><dt>Session</dt><dd>{grant.sessionId}</dd></div>
+          <div><dt>Expires</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
+      </details>
+      <button type="button" className="danger" disabled={blocked || grant.status !== 'live' || seconds === 0} aria-label={`Revoke access for ${grant.agentName}`} onClick={() => revoke(grant.id)}>{grant.status === 'revoked' ? 'Revoked' : 'Revoke access'}</button>
+    </article>;
+  };
   return <section id="grants" className="panel" aria-labelledby="grants-title">
-    <div className="sheet-heading"><h2 id="grants-title">授权</h2><span>到期或撤销后，商家不能继续读取</span></div>
-    {!data || data.grants.length === 0 ? <p className="empty">{!data ? '连接后显示授权。' : '目前没有授权。介绍给商家后，相应的字段、用途和期限会显示在这里。'}</p>
-      : <div className="grant-list">{data.grants.map((grant) => {
-        const seconds = remainingSeconds(grant, data.receivedAt, now);
-        const status = grant.status === 'revoked' ? '已撤销' : seconds === 0 ? '已过期' : `剩余 ${seconds} 秒`;
-        return <article className="grant" key={grant.id}>
-          <div className="grant-title"><div><h3>{grant.agentName}</h3><GrantNeeds grant={grant} events={data.events} /><p className="muted small">{grant.agentId}</p></div><span className={`grant-status ${grant.status !== 'live' || seconds === 0 ? 'inactive' : ''}`}>{status}</span></div>
-          <dl><div><dt>允许字段</dt><dd>{grant.fields.length ? <ul className="grant-fields">{grant.fields.map((field) => <li key={field}><FieldName field={field} /></li>)}</ul> : '无'}</dd></div><div><dt>用途</dt><dd>{grant.purpose === 'handshake' ? '首次介绍（handshake）' : grant.purpose}</dd></div>
-            <div><dt>阶段</dt><dd>{grant.stage ? `${stageLabels[grant.stage]}（${grant.stage}）` : '未记录'}</dd></div>
-            <div><dt>策略</dt><dd>{grant.policyId ? <><code title={grant.policyId}>{shortPolicyId(grant.policyId)}</code>{grant.policyId === currentPolicyId ? ' · 当前策略' : ''}</> : '未记录'}</dd></div>
-            <div><dt>会话</dt><dd>{grant.sessionId}</dd></div><div><dt>到期时间</dt><dd><time dateTime={grant.expiresAt}>{formatTime(grant.expiresAt)}</time></dd></div></dl>
-          <button type="button" className="danger" disabled={blocked || grant.status !== 'live' || seconds === 0} aria-label={`撤销 ${grant.agentName} 的授权`} onClick={() => revoke(grant.id)}>{grant.status === 'revoked' ? '已撤销' : '撤销授权'}</button>
-        </article>;
-      })}</div>}
-    {data && <p className="panel-note">{sample ? 'Sample 倒计时仅用于演示。' : '剩余秒数由工作台返回的时长计算；最终放行以工作台检查为准。'}</p>}
+    <div className="sheet-heading"><h2 id="grants-title">Permissions</h2><span>Expiry or revocation stops future reads</span></div>
+    {!data ? <p className="empty">Connect to view permissions.</p>
+      : <>{active.length ? <div className="grant-list">{active.map(renderGrant)}</div> : <p className="empty">No active permissions. Access appears here when a merchant is introduced.</p>}
+        {history.length > 0 && <details className="records-history"><summary>Past permissions ({history.length})</summary><div className="grant-list">{history.map(renderGrant)}</div></details>}</>}
+    {data && <p className="panel-note">{sample ? 'Sample countdowns are illustrative.' : 'The workspace checks access on every read. A permission does not mean information has been read.'}</p>}
   </section>;
 }

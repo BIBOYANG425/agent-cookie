@@ -24,11 +24,11 @@ describe('funnel panel', () => {
     const funnel = controller.getState().data!.funnel!;
     expect(funnel).toMatchObject({ availability: 'ready', sample: true, data: { sample: true } });
     const html = render(funnel, true);
-    for (const text of ['Sample · 每个意图一行 · 只含计数', '<th scope="col">时间</th>', '<th scope="col">首个报价(ms)</th>',
-      '<th scope="col">字段(读/授)</th>', '<th scope="col">回执</th>', '合计（按下方显示的 3 行计算）',
-      '介绍 8 · 报价 3 · 接受 2/3（67%） · 字段 读 7 / 授 18 · 回执 3', '搜索过滤：候选 12 → 合格 5 · 介绍 3',
-      '避开（pref.avoid） 2 · 非美元 1 · 不可购买 1 · 不配送到所在国家 2 · 超出本次预算 1 · 价格或卖家信息无效 0',
-      '合格商品来自 4 个卖家', '已下单（ordered）', '转交商家完成（handoff）', '这个意图没有目录搜索的过滤记录', 'Sample 数据，不代表真实商家或用户']) {
+    for (const text of ['Sample · one row per request', '<th scope="col">Time</th>', '<th scope="col">First quote (ms)</th>',
+      '<th scope="col">Fields (read/granted)</th>', '<th scope="col">Receipts</th>', 'Totals for the 3 requests below',
+      'Introduced 8 · Quoted 3 · Accepted 2/3 (67%) · Fields read 7 / granted 18 · Receipts 3', 'Catalog: 12 offers → 5 eligible · 3 introduced',
+      'Avoid (pref.avoid) 2 · Non-USD 1 · Unavailable 1 · Does not ship to your country 2 · Over request budget 1 · Invalid price or seller 0',
+      'Eligible products from 4 sellers', 'Ordered (ordered)', 'Continue with merchant (handoff)', 'No catalog filtering record for this request', 'Sample data, not actual merchants or users']) {
       expect(html).toContain(text);
     }
     const order = ['sample-intent-3', 'sample-intent-2', 'sample-intent-1'].map((id) => html.indexOf(`<code>${id}</code>`));
@@ -49,24 +49,24 @@ describe('funnel panel', () => {
     ] };
     const html = render({ availability: 'ready', data: report });
     expect(html).not.toContain('Sample');
-    expect(html).toContain('<td data-label="首个报价(ms)" class="num">950</td>');
-    expect(html).toContain('<td data-label="首个报价(ms)" class="num">—</td>');
-    expect(html).toContain('<td data-label="结果">尚无结果</td>');
-    expect(html).toContain('<td data-label="结果">—</td>');
-    expect(html).toContain('<td data-label="字段(读/授)" class="num">2/6</td>');
-    expect(html).toContain('接受 1/2（50%）');
-    expect(html).toContain('工作台只返回计数和 ID，不含任何字段值。');
-    expect(render({ availability: 'ready', data: { ...report, sample: true } })).toContain('Sample · 每个意图一行');
-    expect(render({ availability: 'ready', data: { ...report, rows: [] } })).toContain('还没有意图');
-    expect(render(undefined)).toContain('连接后显示漏斗');
+    expect(html).toContain('<td data-label="First quote (ms)" class="num">950</td>');
+    expect(html).toContain('<td data-label="First quote (ms)" class="num">—</td>');
+    expect(html).toContain('<td data-label="Outcome">No outcome yet</td>');
+    expect(html).toContain('<td data-label="Outcome">—</td>');
+    expect(html).toContain('<td data-label="Fields (read/granted)" class="num">2/6</td>');
+    expect(html).toContain('Accepted 1/2 (50%)');
+    expect(html).toContain('The workspace returns counts and IDs only, without field values.');
+    expect(render({ availability: 'ready', data: { ...report, sample: true } })).toContain('Sample · one row per request');
+    expect(render({ availability: 'ready', data: { ...report, rows: [] } })).toContain('No requests yet');
+    expect(render(undefined)).toContain('Connect to view the journey report');
     const full = render({ availability: 'ready', data: { ...report, rows: Array.from({ length: 50 }, (_, i) => row({ intentId: `i-${i}` })) } });
-    expect(full).toContain('只读取最近 50 个意图');
+    expect(full).toContain('Showing the latest 50 requests');
   });
 
   it('totals are plain sums over the given rows; conversion is accepted / intents', () => {
     const totals = funnelTotals([row(), row({ accepted: false, introduced: 3, fieldsRead: 0 })]);
     expect(totals).toEqual({ intents: 2, introduced: 5, quoted: 2, accepted: 1, fieldsRead: 2, fieldsGranted: 12, purposeReleases: 2 });
-    expect(conversionText(totals)).toBe('1/2（50%）');
+    expect(conversionText(totals)).toBe('1/2 (50%)');
     expect(conversionText(funnelTotals([]))).toBe('—');
   });
 });
@@ -90,15 +90,15 @@ describe('funnel over the live adapter', () => {
   it('a missing endpoint or a malformed report degrades the panel only', async () => {
     const missing = createLiveAdapter(async (path) => core(path) ?? json({ error: { code: 'NOT_FOUND' } }, 404), () => at);
     const gone = await missing.load();
-    expect(gone.funnel).toEqual({ availability: 'unavailable', message: expect.stringContaining('漏斗') });
-    expect(render(gone.funnel)).toContain('工作台尚未提供漏斗接口');
+    expect(gone.funnel).toEqual({ availability: 'unavailable', message: expect.stringContaining('Journey') });
+    expect(render(gone.funnel)).toContain('does not support Journey yet');
     for (const bad of [{ ...row(), introduced: -1 }, { ...row(), outcome: 'shipped' }, { ...row(), createdAt: 'yesterday' },
       { ...row(), search: { offers: 1 } }, { ...row(), firstQuoteMs: 'fast' }]) {
-      expect(() => normalizeFunnelReport({ rows: [bad], sample: false, generatedAt: new Date(at).toISOString() })).toThrow('漏斗响应格式');
+      expect(() => normalizeFunnelReport({ rows: [bad], sample: false, generatedAt: new Date(at).toISOString() })).toThrow('Journey data does not match');
     }
     const malformed = createLiveAdapter(async (path) => core(path) ?? json({ rows: [{ intentId: 'x' }], sample: false, generatedAt: 'now' }), () => at);
     const snapshot = await malformed.load();
-    expect(snapshot.funnel).toEqual({ availability: 'error', message: expect.stringContaining('漏斗响应格式') });
+    expect(snapshot.funnel).toEqual({ availability: 'error', message: expect.stringContaining('Journey data does not match') });
     expect(snapshot.grants).toEqual([]);
   });
 
@@ -106,6 +106,6 @@ describe('funnel over the live adapter', () => {
     const live = createLiveAdapter(async (path) => core(path) ?? json({ rows: [row()], sample: true, generatedAt: new Date(at).toISOString() }), () => at);
     const snapshot = await live.load();
     expect(snapshot.funnel).toMatchObject({ availability: 'ready', sample: true });
-    expect(render(snapshot.funnel)).toContain('Sample · 每个意图一行');
+    expect(render(snapshot.funnel)).toContain('Sample · one row per request');
   });
 });

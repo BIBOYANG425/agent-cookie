@@ -17,7 +17,7 @@ it('shows the latest declared object for the exact merchant, with unavailable fi
     { ...event('other', '2026-10-17T12:00:00Z', 'other-merchant'), object: 'PRIVATE OTHER REQUEST' }];
   const html = render({ ...grant, handshake: { unavailable: ['pref.material', 'payment_method'] } }, events);
   expect(html).toContain('3 requested / 2 grantable / 1 denied');
-  expect(html).toContain('最近一次申请');
+  expect(html).toContain('Latest request');
   expect(html).toContain('pref.material');
   expect(html).toContain('unavailable-field');
   expect(html).not.toContain('5 requested');

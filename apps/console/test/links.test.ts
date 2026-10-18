@@ -37,15 +37,15 @@ describe('consent links: Sample mode', () => {
     expect(snapshot.links).toEqual(ready([{ id: SAMPLE_LINK_ID, agentId: 'sample-assistant', agentName: 'Sample · Assistant',
       status: 'pending', createdAt: iso(at), expiresAt: iso(at + LINK_TTL_MS) }], true));
     const html = panel({ state: snapshot.links, sample: true });
-    for (const text of ['<h2 id="links-title" tabindex="-1">连接请求</h2>', 'Sample · 公司助理申请连接，由你批准', '1 条待批准，共 1 条。',
+    for (const text of ['<h2 id="links-title" tabindex="-1">Connections</h2>', 'Sample · Approve access for connected assistants', '1 pending of 1 requests.',
       '<h3>Sample · Assistant</h3>', '<p class="muted small">sample-assistant</p>', '<code title="sample-link-assistant">…ssistant</code>',
-      '<span class="link-status ">待批准</span>', '<dt>处理时间</dt><dd>尚未处理</dd>', 'aria-label="批准 Sample · Assistant 的连接请求">批准</button>',
-      'aria-label="拒绝 Sample · Assistant 的连接请求">拒绝</button>', 'Sample 数据：批准或拒绝只改变本页', '30 天的授权', '10 分钟后过期',
-      '永远读不到收货地址和支付方式']) expect(html).toContain(text);
+      '<span class="link-status ">Pending</span>', '<dt>Decided</dt><dd>Not decided</dd>', 'aria-label="Approve connection for Sample · Assistant">Approve</button>',
+      'aria-label="Decline connection for Sample · Assistant">Decline</button>', 'Sample only. Approval or rejection changes this preview', '30-day grant', 'expire after 10 minutes',
+      'can never read shipping addresses or payment methods']) expect(html).toContain(text);
     expect(network).not.toHaveBeenCalled();
   });
 
-  it('approve changes only page state after the adapter answers; a second decision reads 已处理; reset restores the pending link', async () => {
+  it('approve changes only page state after the adapter answers; a second decision reads Handled; reset restores the pending link', async () => {
     const network = vi.spyOn(globalThis, 'fetch');
     let now = at;
     const controller = new ConsoleController(createSampleAdapter(() => now));
@@ -54,22 +54,22 @@ describe('consent links: Sample mode', () => {
     await controller.decideLink(SAMPLE_LINK_ID, 'approve');
     let state = controller.getState();
     expect(state.data!.links).toEqual(ready([expect.objectContaining({ id: SAMPLE_LINK_ID, status: 'approved', decidedAt: iso(at + 60_000) })], true));
-    expect(state.notice).toBe('Sample · 仅本页：批准连接请求完成。');
+    expect(state.notice).toBe('Sample · local preview: Approve connection completed.');
     expect(state.error).toBe('');
-    expect(state.data!.events[0]).toMatchObject({ event: '批准连接请求', object: SAMPLE_LINK_ID, actor: 'Sample · 本地控制台' });
+    expect(state.data!.events[0]).toMatchObject({ event: 'Approve connection', object: SAMPLE_LINK_ID, actor: 'Sample · local console' });
     expect(state.data!.grants.map((grant) => grant.agentId)).not.toContain('sample-assistant');
     const approved = panel({ state: state.data!.links, sample: true, handled: state.handledLinks });
-    expect(approved).toContain('<span class="link-status inactive">已批准</span>');
-    expect(approved).toContain('0 条待批准，共 1 条。');
-    expect(approved).not.toContain('>批准</button>');
+    expect(approved).toContain('<span class="link-status inactive">Approved</span>');
+    expect(approved).toContain('0 pending of 1 requests.');
+    expect(approved).not.toContain('>Approve</button>');
 
     await controller.decideLink(SAMPLE_LINK_ID, 'decline');
     state = controller.getState();
-    expect(state.notice).toBe('Sample · 这条连接请求已处理：它已被批准、拒绝或已过期，这次没有更改。');
+    expect(state.notice).toBe('Sample · This request was already approved, declined or expired. No change was made.');
     expect(state.error).toBe('');
     expect(state.handledLinks).toEqual([SAMPLE_LINK_ID]);
     expect((state.data!.links as { data: LinkList }).data.links[0].status).toBe('approved');
-    expect(panel({ state: state.data!.links, sample: true, handled: state.handledLinks })).toContain('已批准 · 已处理');
+    expect(panel({ state: state.data!.links, sample: true, handled: state.handledLinks })).toContain('Approved · Handled');
 
     await controller.reset();
     state = controller.getState();
@@ -83,7 +83,7 @@ describe('consent links: Sample mode', () => {
     const sample = createSampleAdapter(() => now);
     await sample.decideLink(SAMPLE_LINK_ID, 'decline');
     expect((await sample.load()).links).toEqual(ready([expect.objectContaining({ status: 'declined', decidedAt: iso(at) })], true));
-    await expect(sample.decideLink('unknown', 'approve')).rejects.toThrow('Sample 连接请求不存在');
+    await expect(sample.decideLink('unknown', 'approve')).rejects.toThrow('Sample connection request not found');
     await sample.reset();
     now += LINK_TTL_MS;
     const expired = (await sample.load()).links!;
@@ -91,8 +91,8 @@ describe('consent links: Sample mode', () => {
     expect(expired.availability === 'ready' ? expired.data.links[0].decidedAt : 'not ready').toBeUndefined();
     await expect(sample.decideLink(SAMPLE_LINK_ID, 'approve')).rejects.toBeInstanceOf(LinkNotPendingError);
     const html = panel({ state: expired, sample: true });
-    expect(html).toContain('<span class="link-status inactive">已过期</span>');
-    expect(html).toContain('<dt>处理时间</dt><dd>未处理，已过期</dd>');
+    expect(html).toContain('<span class="link-status inactive">Expired</span>');
+    expect(html).toContain('<dt>Decided</dt><dd>Expired without a decision</dd>');
     expect(html).not.toContain('</button>');
   });
 });
@@ -109,12 +109,12 @@ describe('consent links: live adapter and controller', () => {
     expect(JSON.stringify(snapshot.links)).not.toContain('secret');
 
     const missing = await createLiveAdapter(async (path) => core(path) ?? json({ error: { code: 'NOT_FOUND' } }, 404), () => at).load();
-    expect(missing.links).toEqual({ availability: 'unavailable', message: '工作台尚未提供连接请求接口。其他面板可继续使用。' });
-    expect(panel({ state: missing.links })).toContain('工作台尚未提供连接请求接口');
+    expect(missing.links).toEqual({ availability: 'unavailable', message: 'The workspace does not support Connections yet. Other panels remain available.' });
+    expect(panel({ state: missing.links })).toContain('does not support Connections yet');
     for (const bad of [{ links: [{ ...link(), status: 'maybe' }] }, { links: [{ ...link(), createdAt: 'yesterday' }] }, { links: {} }, [link()]]) {
       const snapshot = await createLiveAdapter(async (path) => core(path)
         ?? (path.endsWith('/owner/links') ? json(bad) : json({ error: { code: 'NOT_FOUND' } }, 404)), () => at).load();
-      expect(snapshot.links).toEqual({ availability: 'error', message: expect.stringContaining('连接请求响应格式') });
+      expect(snapshot.links).toEqual({ availability: 'error', message: expect.stringContaining('Connection data does not match') });
       expect(snapshot.card.card).toEqual([]);
     }
     expect(normalizeLinks({ links: [], sample: true })).toEqual({ links: [], sample: true });
@@ -138,11 +138,11 @@ describe('consent links: live adapter and controller', () => {
     expect(posts[0].options.headers).toEqual({ 'X-Agent-Cookie-Console': '1' });
     // In flight: the action is pending, the row is still pending, and both buttons are disabled.
     let state = controller.getState();
-    expect(state.pending).toBe('批准连接请求');
+    expect(state.pending).toBe('Approve connection');
     expect(state.notice).toBe('');
     const during = panel({ state: state.data!.links, blocked: !!state.pending, handled: state.handledLinks });
-    expect(during).toContain('<span class="link-status ">待批准</span>');
-    expect(during).not.toContain('已批准');
+    expect(during).toContain('<span class="link-status ">Pending</span>');
+    expect(during).not.toContain('Approved');
     expect(during).toContain('<button type="button" class="primary" disabled=""');
     expect(during).toContain('<button type="button" class="danger" disabled=""');
 
@@ -152,12 +152,12 @@ describe('consent links: live adapter and controller', () => {
     state = controller.getState();
     expect(state.pending).toBe('');
     expect(state.error).toBe('');
-    expect(state.notice).toBe('工作台已确认：批准连接请求完成。');
+    expect(state.notice).toBe('Workspace confirmed: Approve connection completed.');
     expect(state.data!.links).toEqual(ready(current));
     const after = panel({ state: state.data!.links, handled: state.handledLinks });
-    expect(after).toContain('<span class="link-status inactive">已批准</span>');
+    expect(after).toContain('<span class="link-status inactive">Approved</span>');
     expect(after).not.toContain('Sample');
-    expect(after).toContain('按钮只在工作台确认后才改变这一行。');
+    expect(after).toContain('Changes appear after workspace confirmation.');
   });
 
   it('decline POSTs its own path; an acknowledgement that is not the decided link is not a success', async () => {
@@ -177,7 +177,7 @@ describe('consent links: live adapter and controller', () => {
       await controller.decideLink('l_0123456789ab', 'decline');
       expect(controller.getState().data).toBe(before);
       expect(controller.getState().notice).toBe('');
-      expect(controller.getState().error).toContain('拒绝连接请求未确认成功');
+      expect(controller.getState().error).toContain('Decline connection was not confirmed');
       expect(controller.getState().handledLinks).toEqual([]);
     }
     await live.decideLink('a/b c', 'approve').catch(() => {});
@@ -189,7 +189,7 @@ describe('consent links: live adapter and controller', () => {
     expect(isDecisionAck({ ...link({ status: 'declined' }), sample: false }, 'l_0123456789ab', 'decline')).toBe(true);
   });
 
-  it('a 409 reads 已处理: no error, the snapshot reloads, and that row loses its buttons even while the list still says pending', async () => {
+  it('a 409 reads Handled: no error, the snapshot reloads, and that row loses its buttons even while the list still says pending', async () => {
     const replies = [json({ error: { code: 'LINK_NOT_PENDING', message: 'secret-key' } }, 409), json({ error: { code: 'SCOPE_DENIED' } }, 403)];
     let loads = 0;
     const live = createLiveAdapter(async (path, options) => {
@@ -204,18 +204,18 @@ describe('consent links: live adapter and controller', () => {
     let state = controller.getState();
     expect(loads).toBe(2);
     expect(state.error).toBe('');
-    expect(state.notice).toBe('这条连接请求已处理：它已被批准、拒绝或已过期，这次没有更改。');
+    expect(state.notice).toBe('This request was already approved, declined or expired. No change was made.');
     expect(state.notice).not.toContain('secret');
     expect(state.handledLinks).toEqual(['l_0123456789ab']);
     const html = panel({ state: state.data!.links, handled: state.handledLinks });
-    expect(html).toContain('<span class="link-status inactive">已处理</span>');
-    expect(html).toContain('1 条待批准，共 2 条。');
-    expect(html.match(/>批准<\/button>/gu)).toHaveLength(1);
-    expect(html).toContain('aria-label="批准 Acme Assistant 的连接请求"');
-    // Any other refusal is an unconfirmed action, never 已处理.
+    expect(html).toContain('<span class="link-status inactive">Handled</span>');
+    expect(html).toContain('1 pending of 2 requests.');
+    expect(html.match(/>Approve<\/button>/gu)).toHaveLength(1);
+    expect(html).toContain('aria-label="Approve connection for Acme Assistant"');
+    // Any other refusal is an unconfirmed action, never Handled.
     await controller.decideLink('l_2', 'approve');
     state = controller.getState();
-    expect(state.error).toContain('批准连接请求未确认成功');
+    expect(state.error).toContain('Approve connection was not confirmed');
     expect(state.error).toContain('403 SCOPE_DENIED');
     expect(state.handledLinks).toEqual(['l_0123456789ab']);
   });
@@ -232,16 +232,16 @@ describe('consent links panel', () => {
     const html = panel({ state: ready(rows) });
     expect(html.indexOf('l_pending_new')).toBeLessThan(html.indexOf('l_pending_old'));
     expect(html.indexOf('l_pending_old')).toBeLessThan(html.indexOf('l_new_approved'));
-    expect(html.match(/>批准<\/button>/gu)).toHaveLength(2);
-    expect(html.match(/>拒绝<\/button>/gu)).toHaveLength(2);
-    expect(html).toContain('<span class="link-status inactive">已拒绝</span>');
+    expect(html.match(/>Approve<\/button>/gu)).toHaveLength(2);
+    expect(html.match(/>Decline<\/button>/gu)).toHaveLength(2);
+    expect(html).toContain('<span class="link-status inactive">Declined</span>');
     expect(html).toContain(`<time dateTime="${iso(at - 8000)}">`);
     expect(html).toContain('<code title="l_pending_new">…ding_new</code>');
     expect(html).not.toContain('s_secret_session');
     expect(html).not.toContain('Sample');
-    expect(panel({ state: ready([]) })).toContain('还没有连接请求。');
-    expect(panel({})).toContain('连接后显示连接请求。');
-    expect(panel({ state: ready([link()], true) })).toContain('Sample · 公司助理申请连接');
+    expect(panel({ state: ready([]) })).toContain('No connection requests.');
+    expect(panel({})).toContain('Connect to view connection requests.');
+    expect(panel({ state: ready([link()], true) })).toContain('Sample · Approve access for connected assistants');
     expect(panel({ state: ready([link()]), blocked: true })).toMatch(/class="primary" disabled=""/u);
   });
 });
