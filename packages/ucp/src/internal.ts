@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { UpstreamError } from "@agent-cookie/contract";
+import type { CheckoutHttpTransport } from "./checkout-http.js";
 import type {
   UcpApi,
   UcpCart,
@@ -482,7 +483,8 @@ function operationBusiness(args: string[]): { operation: Operation; business: st
   return { operation, business };
 }
 
-export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunner): UcpApi {
+export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunner, checkoutTransport?: CheckoutHttpTransport): UcpApi {
+  if (checkoutTransport && checkoutTransport.mode !== options.mode) throw new Error("ucp checkout: transport mode mismatch");
   const env = process.env;
   const mode = options.mode;
   const fixturesDir = resolve(
@@ -622,7 +624,8 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
           buyer?.email,
         )),
       ]);
-      const envelope = await call("checkout-update", checkout.sellerDomain, args, fallback);
+      const direct = await checkoutTransport?.update(checkout, (current) => destinationPayload(destination, current, buyer?.email));
+      const envelope = direct ?? await call("checkout-update", checkout.sellerDomain, args, fallback);
       const result = record(envelope.result)!;
       const continueUrl = preferredContinueUrl(continueUrlFrom(result), fallback);
       if (continueUrl) checkoutContinueUrls.set(checkout.checkoutId, continueUrl);
@@ -635,7 +638,7 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
       };
     },
 
-    async complete(checkout) {
+    async complete(checkout, payment) {
       const fallback = preferredContinueUrl(
         checkout.continueUrl,
         checkoutContinueUrls.get(checkout.checkoutId),
@@ -649,7 +652,8 @@ export function createUcpInternal(options: UcpOptions, injectedRunner?: UcpRunne
         "--input",
         JSON.stringify({ payment: {} }),
       ]);
-      const envelope = await call("checkout-complete", checkout.sellerDomain, args, fallback, true);
+      const direct = await checkoutTransport?.complete(checkout, payment);
+      const envelope = direct ?? await call("checkout-complete", checkout.sellerDomain, args, fallback, true);
       const result = record(envelope.result)!;
       const continueUrl = preferredContinueUrl(continueUrlFrom(result), fallback);
       const orderId = orderIdFrom(result);

@@ -16,6 +16,7 @@
     "@shopify/ucp-cli": "0.9.1"
   },
   "devDependencies": {
+    "@agent-cookie/auth": "workspace:*",
     "@types/node": "^22.7.5",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",

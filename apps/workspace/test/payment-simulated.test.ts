@@ -1,6 +1,9 @@
-// D1 (lane D's Visa Acceptance simulator): a provider marked simulated → the accept result, its authorization, the
-// payment receipt and the activity log all say so, the marks are fixed on the row (a later write keeps them), and the
-// simulator origin is accepted only with VISA_ACCEPTANCE_SIMULATOR=1. An unmarked provider leaves everything unmarked.
+// D1 (lane D's Visa Acceptance simulator): with the workspace configured for the simulator, the accept result, its
+// authorization, the payment receipt and the activity log all say so, the marks are fixed on the row (a later write keeps
+// them), and the simulator origin is accepted only with VISA_ACCEPTANCE_SIMULATOR=1. Without it nothing is marked.
+// The provider is the test seam's unmarked fakeProvider: @agent-cookie/pay's createPayments still refuses a provider
+// that marks itself simulated (lane D's fail-closed gate, until the console and channels show the marks: A83/A84), so a
+// real simulator config stops at startup; these checks cover the workspace's own marking.
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PAYMENT_SIMULATOR_LABEL, type AcceptResult } from "@agent-cookie/contract";
@@ -14,8 +17,10 @@ const MARKS = { provider: PAYMENT_SIMULATOR_LABEL, simulated: true };
 const VISA = { AGENT_COOKIE_PAY: "visa", VISA_ACCEPTANCE_MERCHANT_ID: "sample_merchant", VISA_ACCEPTANCE_KEY_ID: "00000000-0000-0000-0000-000000000000",
   VISA_ACCEPTANCE_SHARED_SECRET: Buffer.from("sample").toString("base64") };
 
-async function acceptOnce(provider: PaymentProvider) {
-  const h = await harness({ env: { AGENT_COOKIE_PAY: "fake" }, paymentProvider: provider,
+const SIMULATOR = { ...VISA, VISA_ACCEPTANCE_SIMULATOR: "1", VISA_ACCEPTANCE_HOST: "http://127.0.0.1:4313" };
+
+async function acceptOnce(provider: PaymentProvider, env: Record<string, string>) {
+  const h = await harness({ env, paymentProvider: provider,
     ucp: StubUcp.fromFile(join(SAMPLE_FIXTURES_DIR, "ucp-offers.json"), "requires_escalation") });
   expect((await h.post("/personal/contributions", KEYS.personal, { field: "payment_method", value: "pm_card_visa" })).status).toBe(201);
   const { intentId } = await h.intent(KEYS.personal);
@@ -30,8 +35,8 @@ async function acceptOnce(provider: PaymentProvider) {
 }
 
 describe("D1 · simulated payment provenance", () => {
-  it("a simulated provider marks the result, the receipt, the row and the log, and the user is told", async () => {
-    const { h, q, body, text, events, receipts } = await acceptOnce({ ...fakeProvider(), label: PAYMENT_SIMULATOR_LABEL, simulated: true } as PaymentProvider);
+  it("the simulator config marks the result, the receipt, the row and the log, and the user is told", async () => {
+    const { h, q, body, text, events, receipts } = await acceptOnce(fakeProvider(), SIMULATOR);
     expect(body.authorization).toMatchObject({ quoteId: q.id, status: "reversed", ...MARKS });
     expect(body.message).toContain("Visa Acceptance simulator (simulated)");
     expect(body.receipts?.filter((r) => r.purpose === "payment")).toEqual([expect.objectContaining(MARKS)]);
@@ -47,8 +52,8 @@ describe("D1 · simulated payment provenance", () => {
     expect((await h.post(`/personal/quotes/${q.id}/accept`, KEYS.personal)).text).toBe(text);
   });
 
-  it("an unmarked provider marks nothing", async () => {
-    const { body, events, receipts } = await acceptOnce(fakeProvider());
+  it("without the simulator nothing is marked", async () => {
+    const { body, events, receipts } = await acceptOnce(fakeProvider(), { AGENT_COOKIE_PAY: "fake" });
     expect(body.authorization).not.toHaveProperty("simulated");
     expect(body.authorization).not.toHaveProperty("provider");
     expect(body.message).not.toContain("simulator");
