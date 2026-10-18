@@ -14,6 +14,7 @@
     "@agent-cookie/auth": "workspace:*",
     "@agent-cookie/contract": "workspace:*",
     "@agent-cookie/memory-repo": "workspace:*",
+    "@agent-cookie/pay": "workspace:*",
     "@agent-cookie/rules": "workspace:*",
     "@agent-cookie/ucp": "workspace:*",
     "@hono/node-server": "^1.13.7",

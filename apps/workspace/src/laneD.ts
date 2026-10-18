@@ -3,6 +3,9 @@
 // set; otherwise every hook is absent and the workspace behaves as before (unsigned handshakes, no TAP headers,
 // unlock → 404, JWKS → empty). Wired but locked: a new intent fails with JAR_LOCKED (the user unlocks first, lane D);
 // a delivery whose signing fails later (the unlock expired) goes out unsigned and the fallback is logged.
+// `authorizePayment` is not built here: AGENT_COOKIE_PAY switches it on by itself (payments.ts, wired in deps.ts), so
+// payment may be on while the jar is off. With the jar wired, the accept path's merchant requests carry the TAP
+// `agent-payer-auth` signature (services/delivery.ts); UCP steps go through the `ucp` CLI and carry none.
 import { resolve } from "node:path";
 import type { AuthorizePayment, SignHandshake } from "@agent-cookie/contract";
 import { createLaneDHooks, JarKeyStore } from "@agent-cookie/auth";

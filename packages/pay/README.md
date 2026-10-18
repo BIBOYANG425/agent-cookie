@@ -12,4 +12,4 @@ Run tests with `pnpm --filter @agent-cookie/pay test`; set `STRIPE_SECRET_KEY` t
 
 ## Honest limits
 
-The default store is in-memory and loses authorizations on restart; the workspace must provide durable storage before production use. Stripe is intended for test mode only. This package does not store card numbers.
+The default store is in-memory and loses authorizations on restart; the workspace passes its own SQLite-backed `PaymentStore` (table `payment_authorizations`), so single use survives a restart there. Stripe is intended for test mode only. This package does not store card numbers.

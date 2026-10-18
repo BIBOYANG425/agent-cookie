@@ -4,8 +4,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type {
-  ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, Quote, Receipt,
-  Role, Session, AcceptResult,
+  ActivityEvent, Agent, Basis, Card, Category, Contribution, ContributionEvidence, DataSource, Field, Grant, Intent, Note, PaymentAuthorization,
+  Quote, Receipt, Role, Session, AcceptResult,
 } from "@agent-cookie/contract";
 import { isExperimentArm, isFunnelStage, type ExperimentArm, type SearchStats, type SellerStats } from "@agent-cookie/contract";
 
@@ -32,6 +32,11 @@ export interface ObservationBatchRow { agentId: string; conversationId: string; 
 export interface MerchantCounts { sessions: number; returningSessions: number; quotes: number; accepted: number; quoteTimes: Array<{ intentAt: string; quoteAt: string }> }
 /** Phase 4 experiment: one intent that carries an arm, with its first accept time if it has one. */
 export interface ArmRow { intentId: string; arm: ExperimentArm; createdAt: string; acceptedAt?: string }
+/**
+ * Lane D payment (A21): an authorization with the two references that never leave the workspace — the provider's
+ * (capture) and the card's payment_method token reference. Same shape as @agent-cookie/pay's InternalAuthorization.
+ */
+export interface PaymentAuthorizationRow extends PaymentAuthorization { providerRef: string; paymentMethodRef: string; agentId: string }
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, name TEXT NOT NULL, secret TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -67,6 +72,8 @@ CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, at TE
   object TEXT NOT NULL, result TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (scope TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, status INTEGER NOT NULL,
   body TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (scope, key));
+CREATE TABLE IF NOT EXISTS payment_authorizations (id TEXT PRIMARY KEY, quote_id TEXT NOT NULL UNIQUE, session_id TEXT, amount INTEGER,
+  currency TEXT, status TEXT NOT NULL, provider_ref TEXT, payment_method_ref TEXT, agent_id TEXT, created_at TEXT, reserved_at TEXT NOT NULL);
 `;
 
 /** Columns added after the first schema, applied to existing databases (CREATE TABLE IF NOT EXISTS never alters). */
@@ -84,11 +91,13 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 8, table: "receipts", column: "policy_id", ddl: "ALTER TABLE receipts ADD COLUMN policy_id TEXT" },
   { version: 9, table: "grants", column: "stage", ddl: "ALTER TABLE grants ADD COLUMN stage TEXT" },
   { version: 10, table: "intents", column: "arm", ddl: "ALTER TABLE intents ADD COLUMN arm TEXT" },
+  // v11 (lane D, A21): payment_authorizations is a new TABLE, not a column: SCHEMA's CREATE TABLE IF NOT EXISTS adds it
+  // to an older database on open, so there is no ALTER here; the version bump records that the database has it.
 ];
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 const TABLES = ["users", "agents", "keys", "sessions", "grants", "intents", "intent_sessions", "quotes", "contributions", "cards", "notes",
-  "receipts", "activity", "idempotency", "settings", "observation_batches"] as const;
+  "receipts", "activity", "idempotency", "settings", "observation_batches", "payment_authorizations"] as const;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : String(v));
@@ -156,6 +165,13 @@ function toReceipt(r: Row): ReceiptRow {
   if (r.intent_id) x.intentId = String(r.intent_id);
   if (r.policy_id) x.policyId = String(r.policy_id);
   return x;
+}
+const PAYMENT_STATUSES: ReadonlyArray<PaymentAuthorization["status"]> = ["authorized", "declined", "used"];
+function toPaymentAuthorization(r: Row): PaymentAuthorizationRow | undefined {
+  const status = PAYMENT_STATUSES.find((x) => x === r.status);
+  if (!status) return undefined;
+  return { id: String(r.id), sessionId: String(r.session_id), quoteId: String(r.quote_id), amount: Number(r.amount), currency: "USD", status,
+    createdAt: String(r.created_at), providerRef: String(r.provider_ref), paymentMethodRef: String(r.payment_method_ref), agentId: String(r.agent_id) };
 }
 function toNote(r: Row): NoteRow {
   return { agentId: String(r.agent_id), userId: String(r.user_id), key: String(r.key), sessionId: String(r.session_id), value: String(r.value),
@@ -581,6 +597,35 @@ export class Store {
   releasedPurposeFields(sessionId: string): Field[] {
     const rows = this.db.prepare("SELECT fields FROM receipts WHERE session_id = ? AND purpose NOT IN ('tier0')").all(sessionId) as Row[];
     return [...new Set(rows.flatMap((r) => JSON.parse(String(r.fields)) as Field[]))];
+  }
+
+  // ---- payment authorizations (lane D, A21). One row per quote, ever (quote_id UNIQUE): the row is RESERVED before the
+  // provider is called and filled with its result after, so "one authorization per quote" survives a restart. A row
+  // still "reserved" after a crash keeps the quote refused (AUTHORIZATION_USED) rather than risk a second hold.
+  /** Claim the quote for authorization `id`; false when the quote already has a reservation or an authorization. */
+  reservePaymentQuote(quoteId: string, id: string, at: string): boolean {
+    return this.exec("INSERT OR IGNORE INTO payment_authorizations (id, quote_id, status, reserved_at) VALUES (?, ?, 'reserved', ?)", id, quoteId, at).changes === 1;
+  }
+  /** The provider call failed before any result: the quote may be tried again. Never removes a recorded authorization. */
+  releasePaymentQuote(quoteId: string): void {
+    this.exec("DELETE FROM payment_authorizations WHERE quote_id = ? AND status = 'reserved'", quoteId);
+  }
+  putPaymentAuthorization(a: PaymentAuthorizationRow): void {
+    this.exec(`INSERT INTO payment_authorizations (id, quote_id, session_id, amount, currency, status, provider_ref, payment_method_ref, agent_id,
+      created_at, reserved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET session_id = excluded.session_id, amount = excluded.amount, currency = excluded.currency,
+        status = excluded.status, provider_ref = excluded.provider_ref, payment_method_ref = excluded.payment_method_ref,
+        agent_id = excluded.agent_id, created_at = excluded.created_at`,
+      a.id, a.quoteId, a.sessionId, a.amount, a.currency, a.status, a.providerRef, a.paymentMethodRef, a.agentId, a.createdAt, a.createdAt);
+  }
+  /** A recorded authorization (a bare reservation is not one). */
+  paymentAuthorization(id: string): PaymentAuthorizationRow | undefined {
+    const r = this.db.prepare("SELECT * FROM payment_authorizations WHERE id = ? AND status <> 'reserved'").get(id) as Row | undefined;
+    return r && toPaymentAuthorization(r);
+  }
+  paymentAuthorizationForQuote(quoteId: string): PaymentAuthorizationRow | undefined {
+    const r = this.db.prepare("SELECT * FROM payment_authorizations WHERE quote_id = ? AND status <> 'reserved'").get(quoteId) as Row | undefined;
+    return r && toPaymentAuthorization(r);
   }
 
   // ---- activity

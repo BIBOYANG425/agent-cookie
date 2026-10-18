@@ -13,6 +13,8 @@ export interface PaymentContext {
 
 export interface PaymentReceipt {
   sessionId: string;
+  /** The accepted quote the authorization is for (the workspace attributes the receipt to its intent). */
+  quoteId: string;
   agentId: string;
   fields: ["payment_method"];
   purpose: "payment";
@@ -103,6 +105,7 @@ export function createPayments({
     if (record.status === "authorized") {
       await onReceipt?.({
         sessionId,
+        quoteId,
         agentId: context.quoteAgentId,
         fields: ["payment_method"],
         purpose: "payment",

@@ -60,6 +60,7 @@ describe("payment authorization", () => {
     }]);
     expect(payments.receipts).toEqual([{
       sessionId: "session-a",
+      quoteId: "quote-a",
       agentId: "merchant-a",
       fields: ["payment_method"],
       purpose: "payment",

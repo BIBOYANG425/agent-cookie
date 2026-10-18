@@ -287,8 +287,12 @@ export interface UcpApi {
   createCheckout(cart: UcpCart): Promise<UcpCheckout>;
   /** `ucp checkout update <id>` with the destination (and buyer email if one is ever available). The only step that sees the address. */
   setDestination(checkout: UcpCheckout, destination: UcpDestination, buyer?: { email?: string }): Promise<UcpCheckout>;
-  /** `ucp checkout complete <id>`. requires_escalation is a normal outcome, not an error. */
-  complete(checkout: UcpCheckout): Promise<UcpCheckout>;
+  /**
+   * `ucp checkout complete <id>`. requires_escalation is a normal outcome, not an error. `payment` (optional, additive,
+   * lane D) is the workspace's authorization RESULT for this checkout — an id, the amount and the currency, never a
+   * provider reference or a token; an adapter with no place for UCP `payment.instruments` is not passed one.
+   */
+  complete(checkout: UcpCheckout, payment?: { authorizationId: string; amount: number; currency: "USD" }): Promise<UcpCheckout>;
 }
 
 export interface UcpOptions {

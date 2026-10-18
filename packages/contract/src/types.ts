@@ -416,6 +416,12 @@ export interface AcceptResult {
   code?: ErrorCode;
   /** Receipts written during this accept (who read which field for which purpose) — for telling the user. */
   receipts?: Receipt[];
+  /**
+   * Additive (lane D, A21): the payment authorization the workspace made for this accept, when payment is on and the
+   * card holds a payment_method token. The RESULT only (id, amount, status) — never the token or a provider reference.
+   * An authorization is not an order: `status` above still says what the store did.
+   */
+  authorization?: PaymentAuthorization;
 }
 
 export interface Receipt {

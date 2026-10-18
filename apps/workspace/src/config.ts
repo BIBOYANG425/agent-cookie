@@ -55,6 +55,12 @@ export interface Config {
    * "ranking" and non-zero ranking weights installed, each new intent is assigned an arm and only treatment is ranked.
    */
   experiment: "off" | "ranking";
+  /**
+   * Lane D payment (A21): AGENT_COOKIE_PAY = "off" (default) | "fake". Independent of the jar: payment may be on while
+   * the jar is off. "fake" is @agent-cookie/pay's fakeProvider, the only provider for now (the provider slot is
+   * described in payments.ts).
+   */
+  pay: "off" | "fake";
 }
 
 function int(v: string | undefined, dflt: number, min: number, max: number): number {
@@ -89,6 +95,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const ucpMode = env.AGENT_COOKIE_UCP === "live" ? "live" : "fixture";
   const experiment = env.AGENT_COOKIE_EXPERIMENT || "off";
   if (experiment !== "off" && experiment !== "ranking") throw new Error("AGENT_COOKIE_EXPERIMENT must be off or ranking");
+  const pay = env.AGENT_COOKIE_PAY || "off";
+  if (pay !== "off" && pay !== "fake") throw new Error("AGENT_COOKIE_PAY must be off or fake");
   return {
     host: "127.0.0.1",
     port,
@@ -111,6 +119,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(env.AGENT_COOKIE_JAR_PATH ? { jarPath: resolve(env.AGENT_COOKIE_JAR_PATH) } : {}),
     unlockTtlMs: int(env.UNLOCK_TTL_MS, 900_000, 1000, 86_400_000),
     experiment,
+    pay,
     learnProvider: learnProvider as Config["learnProvider"],
     ...(learnApiKey ? { learnApiKey } : {}),
     learnMode,

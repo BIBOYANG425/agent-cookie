@@ -29,6 +29,7 @@ pnpm --filter @agent-cookie/workspace test
 | `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only`: lane B's fallback, first-person statements only |
 | `DREAMING_INTERVAL_MS` | `300000` | how often Dreaming runs (demo: `30000`); `0` = never scheduled, `POST /owner/dreaming/run` still works |
 | `LEARN_TIMEOUT_MS` | `30000` | a learner call that takes longer is abandoned and logged |
+| `AGENT_COOKIE_PAY` | `off` | `fake`: lane D's payment stage (A21) with `@agent-cookie/pay`'s fake provider: an accepted UCP quote's price is authorized once, within budget, from the card's `payment_method` token reference; merchants see the result only. Independent of the jar. |
 
 ## Keys
 

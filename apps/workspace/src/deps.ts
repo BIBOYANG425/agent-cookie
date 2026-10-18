@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   FIXTURE_FILES, isField, type Contribution, type LearnApi, type MemoryRepo, type MemoryRepoApi, type RulesApi, type UcpApi,
 } from "@agent-cookie/contract";
+import type { PaymentProvider } from "@agent-cookie/pay";
 import { activityLogger, type Log } from "./activity.js";
 import { loadLearn, loadMemoryRepoApi, loadRules, loadUcp } from "./adapters.js";
 import { Clock } from "./clock.js";
@@ -19,6 +20,7 @@ import { CardService } from "./services/card.js";
 import { CommerceService } from "./services/commerce.js";
 import type { Ctx } from "./services/context.js";
 import { createLaneD, type LaneDHooks } from "./laneD.js";
+import { createAuthorizePayment, paymentProvider } from "./payments.js";
 import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
 import { LearningService } from "./services/learning.js";
@@ -39,7 +41,10 @@ export interface Deps {
   repo: MemoryRepo;
   log: Log;
   delivery: Delivery;
-  /** Lane D hooks (empty when AGENT_COOKIE_JAR_KEK / AGENT_COOKIE_UNLOCK_SECRET are not set). Mutable for tests. */
+  /**
+   * Lane D hooks (empty when AGENT_COOKIE_JAR_KEK / AGENT_COOKIE_UNLOCK_SECRET are not set and AGENT_COOKIE_PAY is off).
+   * `authorizePayment` is set by AGENT_COOKIE_PAY alone (payments.ts), independent of the jar. Mutable for tests.
+   */
   laneD: LaneDHooks;
   fixtures: Fixtures;
   card: CardService;
@@ -72,7 +77,9 @@ export interface Deps {
 /** Unit tests swap in in-memory stubs; the running workspace always uses the real packages (adapters.ts). */
 export interface DepsOverrides { ucp?: UcpApi; memoryRepoApi?: MemoryRepoApi; rules?: RulesApi; laneD?: LaneDHooks; learn?: LearnApi;
   /** Tests inject a clock that does not read the system time (Clock.at). */
-  clock?: Clock }
+  clock?: Clock;
+  /** Tests replace the provider AGENT_COOKIE_PAY builds (e.g. fakeProvider({ decline: true })). Payment stays off when AGENT_COOKIE_PAY is. */
+  paymentProvider?: PaymentProvider }
 
 export async function createDeps(config: Config, overrides: DepsOverrides = {}): Promise<Deps> {
   const gate = new Gate();
@@ -94,6 +101,12 @@ export async function createDeps(config: Config, overrides: DepsOverrides = {}):
   const ctx: Ctx = { stale: () => gate.stale(), closing: () => gate.closing(), hold: (fn) => gate.hold(fn), config, store, clock, rules,
     ucp: tracedUcp(ucp, config.ucpMode), repo: () => repo, log, delivery, laneD, policy };
   const card = new CardService(ctx);
+  // Lane D payment (AGENT_COOKIE_PAY): its own switch, independent of the jar hooks. A test that injects `laneD` gets
+  // exactly the hooks it built.
+  if (!overrides.laneD && config.pay !== "off") {
+    const provider = overrides.paymentProvider ?? paymentProvider(config);
+    if (provider) laneD.authorizePayment = createAuthorizePayment(ctx, card, provider);
+  }
   const sessions = new SessionService(ctx, card);
   const fields = new FieldService(ctx, sessions, card);
   const notes = new NoteService(ctx, sessions);

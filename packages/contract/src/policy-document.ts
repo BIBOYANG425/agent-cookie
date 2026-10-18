@@ -3,6 +3,9 @@
 // wrappers over it. A document a user installs is validated against the FLOOR below, which no document can lower:
 // style fields ride every handshake, payment_method opens only for purpose "payment", shipping_address only for
 // "checkout", merchants write only shoe_size, and the user's own agents read and write everything.
+// Purpose "payment" is the workspace's own read of the token on the user's behalf (it also names the stage and the
+// receipts); a merchant read of payment_method is refused whatever the document says, and merchants only ever see the
+// authorization result.
 // The evaluator is deterministic code over data; no model output is ever an input here.
 import { createHash } from "node:crypto";
 import type { RankingWeights } from "./analytics.js";

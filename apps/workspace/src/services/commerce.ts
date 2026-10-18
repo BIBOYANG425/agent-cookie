@@ -2,9 +2,10 @@
 // proxy agents ("ucp:<domain>") that go through the same session, grant, field and receipt path as any merchant.
 import {
   DEFAULT_SELLER_COUNT, GRANT_TTL_MS, INTENT_TTL_MS, MAX_SELLER_COUNT, QUOTE_POLL_MAX_MS, UpstreamError, WorkspaceError,
-  type AcceptResult, type Agent, type Field, type Quote, type RankStats, type Receipt, type SearchStats, type UcpCheckout, type UcpMessage, type UcpOffer,
+  type AcceptResult, type Agent, type ErrorCode, type Field, type PaymentAuthorization, type Quote, type RankStats, type Receipt, type SearchStats,
+  type UcpCheckout, type UcpMessage, type UcpOffer,
 } from "@agent-cookie/contract";
-import type { IntentRow, QuoteRow } from "../db.js";
+import type { GrantRow, IntentRow, QuoteRow } from "../db.js";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { containsCardNumber, publicEntryProblem } from "../guards.js";
@@ -20,6 +21,20 @@ import type { LearningService } from "./learning.js";
 import type { Introduction, SessionService } from "./sessions.js";
 
 const PURPOSE_KEYS = new Set(["shipping_address", "payment_method"]);
+
+/**
+ * Visa Trusted Agent Protocol on the accept path (lane D). With lane D's signTapRequest wired, the workspace's own POSTs
+ * to a merchant on accept carry the `agent-payer-auth` signature (Delivery.callback, the `accepted` callback). UCP steps
+ * are run by the `ucp` CLI (packages/ucp spawns it) and the adapter has no request-header hook, so a UCP checkout — the
+ * only path that authorizes a payment today — carries no payer signature. The `payment.authorize` event says so.
+ */
+const UCP_PAYER_TAP = "none";
+
+/** Why the payment stage stopped an accept before anything more reached the store (AcceptResult.message, verbatim). */
+const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
+  OVER_BUDGET: "The price is over your budget, so no payment was authorized and nothing was ordered.",
+  AUTHORIZATION_USED: "This offer's payment authorization was already used; nothing more was sent.",
+};
 
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
 export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
@@ -343,7 +358,15 @@ export class CommerceService {
     const withUrl = (r: AcceptResult): AcceptResult => (url() && r.continueUrl === undefined ? { ...r, continueUrl: url()! } : r);
     const stopped = (messages: UcpMessage[], status?: string) =>
       status === "canceled" || messages.some((m) => m.type === "error" && m.severity === "unrecoverable");
-    const done = (r: AcceptResult): AcceptResult => (receipts.length > 0 ? { ...r, receipts } : r);
+    // Lane D payment stage (A21): the authorization RESULT once the workspace made one; carried on every result after.
+    let authorization: PaymentAuthorization | undefined;
+    let paymentGrant: GrantRow | undefined;
+    const done = (r: AcceptResult): AcceptResult => {
+      // Like the checkout grant (decide), the payment stage's grant is withdrawn when the user cannot finish this checkout.
+      if (paymentGrant && r.status !== "ordered" && r.status !== "handoff") this.sessions.withdraw(paymentGrant.id);
+      const out = receipts.length > 0 ? { ...r, receipts } : r;
+      return authorization ? { ...out, authorization } : out;
+    };
     // Warnings (low stock, sold-out notices) from any step reach the user verbatim, even when a later step does not
     // repeat them (plan T4: 售罄 warning 原样转给用户). Info messages are per-step state and are not carried.
     const warnings: UcpMessage[] = [];
@@ -365,7 +388,9 @@ export class CommerceService {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
       // fixtures/README: a Sample address is never sent to a real store. In live mode, hand off before reading it.
-      const onCard = this.card.values(this.ctx.store.session(q.sessionId)!.userId).shipping_address;
+      const session = this.ctx.store.session(q.sessionId)!;
+      const card = this.card.values(session.userId);
+      const onCard = card.shipping_address;
       if (this.ctx.config.ucpMode === "live" && onCard && /\bsample\b/i.test(onCard)) {
         return done(url()
           ? { status: "handoff", quoteId: q.id, continueUrl: url()!, message: "The card holds a Sample address, so none was sent. Enter a real address on the merchant's page." }
@@ -384,7 +409,41 @@ export class CommerceService {
       if (stopped(co.messages, co.status)) {
         return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: say(co.messages) ?? `checkout ${co.status}` }));
       }
+      // Lane D payment stage (A21), after the destination and before complete: with payment on (AGENT_COOKIE_PAY) and a
+      // token reference on the card, the workspace authorizes the accepted price on the user's behalf (payments.ts:
+      // accepted quote, budget, single use). Over budget, already used or declined → nothing more goes to the store.
+      // Without the hook or without a token this step does not exist. The event names the outcome and tap only.
+      const pay = this.ctx.laneD.authorizePayment;
+      if (pay && card.payment_method) {
+        const logPayment = (result: string) =>
+          this.ctx.log({ event: "payment.authorize", actor: "workspace", object: q.id, result, reason: `tap=${UCP_PAYER_TAP}` });
+        try {
+          authorization = await pay({ sessionId: q.sessionId, quoteId: q.id, amount: q.price, currency: "USD" });
+        } catch (err) {
+          if (!(err instanceof WorkspaceError)) throw err;
+          logPayment(err.code);
+          if (err.code === "UPSTREAM_ERROR") {
+            return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The payment provider could not be reached; nothing was ordered." }));
+          }
+          return done({ status: "blocked", quoteId: q.id, code: err.code, message: PAYMENT_BLOCKED[err.code] ?? "No payment was authorized; nothing was ordered." });
+        }
+        logPayment(authorization.status);
+        if (authorization.status !== "authorized") {
+          return done(withUrl({ status: "failed", quoteId: q.id, code: "UPSTREAM_ERROR", message: "The payment was declined; nothing was ordered." }));
+        }
+        // Records the stage (payment_method under purpose "payment"); fields.ts still refuses the merchant the token.
+        paymentGrant = this.sessions.advance(session, q.intentId, "payment", proxy.category);
+        // The amount receipt the authorization wrote, told to the user with the others.
+        const paid = this.ctx.store.receiptsForIntent(q.intentId).filter((r) => r.purpose === "payment" && r.sessionId === q.sessionId).at(-1);
+        if (paid) {
+          const { userId: _u, ...receipt } = paid;
+          receipts.push(receipt);
+        }
+      }
       try {
+        // UcpApi.complete takes an optional authorization result, but lane D's adapter has no place for UCP
+        // `payment.instruments` (it sends `payment: {}`), so none is passed: an authorization is not an order, and the
+        // store's own outcome below is reported as it is (fixture mode: requires_escalation → handoff).
         co = await ucp.complete(co);
       } catch (err) {
         // The checkout exists with the destination set; the store only refuses to finalize without the buyer.

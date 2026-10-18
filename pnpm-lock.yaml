@@ -112,6 +112,9 @@ importers:
       '@agent-cookie/memory-repo':
         specifier: workspace:*
         version: link:../../packages/memory-repo
+      '@agent-cookie/pay':
+        specifier: workspace:*
+        version: link:../../packages/pay
       '@agent-cookie/rules':
         specifier: workspace:*
         version: link:../../packages/rules

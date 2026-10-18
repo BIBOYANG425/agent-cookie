@@ -1,6 +1,6 @@
 // GET /agent/fields. Policy (readDecision) → purpose grounding → values → receipt. All-or-nothing; denials never
-// name fields (A05). The declared purpose is a parameter: a purpose field is released only when the user has
-// accepted this merchant's quote under the intent this grant was issued for.
+// name fields (A05); payment_method is never released here (A21). The declared purpose is a parameter: a purpose field
+// is released only when the user has accepted this merchant's quote under the intent this grant was issued for.
 import { isField, type Field, type Receipt } from "@agent-cookie/contract";
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
@@ -25,6 +25,10 @@ export class FieldService {
     // A name outside the field table is outside the policy: same answer as any other unlisted combination.
     if (!wanted.every(isField)) deny("SCOPE_DENIED");
     const fields = wanted as Field[];
+    // The token never reaches a merchant, whatever grants exist (A21). Purpose "payment" exists so the WORKSPACE reads the
+    // token on the user's behalf (payments.ts reads the card directly, never through here) and so the payment stage's
+    // grant and receipt name it; the merchant only ever sees the authorization result. Same generic denial as any other.
+    if (fields.includes("payment_method")) deny("SCOPE_DENIED");
 
     // The INSTALLED policy document decides, at read time: a field granted under an earlier document but no longer
     // readable is refused like any other unlisted combination.
