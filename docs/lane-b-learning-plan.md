@@ -134,3 +134,5 @@ L9 新进展（A e381b15 / C688754d）：A新代码经0fbf12d合入B，SDK79项�
 L9 后续裁决（人已明确，优先于A29/A31旧说明）：stated直接上卡；两个独立conversationId/intentId可晋升，取消A的30天全局去重；原话有界内存、forget一次事务；author为当前操作执行agent、原intent在evidence.intentId，C一致性检查和权限不放宽。A在P0后实现并接loadLearn/build:deps。B保留六场景全部断言，待契约实现后复跑。人已授权改用Anthropic直连跑真实模型验收，OpenRouter暂停重试；本机尚缺队友使用的Anthropic配置路径，已询问，不打印或复制聊天密钥。PR交付先行，最新main32490f1已同步到lane-b；不自行合main。详见B50。
 
 L9 最新人工选择覆盖上一条模型路由：“还是open router吧”。已按要求用现有配置做一次最小真实合成输入请求，仍403，完整六场景真实模型验收未开始；不再等待Anthropic路径，停止继续调用，等待访问状态改变。PR20已创建；首轮CI验收类型检查通过，主job因根build:deps未build learn而在MCP类型检查失败，A已负责补此项，test/build尚未执行。六场景断言原样保留。证据见 docs/evidence/2026-10-17-pr20-model-preflight.md，依赖B51。
+
+L9 C新版本隔离复验（17:20 PDT）：C e094414 的 rules/memory-repo/fixtures 在B605afdc临时树验证，70+48+79项测试及六包类型检查通过；原六场景断言未改，仍1通过5未满足，A接线尚未更新。新C实现未合入lane-b/PR20；证据见docs/evidence/2026-10-17-learning-c-b49-isolated.md/.json，接口协调见B52。无真实模型调用，L9继续未勾选。

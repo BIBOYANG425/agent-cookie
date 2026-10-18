@@ -1,0 +1,91 @@
+{
+  "checkedAt": "2026-10-18T00:20:44Z",
+  "baseB": "605afdc0efedbcccc7f4ccc5f1fa69c72df7d7cf",
+  "overlayC": "e094414c3a5a9dc581842283ea64da2b97e34b39",
+  "overlayDirectories": [
+    "packages/rules",
+    "packages/memory-repo",
+    "fixtures"
+  ],
+  "sourceMergedIntoB": false,
+  "existingServiceAccessed": false,
+  "originalProbeSha256": "787c06e239835a45563a38ba2061e3af576db34db7a7e87e844f2d9737613c2a",
+  "checks": {
+    "sdkTests": 79,
+    "rulesTests": 70,
+    "memoryRepoTests": 48,
+    "typechecksPassed": [
+      "sdk",
+      "rules",
+      "mcp",
+      "channel-photon",
+      "memory-repo",
+      "workspace"
+    ],
+    "buildsPassed": [
+      "sdk",
+      "learn"
+    ],
+    "probeExitCode": 1
+  },
+  "probe": {
+    "mode": "isolated-real-A-C-with-synthetic-extractor",
+    "liveModels": false,
+    "liveChannel": false,
+    "results": [
+      {
+        "name": "explicit_statement_reaches_card",
+        "passed": false,
+        "observed": {
+          "status": "candidate",
+          "basis": [
+            "observed"
+          ]
+        }
+      },
+      {
+        "name": "same_agent_two_conversations",
+        "passed": false,
+        "observed": {
+          "status": "candidate",
+          "evidenceCount": 1,
+          "writerCount": 1
+        }
+      },
+      {
+        "name": "same_agent_two_conversations_after_refresh",
+        "passed": false,
+        "observed": {
+          "status": "candidate",
+          "evidenceCount": 2,
+          "writerCount": 1
+        }
+      },
+      {
+        "name": "pause_resume_discards_late_result",
+        "passed": true,
+        "observed": {
+          "learnedCount": 0,
+          "paused": false
+        }
+      },
+      {
+        "name": "queued_original_never_reaches_disk",
+        "passed": false,
+        "observed": {
+          "rawCanaryOnDisk": true
+        }
+      },
+      {
+        "name": "cross_agent_fixture_accept_preserves_history",
+        "passed": false,
+        "observed": {
+          "acceptStatus": "handoff",
+          "memoryWriteFailures": 1
+        }
+      }
+    ]
+  },
+  "crossAgentMemoryErrorCode": "SCOPE_DENIED",
+  "setupNote": "Installed Node 22 native better-sqlite3 binding after ignore-scripts installation; results are from the subsequent valid rerun."
+}
