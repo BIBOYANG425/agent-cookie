@@ -1,6 +1,6 @@
 # Example · an assistant company on Agent Cookie (Sample)
 
-`main.mjs` plays a company assistant (a Muse, Dots or Manus) end to end with `@agent-cookie/sdk` against a **demo** workspace. Everything it touches is Sample data: the Sample persona's card, Sample keys and UCP store answers replayed from recorded fixtures (labelled fixture replay, not real inventory or a real order).
+`main.mjs` plays a company assistant (a Muse, Dots or Manus) end to end with `@agent-cookie/sdk` against a **demo** workspace. `main-hosted.mjs` plays the same assistant against **hosted jars** behind the gateway (`apps/gateway`, one workspace per person): see [Hosted jars](#hosted-jars-through-the-gateway-main-hostedmjs) below. Everything it touches is Sample data: the Sample persona's card, Sample keys and UCP store answers replayed from recorded fixtures (labelled fixture replay, not real inventory or a real order).
 
 What it does, in order:
 
@@ -81,3 +81,61 @@ Never ask for a shipping address or payment details: the workspace hands them to
 ```
 
 The second run, which the owner approved with the CLI, read `4 known (lang, tone, shoe_size, pref.brand)` on its first context. The Claude call was not exercised because `ANTHROPIC_API_KEY` was not set.
+
+## Hosted jars through the gateway: `main-hosted.mjs`
+
+The same assistant, but the person's jar is hosted: the gateway (`apps/gateway`) runs one workspace per person (blank card, fixture UCP replay), and the assistant company holds two kinds of key.
+
+1. `registerAgent(gatewayUrl, { category: 'assistant' })`: once, at the gateway. This **global** key works at the gateway only: `requestLink`, `link`, `waitForLink`. Never printed.
+2. `requestLink()` at the gateway: prints the consent link (`<gateway>/link/<id>`), then `waitForLink()`. The person opens it, signs in or creates their jar with a passkey, sees the assistant's name and the field **names** it may read, and approves. The approved link carries `jar: { url: '<gateway>/u/<userId>', key }`: that person's instance and this assistant's own key in it.
+   **Demo shortcut, `--test-session`:** only against a gateway started with `AGENT_COOKIE_TEST=1`. The script plays the person: `POST /test/session` signs a new person in without a passkey, then it approves the link with that session cookie and a same-origin `Origin`, as the consent page's button does. It says so in its output. A real assistant never does this, and a production gateway has no `/test/session` (404).
+3. `AssistantClient.forJar(link.jar)`: everything else goes to that person's jar. `context()` on a new jar knows nothing yet (all 16 `auto.assistant` names are `unknown`), then the `assistantPrompt(...)` block once, labelled.
+4. `remember()`: one `stated` fact (`pref.brand`) with the person's own words as evidence; the next `context()` lists it by name.
+5. `find()` then `accept()` of the first quote: fixture replay quotes. A new jar holds no address, so the result is `handoff` and the person finishes on the store's page.
+6. `stats()`: counts only. With `--test-session` the script also reads the person's cookie page (`GET /me.json` with the session it made) and prints its receipt counts by purpose.
+
+The example writes a Sample preference ("Brooks") into the jar it is given. Run it against a test-mode gateway or a jar of your own, not someone else's.
+
+### Run it
+
+Build the SDK once (as above), then start a gateway in test mode with its own temporary data directory. The origin must be the address you call it on: it is the consent link's host, `jar.url`'s host and the CSRF check.
+
+```sh
+G=$(mktemp -d)
+AGENT_COOKIE_TEST=1 PORT=4342 AGENT_COOKIE_GATEWAY_ORIGIN=http://127.0.0.1:4342 AGENT_COOKIE_GATEWAY_DATA_DIR=$G \
+  pnpm --filter @agent-cookie/gateway start &
+AGENT_COOKIE_URL=http://127.0.0.1:4342 node examples/assistant-sdk/main-hosted.mjs --test-session
+```
+
+Without `--test-session` the script waits for a person to approve. To approve by hand in a browser with a real passkey, start the gateway with `AGENT_COOKIE_GATEWAY_ORIGIN=http://localhost:4320` (browsers refuse an IP address for passkeys), point `AGENT_COOKIE_URL` at `http://localhost:4320`, and open the printed link. Stop the gateway with Ctrl-C or SIGTERM: it stops every person's instance first. Then `rm -rf "$G"`.
+
+### Verified on 2026-10-18
+
+Exactly the commands above (gateway on port 4342 so the default 4320 stayed free; the SDK `dist` was already built from the current source). Output of the `--test-session` run (exit 0):
+
+```text
+[Sample] registered assistant ag_129r7evz at the gateway http://127.0.0.1:4342
+[Sample] consent link lk_xskvm2b0anq3f8dw (pending, expires 2026-10-18T17:30:03.720Z)
+[Sample] Continue with Agent Cookie: http://127.0.0.1:4342/link/lk_xskvm2b0anq3f8dw
+[Sample] [demo shortcut · AGENT_COOKIE_TEST=1 gateway only] playing the person: POST /test/session (no passkey), then approve
+[Sample] [demo shortcut] person usr_43dksa63scj34q9y approved the link
+[Sample] approved: pairwise session 8v60hq02; jar http://127.0.0.1:4342/u/usr_43dksa63scj34q9y (its key stays in your secret store)
+[Sample] context: 0 known ((none)); 16 unknown; 11 writable; never an address or a payment method
+
+---- prompt block · Sample · the only place values are printed: what the assistant's model reads ----
+Agent Cookie: what this person has shared with you, under their own policy.
+Sample data from a demo workspace, not a real person.
+Known: nothing yet.
+Unknown (ask only when the task needs it): lang, tone, length, shoe_size, budget, deadline, pref.brand, pref.color, pref.material, pref.style, pref.fit, pref.avoid, pref.occasion, pref.recipient, pref.price_band, pref.size_system.
+Never ask for a shipping address or payment details: the workspace hands them to the store at checkout and payment.
+---- end of prompt block ----
+
+[Sample] remembered pref.brand: stored as stated (contribution c_yptstp9v)
+[Sample] context now: 1 known (pref.brand)
+[Sample] intent i_txm6p3cr: 2 quote(s) · fixture replay, not real inventory
+[Sample] accepted quote q_y46vgag6: handoff (the person finishes on the store page)
+[Sample] stats: intents 1, quoted 1, accepted 1, completed 1, questions skipped 2
+[Sample] [demo shortcut] the person's cookie page: 3 receipt(s) (handshake 2, assist 1), 4 grant(s), 1 link(s)
+```
+
+`questions skipped 2`: the two UCP stores each read `pref.brand` from the card with the handshake (the budget came with the request). A second run without `--test-session` waited at the consent link until it was approved from another terminal (a `POST /test/session`, then `POST /links/<id>/approve` with that cookie and `Origin: http://127.0.0.1:4342`), then printed the same steps and exited 0. The gateway's log carried ids only, no key. The Claude call of `main.mjs` is not repeated here.
