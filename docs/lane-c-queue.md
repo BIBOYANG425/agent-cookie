@@ -36,7 +36,7 @@
 - [x] C17 晋升规则：默认 rules/parser 接受 A 的 pref 白名单与嵌套 evidence；按 intentId/conversationId 别名连通关系去重，personal stated 立即 medium，observed/inferred 两个独立来源晋升 medium；同对话重复不算第二源，衰减后掉卡。52 tests，main/A/B 契约类型验证通过；已修复 A 扩展 FIELDS 导致 pref 卡重复的问题。
 - [x] C18 意图记忆：默认 openMemoryRepo 支持嵌套 evidence 和 A 的 flat IntentRecord；作者使用实际 personal agentId，保留旧 C wrapper；仅写结构化摘要和 ≤200 字证据，剔除 text/query/public/title/seller 自由文本。append/list/revoke/reopen、commit author、检索与原文排除共 29 个真实 Git tests；main 与 B 整合契约类型检查通过。
 - [x] C19 学到的视图：正式 `{paused,learned}` 分组，逐 evidence 用真实 contributionId 撤销，来源/短摘句/时间及暂停、2 秒轮询。SDK getLearned/getLearning 与 setLearning({enabled:!paused}) 已接真实 4310；5173 控制台通过 B e24957c SDK 的 10 个读取/暂停/恢复请求均200，owner key仅在服务端。35 tests、typecheck/build通过；正式载荷 fixture 使用 pref.material/color，旧截图只作历史 Sample。缺 SDK 方法才走标注 fallback。
-- [ ] C20 学习真实证据：已交 [learning.md](evidence/learning.md)、真实 HTTP/SDK/延时读取 JSON、两家 live 报价基线、19 项性质/配置日志保护检查。两句目标对话被接受202，五分钟静默后 learned仍为空；未验证模型或偏好排序，未有本轮界面录屏。用户已明确 OpenRouter 配置由B处理且尚未完成；A默认learner接线、stated保留、跨对话去重及允许字段的排序映射仍见 requests。接口连通不计C20完成。
+- [ ] C20 学习真实证据：新gate真实模型六场景6/6已过；手机历史首次误计双源，修复后第二次gate停止，新gate部署后仍缺干净正向自然五分钟手机学习与同候选集报价排序。保留未勾，见 [手机记录](evidence/2026-10-17-phone-learning-live.md)、[新gate](evidence/2026-10-17-gate-redesign.md)与[待录清单](evidence/recording-manifest.md)；不以Sample图或合成输入替代。
 
 本轮验证：main 契约副本全量 545 passed（另1 skipped、4 todo），根typecheck与console build通过；B e24957c整合副本 rules52 / memory29 / learn43 / SDK79 / workspace214通过，workspace另4 todo，相关类型检查通过。没有复制A的P0验收，也未改plan.md。
 
@@ -48,6 +48,6 @@
 - [x] T9-1 README 定稿：根 README 为启动/范围/环境变量/23项验收入口，docs README 指向它；架构图与 plan 完全一致并注明 ACME 已砍，链接和23行状态核对通过。
 - [x] T9-2 Devpost 中英草稿：英文主稿+完整中文，技术/挑战/计划与证据一致；旧稿入口指向 devpost.md，本地链接核验通过。
 - [x] T9-3 4:30 分镜：三条现场需求、每拍台词/画面/兜底文件、ACME删除、needs可跳过、学习缺片诚实短版3:45；时长与现有素材链接已核验，文件名不冒充已录。
-- [ ] T9-4 Recorded run 素材清单与跨线补件请求。
+- [x] T9-4 Recorded run 素材清单：逐拍文件/归属线/现有或待录范围齐全，A/B补件已追加requests；清单完成不等于最终视频完成。
 
 同步说明：已 fast-forward 到 main `35e8b56`，无冲突。B49 的后续真实模型 6/6 已到，旧 1/6 记录仅为历史。C20 暂不勾：新到手机材料记录一次重复来源误晋升与一次 gate 停止；新 gate 未有干净正向手机五分钟学习/报价排序证据。C11 不动。

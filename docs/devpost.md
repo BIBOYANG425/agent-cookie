@@ -14,62 +14,48 @@ Let the next agent know you before its first reply, with context you can inspect
 
 ### Inspiration
 
-Website cookies make small moments of continuity possible: a site can remember a session, a preference, or a previous visit. When we move between personal assistants and merchant agents, we often repeat the same details. A size, a style preference, and the context of the last interaction can disappear at the boundary between systems.
-
-We wanted that continuity to be understandable to the person it describes. Each merchant should receive the context its task permits. The user should be able to see where a preference came from, why a field was released, and when access ends. Agent Cookie is our attempt to build that missing layer.
+Website cookies let a site remember a session, a preference, or a previous visit. Moving between personal assistants and merchant agents often means repeating those details. We wanted continuity with visible boundaries: which merchant receives context, why a field is released, and when access ends.
 
 ### What it does
 
-Agent Cookie has three objects:
+Agent Cookie has three objects: an **identity card** built from agents' structured contributions; a **conversation cookie** with a separate session and note per merchant; and a **workspace** that matches agents, enforces field policies, expires grants, and records purpose-scoped reads.
 
-- **An identity card.** Agents contribute structured facts with provenance. Deterministic rules merge eligible contributions, keep weaker evidence as candidates, and let old information decay. Learned preferences use independent conversations or intents as evidence sources; repeating a statement within one conversation does not create a second source.
-- **A conversation cookie.** Each merchant relationship has a separate session identifier and a merchant-specific note. The same user can change personal assistants while keeping the same relationship with that merchant. UCP storefront identifiers stay inside our workspace's merchant proxies rather than being sent to those stores as a new tracking identifier.
-- **A workspace.** It registers and matches agents, checks field policies and purpose, expires or revokes grants, and records purpose-scoped reads. The React console makes the card, learned entries, request-specific conditions, grants, receipts, and activity visible.
+A shopping request in iMessage can return offers from at most two merchants. The user's explicit conditions take priority. Only the accepted merchant may read an address for checkout. Unknown delivery dates, sizing warnings, no matches, and failures remain visible. A handoff link is not a completed payment.
 
-The shopping flow starts with a user's own request in iMessage. The workspace applies the request's explicit conditions and relevant card context, returns offers from at most two merchants, and provides a handoff link after the user selects an offer. An address is available only to the accepted merchant for checkout. The interface preserves unknown delivery dates, sizing warnings, no matches, and failures. A handoff link does not establish that payment or an order completed.
-
-The console also shows the models behind a learned contribution, its evidence source, and candidate/on-card status. Users can pause learning or revoke a contribution. Revocation stops subsequent authorized reads; it cannot retrieve information a recipient has already received. [Console evidence](evidence/console/README.md)
+The console shows provenance, learned candidates, request conditions, grants, and receipts. Users can pause learning or revoke access; already-delivered information cannot be recalled. [Console evidence](evidence/console/README.md)
 
 ### How we built it
 
-The workspace runs locally with **TypeScript, Hono, SQLite, and a Git memory repository**. Shared types and field policies define the contract across the SDK, CLI, personal MCP server, Photon channel, and console. Authorization, source counting, expiration, and card generation are deterministic code. Model output cannot grant itself access.
+**TypeScript, Hono, SQLite, and Git** power the local workspace. A shared contract connects the SDK, CLI, personal MCP server, **Photon Beta iMessage**, and **Vite/React** console. Authorization, merging, and expiration are deterministic code; models cannot approve access.
 
-The memory repository uses Agent Memory Repo's short `MEMORY.md` entry point, `## Index`, root-relative `[[links]]`, and one-record-per-line metadata. The workspace owns `CARD.md`, `contributions/`, `notes/`, and `receipts.md`; other files remain available for ordinary agent notes. In A23, Cognition's unmodified stock skill saved and committed a preference, a new session read it back, and the workspace continued contributing and writing receipts to the same repository. A scoped reset preserved the skill's files. [A23 interoperability](evidence/cognition-skill-interop.md)
+The memory repository follows Agent Memory Repo's `MEMORY.md` index, `[[links]]`, and line-based metadata. The workspace manages four paths while other files remain available to the user's agents. **A23 passed with the unchanged Cognition stock skill**, independent-session readback, workspace writes, and scoped reset. [A23 evidence](evidence/cognition-skill-interop.md)
 
-**Shopify UCP CLI** supplies catalog, cart, and checkout operations. Live mode queries merchants; fixture mode replays captured responses with explicit labels. **Photon Beta iMessage** carries the user's request and reply. **Claude Desktop** connects through the personal MCP server. The **Vite/React** console reads through a local SDK bridge, keeping its owner credential on the server. [Real channel checks](evidence/2026-10-17-real-adapters-verification.md) · [Desktop evidence](evidence/A10-real-client.md)
-
-Opt-in learning runs local filtering, then the **`typesafe/jev-1.14` gate**, then **`openai/gpt-oss-120b` extraction through OpenRouter**. Structured output is checked against the preference whitelist before the workspace applies its merge rules. Raw observations wait in a bounded memory queue; persisted contributions contain structured values and evidence snippets of at most 200 characters, rather than conversation transcripts. The console displays model provenance. Real model calls passed all six original learning scenarios using synthetic inputs, temporary SQLite/Git state, and fixture commerce. [Model verification](evidence/2026-10-17-learning-live.md) · [Updated gate verification](evidence/2026-10-17-gate-redesign.md)
+**Shopify UCP CLI** supplies catalog/cart/checkout operations; fixtures preserve captured responses. Our pairwise merchant identifiers stay inside the workspace’s UCP proxies. Opt-in learning uses local filtering → **typesafe/jev-1.14** → **openai/gpt-oss-120b through OpenRouter**, followed by schema checks and merge rules. Raw observations wait only in bounded memory; persisted evidence snippets are limited to 200 characters. Independent conversations or intents support preference promotion. [Model evidence](evidence/2026-10-17-learning-live.md)
 
 ### Challenges we ran into
 
-- **UCP inventory changes.** A recorded catalog is reproducible, but it cannot establish that an item is in stock now or that a new query has a match. We kept capture provenance and Sample/fixture labels, and treated unavailable items, uncertain sizing, and merchant handoffs as distinct outcomes. [UCP recordings](../fixtures/ucp/README.md)
-- **OpenRouter account restrictions.** Our early Haiku attempt returned HTTP 403 despite a publicly listed eligible endpoint. Account access and endpoint availability were separate constraints. We subsequently moved to the approved open-weight pipeline and completed the real-model six-scenario run while retaining strict validation and provider privacy requirements. [Initial restriction](evidence/2026-10-17-openrouter-live.md) · [Successful later run](evidence/2026-10-17-learning-live.md)
-- **Tier 0 protocol compatibility.** The original ACME retail blueprint required its own session/header protocol; our generic text-prefix delivery did not produce a working conversation. We retired A15 from the demo on October 17. Separate skill-guided integration exercises with Claude Code and Devin are complete under A16; the full note lifecycle remains a P1 dependency. [A15 history](evidence/A15/README.md) · [A16 runs](evidence/A16/README.md)
-- **SQLite concurrency and Git consistency.** Learning, card regeneration, and forgetting can overlap. We serialized card mutations, used SQLite transactions, and made failed Git projection work recoverable. A pending forget keeps learning paused, and late model results cannot restore the removed current state. SQLite and Git still have separate transaction boundaries; old Git history is retained. [Repair and recovery evidence](evidence/2026-10-17-b49-repair.md)
+- **Live UCP inventory:** recorded results cannot prove current availability. We preserve capture provenance and distinguish fixture replay, no matches, and handoffs. [Recordings](../fixtures/ucp/README.md)
+- **OpenRouter account limits:** an early Haiku request returned 403. The subsequently approved open-weight pipeline passed the six scenarios without weakening validation or provider privacy requirements. [Initial restriction](evidence/2026-10-17-openrouter-live.md) · [Later success](evidence/2026-10-17-learning-live.md)
+- **Tier 0 protocol:** ACME required its own session/header protocol. We retired A15 from the demo. Separate Claude Code and Devin integration runs passed A16; the full note lifecycle remains blocked. [A15](evidence/A15/README.md) · [A16](evidence/A16/README.md)
+- **SQLite concurrency:** learning, regeneration, and forgetting can overlap. Serialized mutations, SQLite transactions, and recoverable Git projections prevent late results from restoring removed current state. Old Git history remains; the stores have separate transaction boundaries. [Recovery evidence](evidence/2026-10-17-b49-repair.md)
 
 ### What we learned
 
-Memory needs a lifecycle. Source identity, expiry, revocation, and recovery determine whether remembered context remains trustworthy. Counting evidence by the right unit matters: two records from one conversation are still one source.
-
-Compatibility also needs an actual trial. A23 tested the original skill against the same repository the workspace uses. Separating model verification, real-channel evidence, and recorded commerce kept us from treating one successful layer as proof of the whole product.
+Memory needs a lifecycle: provenance, expiry, revocation, and recovery. Two records from one conversation are still one source. Real compatibility testing also matters—A23 exercised the original skill and workspace in the same repository.
 
 ### What's next
 
-Finish the clean natural phone-learning run and compare quote ranking using the same candidate set. Complete continuous demo footage and missing real UCP failure recordings. Then connect merchant **needs declarations** to the console, harden external callbacks/webhooks and retry behavior, verify the **passkey** flow on a real phone, and complete separately authorized **payment** integration. These are planned work, not claims of a finished payment service.
+Collect a clean natural phone-learning run, compare quote ranking against the same candidate set, and finish continuous footage and UCP failure recordings. Then connect merchant **needs declarations**, harden **callbacks/webhooks**, verify mobile **passkeys**, and complete separately authorized **payment** integration.
 
 ### Verification and submission materials
 
-| Area | Current evidence |
+| Area | Current scope |
 | --- | --- |
-| Learning | Six original scenarios pass with real models and synthetic inputs; a clean positive phone-learning run plus quote-ranking evidence is still pending. |
-| iMessage / Desktop | Real channel and Desktop records exist; continuous iMessage footage remains pending. |
-| Coding-agent integration | A16 passed with Claude Code and Devin under the October 17 closeout decision; full note lifecycle C11 remains blocked. |
-| Stock memory skill | A23 passed: unchanged skill, independent-session readback, same-repo workspace writes, scoped reset. |
-| Commerce / payment | Captured merchant responses and handoff evidence; no completed real payment claim. Some real failure-path recordings remain missing. |
+| Learning | Real models passed 6/6 original scenarios with synthetic inputs and isolated SQLite/Git; commerce was fixture-backed. Clean positive phone learning plus ranking remains pending. |
+| Clients / integration | Real iMessage and Desktop records; A16 Claude Code + Devin passed under the October 17 closeout decision; A23 passed. Continuous phone footage remains pending. |
+| Commerce | Handoff evidence, no completed real-payment claim; some failure recordings remain missing. |
 
-Code: [BIBOYANG425/agent-cookie](https://github.com/BIBOYANG425/agent-cookie) (currently private; reviewer access must be arranged). Video: **draft / pending reviewed recording**, with the [storyboard](video-storyboard.md) as the production plan. Intended submission tracks are Applied Intelligence, Photon, Visa, Cognition, Paper, and Sentry; the [README](../README.md#赛道与提交材料) records each track's actual scope. These are submission plans, not eligibility or award claims.
-
-Third-party materials include the external Anthropic commerce-agents blueprint used for A16, captured Shopify UCP responses, and the unmodified Agent Memory Repo stock skill. Sample data, fixture replay, Recorded run footage, and live results must remain visibly distinguished. The project does not store card numbers or complete payment for the user.
+[Code](https://github.com/BIBOYANG425/agent-cookie) is currently private; reviewer access must be arranged. Video is **draft / pending reviewed recording**; see the [storyboard](video-storyboard.md) and [evidence index](evidence/README.md). Third-party blueprint, UCP recordings, and stock skill are credited there. Sample, fixture, Recorded run, and live results remain distinct. We store no card numbers.
 
 ## 中文
 

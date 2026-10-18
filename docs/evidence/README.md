@@ -17,7 +17,7 @@
 | A11 注入 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) | 通过（商家输入不能扩权） | 2026-10-17 |
 | A12 重置复演 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) · [限定重置](cognition-skill-interop.md) | 通过（隔离 fixture；只重置四个受管路径） | 2026-10-17 |
 | A13 并发与幂等 | [HTTP 验收](../../apps/workspace/test/acceptance/a09-a13.test.ts) | 通过（自动 HTTP） | 2026-10-17 |
-| A14 控制台 | [字段与来源](C18-direction-change.md) · [SDK 实连](C10b-sdk.md) | 手动证据（Sample 来源撤销、SDK 实连；当前截图见 console/） | 2026-10-17 |
+| A14 控制台 | [当前通用视图](console/README.md) · [SDK 实连](C10b-sdk.md) | 手动证据（Sample 来源撤销、SDK 实连；当前截图见 console/） | 2026-10-17 |
 | A15 零接入投递 | [历史尝试](A15/README.md) | 已砍（Tier 0 协议不匹配，2026-10-17 决定） | 2026-10-17 |
 | A16 skill 生成的接入 | [Claude Code + Devin 实录](A16/README.md) | 通过（Claude Code + Devin；按 2026-10-17 人的收口裁决） | 2026-10-17 |
 | A17 iMessage 主流程 | [取证入口](A17-imessage.md) · [真实收发](2026-10-17-real-adapters-verification.md) | 手动证据（搜索→选择→handoff 日志；连续原片待补） | 2026-10-17 |
@@ -29,7 +29,7 @@
 | A23 stock skill 互操作 | [Cognition stock skill 实录](cognition-skill-interop.md) | 通过 | 2026-10-17 |
 | B49 学习六场景 | [真实模型 6/6](2026-10-17-learning-live.md) · [新 gate 6/6](2026-10-17-gate-redesign.md) · [历史 C 复跑](B49/final-report.md) | 通过（真实模型、合成输入、隔离 SQLite/Git、fixture commerce） | 2026-10-17 |
 | C20 手机学习与报价排序 | [手机实录](2026-10-17-phone-learning-live.md) · [新 gate 状态](2026-10-17-gate-redesign.md) | 阻塞（旧手机首次误计双源；更正后 gate 停止；新 gate 尚缺干净正向实机与排序） | 2026-10-17 |
-| R1–R3 Recorded run | [需求素材](recorded-needs/README.md) | 阻塞（catalog 查询素材已有，连续手机原片待补） | 2026-10-17 |
+| R1–R3 Recorded run | [逐拍清单](recording-manifest.md) · [历史 catalog](recorded-needs/README.md) | 阻塞（新需求连续手机原片待补，旧 catalog 不替代） | 2026-10-17 |
 | T8 Sentry | [离线 trace / logs](T8-sentry.md) | 手动证据（离线验证，缺外部 Sentry 界面） | 2026-10-17 |
 
 P0 = A01–A12、A17、A18、A22。A 的自动 HTTP 验收为主，C 不重复扩写整套。A18 的两个真实录制缺口和 A17 原片缺口仍需单列，不把已有自动项通过描述为所有 P0 已完成。

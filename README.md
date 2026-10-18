@@ -194,6 +194,6 @@ C 不重写 A 的 P0 自动验收；[tests/acceptance](tests/acceptance)保留�
 | Paper | 控制台的来源、授权、撤销与通用字段界面；当前截图为明确标注的 Sample。 |
 | Sentry | tracing/logs 的离线验证；外部账号 Dashboard 取证仍计划中。 |
 
-[Devpost 草稿](docs/devpost.md) · [视频分镜](docs/video-storyboard.md) · [证据索引](docs/evidence/README.md) · [跨线请求](docs/requests.md)。这些是准备提交的赛道，不是获奖或资格声明。
+[Devpost 草稿](docs/devpost.md) · [视频分镜](docs/video-storyboard.md) · [素材清单](docs/evidence/recording-manifest.md) · [证据索引](docs/evidence/README.md) · [跨线请求](docs/requests.md)。这些是准备提交的赛道，不是获奖或资格声明。
 
 第三方资产：Anthropic commerce-agents 原版保留在仓库外供 A16 接入；Shopify UCP 响应按采集时间标注；Agent Memory Repo stock skill 未修改。Sample 身份/地址/钥匙、Fixture replay、Recorded run 与现场实时响应必须区别标明。
