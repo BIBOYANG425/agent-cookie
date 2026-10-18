@@ -1,4 +1,3 @@
-import { t } from './i18n';
 import { FIELDS, PREF_FIELDS, type Category, type Field } from '../../../packages/contract/src/types';
 import type { RankingWeights } from '../../../packages/contract/src/analytics';
 
@@ -23,13 +22,13 @@ export interface ShadowReport {
 }
 
 export const POLICY_CATEGORIES: readonly Category[] = ['personal', 'shoe', 'retail', 'assistant'];
-export const categoryLabels: Record<Category, string> = { get assistant() { return t("companyAssistant"); }, get personal() { return t("personalAgent"); }, get shoe() { return t("shoeStore"); }, get retail() { return t("retailUcpStore"); } };
+export const categoryLabels: Record<Category, string> = { personal: 'Personal agent', shoe: 'Shoe store', retail: 'Retail · UCP store', assistant: 'Connected assistant' };
 export const sourceLabels: Record<PolicyView['source'], { label: string; note: string }> = {
-  default: { get label() { return t("default"); }, get note() { return t("workspaceBuiltInVFieldTable"); } },
-  repo: { get label() { return t("memoryRepository"); }, get note() { return t("fromPolicyYamlInTheMemory"); } },
-  installed: { get label() { return t("installed"); }, get note() { return t("installedByOwnerViaPutStored"); } },
+  default: { label: 'Default', note: 'Built-in v1 field policy. No replacement has been installed.' },
+  repo: { label: 'Memory repository', note: 'Loaded from POLICY.yaml in the memory repository. Updates are written back there.' },
+  installed: { label: 'Installed', note: 'Installed by the owner and stored in the workspace database.' },
 };
-export const decisionLabels: Record<ReadDecision, string> = { get allow() { return t("allow"); }, get PURPOSE_MISMATCH() { return t("purposeMismatch"); }, get SCOPE_DENIED() { return t("outOfScope"); } };
+export const decisionLabels: Record<ReadDecision, string> = { allow: 'Allow', PURPOSE_MISMATCH: 'Purpose mismatch', SCOPE_DENIED: 'Outside scope' };
 const DECISIONS: readonly ReadDecision[] = ['allow', 'PURPOSE_MISMATCH', 'SCOPE_DENIED'];
 const MERCHANT_AUTO = ['lang', 'tone', 'length', 'shoe_size', 'budget', 'deadline'] as const;
 
@@ -62,7 +61,7 @@ export function historyReadable(doc: PolicyDocument, category: Category): boolea
 /** The workspace's 422 for a candidate that fails the floor. Messages name sections and field names, never values. */
 export class PolicyViolationError extends Error {
   constructor(readonly violations: string[]) {
-    super(t("workspaceRejectedCandidatePolicyItemsFail", violations.length));
+    super(`Policy rejected: ${violations.length} requirements were not met. See the policy panel.`);
   }
 }
 
@@ -75,11 +74,11 @@ export function parseViolations(message: string): string[] {
 export type CandidateResult = { ok: true; value: Record<string, unknown> } | { ok: false; message: string };
 /** Client-side parse only; the workspace alone decides whether a document may be installed. */
 export function parseCandidate(text: string): CandidateResult {
-  if (text.trim() === '') return { ok: false, message: t("pasteACandidatePolicyDocumentJson") };
-  if (text.length > 16000) return { ok: false, message: t("candidateDocumentIsTooLongCharacters") };
+  if (text.trim() === '') return { ok: false, message: 'Paste a candidate policy as JSON first.' };
+  if (text.length > 16000) return { ok: false, message: 'The candidate exceeds the 16,000 character limit.' };
   let value: unknown;
-  try { value = JSON.parse(text); } catch { return { ok: false, message: t("candidateDocumentIsNotValidJson") }; }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, message: t("candidateDocumentMustBeAJson") };
+  try { value = JSON.parse(text); } catch { return { ok: false, message: 'The candidate is not valid JSON.' }; }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, message: 'The candidate must be a JSON object.' };
   return { ok: true, value: value as Record<string, unknown> };
 }
 
@@ -87,7 +86,7 @@ const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const texts = (v: unknown): v is string[] => Array.isArray(v) && v.every(text);
 const count = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
-const malformed = () => new Error(t("policyResponseDoesNotMatchThe"));
+const malformed = () => new Error('Policy data does not match the workspace contract.');
 
 function normalizeDocument(doc: unknown): PolicyDocument {
   if (!object(doc) || doc.v !== 1 || !object(doc.auto) || !object(doc.purpose) || !object(doc.write)) throw malformed();

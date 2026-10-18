@@ -5801,6 +5801,10 @@
       "IntentRequest": {
         "type": "object",
         "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "Opaque channel conversation id, shared with observe. Learning provenance only; never merchant input or authority."
+          },
           "text": {
             "type": "string"
           },

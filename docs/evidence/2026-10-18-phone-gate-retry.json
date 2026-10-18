@@ -1,0 +1,269 @@
+{
+  "result": "passed-real-phone-natural-idle-learning",
+  "sourceCommit": "05a5d8f",
+  "runtimeMainBaseline": "35e8b56",
+  "branchBeforeEvidence": "c81378c",
+  "queuedAt": "2026-10-18T07:16:02.132Z",
+  "queueEventId": "14482",
+  "acceptedHttpStatus": 202,
+  "appliedAt": "2026-10-18T07:21:30.856Z",
+  "applyEventId": "15289",
+  "delayMs": 328724,
+  "checkedAt": "2026-10-18T07:22:32.749Z",
+  "newPreference": {
+    "field": "pref.fit",
+    "value": "loose",
+    "status": "candidate",
+    "evidence": {
+      "field": "pref.fit",
+      "status": "candidate",
+      "contributionId": "c_q1zxy8tw",
+      "agentId": "sample-personal-photon",
+      "basis": "observed",
+      "createdAt": "2026-10-18T07:21:30.287Z",
+      "conversationId": "a58c525a79a86d89f6644b098b95818c0b24b6583fc15051cf72a7b1771e6d9e",
+      "models": {
+        "gate": "typesafe/jev-1.14",
+        "extractor": "openai/gpt-oss-120b"
+      }
+    }
+  },
+  "assertions": {
+    "newContributions": 1,
+    "conversationSources": 1,
+    "newShoppingIntents": 0,
+    "promotedToCard": false,
+    "priorContributionIdsPreserved": true,
+    "desktopIdentityReadsSameCandidate": true,
+    "noManualFlush": true,
+    "noReplay": true,
+    "noReset": true,
+    "noExtraDiagnosticModelRequests": true
+  },
+  "openRouterUi": {
+    "observedAtMinute": "2026-10-18 00:21 PDT",
+    "generations": [
+      {
+        "model": "typesafe/jev-1.14",
+        "provider": "TypeSafe",
+        "inputTokens": 923,
+        "outputTokens": 127,
+        "displayedCostUsd": 3.88e-05
+      },
+      {
+        "model": "openai/gpt-oss-120b",
+        "provider": "Groq",
+        "inputTokens": 436,
+        "outputTokens": 121,
+        "displayedCostUsd": 0.000138,
+        "finishReason": "stop"
+      }
+    ],
+    "displayedTotalCostUsd": 0.0001768,
+    "evidenceType": "Read-only Generations UI table; no provider request body captured"
+  },
+  "channel": {
+    "cursor": 12523,
+    "messageCount": 11,
+    "phases": [
+      "sent"
+    ]
+  },
+  "desktopReadback": {
+    "at": "2026-10-18T07:22:32.749Z",
+    "agentId": "sample-personal-desktop",
+    "channel": "SDK read only; no Claude Desktop UI call",
+    "learned": [
+      {
+        "field": "pref.fit",
+        "value": "loose",
+        "status": "candidate",
+        "sources": [
+          "sample-personal-photon"
+        ],
+        "evidence": [
+          {
+            "contributionId": "c_q1zxy8tw",
+            "agentId": "sample-personal-photon",
+            "basis": "observed",
+            "createdAt": "2026-10-18T07:21:30.287Z",
+            "conversationId": "a58c525a79a86d89f6644b098b95818c0b24b6583fc15051cf72a7b1771e6d9e",
+            "models": {
+              "gate": "typesafe/jev-1.14",
+              "extractor": "openai/gpt-oss-120b"
+            }
+          }
+        ]
+      }
+    ],
+    "cardFields": [
+      "lang",
+      "tone",
+      "shoe_size",
+      "shipping_address",
+      "pref.color"
+    ],
+    "candidateFields": [
+      "pref.fit"
+    ],
+    "fitOnCard": false,
+    "fitCandidate": true
+  },
+  "activity": [
+    {
+      "id": "14483",
+      "at": "2026-10-18T07:16:02.132Z",
+      "event": "POST /personal/observations",
+      "actor": "sample-personal-photon",
+      "object": "",
+      "result": "202",
+      "reason": ""
+    },
+    {
+      "id": "14482",
+      "at": "2026-10-18T07:16:02.132Z",
+      "event": "observation.queue",
+      "actor": "sample-personal-photon",
+      "object": "",
+      "result": "ok",
+      "reason": "turns=1 user=1"
+    },
+    {
+      "id": "14486",
+      "at": "2026-10-18T07:16:29.773Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14487",
+      "at": "2026-10-18T07:16:59.757Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14488",
+      "at": "2026-10-18T07:17:29.743Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14490",
+      "at": "2026-10-18T07:17:59.728Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14556",
+      "at": "2026-10-18T07:18:29.706Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14678",
+      "at": "2026-10-18T07:18:59.722Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14800",
+      "at": "2026-10-18T07:19:29.693Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "14922",
+      "at": "2026-10-18T07:19:59.748Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "15044",
+      "at": "2026-10-18T07:20:29.705Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "15166",
+      "at": "2026-10-18T07:20:59.705Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "15288",
+      "at": "2026-10-18T07:21:30.584Z",
+      "event": "contribution.add",
+      "actor": "sample-personal-photon",
+      "object": "c_q1zxy8tw",
+      "result": "observed",
+      "reason": "pref.fit"
+    },
+    {
+      "id": "15289",
+      "at": "2026-10-18T07:21:30.856Z",
+      "event": "learn.apply",
+      "actor": "sample-personal-photon",
+      "object": "conversation",
+      "result": "written=1",
+      "reason": "fields=pref.fit"
+    },
+    {
+      "id": "15290",
+      "at": "2026-10-18T07:21:31.130Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    },
+    {
+      "id": "15412",
+      "at": "2026-10-18T07:21:59.717Z",
+      "event": "dreaming",
+      "actor": "dreaming",
+      "object": "",
+      "result": "ok",
+      "reason": "skipped=compact"
+    }
+  ],
+  "screenshot": {
+    "path": "2026-10-18-phone-gate-retry.png",
+    "sha256": "763b7068e6667cccd0f3419efb55a4301e17d1b1371a1160624a889a55d043c2"
+  },
+  "limits": [
+    "The running console retains the known incorrect Sample learning/projection copy and does not show model provenance. SDK metadata and actual OpenRouter generations establish real learning; C lane 00e566d has related UI changes but was not loaded in this run.",
+    "Desktop verification used its personal key through SDK, not a new Claude Desktop UI call.",
+    "This proves one incidental preference becomes one candidate. Independent-conversation promotion, phone forget/pause and merchant greeting were not re-tested.",
+    "The previous sleep-interrupted attempt remains not passed.",
+    "The learned response omits its optional snippet. No original sentence or snippet-length claim is included."
+  ]
+}

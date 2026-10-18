@@ -27,18 +27,18 @@ describe('learning boundary', () => {
     expect(countEvidenceSources(state.entries[0].evidence)).toBe(1);
     const html = render(state.entries);
     expect(html).toContain('typesafe/jev-1.14 → openai/gpt-oss-120b');
-    expect(html).toContain('候选 · 尚未上卡');
-    expect(html).toContain('1 条贡献 · 1 个来源');
-    expect(html).not.toContain('本地规则');
+    expect(html).toContain('Candidate · not yet in context');
+    expect(html).toContain('1 contributions · 1 sources');
+    expect(html).not.toContain('Local rules');
   });
 
   it.each([
-    [undefined, '本地规则'], [{}, '本地规则'],
+    [undefined, 'Local rules'], [{}, 'Local rules'],
     [{ gate: 'typesafe/jev-1.14' }, 'typesafe/jev-1.14'],
     [{ extractor: 'openai/gpt-oss-120b' }, 'openai/gpt-oss-120b'],
   ])('renders only the available model IDs for %j', (models, expected) => {
     const html = render([{ ...entry, evidence: [{ ...entry.evidence[0], ...(models ? { models } : {}) }] }]);
-    expect(html).toContain(`<dt>模型来源</dt><dd>${expected}</dd>`);
+    expect(html).toContain(`<dt>Models</dt><dd>${expected}</dd>`);
     expect(html).not.toContain(' → ');
   });
 
@@ -48,14 +48,14 @@ describe('learning boundary', () => {
       { gate: '<script>bad</script>' }, { extractor: 'bad model' }, { unknown: 'untrusted' }]) {
       const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, models }] }] });
       expect(state.entries).toEqual([entry]);
-      expect(render(state.entries)).toContain('<dt>模型来源</dt><dd>本地规则</dd>');
+      expect(render(state.entries)).toContain('<dt>Models</dt><dd>Local rules</dd>');
     }
     const models = { gate: 'typesafe/jev-1.14', extractor: 42, unknown: 'do not display' };
     const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, models }] }] });
     expect(state.entries[0].evidence[0].models).toEqual({ gate: 'typesafe/jev-1.14' });
     expect(render(state.entries)).not.toContain('do not display');
     expect(() => normalizeLearning({ paused: false, learned: [{ ...entry,
-      evidence: [{ ...evidence, contributionId: undefined, models }] }] })).toThrow('契约');
+      evidence: [{ ...evidence, contributionId: undefined, models }] }] })).toThrow('contract');
   });
 
   it('does not label live Sample-account evidence as a scripted learning stage', () => {
@@ -63,27 +63,27 @@ describe('learning boundary', () => {
     const liveHtml = renderToStaticMarkup(createElement(LearningPanel, {
       state, sample: false, disabled: false, revoke: () => {},
     }));
-    expect(liveHtml).toContain('上卡状态由工作台返回');
-    expect(liveHtml).not.toContain('预设演示阶段');
-    expect(liveHtml).not.toContain('学习状态演示');
+    expect(liveHtml).toContain('Context status comes from the workspace');
+    expect(liveHtml).not.toContain('scripted stage');
+    expect(liveHtml).not.toContain('scripted learning');
     const sampleHtml = renderToStaticMarkup(createElement(LearningPanel, {
       state, sample: true, disabled: false, revoke: () => {},
     }));
-    expect(sampleHtml).toContain('Sample · 学习状态演示');
-    expect(sampleHtml).toContain('上卡状态来自预设演示阶段');
+    expect(sampleHtml).toContain('Sample · scripted learning');
+    expect(sampleHtml).toContain('Context status follows the scripted stage');
   });
 
   it('renders a manual stated contribution without fabricating conversation, snippet or status', () => {
     const state = normalizeLearning({ paused: false, learned: [entry] });
     expect(state.entries).toEqual([entry]);
     const html = render([entry]);
-    for (const value of ['pref.color', '黑色', 'personal-agent', '用户陈述（stated）', 'contribution/original',
-      '未提供对话或意图 ID', '候选 · 尚未上卡', '记录时间']) expect(html).toContain(value);
-    expect(html).not.toContain('已进入身份卡');
+    for (const value of ['pref.color', '黑色', 'personal-agent', 'User statement (stated)', 'contribution/original',
+      'No conversation or request ID', 'Candidate · not yet in context', 'Recorded']) expect(html).toContain(value);
+    expect(html).not.toContain('Added to context');
     expect(html).not.toContain('disabled=""');
     expect(html).not.toContain('<blockquote');
-    expect(html).not.toContain('<dt>对话</dt>');
-    expect(html).not.toContain('<dt>意图</dt>');
+    expect(html).not.toContain('<dt>Conversation</dt>');
+    expect(html).not.toContain('<dt>Request</dt>');
   });
 
   it('uses source aliases only for display and never promotes a returned candidate', () => {
@@ -97,9 +97,9 @@ describe('learning boundary', () => {
     expect(countEvidenceSources([evidence, { ...evidence, contributionId: 'second' }])).toBe(0);
     const state = normalizeLearning({ paused: false, learned: [{ ...entry, evidence: rows }] });
     expect(state.entries[0].status).toBe('candidate');
-    expect(render(state.entries)).toContain('3 条贡献 · 2 个来源');
-    expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [evidence, evidence] }] })).toThrow('契约');
-    expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, contributionId: undefined }] }] })).toThrow('契约');
+    expect(render(state.entries)).toContain('3 contributions · 2 sources');
+    expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [evidence, evidence] }] })).toThrow('contract');
+    expect(() => normalizeLearning({ paused: false, learned: [{ ...entry, evidence: [{ ...evidence, contributionId: undefined }] }] })).toThrow('contract');
   });
 
   it('counts evidence IDs rather than writers, without changing the returned card status', () => {
@@ -107,10 +107,10 @@ describe('learning boundary', () => {
     const noIds = [evidence, { ...evidence, contributionId: 'other-writer', agentId: 'another-agent' }];
     expect(countEvidenceSources(noIds)).toBe(0);
     const stated = render([{ ...entry, status: 'card', evidence: noIds }]);
-    expect(stated).toContain('已进入身份卡');
-    expect(stated).toContain('2 条贡献 · 0 个来源');
-    expect(stated).toContain('未提供对话或意图 ID，不计入独立证据来源');
-    expect(stated).not.toContain('按来源 agent 去重');
+    expect(stated).toContain('Added to context');
+    expect(stated).toContain('2 contributions · 0 sources');
+    expect(stated).toContain('No conversation or request ID. This does not count as an independent source');
+    expect(stated).not.toContain('deduplicated by agent');
 
     const sameChat = [
       { ...evidence, conversationId: 'chat-1' },
@@ -144,7 +144,7 @@ describe('learning boundary', () => {
       return core(path) ?? json({ paused: false, learned: [entry] });
     });
     await adapter.load();
-    await expect(adapter.setLearning(true)).rejects.toThrow('未确认');
+    await expect(adapter.setLearning(true)).rejects.toThrow('did not confirm');
     for (const options of calls) expect(new Headers(options.headers).has('Authorization')).toBe(false);
   });
 
@@ -159,7 +159,7 @@ describe('learning boundary', () => {
     expect(controller.getState().data).toBe(before);
     expect(controller.getState().data?.learning?.paused).toBe(false);
     expect(controller.getState().notice).toBe('');
-    expect(controller.getState().error).toContain('暂停学习未确认成功');
+    expect(controller.getState().error).toContain('Pause learning was not confirmed');
     await controller.revokeContribution(entry.evidence[0].contributionId);
     expect(controller.getState().data?.learning?.entries).toEqual([entry]);
     expect(controller.getState().notice).toBe('');
@@ -194,9 +194,9 @@ describe('Sample learning replay and rendering', () => {
   });
 
   it('renders exact empty copy, escapes snippets, and exposes known pause state accessibly', () => {
-    expect(render([])).toContain('还没学到什么，和你的 agent 聊几句就会出现在这里');
+    expect(render([])).toContain('No learned preferences yet. Eligible observations will appear here after processing.');
     const html = render([{ ...entry, status: 'card', evidence: [{ ...entry.evidence[0], snippet: '<script>private</script>' }] }]);
-    expect(html).toContain('已进入身份卡');
+    expect(html).toContain('Added to context');
     expect(html).toContain('&lt;script&gt;private&lt;/script&gt;');
     expect(html).not.toContain('<script>');
     expect(renderToStaticMarkup(createElement(LearningToggle, { state: normalizeLearning({ paused: true, learned: [] }),

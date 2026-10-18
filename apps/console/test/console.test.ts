@@ -23,7 +23,7 @@ describe('Sample adapter', () => {
     for (let i = 0; i < 4; i++) await controller.reset();
     await controller.revokeGrant('sample-grant-a');
     expect(controller.getState().data?.events.map((event) => event.event))
-      .toEqual(['撤销授权', '重置 Sample', 'Sample 已载入', 'payment.reverse', 'payment.authorize']);
+      .toEqual(['Revoke access', 'Reset sample', 'Sample loaded', 'payment.reverse', 'payment.authorize']);
   });
 
   it('revokes one source locally and reset restores the current seed records', async () => {
@@ -80,9 +80,9 @@ describe('grant stage and policy id', () => {
     expect(snapshot.grants.every((grant) => grant.stage === 'introduced' && grant.policyId === 'sample-policy')).toBe(true);
     const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: true, now: at, blocked: false,
       currentPolicyId: 'sample-policy', revoke: () => {} }));
-    expect(html).toContain('<dt>阶段</dt><dd>介绍（introduced）</dd>');
-    expect(html).toContain('<code title="sample-policy">sample-p…</code> · 当前策略');
-    expect(html.match(/<dt>阶段<\/dt>/gu)).toHaveLength(2);
+    expect(html).toContain('<dt>Stage</dt><dd>Introduced (introduced)</dd>');
+    expect(html).toContain('<code title="sample-policy">sample-p…</code> · current policy');
+    expect(html.match(/<dt>Stage<\/dt>/gu)).toHaveLength(2);
   });
 
   it('shows the latest declared needs under the matching merchant, beside its stage and policy id', async () => {
@@ -90,13 +90,13 @@ describe('grant stage and policy id', () => {
       needs: [{ agentId: 'sample-store-a', object: '3 requested / 2 grantable / 1 denied', unavailable: ['payment_method'] }] }).load();
     const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: true, now: at, blocked: false,
       currentPolicyId: 'sample-policy', revoke: () => {} }));
-    expect(html.match(/最近一次申请/gu)).toHaveLength(1);
+    expect(html.match(/Latest request/gu)).toHaveLength(1);
     expect(html).toContain('3 requested / 2 grantable / 1 denied');
     expect(html).toContain('<li class="unavailable-field">');
-    expect(html.indexOf('Sample · Storefront A')).toBeLessThan(html.indexOf('最近一次申请'));
-    expect(html.indexOf('最近一次申请')).toBeLessThan(html.indexOf('Sample · Storefront B'));
-    expect(html.match(/<dt>阶段<\/dt>/gu)).toHaveLength(2);
-    expect(html.match(/ · 当前策略/gu)).toHaveLength(2);
+    expect(html.indexOf('Sample · Storefront A')).toBeLessThan(html.indexOf('Latest request'));
+    expect(html.indexOf('Latest request')).toBeLessThan(html.indexOf('Sample · Storefront B'));
+    expect(html.match(/<dt>Stage<\/dt>/gu)).toHaveLength(2);
+    expect(html.match(/ · current policy/gu)).toHaveLength(2);
   });
 
   it('renders live grants with any stage, a 12-character id, and old grants without either', async () => {
@@ -110,14 +110,14 @@ describe('grant stage and policy id', () => {
     expect(snapshot.grants).toEqual(grants);
     const html = renderToStaticMarkup(createElement(GrantsPanel, { data: snapshot, sample: false, now: at, blocked: false,
       currentPolicyId: 'ffffffffffff', revoke: () => {} }));
-    expect(html).toContain('<dd>支付（payment）</dd>');
+    expect(html).toContain('<dd>Payment (payment)</dd>');
     expect(html).toContain('<code title="0123456789ab">01234567…</code></dd>');
-    expect(html).not.toContain('当前策略');
-    expect(html.match(/<dd>未记录<\/dd>/gu)).toHaveLength(2);
+    expect(html).not.toContain('current policy');
+    expect(html.match(/<dd>Not recorded<\/dd>/gu)).toHaveLength(2);
     const unknownStage = createLiveAdapter(async (path) => path.endsWith('/me') ? json({ role: 'owner' })
       : path.endsWith('/personal/grants') ? json({ grants: [{ ...base, stage: 'shipped' }] })
       : path.endsWith('/personal/card') ? json(empty.card) : json({ events: [] }), () => at);
-    await expect(unknownStage.load()).rejects.toThrow('响应格式');
+    await expect(unknownStage.load()).rejects.toThrow('data does not match');
   });
 });
 
@@ -151,15 +151,15 @@ describe('receipts panel', () => {
     expect(receipts.map((row) => row.purpose).sort()).toEqual(['checkout', 'payment', 'tier0']);
     expect(receipts.filter((row) => row.amount !== undefined)).toEqual([expect.objectContaining({ purpose: 'payment', amount: 8999 })]);
     const html = receiptsHtml(receipts, true);
-    for (const text of ['Sample · 谁因为什么用途读取了哪些字段', '<dt>用途</dt><dd>支付授权（payment）</dd>',
-      '<dt>用途</dt><dd>结账地址（checkout）</dd>', '<dt>用途</dt><dd>零接入前缀（tier0）</dd>', '<dt>授权金额</dt><dd>$89.99</dd>',
+    for (const text of ['Sample · Who received which fields, and why', '<dt>Purpose</dt><dd>Payment authorization (payment)</dd>',
+      '<dt>Purpose</dt><dd>Checkout address (checkout)</dd>', '<dt>Purpose</dt><dd>Text-prefix delivery (tier0)</dd>', '<dt>Authorized amount</dt><dd>$89.99</dd>',
       '<code title="sample-intent-3">…intent-3</code>', '<code title="sample-intent-2">…intent-2</code>', '<code class="field-key">payment_method</code>',
-      '<code class="field-key">shipping_address</code>', '<h3>sample-store-a</h3>', 'Sample 数据，不代表真实商家或用户。',
-      '支付授权的金额按美元显示（工作台以美分记录）。']) expect(html).toContain(text);
-    expect(html.indexOf('支付授权（payment）')).toBeLessThan(html.indexOf('结账地址（checkout）'));
-    expect(html.indexOf('结账地址（checkout）')).toBeLessThan(html.indexOf('零接入前缀（tier0）'));
+      '<code class="field-key">shipping_address</code>', '<h3>sample-store-a</h3>', 'Sample data, not actual merchants or users.',
+      'Amounts are shown in USD and stored as cents.']) expect(html).toContain(text);
+    expect(html.indexOf('Payment authorization (payment)')).toBeLessThan(html.indexOf('Checkout address (checkout)'));
+    expect(html.indexOf('Checkout address (checkout)')).toBeLessThan(html.indexOf('Text-prefix delivery (tier0)'));
     expect(html.match(/<li class="receipt-record">/gu)).toHaveLength(3);
-    expect(html.match(/<dt>授权金额<\/dt>/gu)).toHaveLength(1);
+    expect(html.match(/<dt>Authorized amount<\/dt>/gu)).toHaveLength(1);
     // Field names only: no Sample card value appears in the receipts.
     for (const value of ['简短', '>42<', '>zh<']) expect(html).not.toContain(value);
     expect(network).not.toHaveBeenCalled();
@@ -167,13 +167,12 @@ describe('receipts panel', () => {
   });
 
   it('labels purposes, formats integer cents as dollars and shortens ids', () => {
-    expect(purposeLabel('handshake')).toBe('首次介绍（handshake）');
-    expect(purposeLabel('checkout')).toBe('结账地址（checkout）');
-    expect(purposeLabel('payment')).toBe('支付授权（payment）');
-    expect(purposeLabel('tier0')).toBe('零接入前缀（tier0）');
-    expect(purposeLabel('history')).toBe('历史记录（history）');
-    expect(purposeLabel('quoted')).toBe('阶段 · 报价（quoted）');
-    expect(purposeLabel('accepted')).toBe('阶段 · 接受（accepted）');
+    expect(purposeLabel('handshake')).toBe('Introduction (handshake)');
+    expect(purposeLabel('checkout')).toBe('Checkout address (checkout)');
+    expect(purposeLabel('payment')).toBe('Payment authorization (payment)');
+    expect(purposeLabel('tier0')).toBe('Text-prefix delivery (tier0)');
+    expect(purposeLabel('quoted')).toBe('Stage · Quoted (quoted)');
+    expect(purposeLabel('accepted')).toBe('Stage · Accepted (accepted)');
     expect(purposeLabel('warranty')).toBe('warranty');
     expect(purposeLabel('toString')).toBe('toString');
     expect(formatCents(8999)).toBe('$89.99');
@@ -200,25 +199,25 @@ describe('receipts panel', () => {
     expect(receipts[0]).toEqual(receipt());
     const html = receiptsHtml(receipts);
     expect(html).not.toContain('Sample');
-    expect(html).toContain('<dt>授权金额</dt><dd>$1,250.00</dd>');
-    expect(html).toContain('<dt>用途</dt><dd>阶段 · 接受（accepted）</dd>');
+    expect(html).toContain('<dt>Authorized amount</dt><dd>$1,250.00</dd>');
+    expect(html).toContain('<dt>Purpose</dt><dd>Stage · Accepted (accepted)</dd>');
     expect(html).toContain('<code title="i_abcdefgh">i_abcdefgh</code>');
-    expect(html).toContain('回执只记商家、字段名、用途和金额，不含字段值。');
-    expect(html.indexOf('$1,250.00')).toBeLessThan(html.indexOf('结账地址'));
+    expect(html).toContain('Receipts contain recipients, field names, purposes and amounts, never field values.');
+    expect(html.indexOf('$1,250.00')).toBeLessThan(html.indexOf('Checkout address'));
     const load = async (body: unknown[]) => (await createLiveAdapter(coreFetch((p) => p.endsWith('/personal/receipts')
       ? json({ receipts: body }) : undefined), () => at).load()).receipts;
     for (const amount of [12.5, -1, '10', Number.MAX_SAFE_INTEGER + 2]) expect(await load([receipt({ amount: amount as number })])).toBeNull();
     expect(await load([{ ...receipt(), fields: [''] }])).toBeNull();
     expect(await load([receipt({ intentId: undefined, policyId: undefined })])).toEqual([{ id: 'r_1', sessionId: 's_1',
       agentId: 'ucp:store.example', fields: ['shipping_address'], purpose: 'checkout', createdAt: new Date(at).toISOString() }]);
-    expect(receiptsHtml([receipt({ intentId: undefined })])).toContain('<dt>意图</dt><dd>未记录</dd>');
-    expect(receiptsHtml([receipt()])).not.toContain('授权金额');
+    expect(receiptsHtml([receipt({ intentId: undefined })])).toContain('<dt>Request</dt><dd>Not recorded</dd>');
+    expect(receiptsHtml([receipt()])).not.toContain('Authorized amount');
   });
 
   it('degrades only this panel, labels workspace Sample data, and states the 50-row page', async () => {
     const missing = await createLiveAdapter(coreFetch(() => undefined), () => at).load();
     expect(missing.receipts).toBeNull();
-    expect(receiptsHtml(missing.receipts)).toContain('暂时无法读取，其他视图可继续使用。');
+    expect(receiptsHtml(missing.receipts)).toContain('Temporarily unavailable. Other sections remain accessible.');
     const bad = await createLiveAdapter(coreFetch((p) => p.endsWith('/personal/receipts') ? json({ receipts: [{ id: 'x' }] }) : undefined), () => at).load();
     expect(bad.receipts).toBeNull();
     expect(bad.grants).toEqual([]);
@@ -226,12 +225,12 @@ describe('receipts panel', () => {
     const labelled = await createLiveAdapter(async (path) => path.endsWith('/personal/card') ? json({ ...empty.card, sample: true })
       : coreFetch((p) => p.endsWith('/personal/receipts') ? json({ receipts: [] }) : undefined)(path), () => at).load();
     expect(labelled).toMatchObject({ sample: true, receipts: [] });
-    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('Sample · 谁因为什么用途读取了哪些字段');
-    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('还没有读取回执');
-    expect(receiptsHtml(undefined)).toContain('读取后显示回执');
+    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('Sample · Who received which fields, and why');
+    expect(receiptsHtml(labelled.receipts, labelled.sample === true)).toContain('No receipts yet');
+    expect(receiptsHtml(undefined)).toContain('Connect to view access receipts');
     const full = receiptsHtml(Array.from({ length: 50 }, (_, i) => receipt({ id: `r-${i}` })));
-    expect(full).toContain('只读取最近 50 条回执');
-    expect(receiptsHtml([receipt()])).not.toContain('只读取最近');
+    expect(full).toContain('Showing the latest 50 receipts');
+    expect(receiptsHtml([receipt()])).not.toContain('Showing the latest');
   });
 });
 
@@ -240,16 +239,16 @@ describe('payment activity labels', () => {
     actor: 'workspace', object: 'q_1', result: 'authorized', reason: 'tap=none billto=shipping_address', ...over });
 
   it('labels payment.authorize and payment.reverse results in Chinese and keeps the raw result beside them', () => {
-    const authorize: Record<string, string> = { authorized: '授权（authorized）', reversed: '已撤销（reversed）', OVER_BUDGET: '超预算（OVER_BUDGET）',
-      used: '已使用（used）', AUTHORIZATION_USED: '已使用（AUTHORIZATION_USED）', declined: '拒绝（declined）', SCOPE_DENIED: '拒绝（SCOPE_DENIED）',
-      UPSTREAM_ERROR: '支付提供方出错（UPSTREAM_ERROR）', SOMETHING_NEW: 'SOMETHING_NEW' };
+    const authorize: Record<string, string> = { authorized: 'Permissions (authorized)', reversed: 'Revoked (reversed)', OVER_BUDGET: 'Over budget (OVER_BUDGET)',
+      used: 'Used (used)', AUTHORIZATION_USED: 'Used (AUTHORIZATION_USED)', declined: 'Decline (declined)', SCOPE_DENIED: 'Decline (SCOPE_DENIED)',
+      UPSTREAM_ERROR: 'Payment provider error (UPSTREAM_ERROR)', SOMETHING_NEW: 'SOMETHING_NEW' };
     for (const [result, label] of Object.entries(authorize)) {
-      expect(activityLabel(event({ result }))).toMatchObject({ title: '支付授权（payment.authorize）', result: label });
+      expect(activityLabel(event({ result }))).toMatchObject({ title: 'Payment authorization (payment.authorize)', result: label });
     }
-    const reverse: Record<string, string> = { reversed: '已撤销（reversed）', not_reversed: '未撤销（not_reversed）',
-      not_supported: '不支持撤销（not_supported）', UPSTREAM_ERROR: '撤销失败（UPSTREAM_ERROR）', error: '撤销失败（error）' };
+    const reverse: Record<string, string> = { reversed: 'Revoked (reversed)', not_reversed: 'Not reversed (not_reversed)',
+      not_supported: 'Reversal unsupported (not_supported)', UPSTREAM_ERROR: 'Reversal failed (UPSTREAM_ERROR)', error: 'Reversal failed (error)' };
     for (const [result, label] of Object.entries(reverse)) {
-      expect(activityLabel(event({ event: 'payment.reverse', result, reason: '' }))).toMatchObject({ title: '撤销支付授权（payment.reverse）', result: label });
+      expect(activityLabel(event({ event: 'payment.reverse', result, reason: '' }))).toMatchObject({ title: 'Reverse payment authorization (payment.reverse)', result: label });
     }
     expect(activityLabel(event({ event: 'fields.read', result: 'allow' }))).toEqual({ title: 'fields.read', result: 'allow' });
     expect(activityLabel(event({ result: 'constructor' })).result).toBe('constructor');
@@ -261,13 +260,13 @@ describe('payment activity labels', () => {
     expect(payments.map((row) => [row.event, row.result])).toEqual([['payment.reverse', 'reversed'], ['payment.authorize', 'authorized']]);
     expect(payments.every((row) => row.actor.startsWith('Sample') && row.object.startsWith('sample-'))).toBe(true);
     const html = renderToStaticMarkup(createElement(ActivityPanel, { data: snapshot }));
-    for (const text of ['<h3>支付授权（payment.authorize）</h3>', '<span class="activity-result">授权（authorized）</span>',
-      '<h3>撤销支付授权（payment.reverse）</h3>', '<span class="activity-result">已撤销（reversed）</span>',
-      '<dt>原因</dt><dd>tap=none billto=shipping_address</dd>', '<dt>说明</dt>', '<h3>Sample 已载入</h3>', 'Sample · workspace']) {
+    for (const text of ['<h3>Payment authorization (payment.authorize)</h3>', '<span class="activity-result">Permissions (authorized)</span>',
+      '<h3>Reverse payment authorization (payment.reverse)</h3>', '<span class="activity-result">Revoked (reversed)</span>',
+      '<dt>Reason</dt><dd>tap=none billto=shipping_address</dd>', '<dt>Details</dt>', '<h3>Sample loaded</h3>', 'Sample · workspace']) {
       expect(html).toContain(text);
     }
-    expect(html.match(/<dt>说明<\/dt>/gu)).toHaveLength(2);
-    expect(renderToStaticMarkup(createElement(ActivityPanel, { data: null }))).toContain('连接后显示活动');
+    expect(html.match(/<dt>Details<\/dt>/gu)).toHaveLength(2);
+    expect(renderToStaticMarkup(createElement(ActivityPanel, { data: null }))).toContain('Connect to view activity');
   });
 });
 
@@ -364,7 +363,7 @@ describe('live HTTP boundary', () => {
     expect(calls).toEqual(['/workspace-api/personal/contributions/id%2Fwith%20space/revoke',
       '/workspace-api/personal/grants/grant-a/revoke', '/workspace-api/demo/reset']);
     const malformed = createLiveAdapter(async () => json({ ok: false }));
-    await expect(malformed.reset()).rejects.toThrow('响应格式');
+    await expect(malformed.reset()).rejects.toThrow('data does not match');
   });
 
   it('rejects non-owner connections, malformed payloads and HTTP failures without echoing keys', async () => {
@@ -372,7 +371,7 @@ describe('live HTTP boundary', () => {
     await expect(personal.load()).rejects.toThrow('owner');
     const bad = createLiveAdapter(async (path) => path.endsWith('/me')
       ? json({ role: 'owner' }) : json({ items: [] }));
-    await expect(bad.load()).rejects.toThrow('响应格式');
+    await expect(bad.load()).rejects.toThrow('data does not match');
     const denied = createLiveAdapter(async () => json({ error: { code: 'AUTH_REQUIRED', message: 'secret-key' } }, 401));
     await expect(denied.reset()).rejects.toThrow('AUTH_REQUIRED');
     await expect(denied.reset()).rejects.not.toThrow('secret-key');
@@ -419,7 +418,7 @@ describe('polling and mutation state', () => {
     await controller.revokeGrant('sample-grant-a');
     expect(controller.getState().data).toBe(before);
     expect(controller.getState().notice).toBe('');
-    expect(controller.getState().error).toContain('未确认成功');
+    expect(controller.getState().error).toContain(' was not confirmed');
     expect(controller.getState().pending).toBe('');
   });
 
@@ -435,7 +434,7 @@ describe('polling and mutation state', () => {
     resolveOld(empty);
     await oldRefresh;
     expect(controller.getState().data?.grants[0].status).toBe('revoked');
-    expect(controller.getState().notice).toContain('完成');
+    expect(controller.getState().notice).toContain('completed');
   });
 
   it('refreshes after success and distinguishes acknowledgement from a failed refresh', async () => {
@@ -449,8 +448,8 @@ describe('polling and mutation state', () => {
     const stale = new ConsoleController(adapter);
     await stale.reset();
     expect(stale.getState().notice).toBe('');
-    expect(stale.getState().error).toContain('已确认');
-    expect(stale.getState().error).toContain('刷新失败');
+    expect(stale.getState().error).toContain('was confirmed');
+    expect(stale.getState().error).toContain('refresh failed');
   });
 
   it('counts down from server remainingMs, clamps at zero, and sorts activity newest first', async () => {

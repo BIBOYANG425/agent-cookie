@@ -15,7 +15,7 @@ export interface KeyRow { keyHash: string; agentId: string; role: Role; createdA
 /** Grant plus the intent it was issued under (purpose grounding needs it). */
 export interface GrantRow extends Grant { intentId?: string; createdAt: string }
 /** `kind` is the optional hint; `text` is absent only on legacy kind-only requests (see app.ts). */
-export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId: string; text?: string; query?: string; createdAt: string }
+export interface IntentRow extends Omit<Intent, "kind"> { kind?: string; agentId: string; conversationId?: string; text?: string; query?: string; createdAt: string }
 export type Channel = "ucp" | "callback" | "tier0";
 export interface IntentSessionRow { intentId: string; sessionId: string; agentId: string; channel: Channel }
 export type QuoteStatus = "open" | "accepted" | AcceptResult["status"];
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, session_id TEXT NOT NULL
   created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, seq INTEGER NOT NULL, policy_id TEXT, stage TEXT);
 CREATE INDEX IF NOT EXISTS grants_session ON grants (session_id, seq);
 CREATE TABLE IF NOT EXISTS intents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, public TEXT NOT NULL,
-  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT, arm TEXT);
+  text TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, query TEXT, arm TEXT, conversation_id TEXT);
 CREATE TABLE IF NOT EXISTS intent_sessions (intent_id TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL, channel TEXT NOT NULL,
   PRIMARY KEY (intent_id, session_id));
 CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL,
@@ -116,6 +116,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; table: string; column: string
   { version: 12, table: "payment_authorizations", column: "authorized_amount", ddl: "ALTER TABLE payment_authorizations ADD COLUMN authorized_amount INTEGER" },
   // v13 (bring-your-own-agent): `links` (consent links of company assistants) is a new TABLE, added by SCHEMA's
   // CREATE TABLE IF NOT EXISTS like v11; the bump records that the database has it.
+  { version: 14, table: "intents", column: "conversation_id", ddl: "ALTER TABLE intents ADD COLUMN conversation_id TEXT" },
   // v14 (owner key minting): keys the owner minted carry a label; revoking one stamps revoked_at (it stops authenticating).
   { version: 14, table: "keys", column: "label", ddl: "ALTER TABLE keys ADD COLUMN label TEXT" },
   { version: 14, table: "keys", column: "revoked_at", ddl: "ALTER TABLE keys ADD COLUMN revoked_at TEXT" },
@@ -164,6 +165,7 @@ function toIntent(r: Row): IntentRow {
   if (r.kind) i.kind = String(r.kind);
   if (r.text) i.text = String(r.text);
   if (r.query) i.query = String(r.query);
+  if (r.conversation_id) i.conversationId = String(r.conversation_id);
   if (isExperimentArm(r.arm)) i.arm = r.arm;
   return i;
 }
@@ -507,8 +509,8 @@ export class Store {
 
   // ---- intents
   insertIntent(i: IntentRow): void {
-    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at, arm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt, i.arm ?? null);
+    this.exec(`INSERT INTO intents (id, user_id, agent_id, kind, public, text, query, created_at, expires_at, arm, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      i.id, i.userId, i.agentId, i.kind ?? "", JSON.stringify(i.public), i.text ?? null, i.query ?? null, i.createdAt, i.expiresAt, i.arm ?? null, i.conversationId ?? null);
   }
   /** The user's intents created by one agent (a personal agent or an assistant), newest first. Assistant stats only. */
   intentsCreatedBy(userId: string, agentId: string): IntentRow[] {

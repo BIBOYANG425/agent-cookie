@@ -1,0 +1,67 @@
+diff --git a/apps/console/server/workspace.ts b/apps/console/server/workspace.ts
+index 8eb8695..5c9b632 100644
+--- a/apps/console/server/workspace.ts
++++ b/apps/console/server/workspace.ts
+@@ -3,7 +3,13 @@ import { join } from 'node:path';
+ import { pathToFileURL } from 'node:url';
+ import type { IncomingMessage, ServerResponse } from 'node:http';
+ 
+-const upstream = 'http://127.0.0.1:4310';
++// Explicit local demo upstream; credentials remain in the existing request path.
++function localWorkspaceUrl(value: string): string {
++  const url = new URL(value);
++  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
++    || url.pathname !== '/' || url.search || url.hash) throw new Error('Workspace upstream must be a loopback HTTP origin.');
++  return url.origin;
++}
+ const prefix = '/workspace-api';
+ type ReadName = 'getMe' | 'getMyCard' | 'getGrants' | 'getReceipts' | 'getActivity' | 'demoReset' | 'getLearning' | 'getLearned'
+   | 'listLinks';
+@@ -147,6 +153,7 @@ export function createWorkspaceBridge(options: {
+   sample?: boolean;
+   fetcher?: typeof fetch;
+ }) {
++  const upstream = localWorkspaceUrl(process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310');
+   const send = (response: ServerResponse, status: number, body: unknown) => {
+     if (response.destroyed) return;
+     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
+diff --git a/apps/console/test/workspace.test.ts b/apps/console/test/workspace.test.ts
+index 467dd03..c88c8a1 100644
+--- a/apps/console/test/workspace.test.ts
++++ b/apps/console/test/workspace.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
+ import { createWorkspaceBridge, type SdkClient } from '../server/workspace';
+ 
+ const servers: Server[] = [];
+-afterEach(async () => { await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
++afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
+   server.closeAllConnections(); server.close(() => resolve());
+ }))); });
+ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+@@ -30,6 +30,26 @@ async function start(options: Parameters<typeof createWorkspaceBridge>[0]) {
+ }
+ 
+ describe('server SDK bridge', () => {
++  it('uses an explicit loopback origin for both SDK and direct calls', async () => {
++    vi.stubEnv('AGENT_COOKIE_URL', 'http://127.0.0.1:4314/');
++    const factory = vi.fn(() => ({ getMe: async () => owner }));
++    const fetcher = vi.fn<typeof fetch>(async (url) => {
++      expect(String(url)).toBe('http://127.0.0.1:4314/personal/intents');
++      return json({ intents: [] });
++    });
++    const send = await start({ key: () => key, sdk: Promise.resolve(factory), fetcher });
++    expect((await send('/personal/intents')).status).toBe(200);
++    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'http://127.0.0.1:4314' }));
++    expect(fetcher).toHaveBeenCalledOnce();
++  });
++  it.each(['https://example.com', 'http://192.168.1.2:4314', 'http://localhost:4314',
++    'http://user:secret@127.0.0.1:4314', 'http://127.0.0.1:4314/path',
++    'http://127.0.0.1:4314/?secret=value', 'http://127.0.0.1:4314/#fragment'])
++  ('rejects non-loopback or non-origin upstream configuration: %s', value => {
++    vi.stubEnv('AGENT_COOKIE_URL', value);
++    expect(() => createWorkspaceBridge({ key: () => key, sdk: Promise.resolve(undefined) })).toThrow();
++  });
++
+   it('allows only the existing owner intent-history GET while its SDK read is missing', async () => {
+     const http = vi.fn<typeof fetch>(async (input, init) => {
+       expect(String(input)).toBe('http://127.0.0.1:4310/personal/intents');

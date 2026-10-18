@@ -9,15 +9,15 @@ const render = (intents?: readonly IntentHistoryEntry[] | null) => renderToStati
 
 it('marks each explicit intent condition as this request without inventing card provenance', () => {
   const html = render([intent]);
-  expect(html).toContain('本次请求条件');
-  expect(html.match(/class="intent-scope">本次<\/span>/g)).toHaveLength(3);
+  expect(html).toContain('What I need now');
+  expect(html.match(/class="intent-scope">This request<\/span>/g)).toHaveLength(3);
   expect(html).toContain('$75');
   expect(html).toContain('>M<');
   expect(html).toContain('pref.material');
   expect(html).toContain('size</code>');
   expect(html).not.toContain('shoe_size');
-  expect(html).not.toContain('已授权');
-  expect(html).toContain('不会改写身份卡');
+  expect(html).not.toContain('Access granted');
+  expect(html).toContain('do not overwrite your context');
 });
 
 it('renders arbitrary public conditions safely and keeps each request separate', () => {
@@ -31,10 +31,10 @@ it('renders arbitrary public conditions safely and keeps each request separate',
 
 it('does not invent default conditions and distinguishes read failures from empty history', () => {
   const html = render([{ ...intent, public: {} }]);
-  expect(html).toContain('没有单独指定条件');
+  expect(html).toContain('No additional conditions were specified');
   expect(html).not.toContain('intent-scope');
   expect(html).not.toContain('shoe_size');
-  expect(render()).toContain('读取后显示本次请求条件');
-  expect(render(null)).toContain('暂时无法读取');
-  expect(render([])).toContain('还没有请求记录');
+  expect(render()).toContain('Connect to view requests');
+  expect(render(null)).toContain('Temporarily unavailable');
+  expect(render([])).toContain('No requests yet');
 });

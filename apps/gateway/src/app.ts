@@ -912,4 +912,3 @@ export function createGateway(config: GatewayConfig, deps: GatewayDeps = {}): Ga
     },
   };
 }
-

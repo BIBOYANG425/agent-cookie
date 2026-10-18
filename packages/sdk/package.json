@@ -31,7 +31,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./hana-identifiers": {
+      "types": "./dist/hana-identifiers.d.ts",
+      "import": "./dist/hana-identifiers.js"
+    }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

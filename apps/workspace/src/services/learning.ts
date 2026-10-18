@@ -280,6 +280,7 @@ export class LearningService {
     this.track(this.ctx.hold(async () => {
       const epoch = this.epoch(userId);
       const started = this.forgets;
+      const source: Source = { intentId: intent.id, ...(intent.conversationId ? { conversationId: intent.conversationId } : {}) };
       try {
         const record: IntentRecord = { id: intent.id, userId, agentId: actor.agentId, evidence: { intentId: intent.id }, public: intent.public, createdAt: intent.createdAt };
         if (intent.text) record.text = intent.text;
@@ -298,7 +299,7 @@ export class LearningService {
         const candidates = await this.withTimeout(this.learn.extract({ intentId: intent.id, public: intent.public,
           ...(intent.text ? { text: intent.text } : {}), ...(intent.query ? { query: intent.query } : {}), ...(intent.kind ? { kind: intent.kind } : {}),
           ...(chosen ? { chosenQuote: publicQuote(chosen) } : {}) }));
-        await this.applySerial({ ...writer, role: "personal" }, userId, candidates, { intentId: intent.id },
+        await this.applySerial({ ...writer, role: "personal" }, userId, candidates, source,
           [intent.text ?? "", intent.query ?? ""], epoch, started);
       } catch (err) {
         this.failed(actor.agentId, chosen ? "accept" : "intent", err);
@@ -407,7 +408,8 @@ export class LearningService {
 
   /** The source was forgotten after this work started (`started`: the forget counter then). */
   private forgottenSince(source: Source, started: number): boolean {
-    return (this.forgotten.get(sourceKey(source)) ?? 0) > started;
+    return (this.forgotten.get(sourceKey(source)) ?? 0) > started
+      || (source.intentId !== undefined && (this.forgotten.get(sourceKey({ intentId: source.intentId })) ?? 0) > started);
   }
 
   /**
@@ -456,8 +458,7 @@ export class LearningService {
       if (existing.some((x) => same(x) && x.revokedAt)) { skip("revoked"); continue; }
       // One record per value per source: the same conversation (or intent) repeating itself is one source, whoever
       // wrote it; a different conversation is new evidence, however recent the last one.
-      const sameSource = (x: StoredContribution) => (x.evidence?.conversationId ?? "") === (source.conversationId ?? "")
-        && (x.evidence?.intentId ?? "") === (source.intentId ?? "");
+      const sameSource = (x: StoredContribution) => sourceKey(x.evidence ?? {}) === sourceKey(source);
       if (existing.some((x) => same(x) && !x.revokedAt && sameSource(x) && BASIS_RANK[x.basis] >= BASIS_RANK[basis])) { skip("duplicate"); continue; }
       const evidence: ContributionEvidence = { ...source };
       // B60: which models produced it (gate, extractor), when the learner says and the ids are well-formed.

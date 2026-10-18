@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-18",
+  "codeCommit": "15919e6",
+  "integratedMain": "4031f5c",
+  "scope": "English UI, HANA provenance and assistant-switch delivery, integrated with current main",
+  "checks": {
+    "repositoryTypecheck": "passed",
+    "consoleProductionBuild": "passed",
+    "console": {"passed": 130},
+    "contract": {"passed": 33},
+    "learning": {"passed": 80},
+    "rules": {"passed": 126},
+    "sdk": {"passed": 503},
+    "cli": {"passed": 65},
+    "memoryRepository": {"passed": 62},
+    "photon": {"passed": 115},
+    "gateway": {"passed": 42},
+    "mcp": {"passed": 19},
+    "unlock": {"passed": 6},
+    "workspace": {"passedAcrossSuiteAndTargetedRerun": 427, "todo": 4, "skipped": 1},
+    "auth": {"passed": 15},
+    "payment": {"passed": 89, "skipped": 1},
+    "ucp": {"passed": 104},
+    "visaSimulator": {"passed": 23},
+    "pythonSdk": {"passed": 35},
+    "a32AssistantChurnHttpAcceptance": {"passed": 1, "runAt": "2026-10-18T11:30:40-07:00"}
+  },
+  "executionNotes": [
+    "This is an aggregate of package checks, not one uninterrupted successful root test command.",
+    "The initial parallel run timed out in memory-repo and MCP under concurrent load. Both passed serial reruns.",
+    "Two workspace suites started during installation of newly merged node-forge dependencies and failed before service startup. After the frozen-lockfile installation completed, both suites passed: 9 tests, 4 todo. Other workspace files passed 418 tests with 1 skip.",
+    "Console socket tests require local loopback access. The unrestricted local rerun passed all 130 tests.",
+    "Both v14 database lineages upgrade to v15 with stored intents retained; the HANA provenance suite passed 5 tests.",
+    "The final commerce check is fixture/offline only: it does not authorize or demonstrate a real payment."
+  ],
+  "unexecutedCases": [
+    "Two missing recorded merchant failure scenarios remain todo in A18.",
+    "The acceptance runner retains manual Desktop and iMessage todo placeholders; actual manual evidence is stored separately in this directory.",
+    "The real memory compact case remains skipped when the repository does not expose compact.",
+    "Stripe integration remains skipped without an integration credential."
+  ],
+  "manualEvidence": [
+    "12-desktop-switch.json",
+    "17-company-assistant-recording.json",
+    "13-english-recording-context.png",
+    "14-assistant-continuity.png",
+    "15-english-receipts.png",
+    "16-english-overview.png"
+  ],
+  "deliveryLimits": [
+    "The public GitHub repository is confirmed accessible; this record does not imply a Devpost submission.",
+    "Video production is handled by the user's separate chat.",
+    "Merging into main remains a human-team action under the repository instructions."
+  ]
+}

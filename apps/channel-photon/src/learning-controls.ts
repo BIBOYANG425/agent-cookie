@@ -1,5 +1,5 @@
 import {bounded,containsSensitive} from '@agent-cookie/learn';
-import type {WorkspaceClient,LearnedResponse} from '@agent-cookie/sdk';
+import {resolveForgetPreference,preferenceLabels,type WorkspaceClient,type LearnedResponse} from '@agent-cookie/sdk';
 import type {ObservationSink} from './learning-capture.js';
 import {respond,type AgentWorkspace,type Conversation} from './agent.js';
 export interface LearningLocalState {paused:boolean;lastSummaryDay?:string}
@@ -35,15 +35,19 @@ export function createLearningControls(options:{workspace:LearningWorkspace;sink
         await freeze();
         const before=await call(signal=>options.workspace.getLearned({signal}));
         const target=forget[1].trim();
-        const keys=[...new Set(before.learned.filter(p=>p.field===target||(['zh','en'] as const).some(l=>label(p.field,l)===target)||p.value===target).map(p=>p.field))];
-        if(keys.length!==1)return keys.length?msg('ambiguous'):msg('noPreference');
-        const field=before.learned.find(p=>p.field===keys[0])!.field;
-        if(target!==field&&!(['zh','en'] as const).some(l=>target===label(field,l))&&before.learned.some(p=>p.field===field&&p.value!==target))
+        const resolved=resolveForgetPreference(target,before.learned);
+        if(resolved.kind==='missing')return msg('noPreference');
+        if(resolved.kind==='ambiguous')return msg('ambiguous');
+        if(resolved.kind==='partial'){
+          const field=Object.entries(preferenceLabels).find(([,name])=>name===resolved.label)?.[0]??resolved.label??target;
           return msg('category',label(field,locale));
+        }
+        if(resolved.kind!=='resolved')throw Error();
+        const field=resolved.field;
         const result=await call(signal=>options.workspace.forgetLearning({field},{signal}),5000);
         if(result.projection!=='complete')return msg('projection');
         const after=await call(signal=>options.workspace.getLearned({signal}));
-        if(!after.paused||after.learned.some(p=>keys.includes(p.field)))throw Error();
+        if(!after.paused||after.learned.some(p=>p.field===field))throw Error();
         return msg('forgotten');
       }catch{return msg('forgetUnknown');}
     },

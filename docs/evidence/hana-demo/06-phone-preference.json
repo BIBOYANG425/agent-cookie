@@ -1,0 +1,154 @@
+{
+  "capturedAt": "2026-10-18T17:46:23.850Z",
+  "scope": "Real owner preference-only phone input; natural five-minute idle learning. No synthetic extraction, reset, replay or manual flush.",
+  "agentCookieRevision": "c6d56bd",
+  "hanaRevision": "3b5e416a1846f6e52d630577a51b7707ab34ed77",
+  "workspacePort": 4314,
+  "inboundCount": 1,
+  "expectedConversations": [
+    "9becea5b6f15ef5f"
+  ],
+  "personalAgentId": "ag_vy8nqnkg",
+  "observationQueuedAt": "2026-10-18T17:41:04.203Z",
+  "requiredIdleMs": 300000,
+  "manualFlush": false,
+  "clockAdvance": false,
+  "quotes": [],
+  "sample": false,
+  "nativeJobs": [
+    {
+      "id": "32d3a995-e1e9-409e-a314-f764f67f303b",
+      "name": "hana.reply.generate",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 1800,
+      "created_on": "2026-10-18T17:41:04.198001+00:00",
+      "started_on": "2026-10-18T17:41:04.457795+00:00",
+      "completed_on": "2026-10-18T17:42:04.829522+00:00"
+    },
+    {
+      "id": "2a8bd8ed-78dd-40e1-a5c6-02f23d3e9133",
+      "name": "hana.reply.send",
+      "state": "completed",
+      "retry_count": 0,
+      "expire_seconds": 900,
+      "created_on": "2026-10-18T17:42:04.824625+00:00",
+      "started_on": "2026-10-18T17:42:05.417442+00:00",
+      "completed_on": "2026-10-18T17:42:05.741502+00:00"
+    }
+  ],
+  "deliveries": [
+    {
+      "message_id": "pho_msg_1ht6d1w5qpgg194pajnd8zw1zq",
+      "status": "delivered",
+      "seq": 23813,
+      "at": "2026-10-18T17:42:07.443517+00:00"
+    }
+  ],
+  "learning": {
+    "paused": false,
+    "learned": [
+      {
+        "field": "pref.fit",
+        "value": "loose",
+        "status": "candidate",
+        "sources": [
+          "ag_vy8nqnkg"
+        ],
+        "evidence": [
+          {
+            "contributionId": "c_msp515p7",
+            "agentId": "ag_vy8nqnkg",
+            "basis": "observed",
+            "createdAt": "2026-10-18T17:46:10.780Z",
+            "conversationId": "9becea5b6f15ef5f",
+            "models": {
+              "gate": "typesafe/jev-1.14",
+              "extractor": "openai/gpt-oss-120b"
+            }
+          }
+        ],
+        "evidenceSources": [
+          "conversation:9becea5b6f15ef5f"
+        ]
+      }
+    ]
+  },
+  "activity": [
+    {
+      "id": "232",
+      "at": "2026-10-18T17:46:11.345Z",
+      "event": "learn.apply",
+      "actor": "ag_vy8nqnkg",
+      "object": "conversation",
+      "result": "written=1",
+      "reason": "fields=pref.fit"
+    },
+    {
+      "id": "231",
+      "at": "2026-10-18T17:46:11.075Z",
+      "event": "contribution.add",
+      "actor": "ag_vy8nqnkg",
+      "object": "c_msp515p7",
+      "result": "observed",
+      "reason": "pref.fit"
+    },
+    {
+      "id": "198",
+      "at": "2026-10-18T17:41:04.203Z",
+      "event": "POST /personal/observations",
+      "actor": "ag_vy8nqnkg",
+      "object": "",
+      "result": "202",
+      "reason": ""
+    },
+    {
+      "id": "197",
+      "at": "2026-10-18T17:41:04.203Z",
+      "event": "observation.queue",
+      "actor": "ag_vy8nqnkg",
+      "object": "",
+      "result": "ok",
+      "reason": "turns=1 user=1"
+    }
+  ],
+  "limitations": [
+    "No phone selection or handoff in this preference-only turn; earlier offers expired after ten minutes.",
+    "Live catalog is not an endorsement or authentication of the merchant.",
+    "Console still uses preserved4310; no new4314 UI acceptance.",
+    "OpenRouter ledger verified at minute precision; exact provider request IDs and per-request start/end timestamps were not captured."
+  ],
+  "queueToApplyMs": 307142,
+  "openRouterLedger": {
+    "source": "Authenticated OpenRouter Logs UI, refreshed and inspected on 2026-10-18",
+    "timestampPrecision": "minute, America/Los_Angeles",
+    "rows": [
+      {
+        "displayedAt": "Oct 18 10:46 AM",
+        "model": "openai/gpt-oss-120b",
+        "provider": "Groq",
+        "inputTokens": 434,
+        "outputTokens": 133,
+        "displayedCostUsdApprox": 0.000145,
+        "tokensPerSecond": 322,
+        "routingSeconds": 0.15,
+        "ttftSeconds": 0.41,
+        "finishReason": "stop"
+      },
+      {
+        "displayedAt": "Oct 18 10:46 AM",
+        "model": "typesafe/jev-1.14",
+        "provider": "TypeSafe",
+        "inputTokens": 1011,
+        "outputTokens": 127,
+        "displayedCostUsdApprox": 4.25e-05,
+        "tokensPerSecond": 1840,
+        "routingSeconds": 0.15,
+        "ttftSeconds": 0.07,
+        "finishReason": "stop"
+      }
+    ],
+    "requestIdsCaptured": false,
+    "syntheticRequestsDuringWindow": 0
+  }
+}

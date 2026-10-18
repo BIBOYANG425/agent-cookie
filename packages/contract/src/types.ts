@@ -215,6 +215,8 @@ export interface Handshake {
  *  - kind   — optional hint, not an enum: registered merchants listing it in `capabilities` are introduced too.
  */
 export interface IntentRequest {
+  /** Opaque channel conversation id, shared with observe. Learning provenance only; never merchant input or authority. */
+  conversationId?: string;
   text: string;
   query?: string;
   public?: Record<string, string>;

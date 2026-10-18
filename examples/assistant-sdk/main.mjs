@@ -7,6 +7,7 @@ import {
 } from '../../packages/sdk/dist/index.js';
 
 const url = process.env.AGENT_COOKIE_URL ?? 'http://127.0.0.1:4310';
+const assistantName = process.env.AGENT_COOKIE_ASSISTANT_NAME ?? 'Muse';
 const log = (line) => console.log(`[Sample] ${line}`);
 const names = (list) => (list.length ? list.join(', ') : '(none)');
 
@@ -18,7 +19,7 @@ async function greeting(block) {
       'anthropic-version': '2023-06-01', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
     body: JSON.stringify({
       model: 'claude-opus-5-5', max_tokens: 4096, fallbacks: 'default', output_config: { effort: 'low' },
-      system: `You are Muse, a personal assistant. Answer with one short greeting line, in the person's language.\n\n${block}`,
+      system: `You are ${assistantName}, a personal assistant. Answer in English with one short greeting line. Mention only known preferences and do not ask a question.\n\n${block}`,
       messages: [{ role: 'user', content: 'Hi, I need new trail running shoes.' }],
     }),
   });
@@ -30,7 +31,7 @@ async function greeting(block) {
 
 try {
   // 1. Once, at setup. The key is shown once: keep it in your secret store, never in a log, a prompt or a commit.
-  const { agentId, key } = await registerAgent(url, { name: 'Sample · Muse (examples/assistant-sdk)', category: 'assistant' });
+  const { agentId, key } = await registerAgent(url, { name: `Sample · ${assistantName} (examples/assistant-sdk)`, category: 'assistant' });
   log(`registered assistant ${agentId}`);
   const muse = new AssistantClient({ baseUrl: url, key, sample: true });
 
@@ -43,7 +44,7 @@ try {
     log('[demo shortcut] approving the link with AGENT_COOKIE_OWNER_KEY, as the owner would in the console');
     await new WorkspaceClient({ baseUrl: url, key: process.env.AGENT_COOKIE_OWNER_KEY }).approveLink(link.id);
   } else {
-    log(`waiting for the owner: agent-cookie links approve ${link.id}  (or the console's 连接请求 panel)`);
+    log(`waiting for the owner: agent-cookie links approve ${link.id}  (or the console's Connection requests panel)`);
   }
   const approved = await muse.waitForLink(link.id, { intervalMs: 1000 });
   log(`approved: pairwise session ${approved.sessionId}`);

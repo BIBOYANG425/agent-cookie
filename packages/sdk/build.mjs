@@ -41,6 +41,8 @@ for (const file of await files(dist)) {
 await build({ entryPoints: [join(root, 'src/index.ts')], outfile: join(dist, 'index.js'), bundle: true, platform: 'node', format: 'esm',
   target: 'node22', sourcemap: true, logLevel: 'warning' });
 
+await build({ entryPoints: [join(root, 'src/hana-identifiers.ts')], outfile: join(dist, 'hana-identifiers.js'), bundle: true, platform: 'node', format: 'esm', target: 'node22', sourcemap: true });
+
 // A module specifier naming an @agent-cookie package (comments may mention the names; imports may not).
 const specifier = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(["'])@agent-cookie\//;
 const leaks = [];

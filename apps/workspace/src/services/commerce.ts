@@ -72,7 +72,7 @@ const PAYMENT_BLOCKED: Partial<Record<ErrorCode, string>> = {
 export type IntentStreamItem = { event: IntentEvent; seq?: number } | { heartbeat: true };
 
 /** IntentRequest after HTTP validation. `text` is absent only on legacy kind-only requests (app.ts). */
-export interface IntentInput { text?: string; query?: string; kind?: string; public: Record<string, string> }
+export interface IntentInput { conversationId?: string; text?: string; query?: string; kind?: string; public: Record<string, string> }
 
 /**
  * Pairwise isolation on the intent routes (bring-your-own-agent): a linked assistant reads quotes and events, and
@@ -173,6 +173,7 @@ export class CommerceService {
     const { store, clock } = this.ctx;
     const intent: IntentRow = { id: newId("i"), userId, agentId: personal.agentId, public: input.public,
       createdAt: clock.nowIso(), expiresAt: clock.isoIn(INTENT_TTL_MS) };
+    if (input.conversationId) intent.conversationId = input.conversationId;
     if (input.kind) intent.kind = input.kind;
     if (input.text) intent.text = input.text;
     if (input.query) intent.query = input.query;

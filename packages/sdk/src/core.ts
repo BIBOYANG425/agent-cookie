@@ -420,9 +420,10 @@ export class ActingClient extends BaseClient {
       || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
         || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
           || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))
+      || (input.conversationId !== undefined && (typeof input.conversationId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(input.conversationId)))
       || (input.kind !== undefined && (typeof input.kind !== 'string' || !KIND.test(input.kind)))) throw new Error('Invalid shopping intent.');
     // Legacy kind-only calls become text; arbitrary runtime properties are not identity or authority.
-    const body: IntentRequest = { text: intentText!, ...(input.query !== undefined ? { query: input.query } : {}),
+    const body: IntentRequest = { text: intentText!, ...(input.conversationId !== undefined ? { conversationId: input.conversationId } : {}), ...(input.query !== undefined ? { query: input.query } : {}),
       ...(input.public !== undefined ? { public: input.public } : {}), ...(input.kind !== undefined ? { kind: input.kind } : {}) };
     const payload = await this.request('/personal/intents', { ...options, body, idempotencyKey });
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');

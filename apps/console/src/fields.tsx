@@ -1,23 +1,22 @@
-import { t } from './i18n';
 import type { Field } from '../../../packages/contract/src/types';
 
 // Labels improve readability; they are not an allow-list. Render every returned key.
 const contractLabels = {
-  get lang() { return t("language"); }, get tone() { return t("tone"); }, get length() { return t("responseLength"); }, get shoe_size() { return t("usualSize"); },
-  get budget() { return t("budget"); }, get deadline() { return t("deadline"); }, get shipping_address() { return t("shippingAddress"); }, get payment_method() { return t("paymentMethodReference"); },
-  get 'pref.brand'() { return t("brandPreference"); }, get 'pref.color'() { return t("colorPreference"); }, get 'pref.material'() { return t("materialPreference"); },
-  get 'pref.style'() { return t("stylePreference"); }, get 'pref.fit'() { return t("fitPreference"); }, get 'pref.avoid'() { return t("avoid"); },
-  get 'pref.occasion'() { return t("occasion"); }, get 'pref.recipient'() { return t("recipient"); }, get 'pref.price_band'() { return t("pricePreference"); },
-  get 'pref.size_system'() { return t("sizeSystem"); },
+  lang: 'Language', tone: 'Tone', length: 'Response length', shoe_size: 'Usual size',
+  budget: 'Budget', deadline: 'Deadline', shipping_address: 'Shipping address', payment_method: 'Payment reference',
+  'pref.brand': 'Preferred brands', 'pref.color': 'Preferred colors', 'pref.material': 'Preferred materials',
+  'pref.style': 'Style', 'pref.fit': 'Fit preference', 'pref.avoid': 'Avoid',
+  'pref.occasion': 'Occasion', 'pref.recipient': 'Recipient', 'pref.price_band': 'Price range',
+  'pref.size_system': 'Size system',
 } satisfies Record<Field, string>;
-const labelFor = (field: string) => Object.hasOwn(contractLabels, field) ? contractLabels[field as Field] : undefined;
+const labels = new Map<string, string>(Object.entries(contractLabels));
 
 export function fieldName(field: string): string {
-  const label = labelFor(field);
-  return label ? `${label}（${field}）` : field;
+  const label = labels.get(field);
+  return label ? `${label} (${field})` : field;
 }
 
 export function FieldName({ field }: { field: string }) {
-  const label = labelFor(field);
+  const label = labels.get(field);
   return <>{label && <span className="field-label">{label} </span>}<code className="field-key">{field}</code></>;
 }

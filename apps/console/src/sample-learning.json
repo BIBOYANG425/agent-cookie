@@ -1,0 +1,158 @@
+{
+  "paused": false,
+  "learned": [],
+  "stages": [
+    {
+      "id": "empty",
+      "label": "No observations",
+      "description": "Sample preview with no learning records. No model was run.",
+      "learned": []
+    },
+    {
+      "id": "candidate",
+      "label": "One conversation",
+      "description": "Sample: one scripted conversation suggests cotton and black. Both remain candidates.",
+      "learned": [
+        {
+          "field": "pref.material",
+          "value": "Cotton",
+          "status": "candidate",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-material-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "Cotton feels more comfortable.",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
+            }
+          ]
+        },
+        {
+          "field": "pref.color",
+          "value": "Black",
+          "status": "candidate",
+          "sources": [
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-color-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "I usually choose black.",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "learned",
+      "label": "Independent evidence",
+      "description": "Sample: two scripted independent conversations support the same preferences. This does not demonstrate actual learning or ranking.",
+      "learned": [
+        {
+          "field": "pref.material",
+          "value": "Cotton",
+          "status": "card",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-material-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "I still prefer cotton."
+            },
+            {
+              "contributionId": "sample-learned-material-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "Cotton feels more comfortable.",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
+            }
+          ]
+        },
+        {
+          "field": "pref.color",
+          "value": "Black",
+          "status": "card",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "evidence": [
+            {
+              "contributionId": "sample-learned-color-0",
+              "agentId": "sample-personal-assistant",
+              "basis": "inferred",
+              "createdAt": "2026-10-10T12:00:00.000Z",
+              "conversationId": "sample-conversation-earlier",
+              "snippet": "I will choose black again."
+            },
+            {
+              "contributionId": "sample-learned-color-1",
+              "agentId": "sample-personal-photon",
+              "basis": "inferred",
+              "createdAt": "2026-10-17T12:00:00.000Z",
+              "conversationId": "sample-conversation-weekend",
+              "snippet": "I usually choose black.",
+              "models": {
+                "gate": "typesafe/jev-1.14",
+                "extractor": "openai/gpt-oss-120b"
+              }
+            }
+          ]
+        }
+      ],
+      "card": [
+        {
+          "field": "pref.material",
+          "value": "Cotton",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        },
+        {
+          "field": "pref.color",
+          "value": "Black",
+          "confidence": "medium",
+          "sources": [
+            "sample-personal-assistant",
+            "sample-personal-photon"
+          ],
+          "updatedAt": "2026-10-17T12:00:00.000Z",
+          "lastSupportedAt": "2026-10-17T12:00:00.000Z",
+          "changedRecently": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "startedAt": "2026-10-18T17:51:07.731Z",
+  "finishedAt": "2026-10-18T17:51:08.695Z",
+  "scope": "Xia/Desktop replay of the same authorized shopping request and actual source conversation; no accept or payment.",
+  "agentId": "sample-personal-desktop",
+  "intentId": "i_h7m9b6ts",
+  "quotes": [],
+  "receipts": [],
+  "retry": {
+    "reason": "Previous identical lookup recorded ucp.search failed UPSTREAM_ERROR; one bounded retry after service interval.",
+    "startedAt": "2026-10-18T17:53:32.324Z",
+    "finishedAt": "2026-10-18T17:53:34.168Z",
+    "intentId": "i_rmhmakxh",
+    "quotes": [
+      {
+        "id": "q_b0gvqmk9",
+        "agentId": "ucp:mountain-running-company.myshopify.com",
+        "title": "Pursuit 3 Men's · Pursuit 3 Men's",
+        "price": 15500,
+        "source": "live"
+      },
+      {
+        "id": "q_99ncsmc3",
+        "agentId": "ucp:confluence-running-company.myshopify.com",
+        "title": "Topo Athletic | Pursuit 3 | Women's | Grey/Sky · Topo Athletic | Pursuit 3 | Women's | Grey/Sky",
+        "price": 15499,
+        "source": "live"
+      }
+    ],
+    "receipts": [
+      {
+        "id": "r_j3rheq6z",
+        "sessionId": "2p64pm9h",
+        "agentId": "ucp:confluence-running-company.myshopify.com",
+        "fields": [
+          "lang",
+          "shoe_size"
+        ],
+        "purpose": "handshake",
+        "createdAt": "2026-10-18T17:53:33.216Z",
+        "intentId": "i_rmhmakxh",
+        "policyId": "3526a909e404"
+      },
+      {
+        "id": "r_g8zq2vyr",
+        "sessionId": "4bft69yp",
+        "agentId": "ucp:mountain-running-company.myshopify.com",
+        "fields": [
+          "lang",
+          "shoe_size"
+        ],
+        "purpose": "handshake",
+        "createdAt": "2026-10-18T17:53:33.215Z",
+        "intentId": "i_rmhmakxh",
+        "policyId": "3526a909e404"
+      }
+    ],
+    "grants": [
+      {
+        "id": "g_kvw3a3wq",
+        "sessionId": "2p64pm9h",
+        "agentId": "ucp:confluence-running-company.myshopify.com",
+        "agentName": "Confluence Running Company (UCP proxy)",
+        "fields": [
+          "lang",
+          "tone",
+          "length",
+          "shoe_size",
+          "budget",
+          "deadline",
+          "pref.brand",
+          "pref.color",
+          "pref.material",
+          "pref.style",
+          "pref.fit",
+          "pref.avoid",
+          "pref.occasion",
+          "pref.recipient",
+          "pref.price_band",
+          "pref.size_system"
+        ],
+        "purpose": "handshake",
+        "createdAt": "2026-10-18T17:53:33.216Z",
+        "expiresAt": "2026-10-18T18:03:33.216Z",
+        "remainingMs": 599053,
+        "status": "live",
+        "policyId": "3526a909e404",
+        "stage": "introduced"
+      },
+      {
+        "id": "g_pwvadsev",
+        "sessionId": "4bft69yp",
+        "agentId": "ucp:mountain-running-company.myshopify.com",
+        "agentName": "Mountain Running Company (UCP proxy)",
+        "fields": [
+          "lang",
+          "tone",
+          "length",
+          "shoe_size",
+          "budget",
+          "deadline",
+          "pref.brand",
+          "pref.color",
+          "pref.material",
+          "pref.style",
+          "pref.fit",
+          "pref.avoid",
+          "pref.occasion",
+          "pref.recipient",
+          "pref.price_band",
+          "pref.size_system"
+        ],
+        "purpose": "handshake",
+        "createdAt": "2026-10-18T17:53:33.213Z",
+        "expiresAt": "2026-10-18T18:03:33.213Z",
+        "remainingMs": 599050,
+        "status": "live",
+        "policyId": "3526a909e404",
+        "stage": "introduced"
+      }
+    ]
+  }
+}

@@ -137,13 +137,19 @@ B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm 
 
 ## 对话旁听学习（Photon 2.0 Beta）
 
+实机五分钟验收时，运行后台的 Mac 要接电、保持开盖。可临时运行 `caffeinate -i -t 900` 防止十五分钟内的自动闲置休眠；它不能阻止合盖休眠，也不改变系统的长期电源设置。休眠/断网期间定时处理无法按时完成，不能把手机收到确认回复当成已经学到。Photon 有限重连耗尽会以 `RECONNECT_FAILED` 退出：恢复网络后先确认旧进程已退出、原 outbox 全部为 `sent`，再用原 `.env`、`AGENT_COOKIE_LEARNING_BINDING=workspace-v1` 和原状态文件启动唯一监听；不要删除 cursor/outbox、绕过锁或自动重放旧消息。未知发送结果继续按既有停止规则处理。验收以新消息自然空闲五分钟后的后台贡献和控制台读回为准。
+
 人的最新确认：Photon 团队要求继续使用 `app.beta.photon.codes`。现有 `pho_prj_` 项目、`PHOTON_API_KEY` 和原 iMessage 号码保留，`serve` 的同一个 Socket.IO 收消息循环负责采集，不要求另外登录旧平台或提供 `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`。`spectrum-ts` Cloud 与 Beta 是不同产品；旧 `serve-spectrum` 入口保留供真正的 Cloud 项目使用，不用于这条 Beta 线路。两入口共用原运行锁和状态文件，不能并行启动或另换状态文件绕过锁。不使用 `@spectrum-ts/imessage-local`，不读电脑上的其他聊天。
 
 通道显式开关：本机忽略的 `.env` 中设 `AGENT_COOKIE_LEARNING_BINDING=workspace-v1`，仍运行原 `serve` 命令。后台须先支持学习端点，并显式设 `AGENT_COOKIE_LEARN_PROVIDER=openrouter`、从本地加载 `OPENROUTER_API_KEY`；当前默认 Jev1.14 + gpt-oss120b。仅有模型 key 不会自动启用。启动时读后台暂停状态并保留本机已有暂停，失败则退出并释放锁；正常停止旧监听、确认 outbox 无未知发送结果后才能切换。
 
 采集：同一受信 Beta 事件先验证 API 版本、项目、human 发件人、agent 收件人、原测试号码、direct space 和 plain text，再经 `adapter.toEvent` 归一化 → 机主/敏感过滤 → 非阻塞有界内存队列 → SDK Observation。全部群聊保守忽略；稳定 HMAC conversationId / messageId 不靠时间切片或进程重启制造新来源。队列最多32个等待项、并发1、TTL30秒、10秒超时。5分钟前的历史消息不补学，重复已发送消息不再采集/回复；学习上报失败不影响回复，不将输入正文落盘。原 cursor/outbox 和未知发送停止机制保留，成功发送后删除该条 outbox 的回复正文。暂停/恢复/忘掉命令不成为学习证据。
 
-普通偏好聊天使用确定性确认，不冒充完整聊天模型；单有商品名或“平时怎么买”的描述不触发搜索，只有明确请求句才走购物。Beta 购物请求由既有 intent 路径学习，不再同时排一份 Observation，避免同一句被算为两个来源。后台 Dreaming 等对话空闲五分钟后才抽取，默认五分钟调度意味着最长接近十分钟；演示可设 `DREAMING_INTERVAL_MS=30000`，使空闲五分钟后在下一次30秒调度内处理，不用手动 flush 冒充定时。明确陈述可上卡，顺口偏好先显示候选。真实模型六场景已通过；实际 Beta 手机消息已在 2026-10-17 经过空闲五分钟自动处理并显示到控制台，详见 `docs/evidence/2026-10-17-phone-learning-live.md`。该次存在修复前购物误判造成的重复来源，不能把它当成两段独立对话的上卡验收；修复后第二条真实手机消息已验证不会误触发购物或重复来源；自然五分钟后 Jev 门控未通过，未调用抽取器、未写新记录。这条涉及短裤/长裤选择，现白名单缺清晰服装类型语义，已交 A/C；不能把它算成正向候选验收，也不强行映射版型/风格。
+普通偏好聊天使用确定性确认，不冒充完整聊天模型；单有商品名或“平时怎么买”的描述不触发搜索，只有明确请求句才走购物。Beta 购物请求由既有 intent 路径学习，不再同时排一份 Observation，避免同一句被算为两个来源。后台 Dreaming 等对话空闲五分钟后才抽取，默认五分钟调度意味着最长接近十分钟；演示可设 `DREAMING_INTERVAL_MS=30000`，使空闲五分钟后在下一次30秒调度内处理，不用手动 flush 冒充定时。明确陈述可上卡，顺口偏好先显示候选。
+
+最新真实手机正向验收在 **2026-10-18 00:21 PDT** 通过：一条机主闲聊在自然空闲 **5分29秒** 后，经真实 Jev 1.14 + gpt-oss-120b 生成 **1 条 `pref.fit=loose` 候选、1 个对话来源**，控制台和另一位个人 agent 的 SDK 读回一致，无新购物意图、无重复贡献、没有提前上卡。详见 [`2026-10-18-phone-gate-retry.md`](../../docs/evidence/2026-10-18-phone-gate-retry.md)。模型来源由正式 API 元数据与 OpenRouter 日志核对。随后已加载 C 的 PR28 界面修正，真实记录不再标成预设学习示例，且显示 gate/extractor 来源，见 [`2026-10-18-phone-controls.md`](../../docs/evidence/2026-10-18-phone-controls.md)；**00:43 PDT** 手机控制闭环也已通过：暂停后普通偏好消息在入队前丢弃；“忘掉 版型”删除当前 fit 候选及其证据、保留原颜色偏好，两端及控制台仍暂停。旧 Git 历史未擦除，未自动恢复学习。手机控制的逐项结果见同一验收文档。
+
+历史边界保留：10月17日首次手机学习有修复前购物误判造成的重复来源，不能充当两段独立对话晋升验收；第二条短裤/长裤偏好被旧门控拒绝，也不算正向通过。B `05a5d8f` 后已把款式/服装长短设计明确归入既有 `pref.style` 提示，松紧归 `pref.fit`，并区分偏好线索与已被确认的偏好；没有新增契约字段或放宽敏感过滤。新门控首次实机尝试因合盖休眠未通过，之后由用户主动重发完成上述成功验收。历史记录未自动重放或改写。
 
 - `暂停学习`：立即停本机队列/中止在途观察，再PUT后台 paused=true；失败明确说“后台尚未确认”。
 - `恢复学习`：只在后台明确 paused=false 后恢复本机采集；隔离测试已验证暂停/恢复后的迟到结果被丢弃；后台确认和本机状态更新后才启用采集。
@@ -151,3 +157,12 @@ B 包的内部依赖声明使用 `workspace:*`，统一从仓库根执行 `pnpm 
 - 每日摘要：用户下一次正常交互时，最多附加一次当前有效card状态的结论；不发主动定时短信，不调模型，不含证据原文。暂停时不摘要；读取失败保留正常回复。
 
 可选 `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` 与 `AGENT_COOKIE_LEARNING_OTLP_TOKEN` 只供独立学习管道的trace/log出口；没有endpoint就不导出。Beta只记录checkpoint与learning_capture的状态/数量；旧Spectrum入口自身telemetry关闭、SDK日志silent。两者均不采集正文日志。已验证本机OTLP，不代表Sentry账号已收到事件。模型凭据由A的后台加载；Photon通道本身不拿OpenRouter模型密钥。
+# HANA 旁听模式（尚未切到真实线路）
+
+`AGENT_COOKIE_CHANNEL_MODE=listen-only` 只旁听已经验证为机主本人直聊的入站消息，不回复、不创建 intent、不处理暂停/恢复/忘掉命令，也不发送每日摘要。命令由 HANA 的六工具插件执行；旁听每次重新读取工作台学习状态，暂停时不入队。失败时关闭本轮采集，不影响 HANA 回复。
+
+必须设置独立的 `AGENT_COOKIE_CHANNEL_STATE`（例如 `.runtime/hana-observer-state.json`），不可使用原 personal agent 的 state 文件。`AGENT_COOKIE_CHANNEL_START_SEQ` 仅初始化新文件，取停下原 agent 时的已核对 cursor；已有 cursor 永远不被覆盖。HANA 另持自己的 cursor，同一项目的两个订阅者已实测可独立接收。只有 HANA 可以发送。
+
+conversationId 与 HANA 共用 `@agent-cookie/sdk/hana-identifiers` 的 SHA256(chatId) 前16位。它不是按五分钟切换的会话号：同一手机线程之后再说一遍仍属同一来源，不应晋升。A 的 IntentRequest 同源接线未到件前禁止切流，因为 find+observe 仍会错误产生两来源。
+
+操作步骤、独立复现和回滚见 `docs/hana-demo.md`。原个人 agent 的配置、学习暂停状态及 cursor/outbox 保持不变。
