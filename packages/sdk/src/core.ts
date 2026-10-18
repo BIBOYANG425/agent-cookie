@@ -4,7 +4,15 @@ import type { AcceptResult, ErrorCode, IntentEvent, IntentRequest, Quote } from 
 import { INTENT_EVENT_TYPES, INTENT_STREAM_HEARTBEAT_MS, QUOTE_POLL_MAX_MS } from '@agent-cookie/contract';
 import { observationBody, observeResult, type ObservationInput, type ObserveResult } from './learning.js';
 
-export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public'>;
+/**
+ * POST /personal/intents body (contract IntentRequest). `text` is the person's own words, verbatim; `query` what to
+ * search for; `public` the conditions they stated for this request. `kind` (optional, a lower-case token such as
+ * "shoes": [a-z][a-z0-9_]{0,63}) is the hint that introduces registered stores: a store that registered with capability
+ * X is introduced to intents whose kind is X. UCP stores are searched from the text either way.
+ */
+export type FindInput = Pick<IntentRequest, 'text' | 'query' | 'public' | 'kind'>;
+/** IntentRequest.kind, as the workspace validates it. */
+const KIND = /^[a-z][a-z0-9_]{0,63}$/;
 export interface QuoteList { quotes: Quote[]; sample: boolean }
 export interface FindResult extends QuoteList { intentId: string }
 export type CheckoutResult = AcceptResult & { sample: boolean };
@@ -373,10 +381,12 @@ export class ActingClient extends BaseClient {
     if (!input || !text(input.text, 1000) || (input.query !== undefined && !text(input.query, 200))
       || (input.public !== undefined && (!isObject(input.public) || Object.keys(input.public).length > 20
         || Object.entries(input.public).some(([k,v]) => !k || k.length > 64 || ['__proto__','prototype','constructor'].includes(k)
-          || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))) throw new Error('Invalid shopping intent.');
-    // Explicit wire shape: arbitrary runtime properties are not identity/authority, nor a legacy kind fallback.
+          || typeof v !== 'string' || new TextEncoder().encode(v).length > 256)))
+      || (input.kind !== undefined && (typeof input.kind !== 'string' || !KIND.test(input.kind)))) throw new Error('Invalid shopping intent.');
+    // Explicit wire shape: arbitrary runtime properties are not identity or authority. `kind` is only ever a hint
+    // beside the sentence, never the legacy kind-only request.
     const body: FindInput = { text: input.text, ...(input.query !== undefined ? { query: input.query } : {}),
-      ...(input.public !== undefined ? { public: input.public } : {}) };
+      ...(input.public !== undefined ? { public: input.public } : {}), ...(input.kind !== undefined ? { kind: input.kind } : {}) };
     const payload = await this.request('/personal/intents', { ...options, body, idempotencyKey });
     if (!isObject(payload) || typeof payload.intentId !== 'string' || !payload.intentId) throw new Error('Invalid intent response.');
     return { intentId: payload.intentId, sample: payload.sample === true };

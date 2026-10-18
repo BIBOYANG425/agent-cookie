@@ -55,7 +55,7 @@ export async function flow(): Promise<string> {
   const link: LinkView = await assistant.requestLink();
   await assistant.waitForLink(link.id, { intervalMs: 2000, timeoutMs: 60000 });
   const context = await assistant.context();
-  const found = await assistant.find({ text: 'trail running shoes' }, 'find-1');
+  const found = await assistant.find({ text: 'trail running shoes', kind: 'shoes' }, 'find-1');
   if (found.quotes[0]) await assistant.accept(found.quotes[0].id, 'accept-1');
   const fact: AssistantContributionInput = { field: 'pref.brand', value: 'Brooks', basis: 'stated',
     evidence: { conversationId: 'chat-1', snippet: 'I only run in Brooks' } };

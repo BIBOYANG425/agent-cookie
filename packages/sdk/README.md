@@ -39,7 +39,7 @@ await muse.waitForLink(link.id); // rejects LinkNotApprovedError: declined | exp
 const system = `You are Muse.\n\n${assistantPrompt(await muse.context())}`;
 
 // Acting for them: the workspace introduces stores and gives the store the address at checkout, not you.
-const found = await muse.find({ text: 'trail running shoes under $150, size 42' }, 'find-0001');
+const found = await muse.find({ text: 'trail running shoes under $150, size 42', kind: 'shoes' }, 'find-0001');
 const result = await muse.accept(found.quotes[0].id, 'accept-0001'); // the quote the person chose
 // result.status: ordered | handoff (they pay at result.continueUrl) | blocked | failed. Tell them which.
 
@@ -48,6 +48,8 @@ await muse.remember({ field: 'pref.brand', value: 'Brooks', basis: 'stated',
   evidence: { conversationId: 'chat-8812', snippet: 'I only run in Brooks' } });
 const { intents, accepted, questionsSkipped } = await muse.stats(); // counts only
 ```
+
+`find` searches the catalog stores from the person's own words (`text`). The optional `kind` (a lower-case token such as `shoes`) also brings in stores that integrated `MerchantClient`: a store that registered with capability X is introduced to intents whose kind is X. Without `kind` only the catalog stores are searched.
 
 `context()` returns `fields`, the values the person's policy lets an assistant know, and `unknown`, the fields it may ask for only when the task needs them. `assistantPrompt` renders both, plus the line that tells the model never to ask for an address or payment details. Until the link is approved, `context()` and the intent methods answer `403 SCOPE_DENIED`; after the owner revokes the grant or it lapses, `GRANT_REVOKED` or `GRANT_EXPIRED`; an intent this assistant did not create is `404 NOT_FOUND`, the same as none.
 
@@ -85,6 +87,8 @@ await store.contribute({ field: 'shoe_size', value: '42', basis: 'observed', ses
 await store.setNote(sessionId, 'fit', 'prefers a wide toe box'); // your own note, ≤ 2 KB
 const { quotes, accepted, winRate } = await store.stats(); // your own sessions only, counts only
 ```
+
+Your store is introduced through the intent's `kind` hint: a store that registered with capability X is introduced to intents whose kind is X (here, `capabilities: ['shoes']` meets an assistant's or a personal agent's `find({ text, kind: 'shoes' })`). An intent without a matching `kind` never reaches it.
 
 A purpose field is released only after the person accepted this store's quote; before that the answer is `403 PURPOSE_MISMATCH`, and a field outside the policy is `403 SCOPE_DENIED`. Neither names the field. Session ids are pairwise: each store gets its own id for the same person and never learns their global id. `stored` on a contribution says how the workspace kept it (`inferred`, never on the card, when your category may not write that field).
 
@@ -125,7 +129,7 @@ On `SCOPE_DENIED` or `PURPOSE_MISMATCH`, do not retry with another purpose: the 
 
 Every method takes an optional last `{ signal?: AbortSignal }`. Writes that create something take a caller-chosen idempotency key (`createIntent`, `find`, `accept`, `quote`): reuse it to retry safely. Each request authenticates anew, omits browser cookies, does not cache, never follows a redirect and is never retried automatically; the default timeout is 25 s (`timeoutMs`, 1–120000). Responses are validated and projected to the contract's keys, so an extra upstream property never reaches you; in contexts, handshakes and field reads a field name this SDK does not know yet passes through.
 
-**Shared by `WorkspaceClient` and `AssistantClient`** (one implementation): `getMe()`, `createIntent(input, key)`, `getQuotes(intentId)` (long-poll, up to 20 s), `streamQuotes(intentId, { lastEventId? })` (server-sent events: existing quotes, then live ones, then `complete` or `expired`; never reconnects; `lastEventId` resumes), `find(input, key)` (create, then quotes from the stream until complete, expired or 20 s; falls back to the long-poll when the workspace cannot stream), `accept(quoteId, key)` (`ordered | handoff | blocked | failed`, with `message`, `continueUrl` and `receipts` passed through; a handoff is not an order or a payment), `observe(observation)` (needs `learning: true` in the client options; queued is not learned).
+**Shared by `WorkspaceClient` and `AssistantClient`** (one implementation): `getMe()`, `createIntent({ text, query?, public?, kind? }, key)` (`kind`: `[a-z][a-z0-9_]{0,63}`, checked before sending), `getQuotes(intentId)` (long-poll, up to 20 s), `streamQuotes(intentId, { lastEventId? })` (server-sent events: existing quotes, then live ones, then `complete` or `expired`; never reconnects; `lastEventId` resumes), `find(input, key)` (create, then quotes from the stream until complete, expired or 20 s; falls back to the long-poll when the workspace cannot stream), `accept(quoteId, key)` (`ordered | handoff | blocked | failed`, with `message`, `continueUrl` and `receipts` passed through; a handoff is not an order or a payment), `observe(observation)` (needs `learning: true` in the client options; queued is not learned).
 
 **`AssistantClient`**: `requestLink()` → `LinkView` (201, or 200 with the link already pending); `link(id)`; `waitForLink(id, { intervalMs = 2000, timeoutMs = LINK_TTL_MS, signal })`; `context()` → `AssistantContext & { sample }`; `remember({ field, value, basis?, evidence? })` → `{ stored, contribution, sample }` (`basis` defaults to `observed`; `stated` needs `evidence: { conversationId, snippet }`); `stats()` → `AssistantStats & { sample }` (`intents`, `quoted`, `accepted`, `completed`, `questionsSkipped`). `assistantPrompt(ctx)` is a pure function: same context, same text.
 
