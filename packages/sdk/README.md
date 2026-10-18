@@ -1,24 +1,12 @@
 # @agent-cookie/sdk
 
-An agent the person has never used knows them on its first message: within the person's policy, with a receipt for every release, and without an onboarding interview. Three clients over one HTTP transport:
+An agent the person has never used knows them on its first message: within the person's policy, with a receipt for every release, and without an onboarding interview. `@agent-cookie/sdk` is how the companies that build agents connect to the person's Agent Cookie workspace, which holds what they told their agents, their policy and the receipts. Three clients share one HTTP transport: `AssistantClient` for a personal-assistant company (Manus, Dots, Muse), which registers with `category: 'assistant'` and is linked once through a consent link the person approves; `MerchantClient` for a store's or commerce agent, which registers with `category: 'retail'` or `'shoe'`; and `WorkspaceClient` for the person's own agent, console or CLI, which uses a personal key the owner added, or the owner key.
 
-| You build | Client | Key |
-| --- | --- | --- |
-| A personal assistant (Manus, Dots, Muse) | `AssistantClient` | `registerAgent({ category: 'assistant' })`, then a consent link the person approves |
-| A store's or commerce agent | `MerchantClient` | `registerAgent({ category: 'retail' \| 'shoe' })` |
-| The person's own agent, or their console/CLI | `WorkspaceClient` | a personal key the owner added, or the owner key |
+## Install
 
 ```sh
-npm install @agent-cookie/sdk   # Node 22+, ESM, types included, no runtime dependencies
+npm i @agent-cookie/sdk   # Node 22 or later; ESM, types included, no runtime dependencies
 ```
-
-**Before you start, three plain facts.**
-
-- **The workspace decides every release, not the SDK.** The SDK carries a purpose and a session; the workspace checks policy, grant, stage and expiry, writes the receipt, and answers. No client option widens what an agent may read. `payment_method` never reaches a store or an assistant, and `shipping_address` never reaches an assistant: the workspace hands the address to the store at checkout and authorizes payment itself.
-- **Keys are bearer credentials, shown once.** `registerAgent` returns the key in its response and never again. Keep it in your secret store (`AGENT_COOKIE_KEY`), never in a prompt, a chat message, a log or a commit. The SDK never puts a key or a field value in an error message.
-- **Demo mode is Sample data.** A workspace started with `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture` serves a Sample persona (its card, receipts and stats), Sample keys (`fixtures/dev-keys.json`, e.g. `ck_assistant_sample`, `ck_merchant_acme_sample`, `ck_personal_desktop_sample`) and recorded store answers replayed from fixtures. Quotes and cards with `source: sample | fixture` come back with `sample: true`; contexts, handshakes, links and stats carry no source, so set `AGENT_COOKIE_SAMPLE=1` (or `sample: true` in the client options) to label those too. Never show Sample data as a real person, real inventory or a real order.
-
-**Where the workspace is.** The URL is an origin: `https://` on any host (a person's hosted jar behind its TLS gateway), or `http://` on loopback only (`127.0.0.1`, `localhost`, `[::1]`; the local workspace listens on `http://127.0.0.1:4310`). No path, query or credentials in it. Anything else, `http://` to another machine included, is refused before a request, so a key never crosses a network in clear text. The SDK never follows a redirect. The hosted gateway itself is a later phase of the plan; the quickstarts use the local workspace.
 
 ## Quickstart (a): an assistant company
 
@@ -109,6 +97,14 @@ const { receipts } = await me.getReceipts(); // who read which field, for which 
 
 The owner key (console, CLI) also decides consent links: `listLinks({ limit? })`, `approveLink(id)`, `declineLink(id)`, or `agent-cookie links list | approve <id> | decline <id>`.
 
+## Three plain facts
+
+- **The workspace decides every release, not the SDK.** The SDK carries a purpose and a session; the workspace checks policy, grant, stage and expiry, writes the receipt, and answers. No client option widens what an agent may read. `payment_method` never reaches a store or an assistant, and `shipping_address` never reaches an assistant: the workspace hands the address to the store at checkout and authorizes payment itself.
+- **Keys are bearer credentials, shown once.** `registerAgent` returns the key in its response and never again. Keep it in your secret store (`AGENT_COOKIE_KEY`), never in a prompt, a chat message, a log or a commit. The SDK never puts a key or a field value in an error message.
+- **Demo mode is Sample data.** A workspace started with `AGENT_COOKIE_DEMO=1 AGENT_COOKIE_UCP=fixture` serves a Sample persona (its card, receipts and stats), Sample keys (`fixtures/dev-keys.json`, e.g. `ck_assistant_sample`, `ck_merchant_acme_sample`, `ck_personal_desktop_sample`) and recorded store answers replayed from fixtures. Quotes and cards with `source: sample | fixture` come back with `sample: true`; contexts, handshakes, links and stats carry no source, so set `AGENT_COOKIE_SAMPLE=1` (or `sample: true` in the client options) to label those too. Never show Sample data as a real person, real inventory or a real order.
+
+**Where the workspace is.** The URL is an origin: `https://` on any host (a person's hosted jar behind its TLS gateway), or `http://` on loopback only (`127.0.0.1`, `localhost`, `[::1]`; the local workspace listens on `http://127.0.0.1:4310`). No path, query or credentials in it. Anything else, `http://` to another machine included, is refused before a request, so a key never crosses a network in clear text. The SDK never follows a redirect. The hosted gateway itself is a later phase of the plan; the quickstarts use the local workspace.
+
 ## Errors
 
 Every non-2xx answer with a contract code is a `WorkspaceError` with `status`, `code` and a fixed public `message`; anything else is an opaque `Error`. Codes: `AUTH_REQUIRED` (401), `SCOPE_DENIED`, `PURPOSE_MISMATCH`, `GRANT_EXPIRED`, `GRANT_REVOKED`, `JAR_LOCKED`, `AUTHORIZATION_USED`, `OVER_BUDGET` (403), `NOT_FOUND` (404), `IDEMPOTENCY_CONFLICT`, `LINK_NOT_PENDING` (409), `MISSING_FIELD` (422), `UPSTREAM_ERROR` (502); the list is exported as `WORKSPACE_ERROR_CODES`.
@@ -149,6 +145,33 @@ pnpm --filter @agent-cookie/sdk typecheck
 pnpm --filter @agent-cookie/sdk build       # self-contained dist/: the contract's runtime bundled, its types emitted
 pnpm --filter @agent-cookie/sdk test
 pnpm --filter @agent-cookie/sdk pack:smoke  # pnpm pack, npm install the tarball in an empty project, import, type-check
+pnpm --filter @agent-cookie/sdk run publish:check  # build, pack:smoke, then pnpm publish --dry-run (prints the tarball, uploads nothing)
 ```
 
 `build.mjs` emits the SDK's declarations and the contract's (`dist/contract/`), points the SDK's type imports at them, bundles `dist/index.js` with esbuild and fails if anything in `dist` still imports an `@agent-cookie` package. `@agent-cookie/contract` is a dev dependency only. The CLI, the MCP server, Photon and the console bridge call this SDK; nobody writes a second HTTP client. Unit tests mock `fetch`; `test/workspace-integration.test.ts`, `test/workspace-c-integration.test.ts` and `test/console-bridge-integration.test.ts` run the SDK against the real Hono/SQLite workspace in-process (isolated databases, Sample seed).
+
+## License
+
+MIT; see LICENSE at the repository root. The published package carries a copy.
+
+## Publishing (maintainers)
+
+For the repository owner. `packages/sdk/PUBLISHING.md` in the repository has every step in full, the fallback name and what to do when a step fails. No token, password or one-time code ever goes into the repository, a commit, a log or a chat message.
+
+1. **npm account.** Sign up at npmjs.com with your own email, under a username other than `agent-cookie` (users and organizations share one namespace), and turn on two-factor authentication: npm requires it for publishing.
+2. **Organization.** Create the free organization `agent-cookie` (unlimited public packages), so the scope of `@agent-cookie/sdk` is yours. If the name is taken, the fallback is the unscoped name `agent-cookie-sdk`; PUBLISHING.md lists the files that change.
+3. **Token.** Create a granular access token: Packages and scopes, read and write, limited to `@agent-cookie`; Organizations, no access; a short expiry; and the two-factor bypass ticked if the page offers it. Store it as the environment variable `NPM_TOKEN` in the cloud environment's settings, never in a chat message or a commit. A new session picks it up.
+4. **Publish.** A new session runs this from the repository root, on a clean checkout of `main`, as one command:
+   ```sh
+   cd packages/sdk && bash -eu <<'SH'
+   test -n "${NPM_TOKEN:-}" || { echo 'NPM_TOKEN is not set'; exit 1; }
+   pnpm run publish:check
+   NPMRC="$(mktemp)"; trap 'rm -f "$NPMRC"' EXIT
+   printf '//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n' > "$NPMRC"
+   export NPM_CONFIG_USERCONFIG="$NPMRC"
+   npm whoami
+   pnpm publish --access public
+   SH
+   ```
+   The npmrc is a temporary file outside the repository that holds the variable's name, not the token, and is deleted on exit. `pnpm publish` packs what `pack:smoke` checked (the root LICENSE included, the `workspace:*` dev dependency rewritten) and hands that tarball to `npm publish`. From CI, add `--provenance`; npm accepts it only from a public repository, in a job with `id-token: write`.
+5. **Verify.** `npm view @agent-cookie/sdk` shows version 0.1.0, license MIT and no dependencies; `node scripts/pack-smoke.mjs --registry 0.1.0` installs the published version with `npm install` into an empty project, runs the same consumer and type-checks it. Then delete the token on npmjs.com and remove `NPM_TOKEN` from the environment until the next release.
