@@ -32,6 +32,8 @@ export function createLearningControls(options:{workspace:LearningWorkspace;sink
         const keys=[...new Set(before.learned.filter(p=>p.field===target||labels[p.field]===target||p.value===target).map(p=>p.field))];
         if(keys.length!==1)return keys.length?'对应多个偏好。请到控制台选择要撤销的项；本机采集已暂停。':'没有找到明确对应的偏好。请用控制台显示的名称（例如「忘掉 颜色」）；本机采集已暂停。';
         const field=before.learned.find(p=>p.field===keys[0])!.field;
+        if(target!==field&&target!==labels[field]&&before.learned.some(p=>p.field===field&&p.value!==target))
+          return '这个类别还有其他偏好。为避免一起删除，请到控制台撤销这一项；若要清空整个类别，请回复「忘掉 '+(labels[field]??field)+'」。本机采集已暂停。';
         const result=await call(signal=>options.workspace.forgetLearning({field},{signal}),5000);
         if(result.projection!=='complete')return '后台已暂停学习并移除当前偏好；记忆文件清理仍在等待完成，暂不能确认删除完成。';
         const after=await call(signal=>options.workspace.getLearned({signal}));

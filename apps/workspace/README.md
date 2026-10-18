@@ -80,7 +80,7 @@ pnpm --filter @agent-cookie/workspace test
 - `POST /personal/learned/forget {conversationId | intentId}`: revokes everything learned from it at once (one SQLite
   transaction, one memory-repo commit with CARD.md when lane C's `revokeContributions` is there), drops its waiting
   turns, and discards a learner answer still in flight. `PUT /personal/learning {paused}` stops all of it.
-- `@agent-cookie/learn` is on lane B's branch until merged; until then (or without a key) the workspace logs `learn.off`.
+- `@agent-cookie/learn` is linked through the workspace dependency. Default provider `off` logs `learn.off`; only explicit OpenRouter configuration activates extraction.
 
 Full request/response shapes: `packages/contract/src/types.ts` and `endpoints.ts`.
 
@@ -89,12 +89,12 @@ Full request/response shapes: `packages/contract/src/types.ts` and `endpoints.ts
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_COOKIE_LEARN_PROVIDER` | `off` | explicitly opt in to `openrouter` or `anthropic`; a key alone does not enable calls |
-| `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | unset | selected provider only, from a local ignored env file |
+| `AGENT_COOKIE_LEARN_PROVIDER` | `off` | explicitly opt in to `openrouter`; a key alone does not enable calls |
+| `OPENROUTER_API_KEY` | unset | selected provider only, from a local ignored env file |
 | `AGENT_COOKIE_LEARN_MODE` | `all` | `explicit-only` keeps only explicit personal statements |
 | `AGENT_COOKIE_LEARNING_OTLP_ENDPOINT` | unset | isolated metadata-only learning trace/log endpoint; no conversation bodies |
 | `LEARN_TICK_MS` / `LEARN_TIMEOUT_MS` | `30000` / `30000` | queue tick / service timeout; extractor has its own shorter bound |
 
-`POST /personal/observations` queues only owner turns in memory (100 conversations total, at most 50 × 2000 characters each; oldest batches are dropped on overflow). Pending raw text is deliberately lost on restart. The model only classifies/extracts; the workspace and rules independently enforce fields and promotion. Personal `stated` is immediate; weaker evidence needs distinct conversation/intent IDs, not distinct agents. Receipt of `{queued:true}` is not proof of learning.
+`POST /personal/observations` queues only owner turns in memory (50 conversations per user, at most 20 × 2000 characters each; oldest batches are dropped on overflow). Pending raw text is deliberately lost on restart. The model only classifies/extracts; the workspace and rules independently enforce fields and promotion. Personal `stated` is immediate; weaker evidence needs distinct conversation/intent IDs, not distinct agents. Receipt of `{queued:true}` is not proof of learning.
 
 `POST /personal/learning/forget {field:"pref.color"}` accepts personal/owner credentials. One SQLite transaction pauses learning, advances the epoch, removes current field contributions and cached card, and saves opaque projection IDs plus keyed value-suppression digests. The current Git files are cleaned in one commit. `200` reports `projection:"complete"`; `202` reports `"pending"`, retains the durable retry job and prevents resume. Startup retries pending projections before reconciliation. Responses always include `historyErased:false`: old Git commits/backups are not physically erased and there is no cross-store ACID promise. Users must explicitly resume after completion. The original B49 six-scenario test remains unchanged; repair evidence is in `docs/evidence/2026-10-17-b49-repair.md`.

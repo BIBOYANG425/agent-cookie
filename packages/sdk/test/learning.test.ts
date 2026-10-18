@@ -35,3 +35,12 @@ it('forgets via one authenticated endpoint and preserves pending/history semanti
  expect(args[0].pathname).toBe('/personal/learning/forget');expect(JSON.parse(String(args[1].body))).toEqual({field:'pref.color'});
  await expect(c.forgetLearning({field:'shipping_address'} as any)).rejects.toThrow();expect(f).toHaveBeenCalledTimes(1);
 });
+
+it('forwards opaque message IDs and preserves duplicate acknowledgements',async()=>{
+ const f=vi.fn(async()=>Response.json({queued:false,duplicate:true}));const c=new WorkspaceClient({...config,fetch:f});
+ const observed={...input,turns:input.turns.map(t=>({...t,messageId:'opaque-message-1'}))};
+ expect(await c.observe(observed)).toEqual({queued:false,duplicate:true});
+ const args=f.mock.calls[0] as unknown as [URL,RequestInit];expect(JSON.parse(String(args[1].body))).toEqual(observed);
+ await expect(c.observe({...input,turns:input.turns.map(t=>({...t,messageId:'x'.repeat(129)}))})).rejects.toThrow();
+ expect(f).toHaveBeenCalledTimes(1);
+});

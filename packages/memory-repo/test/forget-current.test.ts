@@ -20,3 +20,15 @@ it('removes current preference, evidence, preview-history extraction and card in
   expect((await git.show([`${before.trim()}:CARD.md`]))).toContain('black');
   expect((await repo.forgetContributions!([row.id], { now: AT, personalAgentIds: [row.agentId] }, meta())).sha).toBe('');
 });
+
+it('revokes a source batch with its card in one real Git commit and clears current snippets', async () => {
+  const f = await fixture(); temps.push(f.temp); const repo = await f.open();
+  const rows = [contribution('c1'), { ...contribution('c2'), field: 'pref.color' as const, value: 'black' }]
+    .map(row => ({ ...row, evidence: { conversationId: 'source-one', snippet: `I prefer ${row.value}.` } }));
+  for (const row of rows) await repo.appendContribution(row, meta(row.agentId));
+  const git = repoGit(f.path); const before = (await git.revparse(['HEAD'])).trim();
+  const result = await repo.revokeContributions!(rows.map(row => row.id), AT, { now: AT, personalAgentIds: [rows[0].agentId] }, meta());
+  expect((await git.raw(['rev-list', '--count', `${before}..${result.commit.sha}`])).trim()).toBe('1');
+  expect(result.card.card).toEqual([]);
+  expect((await repo.listContributions()).every(row => row.revokedAt === AT && !row.evidence?.snippet)).toBe(true);
+});

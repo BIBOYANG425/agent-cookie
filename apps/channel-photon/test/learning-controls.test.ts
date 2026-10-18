@@ -38,3 +38,8 @@ it('does not claim completed cleanup while the backend projection is pending',as
  const s=setup();s.workspace.forgetLearning.mockResolvedValue({field:'pref.color',paused:true,removed:1,projection:'pending',historyErased:false});
  expect(await s.controls.command('忘掉 颜色')).toContain('暂不能确认删除完成');expect(s.sink.enabled).toBe(false);
 });
+
+it('never silently deletes other values when the user names only one value',async()=>{
+ const s=setup();s.workspace.getLearned.mockResolvedValue({paused:false,learned:[row,{...row,value:'蓝色'}]});
+ expect(await s.controls.command('忘掉 黑色')).toContain('还有其他偏好');expect(s.workspace.forgetLearning).not.toHaveBeenCalled();
+});

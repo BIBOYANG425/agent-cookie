@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-17",
+  "scope": "isolated backend integration; synthetic extractor and fixture checkout; no live model/phone calls",
+  "upstream": {
+    "lane-a": "9eec478",
+    "lane-c": "5de9fc1",
+    "build_fix": "d9aa3ce"
+  },
+  "probe_sha256": "787c06e239835a45563a38ba2061e3af576db34db7a7e87e844f2d9737613c2a",
+  "six_scenarios": {
+    "mode": "isolated-real-A-C-with-synthetic-extractor",
+    "liveModels": false,
+    "liveChannel": false,
+    "results": [
+      {
+        "name": "explicit_statement_reaches_card",
+        "passed": true,
+        "observed": {
+          "status": "card",
+          "basis": [
+            "stated"
+          ]
+        }
+      },
+      {
+        "name": "same_agent_two_conversations",
+        "passed": true,
+        "observed": {
+          "status": "card",
+          "evidenceCount": 2,
+          "writerCount": 1
+        }
+      },
+      {
+        "name": "same_agent_two_conversations_after_refresh",
+        "passed": true,
+        "observed": {
+          "status": "card",
+          "evidenceCount": 2,
+          "writerCount": 1
+        }
+      },
+      {
+        "name": "pause_resume_discards_late_result",
+        "passed": true,
+        "observed": {
+          "learnedCount": 0,
+          "paused": false
+        }
+      },
+      {
+        "name": "queued_original_never_reaches_disk",
+        "passed": true,
+        "observed": {
+          "rawCanaryOnDisk": false
+        }
+      },
+      {
+        "name": "cross_agent_fixture_accept_preserves_history",
+        "passed": true,
+        "observed": {
+          "acceptStatus": "handoff",
+          "memoryWriteFailures": 0
+        }
+      }
+    ]
+  },
+  "root_tests": {
+    "exitCode": 0,
+    "passed": 757,
+    "skipped": 1,
+    "todo": 4,
+    "packages": {
+      "packages/contract": {
+        "passed": 14,
+        "remaining": "(14)"
+      },
+      "apps/console": {
+        "passed": 36,
+        "remaining": "(36)"
+      },
+      "packages/auth": {
+        "passed": 15,
+        "remaining": "(15)"
+      },
+      "packages/pay": {
+        "passed": 6,
+        "remaining": "| 1 skipped (7)"
+      },
+      "packages/rules": {
+        "passed": 70,
+        "remaining": "(70)"
+      },
+      "packages/learn": {
+        "passed": 43,
+        "remaining": "(43)"
+      },
+      "packages/ucp": {
+        "passed": 78,
+        "remaining": "(78)"
+      },
+      "packages/sdk": {
+        "passed": 80,
+        "remaining": "(80)"
+      },
+      "packages/cli": {
+        "passed": 5,
+        "remaining": "(5)"
+      },
+      "apps/unlock": {
+        "passed": 6,
+        "remaining": "(6)"
+      },
+      "apps/workspace-fake": {
+        "passed": 6,
+        "remaining": "(6)"
+      },
+      "apps/channel-photon": {
+        "passed": 70,
+        "remaining": "(70)"
+      },
+      "packages/mcp": {
+        "passed": 13,
+        "remaining": "(13)"
+      },
+      "packages/memory-repo": {
+        "passed": 49,
+        "remaining": "(49)"
+      },
+      "apps/workspace": {
+        "passed": 266,
+        "remaining": "| 4 todo (270)"
+      }
+    }
+  },
+  "later_focused_checks": {
+    "sdk_learning": 7,
+    "photon_learning_controls_and_workspace": 10,
+    "memory_forget": 2
+  },
+  "external": {
+    "openrouter": "previously 403; no retry this turn",
+    "spectrum": "not activated",
+    "historical_git_erasure": false,
+    "live_demo_runtime": "unchanged"
+  },
+  "ci": "pending new head push"
+}
