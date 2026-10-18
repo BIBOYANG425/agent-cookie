@@ -16,6 +16,7 @@ import { isJarLocked } from "./laneD.js";
 import { requestSpan } from "./telemetry.js";
 import { assistantEvidence } from "./services/assistant.js";
 import { theUser } from "./services/context.js";
+import { KeyService } from "./services/keys.js";
 
 const CATEGORIES: Category[] = ["personal", "shoe", "retail", "assistant"];
 const MAX_CLOCK_OFFSET_MS = 10 * 365 * 86_400_000;
@@ -144,7 +145,7 @@ export function createApp(deps: Deps): Hono<AppEnv> {
       actor = "anon";
     }
     deps.log({ event: `${c.req.method} ${c.req.routePath === "/*" ? c.req.path : c.req.routePath}`, actor,
-      object: c.req.query("sessionId") ?? c.req.param("id") ?? "", result: String(c.res.status),
+      object: c.req.query("sessionId") ?? c.req.param("id") ?? c.req.param("agentId") ?? "", result: String(c.res.status),
       reason: c.error instanceof WorkspaceError ? c.error.code : c.error ? "internal" : "" });
   });
 
@@ -437,6 +438,13 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   app.get("/owner/links", auth, owner, (c) => json({ links: deps.links.list(intParam(c.req.query("limit"), 100, 500)) }));
   app.post("/owner/links/:id/approve", auth, owner, async (c) => json(await deps.links.approve(c.get("agent").agentId, user(), c.req.param("id"))));
   app.post("/owner/links/:id/decline", auth, owner, (c) => json(deps.links.decline(c.get("agent").agentId, c.req.param("id"))));
+
+  // Owner key minting for the person's own agents. The key is in the 201 body only: the request logger above logs
+  // method, route template, actor and the :agentId path param, never a body, so the key is never logged.
+  const keys = new KeyService({ store, clock, log: deps.log });
+  app.post("/owner/keys", auth, owner, async (c) => json(keys.mint(c.get("agent").agentId, await readJson(c)), 201));
+  app.get("/owner/keys", auth, owner, () => json({ keys: keys.list() }));
+  app.post("/owner/keys/:agentId/revoke", auth, owner, (c) => json(keys.revoke(c.get("agent").agentId, c.req.param("agentId"))));
 
   // ---- owner, demo, test
   // Dreaming, now (demo and tests; the scheduler runs it every DREAMING_INTERVAL_MS). Counts and field names only.
