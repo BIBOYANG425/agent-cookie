@@ -54,12 +54,12 @@ const fieldNames = (v: unknown): v is string[] => Array.isArray(v) && v.length <
 export class AssistantClient extends ActingClient {
   /** POST /assistant/link: ask the owner for a session. Show `url` to the person; a second call while one is pending returns it. */
   async requestLink(options?: RequestOptions): Promise<LinkView> {
-    return linkView(await this.request('/assistant/link', { ...options, body: {} }), this.origin);
+    return linkView(await this.request('/assistant/link', { ...options, body: {} }));
   }
 
   /** GET /assistant/link/:id: this assistant's own link (anyone else's is 404); `sessionId` once approved. */
   async link(linkId: string, options?: RequestOptions): Promise<LinkView> {
-    const view = linkView(await this.request(`/assistant/link/${resourceId(linkId)}`, options), this.origin);
+    const view = linkView(await this.request(`/assistant/link/${resourceId(linkId)}`, options));
     if (view.id !== linkId) throw new Error('Invalid link response.');
     return view;
   }
@@ -108,18 +108,19 @@ export class AssistantClient extends ActingClient {
   }
 
   /**
-   * POST /assistant/contributions: a fact about the person, filtered by the policy's write.assistant. How it counts
-   * depends on `basis`, and the workspace decides:
+   * POST /assistant/contributions (contract AssistantContributionInput): a fact about the person, filtered by the
+   * policy's write.assistant. How it counts depends on `basis` (default "observed"), and the workspace decides:
    *  - "stated": the person said it to this assistant. Requires `evidence`: the conversation id and the person's OWN
-   *    words (at most EVIDENCE_SNIPPET_MAX = 200 characters). It then counts like the person's own statement for the
-   *    card, attributed to this assistant, with the evidence visible to the owner. Without evidence the workspace
-   *    refuses it: 422 MISSING_FIELD.
-   *  - "observed": stays a candidate until a second independent source agrees.
+   *    words (at most EVIDENCE_SNIPPET_MAX = 200 characters). While this assistant holds a live grant it counts like
+   *    the person's own statement for the card (one source is enough), attributed to this assistant, with the evidence
+   *    visible to the owner; once the grant is revoked or lapses it falls back to a candidate. Without evidence the
+   *    workspace refuses it: 422 MISSING_FIELD.
+   *  - "observed" (the default when `basis` is omitted): stays a candidate until a second independent source agrees.
    *  - "inferred": stored only; never on the card.
    * `stored` says how the workspace kept it. Never the address or the payment method (403 SCOPE_DENIED).
    */
   async remember(input: AssistantContributionInput, options?: RequestOptions): Promise<ContributionResult> {
-    return contributionResult(await this.request('/assistant/contributions', { ...options, body: contributionBody(input, { evidence: true }) }));
+    return contributionResult(await this.request('/assistant/contributions', { ...options, body: contributionBody(input, { assistant: true }) }));
   }
 
   /** GET /assistant/stats: counts over the intents this assistant created, including the questions it never had to ask. */

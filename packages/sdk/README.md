@@ -51,10 +51,10 @@ const { intents, accepted, questionsSkipped } = await muse.stats(); // counts on
 
 `context()` returns `fields`, the values the person's policy lets an assistant know, and `unknown`, the fields it may ask for only when the task needs them. `assistantPrompt` renders both, plus the line that tells the model never to ask for an address or payment details. Until the link is approved, `context()` and the intent methods answer `403 SCOPE_DENIED`; after the owner revokes the grant or it lapses, `GRANT_REVOKED` or `GRANT_EXPIRED`; an intent this assistant did not create is `404 NOT_FOUND`, the same as none.
 
-How `remember` counts depends on `basis`, and the workspace decides:
+`remember` takes the contract's `AssistantContributionInput`. How a fact counts depends on `basis`, which defaults to `observed`, and the workspace decides:
 
-- **`stated`**: the person said it to you. It needs `evidence`: the conversation id and the person's own words (`snippet`, at most 200 characters, never anyone else's). It then counts like the person's own statement on the card, attributed to your assistant, with the evidence shown to the owner. Without evidence the workspace refuses it with `422 MISSING_FIELD`.
-- **`observed`**: you noticed it. It stays a candidate until a second, independent source agrees.
+- **`stated`**: the person said it to you. It needs `evidence`: the conversation id and the person's own words (`snippet`, at most 200 characters, never anyone else's). While your assistant holds a live grant it then counts like the person's own statement on the card (one source is enough), attributed to your assistant, with the evidence shown to the owner; if the owner revokes the grant or it lapses, it falls back to a candidate. Without evidence the workspace refuses it with `422 MISSING_FIELD`.
+- **`observed`** (the default when you omit `basis`): you noticed it. It stays a candidate until a second, independent source agrees.
 - **`inferred`**: you guessed it. Stored only, never on the card.
 
 The address and the payment method are refused outright (`403 SCOPE_DENIED`): an assistant never carries them.
@@ -127,7 +127,7 @@ Every method takes an optional last `{ signal?: AbortSignal }`. Writes that crea
 
 **Shared by `WorkspaceClient` and `AssistantClient`** (one implementation): `getMe()`, `createIntent(input, key)`, `getQuotes(intentId)` (long-poll, up to 20 s), `streamQuotes(intentId, { lastEventId? })` (server-sent events: existing quotes, then live ones, then `complete` or `expired`; never reconnects; `lastEventId` resumes), `find(input, key)` (create, then quotes from the stream until complete, expired or 20 s; falls back to the long-poll when the workspace cannot stream), `accept(quoteId, key)` (`ordered | handoff | blocked | failed`, with `message`, `continueUrl` and `receipts` passed through; a handoff is not an order or a payment), `observe(observation)` (needs `learning: true` in the client options; queued is not learned).
 
-**`AssistantClient`**: `requestLink()` → `LinkView` (201, or 200 with the link already pending); `link(id)`; `waitForLink(id, { intervalMs = 2000, timeoutMs = LINK_TTL_MS, signal })`; `context()` → `AssistantContext & { sample }`; `remember({ field, value, basis, evidence? })` → `{ stored, contribution, sample }` (`stated` needs `evidence: { conversationId, snippet }`); `stats()` → `AssistantStats & { sample }` (`intents`, `quoted`, `accepted`, `completed`, `questionsSkipped`). `assistantPrompt(ctx)` is a pure function: same context, same text.
+**`AssistantClient`**: `requestLink()` → `LinkView` (201, or 200 with the link already pending); `link(id)`; `waitForLink(id, { intervalMs = 2000, timeoutMs = LINK_TTL_MS, signal })`; `context()` → `AssistantContext & { sample }`; `remember({ field, value, basis?, evidence? })` → `{ stored, contribution, sample }` (`basis` defaults to `observed`; `stated` needs `evidence: { conversationId, snippet }`); `stats()` → `AssistantStats & { sample }` (`intents`, `quoted`, `accepted`, `completed`, `questionsSkipped`). `assistantPrompt(ctx)` is a pure function: same context, same text.
 
 **`MerchantClient`**: `handshake(sessionId)`; `fields(sessionId, names, purpose?)` (all or nothing; at most 32 names); `quote(input, key)`; `contribute({ field, value, basis, sessionId? })`; `getNote(sessionId, key)` (`NOT_FOUND` when absent) and `setNote(sessionId, key, value)` (key `[A-Za-z0-9_.-]{1,64}`, value ≤ 2048 bytes); `stats()` → `MerchantStats & { sample }`.
 

@@ -31,10 +31,11 @@ describe('consent link', () => {
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).has('Idempotency-Key')).toBe(false);
   });
 
-  it('resolves a workspace path against the workspace origin and refuses unsafe owner pages', async () => {
-    const client = new AssistantClient({ ...config, fetch: replies([{ ...pending, url: '/owner/links/lk_1' }]) });
-    expect((await client.requestLink()).url).toBe('http://127.0.0.1:4310/owner/links/lk_1');
-    for (const url of ['javascript:alert(1)', 'https://user:secret@example.com/links/lk_1', '//evil.example/x', '', 'a b']) {
+  it('takes the owner page as the absolute URL the contract documents, and refuses anything else', async () => {
+    const hosted = { ...pending, url: 'https://jar.example.com/owner/links/lk_1' };
+    expect((await new AssistantClient({ ...config, fetch: replies([hosted]) }).requestLink()).url).toBe(hosted.url);
+    for (const url of ['/owner/links/lk_1', 'owner/links/lk_1', 'javascript:alert(1)', 'https://user:secret@example.com/links/lk_1',
+      '//evil.example/x', '', 'a b']) {
       await expect(new AssistantClient({ ...config, fetch: replies([{ ...pending, url }]) }).requestLink()).rejects.toThrow('Invalid link response');
     }
   });
@@ -183,6 +184,14 @@ describe('context, remember, stats', () => {
       .remember({ field: 'pref.brand', value: 'Brooks', basis: 'stated', evidence: { ...evidence, speaker: 'owner' } as never });
     expect(result).toEqual({ stored: 'stated', contribution: { ...contribution, evidence }, sample: false });
     expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ field: 'pref.brand', value: 'Brooks', basis: 'stated', evidence });
+  });
+
+  it('omits basis when the caller does: the workspace stores it as observed, the contract default', async () => {
+    const contribution = { id: 'c_3', agentId: 'ag_assistant', field: 'pref.color', value: 'black', basis: 'observed', createdAt: later };
+    const fetcher = replies([{ stored: 'observed', contribution }, 201]);
+    expect(await new AssistantClient({ ...config, fetch: fetcher }).remember({ field: 'pref.color', value: 'black' }))
+      .toEqual({ stored: 'observed', contribution, sample: false });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ field: 'pref.color', value: 'black' });
   });
 
   it('leaves "stated without evidence" to the workspace, which refuses it as MISSING_FIELD', async () => {

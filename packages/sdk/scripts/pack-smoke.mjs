@@ -60,6 +60,7 @@ export async function flow(): Promise<string> {
   const fact: AssistantContributionInput = { field: 'pref.brand', value: 'Brooks', basis: 'stated',
     evidence: { conversationId: 'chat-1', snippet: 'I only run in Brooks' } };
   await assistant.remember(fact);
+  await assistant.remember({ field: 'pref.color', value: 'black' }); // basis omitted: observed, the contract default
   const stats = await assistant.stats();
   const merchant = new MerchantClient(workspaceConfigFromEnv({ AGENT_COOKIE_KEY: 'merchant-key' }));
   const available: Field[] = (await merchant.handshake('session')).available;

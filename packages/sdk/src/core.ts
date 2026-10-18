@@ -341,8 +341,6 @@ export class BaseClient {
   }
 
   protected get timeoutMs(): number { return this.#wire.timeoutMs; }
-  /** The workspace origin this client talks to (never the key). */
-  protected get origin(): string { return this.#wire.baseUrl; }
   /** True when the config labels every response Sample (AGENT_COOKIE_SAMPLE=1). */
   protected get sampleMode(): boolean { return this.#wire.sample === true; }
   protected get learningEnabled(): boolean { return this.#learning; }

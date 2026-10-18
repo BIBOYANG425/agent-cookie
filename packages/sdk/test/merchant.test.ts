@@ -105,6 +105,13 @@ describe('quotes and contributions', () => {
 });
 
 describe('merchant contributions carry no evidence', () => {
+  it('requires a merchant to state its basis', async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(new MerchantClient({ ...config, fetch: fetcher }).contribute({ field: 'shoe_size', value: '42' } as never))
+      .rejects.toThrow('Invalid contribution.');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('refuses evidence on a merchant write before sending', async () => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(new MerchantClient({ ...config, fetch: fetcher }).contribute({ field: 'shoe_size', value: '42', basis: 'stated',

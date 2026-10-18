@@ -1,7 +1,7 @@
 // POST /assistant/contributions and POST /agent/contributions share one wire shape: { field, value, basis } in (an
 // assistant may add `evidence`), 201 { stored, contribution } out. The workspace filters by the policy document's
 // write section and decides how a basis counts, not this SDK.
-import type { Basis, Field } from '@agent-cookie/contract';
+import type { AssistantContributionInput, Basis, Field } from '@agent-cookie/contract';
 import { EVIDENCE_SNIPPET_MAX } from '@agent-cookie/contract';
 import { fieldName, isObject, text, validDate, validId } from './core.js';
 
@@ -15,15 +15,12 @@ export interface ContributionInput {
   value: string;
   basis: Basis;
 }
+export type { AssistantContributionInput };
 /**
- * Where a "stated" fact came from: the conversation, and the person's OWN words in it (at most EVIDENCE_SNIPPET_MAX
- * characters, never another party's). The owner sees it next to the value.
+ * Where a "stated" fact came from: the conversation (at most 128 UTF-8 bytes) and the person's OWN words in it (at
+ * most EVIDENCE_SNIPPET_MAX characters, never another party's). The owner sees it next to the value.
  */
-export interface ContributionEvidenceInput {
-  conversationId: string;
-  snippet: string;
-}
-export type AssistantContributionInput = ContributionInput & { evidence?: ContributionEvidenceInput };
+export type ContributionEvidenceInput = NonNullable<AssistantContributionInput['evidence']>;
 /** The caller's own record as stored; never the user's id. */
 export interface AgentContribution {
   id: string;
@@ -49,17 +46,21 @@ const basis = (v: unknown): v is Basis => (BASES as readonly unknown[]).includes
 const conversationId = (v: unknown): v is string => validId(v) && text(v, CONVERSATION_ID_MAX_BYTES);
 const snippet = (v: unknown): v is string => typeof v === 'string' && !!v.trim() && Array.from(v).length <= EVIDENCE_SNIPPET_MAX;
 
-/** The explicit wire body; validation messages never contain the value or the snippet. */
-export function contributionBody(input: AssistantContributionInput, options: { sessionId?: string; evidence?: boolean } = {}): Record<string, unknown> {
+/**
+ * The explicit wire body; validation messages never contain the value or the snippet. A merchant's write states its
+ * basis and never carries evidence; an assistant's (`assistant: true`) may omit the basis, which the workspace then
+ * stores as "observed" (the contract's default), and may carry evidence.
+ */
+export function contributionBody(input: AssistantContributionInput, options: { sessionId?: string; assistant?: boolean } = {}): Record<string, unknown> {
   const { sessionId } = options;
   const evidence = isObject(input) ? input.evidence : undefined;
-  if (!isObject(input) || !fieldName(input.field) || !text(input.value, 512) || !basis(input.basis)
+  if (!isObject(input) || !fieldName(input.field) || !text(input.value, 512)
+    || (input.basis === undefined ? !options.assistant : !basis(input.basis))
     || (sessionId !== undefined && !validId(sessionId))
-    // Only an assistant's write carries evidence; a merchant's never does.
-    || (evidence !== undefined && (!options.evidence || !isObject(evidence) || !conversationId(evidence.conversationId) || !snippet(evidence.snippet)))) {
+    || (evidence !== undefined && (!options.assistant || !isObject(evidence) || !conversationId(evidence.conversationId) || !snippet(evidence.snippet)))) {
     throw new Error('Invalid contribution.');
   }
-  return { field: input.field, value: input.value, basis: input.basis,
+  return { field: input.field, value: input.value, ...(input.basis !== undefined ? { basis: input.basis } : {}),
     ...(evidence !== undefined ? { evidence: { conversationId: evidence.conversationId, snippet: evidence.snippet } } : {}),
     ...(sessionId !== undefined ? { sessionId } : {}) };
 }
