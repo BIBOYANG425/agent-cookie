@@ -64,17 +64,27 @@ export interface MeView {
   links: GatewayLink[];
 }
 
-/** Phase 4 reserve: GET /operator/funnel on the gateway. Counts across instances, never per-person rows, never a field value. */
+/** GET /operator/funnel on the gateway. Counts across instances, never per-person rows, never a field value. */
 export interface OperatorFunnel {
   generatedAt: string;
-  /** false until Phase 4 computes the counters across instances: zeros below are placeholders, not measurements. */
+  /**
+   * true since Phase 4 — counts computed across persons from each instance's GET /owner/funnel (live for running
+   * instances or with ?refresh=1, else the snapshot the gateway stored when it last stopped or refreshed the instance).
+   */
   measured: boolean;
+  /**
+   * Persons counted from a live read, from a stored snapshot, and persons with neither (not counted; never zero-filled
+   * as a measurement).
+   */
+  coverage?: { live: number; snapshot: number; missing: number };
   persons: number;
   intents: number;
   quoted: number;
   accepted: number;
   questionsSkipped: number;
+  /** Per global assistant (agent id and name via the gateway's links); the person's own agents are grouped under agentId "personal". */
   byAssistant: Array<{ agentId: string; agentName: string; intents: number; accepted: number; questionsSkipped: number }>;
+  /** Empty: the owner funnel exposes no per-merchant breakdown (documented in apps/gateway/README). */
   byMerchant: Array<{ agentId: string; agentName: string; quotes: number; accepted: number }>;
 }
 
@@ -110,6 +120,6 @@ export const GATEWAY_ENDPOINTS: GatewayEndpoint[] = [
   { method: "GET", path: "/u/:userId/*", caller: "instance", summary: "Reverse proxy to the person's instance for every non-owner route (the instance checks its own keys); owner routes and /demo/* and /test/* are refused here" },
   { method: "POST", path: "/u/:userId/*", caller: "instance", summary: "Same, for POST (incl. the SSE stream GET above)" },
   { method: "PUT", path: "/u/:userId/*", caller: "instance", summary: "Same, for PUT" },
-  { method: "GET", path: "/operator/funnel", caller: "operator", summary: "Phase 4 reserve → OperatorFunnel: counts across instances by assistant and by merchant; never per-person rows" },
+  { method: "GET", path: "/operator/funnel", caller: "operator", summary: "?refresh=1 starts stopped instances to read them live → OperatorFunnel { measured: true, coverage, ... }: counts across persons by assistant (byMerchant empty, see README); never per-person rows, never a field value" },
   { method: "POST", path: "/test/session", caller: "test", gate: "AGENT_COOKIE_TEST", summary: "Test only: { userId? } → creates or signs in a person WITHOUT WebAuthn and sets the session cookie; absent otherwise" },
 ];

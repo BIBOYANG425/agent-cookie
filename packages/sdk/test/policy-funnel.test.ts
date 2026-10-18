@@ -74,6 +74,13 @@ describe('policy document', () => {
     expect(fetcher.mock.calls[0][1]?.method).toBe('GET');
   });
 
+  it('accepts a document with or without the optional history section', async () => {
+    expect(DEFAULT_POLICY.history).toEqual({ personal: true, assistant: false });
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY);
+    const legacy = { policy: older, policyId: policyId(older), source: 'installed' };
+    expect(await client(stub([legacy])).getPolicy()).toEqual({ ...legacy, sample: false });
+  });
+
   it('labels the document Sample when the client is configured for demo data', async () => {
     expect(await client(stub([view]), true).getPolicy()).toMatchObject({ sample: true });
   });
@@ -85,6 +92,9 @@ describe('policy document', () => {
     { ...view, policy: { ...DEFAULT_POLICY, purpose: { ...DEFAULT_POLICY.purpose, shoe: { shipping_address: [] } } } },
     { ...view, policy: { ...DEFAULT_POLICY, ranking: { winRate: 101, failure: 0 } } },
     { ...view, policy: { ...DEFAULT_POLICY, notes: 'x' } },
+    { ...view, policy: { ...DEFAULT_POLICY, history: { assistant: 'yes' } } },
+    { ...view, policy: { ...DEFAULT_POLICY, history: { robot: true } } },
+    { ...view, policy: { ...DEFAULT_POLICY, history: [true] } },
   ])('rejects a malformed policy view', async payload => {
     await expect(client(stub([payload])).getPolicy()).rejects.toThrow('Invalid policy response');
   });

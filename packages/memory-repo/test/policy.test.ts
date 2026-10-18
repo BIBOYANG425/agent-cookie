@@ -47,9 +47,12 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
     const sample = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
     const seeded = await readFile(join(f.path, 'POLICY.yaml'), 'utf8');
     expect(seeded).toBe(renderPolicyYaml());
-    // The regenerated seed carries the assistant category, so it reads as the current DEFAULT_POLICY id.
-    expect(seeded.match(/^  assistant:/gmu)).toHaveLength(3);
+    // The regenerated seed carries the assistant category and the history section, so it reads as the current
+    // DEFAULT_POLICY id.
+    expect(seeded.match(/^  assistant:/gmu)).toHaveLength(4);
+    expect(seeded.endsWith('\nhistory:\n  personal: true\n  assistant: false\n')).toBe(true);
     expect(policyId(parsePolicyDocument(seeded))).toBe(policyId(DEFAULT_POLICY));
+    expect(policyId(parsePolicyDocument(seeded))).toBe('1fcaae3c5185');
     expect(await sample.readPolicy()).toBeUndefined();
 
     const other = await setup();
@@ -75,7 +78,7 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
     expect(file.split('\n', 1)[0]).toBe(`# Installed field policy · policyId ${policyId(doc)} · ${INSTALL_AT}`);
 
     expect(file).toContain('\n  assistant: {}\nwrite:\n');
-    expect(file.endsWith('\n  assistant:\n    - "shoe_size"\nranking:\n  winRate: 40\n  failure: 60\n')).toBe(true);
+    expect(file.endsWith('\n  assistant:\n    - "shoe_size"\nhistory:\n  personal: true\n  assistant: false\nranking:\n  winRate: 40\n  failure: 60\n')).toBe(true);
 
     const read = await repo.readPolicy();
     expect(read).toEqual(doc);
@@ -88,6 +91,37 @@ describe('Phase 1 POLICY.yaml in the memory repository', () => {
     const reopened = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
     expect(await reopened.readPolicy()).toEqual(doc);
     expect((await git.raw(['status', '--porcelain'])).trim()).toBe('');
+  });
+
+  it('writePolicy → readPolicy carries history.assistant: true (and an older document without history stays without)', async () => {
+    const f = await setup();
+    const repo = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
+    const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    doc.history = { personal: true, assistant: true };
+    await repo.writePolicy(doc, owner());
+    const file = await readFile(join(f.path, 'POLICY.yaml'), 'utf8');
+    expect(file).toContain('\nhistory:\n  personal: true\n  assistant: true\n');
+    const read = await repo.readPolicy();
+    expect(read!.history).toEqual({ personal: true, assistant: true });
+    expect(JSON.stringify(read)).toBe(JSON.stringify(doc));
+    expect(policyId(read!)).toBe(policyId(doc));
+    expect(await (await openMemoryRepo({ ...f.opts, seedDir: sampleSeed })).readPolicy()).toEqual(doc);
+
+    const { history: _history, ...older } = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    await repo.writePolicy(older, owner());
+    const olderRead = await repo.readPolicy();
+    expect(Object.hasOwn(olderRead!, 'history')).toBe(false);
+    expect(policyId(olderRead!)).toBe('3526a909e404');
+  });
+
+  it('refuses a merchant history switch without committing', async () => {
+    const f = await setup();
+    const repo = await openMemoryRepo({ ...f.opts, seedDir: sampleSeed });
+    const doc = structuredClone(DEFAULT_POLICY) as PolicyDocument;
+    doc.history = { personal: true, assistant: false, shoe: true };
+    const before = await count(f.path);
+    await expect(repo.writePolicy(doc, owner())).rejects.toThrow(/history\.shoe: merchants never read history/u);
+    expect(await count(f.path)).toBe(before);
   });
 
   it('an explicitly installed DEFAULT_POLICY is the owner\'s policy, not the seed', async () => {

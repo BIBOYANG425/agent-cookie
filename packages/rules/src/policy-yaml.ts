@@ -5,7 +5,9 @@
 //   - block mappings indented by exactly two spaces per level; keys bare ([A-Za-z_][A-Za-z0-9_.-]*) or JSON-quoted
 //   - string lists, one `- "<JSON string>"` item per line, two spaces deeper than their key
 //   - `key: []` and `key: {}` for empty collections, `key: <integer>` for `v` and the `ranking` weights
-// Anything else (flow collections, plain or single-quoted strings, booleans, anchors, tabs, CR) is an Error.
+//   - `key: true` / `key: false` (exactly those two lowercase words) for the `history` switches
+// Anything else (flow collections, plain or single-quoted strings, other boolean spellings such as `yes` or `True`,
+// anchors, tabs, CR) is an Error.
 // Order is kept both ways: list order is meaningful (handshake `available`, Tier 0 prefix) and keys keep theirs.
 // Pure: no IO, no clock (the install time is a parameter), no model.
 import { POLICY_TABLE, policyId, type PolicyDocument } from '@agent-cookie/contract';
@@ -19,13 +21,13 @@ export const POLICY_INSTALLED_PREFIX = '# Installed field policy';
 
 /** A parsed POLICY.yaml mapping. Shape only: field names, categories and limits are the contract's to check. */
 export interface PolicyYamlMapping { [key: string]: PolicyYamlNode }
-export type PolicyYamlNode = PolicyYamlMapping | string[] | number;
+export type PolicyYamlNode = PolicyYamlMapping | string[] | number | boolean;
 
 const BARE_KEY = /^[A-Za-z_][A-Za-z0-9_.-]*$/u;
 const INTEGER = /^(?:0|-?[1-9][0-9]*)$/u;
 
 /**
- * Render a policy mapping (POLICY_TABLE, a PolicyDocument, any nesting of maps, string lists and safe integers) as
+ * Render a policy mapping (POLICY_TABLE, a PolicyDocument, any nesting of maps, string lists, safe integers and booleans) as
  * POLICY.yaml. `header` is the single comment line on top. Keys are written in their own order; `undefined` values
  * are skipped, as JSON would. Round trip: parsePolicyYaml(renderPolicyYaml(x)) deep-equals x.
  */
@@ -44,11 +46,12 @@ export function renderPolicyYaml(table: PolicyDocument | Readonly<Record<string,
       if (!Number.isSafeInteger(item) || Object.is(item, -0)) throw new TypeError('Policy numbers must be safe integers');
       return [`${prefix} ${item}`];
     }
+    if (typeof item === 'boolean') return [`${prefix} ${item ? 'true' : 'false'}`];
     if (item !== null && typeof item === 'object') {
       const entries = Object.keys(item);
       return entries.length === 0 ? [`${prefix} {}`] : [prefix, ...mapping(item as Record<string, unknown>, indent + 2)];
     }
-    throw new TypeError('Policy values must be maps, string lists or integers');
+    throw new TypeError('Policy values must be maps, string lists, integers or booleans');
   });
   if (table === null || typeof table !== 'object' || Array.isArray(table)) throw new TypeError('Policy must be a map');
   const body = mapping(table as Readonly<Record<string, unknown>>, 0);
@@ -139,8 +142,10 @@ function parseMapping(lines: readonly Line[], start: number, indent: number): [P
       const scalar = rest.slice(1);
       if (scalar === '[]') value = [];
       else if (scalar === '{}') value = {};
+      else if (scalar === 'true') value = true;
+      else if (scalar === 'false') value = false;
       else if (INTEGER.test(scalar) && Number.isSafeInteger(Number(scalar))) value = Number(scalar);
-      else fail(line.no, `${JSON.stringify(key)}: expected [], {}, an integer or an indented block`);
+      else fail(line.no, `${JSON.stringify(key)}: expected [], {}, an integer, true, false or an indented block`);
       i++;
     }
     setKey(map, key, value);

@@ -11,6 +11,8 @@ export interface PolicyDocument {
   purpose: Record<Category, Partial<Record<Field, string[]>>>;
   write: Record<Category, Field[]>;
   ranking?: RankingWeights;
+  /** Phase 4: may read the person's intent and purchase history. Floor: personal always, merchants never. */
+  history?: Partial<Record<Category, boolean>>;
 }
 export interface PolicyView { policy: PolicyDocument; policyId: string; source: 'default' | 'repo' | 'installed' }
 export interface ShadowReport {
@@ -43,7 +45,18 @@ export function samplePolicyView(): PolicyView {
     purpose: { personal: {}, shoe: { shipping_address: ['checkout'], payment_method: ['payment'] },
       retail: { shipping_address: ['checkout'], payment_method: ['payment'] }, assistant: {} },
     write: { personal: [...FIELDS], shoe: ['shoe_size'], retail: ['shoe_size'], assistant: ['shoe_size', ...PREF_FIELDS] },
+    history: { personal: true, assistant: false },
   } };
+}
+
+/**
+ * Mirror of the contract's policyHistory: may agents of this category read the person's intent and purchase history?
+ * personal always, merchants (shoe, retail) never whatever the document says, assistant only when history.assistant is true.
+ */
+export function historyReadable(doc: PolicyDocument, category: Category): boolean {
+  if (category === 'personal') return true;
+  if (category === 'assistant') return doc.history?.assistant === true;
+  return false;
 }
 
 /** The workspace's 422 for a candidate that fails the floor. Messages name sections and field names, never values. */
@@ -90,6 +103,17 @@ function normalizeDocument(doc: unknown): PolicyDocument {
   if (doc.ranking !== undefined) {
     if (!object(doc.ranking) || !count(doc.ranking.winRate) || !count(doc.ranking.failure)) throw malformed();
     out.ranking = { winRate: doc.ranking.winRate, failure: doc.ranking.failure };
+  }
+  if (doc.history !== undefined) {
+    // Booleans per known category only; the floor itself is the workspace's to enforce, the panel shows policyHistory.
+    const history = doc.history;
+    if (!object(history)) throw malformed();
+    const kept: Partial<Record<Category, boolean>> = {};
+    for (const [category, value] of Object.entries(history)) {
+      if (!POLICY_CATEGORIES.includes(category as Category) || typeof value !== 'boolean') throw malformed();
+      kept[category as Category] = value;
+    }
+    out.history = kept;
   }
   return out;
 }

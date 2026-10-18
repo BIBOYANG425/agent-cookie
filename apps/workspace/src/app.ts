@@ -432,6 +432,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     return json({ stored, contribution: own }, 201);
   });
   app.get("/assistant/stats", auth, assistant, (c) => json(deps.assistant.stats(c.get("agent").agentId, user())));
+  // Phase 4: the person's intent and purchase history, only while the installed policy says history.assistant: true;
+  // never the user's words, never a card value; a receipt per read (purpose history, deduplicated within the hour).
+  app.get("/assistant/history", auth, assistant, async (c) =>
+    json(await deps.assistant.history(c.get("agent"), user(), intParam(c.req.query("limit"), 50, 200))));
 
   // The owner decides links; nothing else approves one.
   app.get("/owner/links", auth, owner, (c) => json({ links: deps.links.list(intParam(c.req.query("limit"), 100, 500)) }));

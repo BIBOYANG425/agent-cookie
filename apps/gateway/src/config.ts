@@ -35,7 +35,7 @@ export interface GatewayConfig {
   tsxBin: string;
   /** AGENT_COOKIE_TEST=1: POST /test/session exists. */
   test: boolean;
-  /** AGENT_COOKIE_GATEWAY_OPERATOR_KEY: GET /operator/funnel (Phase 4 reserve). Absent: every call is 401. */
+  /** AGENT_COOKIE_GATEWAY_OPERATOR_KEY: GET /operator/funnel (Phase 4 operator funnel). Absent: every call is 401. */
   operatorKey?: string;
 }
 

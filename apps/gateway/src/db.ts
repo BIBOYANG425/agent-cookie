@@ -4,6 +4,7 @@
 // field value ever reaches this database: the person's data lives in their own instance's directory.
 import Database from "better-sqlite3";
 import type { Category, Role } from "@agent-cookie/contract";
+import { countsList, type AssistantMapping, type FunnelCounts } from "./funnel.js";
 
 export interface PersonRow {
   userId: string;
@@ -111,6 +112,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+-- Phase 4 operator funnel: the last per-row counts read from the person's instance (funnel.ts FunnelCounts as JSON:
+-- createdBy, quoted, accepted, questionsSkipped; no intent id, no timestamp, no field name).
+CREATE TABLE IF NOT EXISTS funnel_snapshots (
+  user_id TEXT PRIMARY KEY REFERENCES persons(user_id) ON DELETE CASCADE,
+  taken_at INTEGER NOT NULL,
+  rows TEXT NOT NULL
+);
 `;
 
 type Row = Record<string, unknown>;
@@ -164,6 +172,10 @@ export class GatewayStore {
     const r = this.db.prepare("SELECT * FROM persons WHERE user_id = ?").get(userId) as Row | undefined;
     return r ? person(r) : undefined;
   }
+  /** Every known person's id, in id order. */
+  personIds(): string[] {
+    return (this.db.prepare("SELECT user_id FROM persons ORDER BY user_id").all() as Array<{ user_id: string }>).map((r) => r.user_id);
+  }
   countPersons(): number {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM persons").get() as { n: number }).n;
   }
@@ -173,9 +185,13 @@ export class GatewayStore {
   setOwnerKeyHash(userId: string, hash: string): void {
     this.db.prepare("UPDATE persons SET owner_key_hash = ? WHERE user_id = ?").run(hash, userId);
   }
-  /** The person, their credentials and sessions (cascade) and every link they decided (with any jar key it held). */
+  /**
+   * The person, their credentials and sessions (cascade), their funnel snapshot and every link they decided (with any
+   * jar key it held).
+   */
   deletePerson(userId: string): void {
     this.tx(() => {
+      this.db.prepare("DELETE FROM funnel_snapshots WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM links WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM credentials WHERE user_id = ?").run(userId);
@@ -246,6 +262,42 @@ export class GatewayStore {
   purgeJarKeysDecidedBefore(cutoff: number): number {
     return this.db.prepare("UPDATE links SET jar_key_ciphertext = NULL WHERE jar_key_ciphertext IS NOT NULL AND (decided_at IS NULL OR decided_at <= ?)")
       .run(cutoff).changes;
+  }
+
+  /**
+   * Instance agent id → global assistant (id and name) from approved links, for one person or every person. Lets the
+   * operator funnel name an intent's creator by the assistant company that registered at the gateway.
+   */
+  assistantMapping(userId?: string): AssistantMapping[] {
+    const sql = `SELECT l.user_id, l.instance_agent_id, l.agent_id, a.name FROM links l JOIN agents a ON a.agent_id = l.agent_id
+      WHERE l.status = 'approved' AND l.user_id IS NOT NULL AND l.instance_agent_id IS NOT NULL${userId !== undefined ? " AND l.user_id = ?" : ""}
+      ORDER BY l.decided_at`;
+    const rows = (userId !== undefined ? this.db.prepare(sql).all(userId) : this.db.prepare(sql).all()) as Row[];
+    return rows.map((r) => ({ userId: r.user_id as string, instanceAgentId: r.instance_agent_id as string, agentId: r.agent_id as string, agentName: r.name as string }));
+  }
+
+  // ---- funnel snapshots
+  /** Replaces the person's snapshot; a no-op (false) when the person no longer exists (deleted meanwhile). */
+  putFunnelSnapshot(userId: string, takenAt: number, rows: FunnelCounts[]): boolean {
+    const clean = rows.map((r) => ({
+      ...(r.createdBy !== undefined ? { createdBy: r.createdBy } : {}), quoted: r.quoted, accepted: r.accepted, questionsSkipped: r.questionsSkipped,
+    }));
+    return this.db.prepare(`INSERT INTO funnel_snapshots (user_id, taken_at, rows) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM persons WHERE user_id = ?)
+      ON CONFLICT(user_id) DO UPDATE SET taken_at = excluded.taken_at, rows = excluded.rows`)
+      .run(userId, takenAt, JSON.stringify(clean), userId).changes === 1;
+  }
+  /** The person's stored snapshot; undefined when there is none or it does not parse (treated as none). */
+  funnelSnapshot(userId: string): { takenAt: number; rows: FunnelCounts[] } | undefined {
+    const r = this.db.prepare("SELECT taken_at, rows FROM funnel_snapshots WHERE user_id = ?").get(userId) as { taken_at: number; rows: string } | undefined;
+    if (!r) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(r.rows);
+    } catch {
+      return undefined;
+    }
+    const rows = countsList(parsed);
+    return rows ? { takenAt: r.taken_at, rows } : undefined;
   }
 
   // ---- sessions

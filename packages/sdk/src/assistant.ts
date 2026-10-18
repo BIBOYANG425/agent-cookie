@@ -1,7 +1,7 @@
 // A company assistant (Manus, Dots, Muse): it asks the owner for a consent link, then acts for the person through
 // the pairwise session the owner approved. It reads values by policy (auto.assistant), never provenance, and never
 // shipping_address or payment_method: the workspace hands those to the store at checkout and payment.
-import type { AssistantContext, AssistantStats, Field, JarAccess, LinkView } from '@agent-cookie/contract';
+import type { AssistantContext, AssistantHistoryQuery, AssistantHistoryResponse, AssistantStats, Field, IntentHistoryEntry, JarAccess, LinkView } from '@agent-cookie/contract';
 import { LINK_TTL_MS } from '@agent-cookie/contract';
 import {
   ActingClient, cancelled, count, fieldName, isObject, jarAccess, resourceId, validDate, validId, type ClientOptions, type RequestOptions,
@@ -12,6 +12,7 @@ import { linkView } from './links.js';
 export type { AgentContribution, AssistantContributionInput, ContributionEvidenceInput, ContributionInput, ContributionResult } from './contributions.js';
 export type AssistantContextResult = AssistantContext & { sample: boolean };
 export type AssistantStatsResult = AssistantStats & { sample: boolean };
+export type AssistantHistoryResult = AssistantHistoryResponse & { sample: boolean };
 /** AssistantClient.forJar's options: a client's options without the URL and key, which come from the jar. */
 export type JarClientOptions = Omit<ClientOptions, 'baseUrl' | 'key'>;
 
@@ -45,6 +46,27 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+const optString = (v: unknown): boolean => v === undefined || typeof v === 'string';
+
+/** One history entry rebuilt with contract keys only; `text` and `query` (the user's own words) never pass through. */
+function historyEntry(v: unknown): IntentHistoryEntry | undefined {
+  if (!isObject(v) || !validId(v.id) || !validId(v.agentId) || !validDate(v.createdAt) || !validDate(v.expiresAt) || !optString(v.kind)
+    || !isObject(v.public) || !Object.values(v.public).every(x => typeof x === 'string')) return undefined;
+  const entry: IntentHistoryEntry = { id: v.id, agentId: v.agentId, public: Object.fromEntries(Object.entries(v.public)) as Record<string, string>,
+    createdAt: v.createdAt, expiresAt: v.expiresAt };
+  if (v.kind !== undefined) entry.kind = v.kind as string;
+  if (v.accepted !== undefined) {
+    const a = v.accepted;
+    if (!isObject(a) || !validId(a.quoteId) || !count(a.price) || typeof a.status !== 'string'
+      || !optString(a.title) || !optString(a.seller) || !optString(a.agentId)) return undefined;
+    entry.accepted = { quoteId: a.quoteId, price: a.price, status: a.status };
+    if (a.title !== undefined) entry.accepted.title = a.title as string;
+    if (a.seller !== undefined) entry.accepted.seller = a.seller as string;
+    if (a.agentId !== undefined) entry.accepted.agentId = a.agentId as string;
+  }
+  return entry;
 }
 
 const fieldNames = (v: unknown): v is string[] => Array.isArray(v) && v.length <= 64 && v.every(fieldName);
@@ -156,5 +178,25 @@ export class AssistantClient extends ActingClient {
     return { intents: payload.intents as number, quoted: payload.quoted as number, accepted: payload.accepted as number,
       completed: payload.completed as number, questionsSkipped: payload.questionsSkipped as number, generatedAt: payload.generatedAt,
       sample: payload.sample === true };
+  }
+
+  /**
+   * GET /assistant/history?limit=: the person's intent and purchase history, newest first, with outcomes (`accepted`:
+   * quote, price, status, merchant). Off by default: only when the person's installed policy sets `history.assistant`
+   * to true; otherwise 403 SCOPE_DENIED (and, like context(), SCOPE_DENIED before approval and GRANT_REVOKED /
+   * GRANT_EXPIRED once the grant is revoked or lapses). Every allowed read writes a receipt the owner sees (purpose
+   * "history", no field names). Never the user's own words: `text` and `query` are not sent to an assistant, and this
+   * client drops them if a workspace ever did. `limit` is an integer 1–200 (the workspace's default is 50).
+   */
+  async history(query: AssistantHistoryQuery = {}, options?: RequestOptions): Promise<AssistantHistoryResult> {
+    const limit = isObject(query) ? query.limit : null;
+    if (limit !== undefined && (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > 200)) {
+      throw new Error('limit must be an integer between 1 and 200.');
+    }
+    const payload = await this.request(`/assistant/history${limit !== undefined ? `?${new URLSearchParams({ limit: String(limit) })}` : ''}`, options);
+    const raw = isObject(payload) ? payload.intents : undefined;
+    const intents = Array.isArray(raw) && raw.length <= 200 ? raw.map(historyEntry) : undefined;
+    if (!intents || !intents.every(e => e !== undefined)) throw new Error('Invalid assistant history response.');
+    return { intents: intents as IntentHistoryEntry[], sample: isObject(payload) && payload.sample === true };
   }
 }
