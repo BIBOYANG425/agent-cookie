@@ -1,9 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
-import { equal, model, SAMPLE_CREDENTIALS, sdkHeaders, type Credentials, type ModelName } from "./sdk.js";
+import { X509Certificate } from "node:crypto";
+import { equal, model, SAMPLE_CREDENTIALS, SAMPLE_JWT_CERTIFICATE, sdkHeaders, sdkVerifyJwt, type Credentials, type ModelName } from "./sdk.js";
 import { parseScenario, type Outcome, type Scenario } from "./scenario.js";
 
-export { SAMPLE_CREDENTIALS, sdkHeaders } from "./sdk.js";
+export { SAMPLE_CREDENTIALS, SAMPLE_JWT_CREDENTIALS, SAMPLE_JWT_CERTIFICATE, sdkHeaders } from "./sdk.js";
 export { parseScenario, type Scenario, type Outcome } from "./scenario.js";
 export const SIMULATOR_LABEL = "Visa Acceptance simulator";
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -20,12 +21,18 @@ export interface SimulatorOptions {
   credentials?: Credentials;
   scenario?: Scenario;
   now?: () => Date;
+  jwtCertificatePem?: string;
+  jwtKeyId?: string;
 }
 
 export async function startSimulator(options: SimulatorOptions = {}, port = 0) {
   const credentials = options.credentials ?? SAMPLE_CREDENTIALS;
   const scenario = parseScenario(options.scenario ?? JSON.parse(readFileSync(new URL("../scenarios/demo.json", import.meta.url), "utf8")));
   const now = options.now ?? (() => new Date());
+  const jwtCertificate = options.jwtCertificatePem ?? SAMPLE_JWT_CERTIFICATE;
+  const trustedCertificate = new X509Certificate(jwtCertificate);
+  const jwtKeyId = options.jwtKeyId ?? "SampleJwtSubjectSerial";
+  const jwtNonces = new Map<string, number>();
   const positions = new Map<string, number>();
   const holds = new Map<string, Hold>();
   const events: SimEvent[] = [];
@@ -48,7 +55,7 @@ export async function startSimulator(options: SimulatorOptions = {}, port = 0) {
       }
       if (req.url === "/__sim/reset") {
         generation++;
-        positions.clear(); holds.clear(); events.length = 0; nextId = 1;
+        positions.clear(); holds.clear(); jwtNonces.clear(); events.length = 0; nextId = 1;
         res.writeHead(200, { "Content-Type": "application/json", "X-Agent-Cookie-Simulation": SIMULATOR_LABEL });
         res.end(JSON.stringify({ provider: SIMULATOR_LABEL, simulated: true, reset: true }));
         return;
@@ -70,9 +77,20 @@ export async function startSimulator(options: SimulatorOptions = {}, port = 0) {
       const date = req.headers.date;
       if (!date || !Number.isFinite(Date.parse(date)) || Math.abs(now().getTime() - Date.parse(date)) > 300_000 ||
           req.headers["v-c-merchant-id"] !== credentials.merchantId) return fail(res, 401);
-      const expected = sdkHeaders({ ...credentials, host: new URL(url).host, path: req.url!, body: text, date });
-      if (!equal(typeof req.headers.digest === "string" ? req.headers.digest : undefined, expected.Digest) ||
-          !equal(typeof req.headers.signature === "string" ? req.headers.signature : undefined, expected.Signature)) return fail(res, 401);
+      if (req.headers.authorization !== undefined) {
+        if (req.headers.signature !== undefined || !req.headers.authorization.startsWith("Bearer ") ||
+            now().getTime() < Date.parse(trustedCertificate.validFrom) || now().getTime() >= Date.parse(trustedCertificate.validTo)) return fail(res, 401);
+        const nowSec = Math.floor(now().getTime() / 1000);
+        const verified = sdkVerifyJwt({ token: req.headers.authorization.slice(7), certificate: jwtCertificate, kid: jwtKeyId,
+          merchantId: credentials.merchantId, host: new URL(url).host, path: req.url!, body: text, nowSec });
+        for (const [nonce, expiry] of jwtNonces) if (expiry <= nowSec) jwtNonces.delete(nonce);
+        if (!verified || jwtNonces.has(verified.jti) || jwtNonces.size >= 10_000) return fail(res, 401);
+        jwtNonces.set(verified.jti, verified.exp);
+      } else {
+        const expected = sdkHeaders({ ...credentials, host: new URL(url).host, path: req.url!, body: text, date });
+        if (!equal(typeof req.headers.digest === "string" ? req.headers.digest : undefined, expected.Digest) ||
+            !equal(typeof req.headers.signature === "string" ? req.headers.signature : undefined, expected.Signature)) return fail(res, 401);
+      }
       let body: unknown;
       try { body = JSON.parse(text); } catch { return fail(res); }
       if (!object(body)) return fail(res);

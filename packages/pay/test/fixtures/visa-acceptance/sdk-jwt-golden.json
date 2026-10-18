@@ -1,0 +1,30 @@
+{
+  "_provenance": "Generated offline by official cybersource-rest-client@0.0.84 JWTSigToken.js, PUBLIC Sample P12; not Visa server acceptance.",
+  "sdk": {
+    "package": "cybersource-rest-client",
+    "version": "0.0.84"
+  },
+  "date": "2026-10-18T12:00:00.000Z",
+  "jti": "00000000-0000-4000-8000-000000000001",
+  "host": "apitest.cybersource.com",
+  "cases": [
+    {
+      "name": "authorization",
+      "path": "/pts/v2/payments",
+      "body": "{\"processingInformation\":{\"capture\":false},\"Sample\":\"authorization\"}",
+      "sdkOutput": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IlNhbXBsZUp3dFN1YmplY3RTZXJpYWwifQ.eyJkaWdlc3QiOiI1SlRhUVZkWm53YXdsTmV6WWlOb0hJcldPWC9KNmVqWjUzNVZnNkxIR0c0PSIsImRpZ2VzdC1hbGdvcml0aG0iOiJTSEEtMjU2IiwiaWF0IjoxNzkyMzI0ODAwLCJleHAiOjE3OTIzMjQ5MjAsInJlcXVlc3QtaG9zdCI6ImFwaXRlc3QuY3liZXJzb3VyY2UuY29tIiwicmVxdWVzdC1yZXNvdXJjZS1wYXRoIjoiL3B0cy92Mi9wYXltZW50cyIsInJlcXVlc3QtbWV0aG9kIjoicG9zdCIsImlzcyI6InZpc2Etc2ltLXNhbXBsZSIsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInYtYy1qd3QtdmVyc2lvbiI6IjIiLCJ2LWMtbWVyY2hhbnQtaWQiOiJ2aXNhLXNpbS1zYW1wbGUifQ.PH8VaDCfzK0WOFZo-zf2mtVAXZiEzZ4eq8JVv2Lh8kk8IUpnNDg0sbSTRmMV9dDuaSHkvqL4RJOih55KKIjp6cnx4bb_FUqcV_XAbS6ygspJ11ETY2EXjrKKKdcbKUDRyXJdG6a5F_3W2F0KJlaYXDIQD9fk6VkrJcNzApenWbdX9hMj4PJxNagDdNYS2tdI6K4shwaeGz7CEkuWmzycGe0FS_tiCxJfEM_pi7BijQ5MD47dwv-smCCUa0i7RbZ0tQoTSklKBcySXp-xAXYa1SQdTValxxQXn8sVygW7Q1nloj-FK9LmZuzdLZ-iU66DUw1JFuld-oLothLe1JPRuw"
+    },
+    {
+      "name": "capture",
+      "path": "/pts/v2/payments/sim00000001/captures",
+      "body": "{\"Sample\":\"capture\"}",
+      "sdkOutput": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IlNhbXBsZUp3dFN1YmplY3RTZXJpYWwifQ.eyJkaWdlc3QiOiJJaGc5Z2Q1eTQ2MThYTS8ydWlxL2VGcXFYUkxxU2c3UjhSNzFtVEFwWDRjPSIsImRpZ2VzdC1hbGdvcml0aG0iOiJTSEEtMjU2IiwiaWF0IjoxNzkyMzI0ODAwLCJleHAiOjE3OTIzMjQ5MjAsInJlcXVlc3QtaG9zdCI6ImFwaXRlc3QuY3liZXJzb3VyY2UuY29tIiwicmVxdWVzdC1yZXNvdXJjZS1wYXRoIjoiL3B0cy92Mi9wYXltZW50cy9zaW0wMDAwMDAwMS9jYXB0dXJlcyIsInJlcXVlc3QtbWV0aG9kIjoicG9zdCIsImlzcyI6InZpc2Etc2ltLXNhbXBsZSIsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInYtYy1qd3QtdmVyc2lvbiI6IjIiLCJ2LWMtbWVyY2hhbnQtaWQiOiJ2aXNhLXNpbS1zYW1wbGUifQ.PB4-lwxmBr_52ZqDW0raNbejq7OjZxwvw3Y_X6L7T3r1V33hR4bNq4OJKs_66rNqfJ-SfdFxiVCemNcBpRqFnke2jZziL85pqrqene3nXvrfONS5eLumqtNr_r_117Q797BXsLpwt5LnSFVnzCe5qW8QowQiARWhaVZpf8skWqEQMHpj5LGRtyYgolwW6GwkAPJd_vcNRezYAZIUK04naP0Y-WQ6QBbv0NwGP53GAL634vew-BT5yekawabDkVtyI6KkEjrTg_dKrZZOX5DBsrOwHzhBs6EWWFY8aoDCpO__XzzWHIAz0YnFiueLti9Qe221Hhb-UJSkWW__wLjbYg"
+    },
+    {
+      "name": "reversal",
+      "path": "/pts/v2/payments/sim00000001/reversals",
+      "body": "{\"Sample\":\"reversal\"}",
+      "sdkOutput": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IlNhbXBsZUp3dFN1YmplY3RTZXJpYWwifQ.eyJkaWdlc3QiOiJSYk5OcFc2Zmx5aGVVNTYwYkxlWnJzMlUwWTFrUDRlb1ZNWmdaZXdBSzhrPSIsImRpZ2VzdC1hbGdvcml0aG0iOiJTSEEtMjU2IiwiaWF0IjoxNzkyMzI0ODAwLCJleHAiOjE3OTIzMjQ5MjAsInJlcXVlc3QtaG9zdCI6ImFwaXRlc3QuY3liZXJzb3VyY2UuY29tIiwicmVxdWVzdC1yZXNvdXJjZS1wYXRoIjoiL3B0cy92Mi9wYXltZW50cy9zaW0wMDAwMDAwMS9yZXZlcnNhbHMiLCJyZXF1ZXN0LW1ldGhvZCI6InBvc3QiLCJpc3MiOiJ2aXNhLXNpbS1zYW1wbGUiLCJqdGkiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJ2LWMtand0LXZlcnNpb24iOiIyIiwidi1jLW1lcmNoYW50LWlkIjoidmlzYS1zaW0tc2FtcGxlIn0.OY19cRWZLtdT9bAS-GOZfyBEB8JSsaOABs4-dcYLoXylyUpQZ_o9Tv-Z6_6v7U2uMkBtiAiwk4FPpWVw0d5huxJ2Y5WFhMjoKk2rgub28sUCdMkQ28tq2qN_v8AK1TNBvtHrvMw35UFOlxtf6DwP-_9c6pQ4S-rNOAd6SENVhXgyMiLMmJ9XwL9JP_5lP2M86ORiVoQuSB4PTozz3I-kHZ2GZK4nlQ1mg83ddD6HE3XFpMur97vBfhdyYyK57LN0SwVMmWsT2Zfrga6GODRahS4X6lhkSAxMHaj4ZGR_E2SN8UQMrjQrNA-2LLILHM3V-oiwQG8s5ktOmlToavR5FA"
+    }
+  ]
+}

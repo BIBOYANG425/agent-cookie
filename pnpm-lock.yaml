@@ -347,6 +347,9 @@ importers:
       '@agent-cookie/contract':
         specifier: workspace:*
         version: link:../contract
+      node-forge:
+        specifier: 1.4.0
+        version: 1.4.0
       stripe:
         specifier: ^17.0.0
         version: 17.7.0
@@ -357,6 +360,9 @@ importers:
       '@types/node':
         specifier: ^22.7.5
         version: 22.20.5
+      '@types/node-forge':
+        specifier: 1.3.11
+        version: 1.3.11
       tsx:
         specifier: ^4.19.2
         version: 4.23.15
@@ -413,6 +419,9 @@ importers:
         specifier: 0.9.1
         version: 0.9.1
     devDependencies:
+      '@agent-cookie/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@types/node':
         specifier: ^22.7.5
         version: 22.20.5
@@ -1687,6 +1696,9 @@ packages:
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
+
+  '@types/node-forge@1.3.11':
+    resolution: {integrity: sha512-FQx220y22OKNTqaByeBGqHWYz4cl94tpcxeFdvBo3wjG6XPBuZ0BNgNZRV5J5TFmmcsJ4IzsLkmGRiQbnYsBEQ==}
 
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
@@ -4330,6 +4342,10 @@ snapshots:
   '@types/estree@1.0.9': {}
 
   '@types/json-schema@7.0.15': {}
+
+  '@types/node-forge@1.3.11':
+    dependencies:
+      '@types/node': 22.20.5
 
   '@types/node@22.20.5':
     dependencies:

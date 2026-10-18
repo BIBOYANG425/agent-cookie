@@ -10,7 +10,8 @@
 //
 // DEPRECATION: HTTP Signature is deprecated by Cybersource; JWT (P12 certificate) authentication is the required
 // follow-up before any production use. The latest revision of the Getting Started REST guide states a date after which
-// HTTP Signature messaging is no longer supported, with JSON Web Token messaging as the replacement. Not implemented here.
+// HTTP Signature messaging is no longer supported, with JSON Web Token messaging as the replacement. JWT v2/P12 is
+// implemented against the SDK offline; neither authentication mode is claimed production-validated.
 //
 // Settled against Visa's official Node SDK, cybersource-rest-client 0.0.84, offline (its source read and its signing
 // functions run with dummy credentials; not a live call). test/fixtures/visa-acceptance/sdk-signature-golden.json holds
@@ -60,6 +61,7 @@ import { createHash, createHmac } from "node:crypto";
 import type { PaymentBillTo } from "./contract.js";
 import { LaneError } from "./contract.js";
 import type { PaymentAuthorizeInput, PaymentProvider } from "./providers.js";
+import { visaJwtToken, visaP12Signer, type VisaJwtCredentials } from "./visa-jwt.js";
 
 export const VISA_ACCEPTANCE_SANDBOX_HOST = "apitest.cybersource.com";
 
@@ -99,14 +101,20 @@ export interface VisaDebugEntry {
   status?: number;
 }
 
-export interface VisaProviderOptions extends VisaAcceptanceCredentials {
+interface VisaProviderSettings {
   /** Injected in tests. Defaults to the global fetch. */
   fetch?: typeof fetch;
   /** Injected in tests (the Date header and the signature depend on it). */
   now?: () => Date;
   timeoutMs?: number;
   debug?: (entry: VisaDebugEntry) => void;
+  /** Test-only control of the JWT jti; defaults to crypto.randomUUID per request. */
+  jwtNonce?: () => string;
 }
+
+export type VisaProviderOptions = VisaProviderSettings & (
+  (VisaAcceptanceCredentials & { auth?: "http_signature" }) | (VisaJwtCredentials & { auth: "jwt" })
+);
 
 const MERCHANT_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 const KEY_ID = /^[A-Za-z0-9-]{1,128}$/;
@@ -166,10 +174,10 @@ export function visaSignedHeaders(o: {
   };
 }
 
-/** Headers safe to print: Signature and v-c-merchant-id replaced, whatever their case. */
+/** Headers safe to print: both authentication headers and merchant id replaced, whatever their case. */
 export function redactVisaHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) out[k] = /^(signature|v-c-merchant-id)$/i.test(k) ? "[redacted]" : v;
+  for (const [k, v] of Object.entries(headers)) out[k] = /^(authorization|signature|v-c-merchant-id)$/i.test(k) ? "[redacted]" : v;
   return out;
 }
 
@@ -257,11 +265,15 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   const label = provenance.label ?? "Visa Acceptance";
   const failure = (what: string, status?: number, providerStatus?: unknown) => upstream(what, status, providerStatus, label);
   if (!MERCHANT_ID.test(options.merchantId)) throw new Error("Visa Acceptance: merchantId is missing or malformed");
-  if (!KEY_ID.test(options.keyId)) throw new Error("Visa Acceptance: keyId is missing or malformed");
-  if (!BASE64.test(options.sharedSecret) || Buffer.from(options.sharedSecret, "base64").length === 0) {
-    throw new Error("Visa Acceptance: sharedSecret is missing or not base64");
+  if (options.auth !== undefined && options.auth !== "http_signature" && options.auth !== "jwt") throw new Error("Visa Acceptance: unsupported authentication");
+  if (options.auth !== "jwt") {
+    if (!KEY_ID.test(options.keyId)) throw new Error("Visa Acceptance: keyId is missing or malformed");
+    if (!BASE64.test(options.sharedSecret) || Buffer.from(options.sharedSecret, "base64").length === 0) {
+      throw new Error("Visa Acceptance: sharedSecret is missing or not base64");
+    }
   }
-  const { merchantId, keyId, sharedSecret } = options;
+  const { merchantId } = options;
+  const jwtSigner = options.auth === "jwt" ? visaP12Signer(options) : undefined;
   const doFetch = options.fetch ?? globalThis.fetch;
   const now = options.now ?? (() => new Date());
   const timeoutMs = options.timeoutMs ?? 20_000;
@@ -269,7 +281,12 @@ export function visaProvider(options: VisaProviderOptions): PaymentProvider {
   /** One signed request. Returns the HTTP status and the parsed body (undefined when it is not a JSON object). */
   async function send(what: string, path: string, payload: Record<string, unknown>): Promise<{ status: number; body?: Record<string, unknown> }> {
     const text = JSON.stringify(payload);
-    const headers = { ...visaSignedHeaders({ host: authority, merchantId, keyId, sharedSecret, method: "POST", path, body: text, date: now().toUTCString() }),
+    const date = now();
+    const authHeaders = options.auth === "jwt" ? {
+      Host: authority, Date: date.toUTCString(), "v-c-merchant-id": merchantId,
+      Authorization: `Bearer ${visaJwtToken({ signer: jwtSigner!, merchantId, host: authority, path, method: "POST", body: text, now: date, nonce: options.jwtNonce?.() })}`,
+    } : visaSignedHeaders({ ...options, host: authority, method: "POST", path, body: text, date: date.toUTCString() });
+    const headers = { ...authHeaders,
       "Content-Type": "application/json", Accept: "application/hal+json" }; // U3, as the SDK sends them
     const logPath = path.replace(/(\/pts\/v2\/payments\/)[A-Za-z0-9]+\//, "$1[redacted]/");
     options.debug?.({ ...provenance, method: "POST", path: logPath, headers: redactVisaHeaders(headers) });
