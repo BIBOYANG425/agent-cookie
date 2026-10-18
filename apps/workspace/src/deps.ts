@@ -19,6 +19,7 @@ import { createLaneD, type LaneDHooks } from "./laneD.js";
 import { tracedUcp } from "./telemetry.js";
 import { Delivery } from "./services/delivery.js";
 import { LearningService } from "./services/learning.js";
+import { forRepo } from "./services/provenance.js";
 import { Dreaming } from "./dreaming.js";
 import { persist, writeMeta } from "./services/context.js";
 import { FieldService } from "./services/fields.js";
@@ -163,7 +164,8 @@ async function reconcileRepo(ctx: Ctx): Promise<void> {
       if (!roundTrips(c.field)) { unreadable++; continue; }
       const have = inRepo.get(c.id);
       if (!have) {
-        const { revokedAt: _r, ...live } = c as Contribution;
+        const { revokedAt: _r, ...rest } = c as Contribution;
+        const live = forRepo(ctx.rules, rest);
         await repo.appendContribution(live, writeMeta(ctx, c.agentId, live));
         changed = true;
       }

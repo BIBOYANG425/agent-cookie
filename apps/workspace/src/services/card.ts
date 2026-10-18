@@ -9,6 +9,7 @@ import { containsCardNumber, isTokenReference, prefValueProblem } from "../guard
 import { fail, type AuthedAgent } from "../http.js";
 import { newId } from "../ids.js";
 import { persist, persistStrict, writeMeta, type Ctx } from "./context.js";
+import { forRepo, withoutModels } from "./provenance.js";
 
 /** Fields an intent may override for its merchants ("intent 字段遮盖 card 字段"). Purpose fields never travel in an intent. */
 const PURPOSE_ANYWHERE = new Set<Field>([...purposeFields("shoe"), "shipping_address", "payment_method"]);
@@ -39,7 +40,7 @@ export class CardService {
    * workspace does no source counting of its own.
    */
   compute(userId: string, now: string): Card {
-    const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field));
+    const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field)).map(withoutModels);
     const merged = this.ctx.rules.mergeCard(all, { now, personalAgentIds: this.ctx.store.personalAgentIds() });
     // B20: any card value resting on Sample seed data makes the card "sample"; clients label it Sample.
     const seed = this.ctx.store.seedContributions(userId);
@@ -93,7 +94,7 @@ export class CardService {
     if (input.evidence && Object.keys(input.evidence).length > 0) c.evidence = input.evidence;
     // Git first: an HTTP success always means the record is in the memory repo (unknown field names stay SQLite-only, A11).
     if (isField(c.field)) {
-      await persistStrict(this.ctx, "contribution", agent.agentId, (r) => r.appendContribution(c as Contribution, writeMeta(this.ctx, agent.agentId, c)));
+      await persistStrict(this.ctx, "contribution", agent.agentId, (r) => { const line = forRepo(this.ctx.rules, c) as Contribution; return r.appendContribution(line, writeMeta(this.ctx, agent.agentId, line)); });
     }
     this.ctx.store.insertContribution(c);
     this.ctx.log({ event: "contribution.add", actor: agent.agentId, object: c.id, result: basis, reason: isField(c.field) ? c.field : "unknown_field" });

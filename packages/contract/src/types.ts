@@ -92,8 +92,21 @@ export interface ContributionEvidence {
   intentId?: string;
   conversationId?: string;
   snippet?: string;
+  /** Which models produced a learned contribution (B60). Provenance only, never authority. */
+  models?: EvidenceModels;
 }
 export const EVIDENCE_SNIPPET_MAX = 200;
+/**
+ * B60: the model ids behind a learned value — `gate`, the classifier that decided the turn may be learned from
+ * (e.g. Jev Decisions), and `extractor`, the model that produced the value. Each is an opaque model id of at most
+ * EVIDENCE_MODEL_ID_MAX characters from [A-Za-z0-9._:/@-]. Shown in GET /personal/learned; persisted on the
+ * contribution's memory-repo line as the open keys `gate:` / `extractor:`; RulesApi.mergeCard ignores it.
+ */
+export interface EvidenceModels {
+  gate?: string;
+  extractor?: string;
+}
+export const EVIDENCE_MODEL_ID_MAX = 100;
 
 export interface Contribution {
   id: string;

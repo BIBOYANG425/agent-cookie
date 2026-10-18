@@ -17,6 +17,7 @@ import {
 } from "@agent-cookie/contract";
 import type { CardService } from "./services/card.js";
 import { writeMeta, type Ctx } from "./services/context.js";
+import { withoutModels } from "./services/provenance.js";
 import type { LearningService } from "./services/learning.js";
 
 const DAY_MS = 86_400_000;
@@ -118,7 +119,7 @@ export class Dreaming {
    * back by age alone (nothing newer superseded it, so only time changed).
    */
   private decayedFallback(userId: string, card: Card, now: string): Field[] {
-    const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field) && !c.revokedAt);
+    const all = this.ctx.store.contributionsForUser(userId).filter((c): c is Contribution => isField(c.field) && !c.revokedAt).map(withoutModels);
     const personalAgentIds = this.ctx.store.personalAgentIds();
     const nowMs = Date.parse(now);
     const at = new Map<string, Card>();
