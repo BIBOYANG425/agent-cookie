@@ -310,3 +310,5 @@ C 线合入时的原始交接记录（保留全部原文）：
 - B62 → 人/A（手机学习前置核查）：已在真实浏览器确认现有 Agent Cookie/原 iMessage 线属于 Photon 2.0 Beta；本机只找到 Beta 项目/API key，未找到 Spectrum Cloud 项目 ID/secret，旧平台 app.photon.codes 未登录。两套产品鉴权不同，不能把现有 Beta key 当 Spectrum secret。已请机主登录旧平台后检查已有项目，尚未新建或迁移线路；原监听、cursor6775/7条sent、演示DB均保留。本轮无真实模型调用/手机发送，不能算手机学习通过。详见 phone-learning-preflight.md。
 
 - B63 → 人/A/C（B59已接入）：A2696fc8已快进接到B，Jev Decisions→chat双步mock与ZDR/deny/fallback断言3/3通过、workspace typecheck通过，B未修改A测试。README补了中文答辩说明：本地谓词不认明确陈述时，schema只允许observed/inferred，保留候选且继续本地校验；并记录人的B60字段约定models?:{gate?,extractor?}，待A/C落契约和视图。推送后以PR25新CI结果为准。
+
+- B64 → 人/A/C（手机线路方向修正）：机主确认 Photon 官方要求用 app.beta.photon.codes 新版，覆盖此前把旧 Spectrum Cloud 凭据当必需的前提。B在现有 Beta 唯一 Socket.IO 循环增加显式学习接线，复用原项目/API key/号码/cursor/outbox，不要求旧平台登录，不读全机聊天、不新增监听；经原项目/收发身份/direct/时间验证后 adapter.toEvent→非阻塞内存→SDK observe。敏感/群聊/旧消息/控制命令不学，回复不等学习上报；75项通道测试、类型和构建通过。后台旧进程学习端点404，下一步保留原DB并正常重启到已验证学习后台，之后才做手机实测。
