@@ -46,7 +46,7 @@
 - [x] C22 控制台模型来源与 needs / unavailable 可选字段：模型接正式契约，needs 按可选投影兼容、无事件不显示；46 tests、typecheck/build通过。A/B owner handshake投影与activity.kind透传缺口已追加requests，尚不宣称needs实连。
 - [x] C23 通用字段、本次 intent 标记与新 fixture 截图：57 tests、TypeScript/build通过；已补 SDK 回执读取及现有 owner intent 历史 GET 过渡，六张新 Sample 截图见 evidence/console/README.md。
 - [x] T9-1 README 定稿：根 README 为启动/范围/环境变量/23项验收入口，docs README 指向它；架构图与 plan 完全一致并注明 ACME 已砍，链接和23行状态核对通过。
-- [ ] T9-2 Devpost 中英草稿。
+- [x] T9-2 Devpost 中英草稿：英文主稿+完整中文，技术/挑战/计划与证据一致；旧稿入口指向 devpost.md，本地链接核验通过。
 - [ ] T9-3 3–5 分钟视频分镜及三条备选需求。
 - [ ] T9-4 Recorded run 素材清单与跨线补件请求。
 
